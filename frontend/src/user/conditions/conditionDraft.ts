@@ -44,28 +44,29 @@ export function visibleItems(step: StepNumber, draft: ConditionDraft): DraftItem
   if (step === 1) return ['BIRTH_DATE', 'RESIDENCE_REGION', 'CURRENT_REGION_RESIDENCE_MONTHS', 'CURRENT_LEASE_END_DATE', 'IS_UNIVERSITY_STUDENT', 'IS_JOB_SEEKER']
   if (step === 2) {
     const items: DraftItem[] = ['APPLICANT_OWNS_HOUSE', 'APPLICANT_OWNS_CAR']
-    if (a.APPLICANT_OWNS_CAR === true) items.push('APPLICANT_CAR_VALUE')
+    if (a.APPLICANT_OWNS_CAR === true || a.APPLICANT_OWNS_CAR !== false && hasValue(a.APPLICANT_CAR_VALUE)) items.push('APPLICANT_CAR_VALUE')
     return [...items, 'APPLICANT_ASSETS', 'APPLICANT_MONTHLY_INCOME']
   }
   const items: DraftItem[] = ['FAMILY_TYPE']
   const type = a.FAMILY_TYPE
-  if (!type) return items
   if (type === 'UNMARRIED') {
     items.push('IS_HOUSEHOLD_SEPARATED')
     if (a.IS_UNIVERSITY_STUDENT === true && a.IS_HOUSEHOLD_SEPARATED === true && a.APPLICANT_MONTHLY_INCOME === 0) items.push('PARENTS_MONTHLY_INCOME')
     items.push('REGISTERED_FAMILY_COUNT')
   } else if (type === 'SINGLE_PARENT') {
     items.push('REGISTERED_FAMILY_COUNT', 'CHILDREN_COUNT_INCLUDING_FETUS', 'YOUNGEST_CHILD')
-  } else {
+  } else if (type === 'COUPLE_OR_ENGAGED') {
     items.push('REGISTERED_FAMILY_COUNT', 'MARRIAGE_EVENT', 'HAS_CHILDREN_OR_PREGNANCY')
-    if (a.HAS_CHILDREN_OR_PREGNANCY === true) items.push('CHILDREN_COUNT_INCLUDING_FETUS', 'YOUNGEST_CHILD')
+    if (a.HAS_CHILDREN_OR_PREGNANCY === true || a.HAS_CHILDREN_OR_PREGNANCY !== false && (hasValue(a.CHILDREN_COUNT_INCLUDING_FETUS) || hasValue(a.YOUNGEST_CHILD))) items.push('CHILDREN_COUNT_INCLUDING_FETUS', 'YOUNGEST_CHILD')
     items.push('IS_DUAL_INCOME')
+  } else {
+    items.push('REGISTERED_FAMILY_COUNT')
   }
-  items.push('FAMILY_GATE')
+  items.push('HOUSEHOLD_MONTHLY_INCOME', 'FAMILY_GATE')
   if (draft.familyDetails === 'PROVIDED') {
     items.push('FAMILY_OWNS_HOUSE', 'FAMILY_OWNS_CAR')
-    if (a.FAMILY_OWNS_CAR === true) items.push('FAMILY_CAR_VALUE')
-    items.push('FAMILY_TOTAL_ASSETS', 'HOUSEHOLD_MONTHLY_INCOME')
+    if (a.FAMILY_OWNS_CAR === true || a.FAMILY_OWNS_CAR !== false && hasValue(a.FAMILY_CAR_VALUE)) items.push('FAMILY_CAR_VALUE')
+    items.push('FAMILY_TOTAL_ASSETS')
   }
   return items
 }
@@ -77,7 +78,8 @@ function visibleFields(draft: ConditionDraft): ProfileField[] {
 export function isAnswered(item: DraftItem, draft: ConditionDraft): boolean {
   if (item === 'FAMILY_GATE') return draft.familyDetails !== null
   const value = draft.answers[item]
-  if (value === LATER || value === NOT_APPLICABLE) return true
+  if (value === LATER) return FIELD_COPY[item].skippable === true
+  if (value === NOT_APPLICABLE) return true
   return hasValue(value)
 }
 
@@ -88,9 +90,7 @@ export function stepComplete(step: StepNumber, draft: ConditionDraft): boolean {
 /** 값이 바뀐 뒤 따라오는 기본값과 잠금을 맞춘다. */
 export function withDefaults(draft: ConditionDraft): ConditionDraft {
   const answers = { ...draft.answers }
-  if (answers.FAMILY_TYPE && answers.REGISTERED_FAMILY_COUNT === undefined) answers.REGISTERED_FAMILY_COUNT = answers.FAMILY_TYPE === 'UNMARRIED' ? 1 : 2
-  const next = { ...draft, answers, familyDetails: answers.FAMILY_TYPE ? draft.familyDetails : null }
-  if (visibleItems(3, next).includes('CHILDREN_COUNT_INCLUDING_FETUS') && answers.CHILDREN_COUNT_INCLUDING_FETUS === undefined) answers.CHILDREN_COUNT_INCLUDING_FETUS = 1
+  const next = { ...draft, answers }
   if (next.familyDetails === 'PROVIDED') {
     if (answers.APPLICANT_OWNS_HOUSE === true) answers.FAMILY_OWNS_HOUSE = true
     if (answers.APPLICANT_OWNS_CAR === true) answers.FAMILY_OWNS_CAR = true
@@ -100,6 +100,7 @@ export function withDefaults(draft: ConditionDraft): ConditionDraft {
 
 export function setAnswer(draft: ConditionDraft, field: ProfileField, value: DraftAnswer | undefined): ConditionDraft {
   const answers = { ...draft.answers }
+  if (field === 'RESIDENCE_REGION' && value !== draft.answers.RESIDENCE_REGION) delete answers.CURRENT_REGION_RESIDENCE_MONTHS
   if (value === undefined) delete answers[field]
   else answers[field] = value
   return withDefaults({ ...draft, answers })
@@ -115,7 +116,7 @@ export function draftHasAnswers(draft: ConditionDraft): boolean {
 
 /** 비교에 쓰는 항목 전체(가족 정보를 입력한다고 가정). 마이페이지와 완료 요약의 분모. */
 export function applicableFields(draft: ConditionDraft): ProfileField[] {
-  return visibleFields({ ...draft, familyDetails: draft.answers.FAMILY_TYPE ? 'PROVIDED' : draft.familyDetails })
+  return visibleFields({ ...draft, familyDetails: 'PROVIDED' })
 }
 
 /** 아직 값이 없는 항목. 건너뛴 가족 정보와 나중에 입력하기로 한 항목을 포함한다. */
@@ -127,7 +128,7 @@ export function missingFields(draft: ConditionDraft): ProfileField[] {
 
 /** 한 단계에서 적용되는 항목 전체(가족 정보를 입력한다고 가정). 완료 요약과 마이페이지의 표 행. */
 export function stepFields(step: StepNumber, draft: ConditionDraft): ProfileField[] {
-  const asFull = { ...draft, familyDetails: draft.answers.FAMILY_TYPE ? 'PROVIDED' as const : draft.familyDetails }
+  const asFull = { ...draft, familyDetails: 'PROVIDED' as const }
   return visibleItems(step, asFull).filter((item): item is ProfileField => item !== 'FAMILY_GATE')
 }
 
@@ -137,6 +138,14 @@ export function isFamilyDetailField(field: ProfileField): boolean {
 
 export function toProfile(draft: ConditionDraft): ConditionProfile {
   const visible = new Set(visibleFields(draft))
+  // These inputs are independent of family type in the common profile API.
+  visible.add('REGISTERED_FAMILY_COUNT')
+  visible.add('HOUSEHOLD_MONTHLY_INCOME')
+  if (draft.familyDetails === 'PROVIDED') {
+    for (const field of FAMILY_DETAIL_FIELDS) {
+      if (field !== 'FAMILY_CAR_VALUE' || draft.answers.FAMILY_OWNS_CAR !== false && hasValue(draft.answers.FAMILY_CAR_VALUE)) visible.add(field)
+    }
+  }
   const facts: Partial<Record<ProfileField, Fact>> = {}
   for (const field of PROFILE_FIELDS) {
     if (!visible.has(field)) continue
@@ -153,7 +162,7 @@ export function toProfile(draft: ConditionDraft): ConditionProfile {
     facts.CHILDREN_COUNT_INCLUDING_FETUS = { state: 'NOT_APPLICABLE' }
     facts.YOUNGEST_CHILD = { state: 'NOT_APPLICABLE' }
   }
-  return { familyDetailsState: a.FAMILY_TYPE ? draft.familyDetails ?? 'NOT_STARTED' : 'NOT_STARTED', facts }
+  return { familyDetailsState: draft.familyDetails ?? 'NOT_STARTED', facts }
 }
 
 export function fromProfile(profile: ConditionProfile): ConditionDraft {
@@ -161,7 +170,7 @@ export function fromProfile(profile: ConditionProfile): ConditionDraft {
   for (const field of PROFILE_FIELDS) {
     const fact = profile.facts[field]
     if (!fact) continue
-    if (fact.state === 'UNKNOWN') answers[field] = LATER
+    if (fact.state === 'UNKNOWN' && FIELD_COPY[field].skippable) answers[field] = LATER
     if (fact.state === 'NOT_APPLICABLE') answers[field] = NOT_APPLICABLE
     if (fact.state === 'PROVIDED' && fact.value !== undefined) answers[field] = fact.value
   }

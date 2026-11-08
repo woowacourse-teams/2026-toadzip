@@ -1,4 +1,4 @@
-// 이름은 백엔드 basiccomparison(ProfileField, ValueState, BasicStatus, RuleReading.Status, PathKind, GuidanceKind)과 같게 둔다.
+// 사용자 입력과 최신 eligibility API의 상태를 보존한다. legacy MATCHED는 사용하지 않는다.
 
 export const PROFILE_FIELDS = [
   'BIRTH_DATE',
@@ -45,15 +45,15 @@ export interface StoredConditionProfile {
   readonly version: number
   readonly savedAt: string | null
   readonly profile: ConditionProfile
+  readonly reevaluationState?: ProcessingState
 }
 
 export type CheckStatus = 'SATISFIED' | 'NOT_SATISFIED' | 'INPUT_NEEDED' | 'DIRECT_CHECK_REQUIRED'
-export type TypeStatus = 'MATCHED' | 'PARTIALLY_COMPARED' | 'INPUT_NEEDED' | 'NOT_MATCHED' | 'NOT_EVALUATED'
+export type TypeStatus = 'ELIGIBLE' | 'INELIGIBLE' | 'UNDETERMINED' | 'NOT_EVALUATED'
 /** 지원 가능한 유형을 앞에 둔다. */
-export const TYPE_STATUS_ORDER: Record<TypeStatus, number> = { MATCHED: 0, PARTIALLY_COMPARED: 1, INPUT_NEEDED: 2, NOT_MATCHED: 3, NOT_EVALUATED: 4 }
+export const TYPE_STATUS_ORDER: Record<TypeStatus, number> = { ELIGIBLE: 0, UNDETERMINED: 1, INELIGIBLE: 2, NOT_EVALUATED: 3 }
 export const CHECK_STATUS_ORDER: Record<CheckStatus, number> = { NOT_SATISFIED: 0, INPUT_NEEDED: 1, DIRECT_CHECK_REQUIRED: 2, SATISFIED: 3 }
 export type MissingReason = 'LATER' | 'FAMILY_SKIPPED' | 'UNANSWERED'
-export type Coverage = 'GENERAL' | 'COMMON_ONLY'
 
 export interface EvidenceRef {
   readonly page: number
@@ -74,9 +74,10 @@ export interface CheckView {
   /** 이 항목을 고치거나 채울 때 여는 입력 */
   readonly fields: readonly ProfileField[]
   readonly missingReason: MissingReason | null
+  readonly children?: readonly CheckView[]
 }
 
-export type GuidanceKind = 'REQUIRED_QUALIFICATION' | 'REQUIRED_CHECK' | 'OTHER_ROUTE' | 'PRIORITY_OPPORTUNITY' | 'PROCEDURE'
+export type GuidanceKind = 'REQUIRED_QUALIFICATION' | 'APPLICATION_EXCLUSION' | 'REQUIRED_CHECK' | 'OTHER_ROUTE' | 'PRIORITY_OPPORTUNITY' | 'PROCEDURE'
 
 export interface GuidanceView {
   readonly kind: GuidanceKind
@@ -88,11 +89,16 @@ export interface GuidanceView {
 export interface TypeView {
   readonly key: string
   readonly label: string
-  readonly coverage: Coverage
   readonly status: TypeStatus
   readonly units: string
   readonly checks: readonly CheckView[]
   readonly guidances: readonly GuidanceView[]
+  readonly qualifications?: readonly RequiredQualification[]
+  readonly exclusions?: readonly GuidanceView[]
+  readonly missingInputs?: readonly ProfileField[]
+  readonly message?: string
+  readonly missingInputMessage?: string | null
+  readonly regionCodes?: readonly string[]
 }
 
 export interface RequiredQualification {
@@ -102,21 +108,49 @@ export interface RequiredQualification {
   readonly evidence: EvidenceRef | null
 }
 
-export type ComparisonAvailability = 'AVAILABLE' | 'NOT_STRUCTURED' | 'OUT_OF_SCOPE'
+export type ComparisonAvailability = 'AVAILABLE' | 'NOT_STRUCTURED' | 'NOT_PUBLISHED' | 'CANCELLED'
+export type ResultFreshness = 'CURRENT' | 'RECHECKING' | 'NOT_AVAILABLE'
+export type ProcessingState = 'PENDING' | 'RUNNING' | 'DONE'
+export interface EligibilityProcessing {
+  readonly profileVersion: number
+  readonly requestedVersion: number
+  readonly state: ProcessingState
+  readonly failedAttempts: number
+}
+export interface EligibilityDiscovery {
+  readonly eventId: string
+  readonly rootAnnouncementId: string
+  readonly announcementId: string
+  readonly optionIds: readonly string[]
+  readonly discoveredAt: string
+}
+export interface DiscoveryPage {
+  readonly items: readonly EligibilityDiscovery[]
+  readonly nextCursor: number
+  readonly hasMore: boolean
+}
 
 export interface ComparisonView {
   readonly announcementId: string
   readonly availability: ComparisonAvailability
+  readonly freshness: ResultFreshness
+  readonly status: TypeStatus | null
+  readonly headline: string | null
+  readonly profileVersion: number
+  readonly evaluatedProfileVersion: number | null
+  readonly eligibleOptionIdsInRegion: readonly string[]
+  readonly scopeNote: string | null
   readonly referenceDate: string
-  readonly requiredQualification: RequiredQualification | null
   readonly types: readonly TypeView[]
 }
 
 export interface ListConditionResult {
   readonly announcementId: string
   readonly availability: ComparisonAvailability
-  readonly best: { readonly label: string; readonly coverage: Coverage; readonly status: TypeStatus } | null
-  readonly generalMatched: boolean
+  readonly best: { readonly label: string; readonly status: TypeStatus } | null
+  readonly freshness: ResultFreshness
+  readonly eligibleInRegion: boolean
+  readonly missingInputs: readonly ProfileField[]
 }
 
 export interface AnnouncementRef {
@@ -125,6 +159,7 @@ export interface AnnouncementRef {
   readonly rentalType: string | null
   readonly applicationStatus: string | null
   readonly targets: readonly string[]
+  readonly region?: string | null
 }
 
 export interface ConditionsRepository {
@@ -132,6 +167,9 @@ export interface ConditionsRepository {
   saveProfile(request: { readonly expectedVersion: number; readonly profile: ConditionProfile }): Promise<StoredConditionProfile>
   loadComparison(ref: AnnouncementRef, signal?: AbortSignal): Promise<ComparisonView>
   loadListResults(refs: readonly AnnouncementRef[], signal?: AbortSignal): Promise<ReadonlyMap<string, ListConditionResult>>
+  loadProcessing(signal?: AbortSignal): Promise<EligibilityProcessing>
+  loadDiscoveries(afterAnnouncementId: number, signal?: AbortSignal): Promise<DiscoveryPage>
+  acknowledgeDiscovery(discovery: EligibilityDiscovery): Promise<void>
 }
 
 export class ConditionsSessionError extends Error {

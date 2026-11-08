@@ -73,7 +73,7 @@ import { readRecentComplexPreview, withRecentComplexPreview } from './navigation
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
 import { ConditionListBanner } from './announcements/ConditionListBanner'
-import { useConditionListResults, useMissingConditionFields } from './announcements/useConditionListResults'
+import { useConditionListResults } from './announcements/useConditionListResults'
 import { listResultText } from './presentation/comparisonPresentation'
 import { useConditions } from '../user/conditions/ConditionsContext'
 import type { ListConditionResult } from '../user/conditions/conditionsModel'
@@ -579,15 +579,10 @@ export function PublicHousingExplorer({
     announcementFiltersKey,
   )
   const conditions = useConditions()
-  const conditionList = useConditionListResults(announcementResults.state.items)
+  const conditionList = useConditionListResults(announcementResults.state.items, announcementFilters.regionCode)
   const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
   const [onlyMatched, setOnlyMatched] = useState(false)
   const filteringMatched = onlyMatched && conditionsCompared
-  const lastConditionSave = conditions.lastSave
-  // 목록에서 시작한 저장이 끝나면 지원 가능 공고만 모아 보여 준다.
-  useEffect(() => {
-    if (lastConditionSave?.origin === 'list' && lastConditionSave.kind !== 'clear') setOnlyMatched(true)
-  }, [lastConditionSave])
   const toggleMatched = useCallback(() => {
     if (conditionsCompared) setOnlyMatched((current) => !current)
     else conditions.openNudge('list')
@@ -1444,11 +1439,13 @@ export function PublicHousingExplorer({
     recentComplexes.length,
 
   )
-  const comparingList = conditionsCompared && conditionList.status === 'loading'
+  const comparingList = conditionsCompared && (conditionList.status === 'loading' || conditionList.rechecking)
   const resultCount = filteringMatched && activeResultTab === 'announcements'
-    ? comparingList
+    ? conditionList.status === 'error'
+      ? { accessibleLabel: '신청자격 조회 실패', visibleLabel: '신청자격 조회 실패' }
+      : comparingList
       ? { accessibleLabel: '지원 가능 공고 확인 중', visibleLabel: '지원 가능 확인 중' }
-      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `지원 가능 ${conditionList.matchedIds.size}건` }
+      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건` }
     : baseResultCount
   const complexFilterResultCountLabel = mapFilterResultCountLabel({
     aggregateMapActive,
@@ -1767,7 +1764,7 @@ export function PublicHousingExplorer({
               hidden={activeResultTab !== 'announcements'}
             >
               <div className="housing-results__body">
-                <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList}
+                <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList} error={conditionList.status === 'error'} onRetry={conditionList.retry}
                   filtering={filteringMatched} onToggleFilter={toggleMatched} />
                 <AnnouncementFilterPanel
                   filters={announcementFilters}
@@ -1787,6 +1784,8 @@ export function PublicHousingExplorer({
                     conditionResults={conditionsCompared ? conditionList.results : null}
                     matchedIds={filteringMatched ? conditionList.matchedIds : null}
                     comparing={filteringMatched && comparingList}
+                    comparisonError={filteringMatched && conditionList.status === 'error'}
+                    onComparisonRetry={conditionList.retry}
                     selectedAnnouncementId={selectedAnnouncementId}
                     onSelect={openAnnouncementDetail}
                     onCardRef={(announcementId, node) => {
@@ -1798,6 +1797,8 @@ export function PublicHousingExplorer({
                     }}
                     onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
                   />
+                  {filteringMatched && announcementResults.state.hasNext && <Button size="sm" variant="secondary" onClick={loadMoreAnnouncements}
+                    disabled={announcementResults.state.status === 'loading-more'}>다음 공고도 불러와 확인하기</Button>}
                   {announcementResults.state.items.length > 0 && announcementResults.state.status !== 'error' && (
                     <div ref={announcementListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
                       {announcementResults.state.status === 'loading-more'
@@ -1948,6 +1949,8 @@ function AnnouncementResultContent({
   conditionResults,
   matchedIds,
   comparing,
+  comparisonError,
+  onComparisonRetry,
   selectedAnnouncementId,
   onSelect,
   onCardRef,
@@ -1959,6 +1962,8 @@ function AnnouncementResultContent({
   matchedIds: ReadonlySet<string> | null
   /** 지원 가능 공고만 보는 중 새 목록을 비교하는 중 */
   comparing: boolean
+  comparisonError: boolean
+  onComparisonRetry: () => void
   selectedAnnouncementId: string | null
   onSelect: (announcementId: string) => void
   onCardRef: (announcementId: string, node: HTMLElement | null) => void
@@ -1995,6 +2000,8 @@ function AnnouncementResultContent({
       </div>
     )
   }
+
+  if (comparisonError) return <RequestError title="신청자격을 불러오지 못했어요" onRetry={onComparisonRetry} />
 
   if (comparing) {
     return (
@@ -2037,21 +2044,10 @@ function conditionLineOf(result: ListConditionResult | undefined) {
 }
 
 function NoMatchedAnnouncements() {
-  const { openInput } = useConditions()
-  const missing = useMissingConditionFields()
-  return (
-    <div className="housing-results__state" role="status">
-      <strong>아직 지원 가능 공고가 없어요</strong>
-      <span>{missing.length
-        ? `입력하지 않은 항목 ${missing.length}개를 채우면 더 찾을 수 있어요.`
-        : '입력한 조건으로는 아직 없어요. 바뀐 정보가 있다면 고쳐 보세요.'}</span>
-      <Button size="sm" onClick={() => missing.length
-        ? openInput({ mode: 'partial', fields: missing, origin: 'list' }, {})
-        : openInput({ mode: 'full', step: 1, origin: 'list' }, {})}>
-        {missing.length ? '내 조건 채우기' : '내 조건 수정'}
-      </Button>
-    </div>
-  )
+  return <div className="housing-results__state" role="status">
+    <strong>불러온 공고에는 선택 지역의 지원 가능한 모집 선택지가 없어요</strong>
+    <span>현재 불러온 목록에만 적용한 결과예요. 다음 공고를 불러오거나 필터를 해제해 다른 공고도 확인해 주세요.</span>
+  </div>
 }
 
 function resultCountLabel(

@@ -115,9 +115,12 @@ describe('ConditionField', () => {
   it('counts people with a stepper that stops at the minimum', () => {
     render(<Harness field="REGISTERED_FAMILY_COUNT" initial={setAnswer(emptyDraft(), 'FAMILY_TYPE', 'UNMARRIED')} />)
     expect(screen.getByRole('button', { name: '한 명 줄이기' })).toBeDisabled()
+    expect(screen.getByRole('spinbutton')).toHaveValue(null)
     fireEvent.click(screen.getByRole('button', { name: '한 명 늘리기' }))
-    expect(latest.answers.REGISTERED_FAMILY_COUNT).toBe(2)
-    expect(screen.getByText('2명')).toBeInTheDocument()
+    expect(latest.answers.REGISTERED_FAMILY_COUNT).toBe(1)
+    expect(screen.getByRole('spinbutton')).toHaveValue(1)
+    fireEvent.click(screen.getByRole('button', { name: '한 명 늘리기' }))
+    expect(screen.getByRole('spinbutton')).toHaveValue(2)
   })
 
   it('asks the kind before the date of an event and lets the date wait', () => {
@@ -134,7 +137,7 @@ describe('ConditionField', () => {
     render(<Harness field="FAMILY_TYPE" />)
     fireEvent.click(screen.getByRole('radio', { name: /부부·예비부부/ }))
     expect(latest.answers.FAMILY_TYPE).toBe('COUPLE_OR_ENGAGED')
-    expect(latest.answers.REGISTERED_FAMILY_COUNT).toBe(2)
+    expect(latest.answers.REGISTERED_FAMILY_COUNT).toBeUndefined()
   })
 })
 

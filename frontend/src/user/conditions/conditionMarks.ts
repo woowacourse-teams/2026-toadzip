@@ -9,8 +9,8 @@ export function markOfCheck(status: CheckStatus): MarkStatus {
 }
 
 export function markOfType(status: TypeStatus): MarkStatus {
-  if (status === 'MATCHED') return 'ok'
-  if (status === 'NOT_MATCHED') return 'no'
+  if (status === 'ELIGIBLE') return 'ok'
+  if (status === 'INELIGIBLE') return 'no'
   if (status === 'NOT_EVALUATED') return 'na'
   return 'tri'
 }

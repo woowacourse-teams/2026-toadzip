@@ -6,6 +6,7 @@ import { formatDots, formatMonthDay, withJosa } from '../../user/conditions/cond
 import { DocIcon, InfoIcon, PencilIcon, PlusIcon, StatusMark, WarnIcon } from '../../user/conditions/conditionIcons'
 import { markOfCheck, markOfType } from '../../user/conditions/conditionMarks'
 import type { AnnouncementRef, CheckView, EvidenceRef, ProfileField, TypeView } from '../../user/conditions/conditionsModel'
+import { regionLabel } from '../../user/conditions/conditionRegions'
 import {
   CHECK_STATUS_LABEL,
   GUIDANCE_KIND_LABEL,
@@ -64,30 +65,39 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
   if (!compared && closed) return null
 
   const head = (extra: React.ReactNode = null, sub: string | null = null) => <div className={styles.head}>
-    <h3 id={headingId}>내 조건 비교</h3>{extra}{sub && <p className={styles.sub}>{sub}</p>}
+    <h3 id={headingId}>신청자격 판정</h3>{extra}{sub && <p className={styles.sub}>{sub}</p>}
   </div>
 
   let body: React.ReactNode = null
   if (mode === 'guest') {
     body = <Invite detail={detail} labels={[]} />
+  } else if (mode === 'error') {
+    body = <RequestError title="내 조건을 불러오지 못했어요" onRetry={conditions.retryProfile ?? retry} />
   } else if (status === 'error') {
-    body = <RequestError title="내 조건 비교를 불러오지 못했어요" onRetry={retry} />
+    body = <RequestError title="신청자격 판정을 불러오지 못했어요" onRetry={retry} />
   } else if (!view) {
-    return null
+    body = <p role="status">현재 정보의 신청자격 판정을 불러오고 있어요.</p>
   } else if (view.availability === 'NOT_STRUCTURED') {
-    body = <div className={styles.soon}><span className={styles.soonIcon}><HouseCharacterIcon size={22} /></span><div><strong>자격 비교 준비 중</strong>신청 자격은 공고문에서 확인해 주세요.</div></div>
-  } else if (view.availability === 'OUT_OF_SCOPE') {
-    body = <div className={styles.soon}><div><strong>개인 비교 대상이 아니에요</strong>기업이 신청하는 공고라 개인 비교 대상이 아니에요.</div></div>
-  } else if (!compared) {
-    body = <Invite detail={detail} labels={view.types.map((type) => type.label)} />
+    body = <div className={styles.soon}><span className={styles.soonIcon}><HouseCharacterIcon size={22} /></span><div><strong>신청자격 판정 준비 중</strong>신청 자격은 공고문에서 확인해 주세요.</div></div>
+  } else if (view.availability === 'CANCELLED' || view.availability === 'NOT_PUBLISHED' || view.freshness === 'NOT_AVAILABLE') {
+    body = <p>{view.availability === 'CANCELLED' ? '취소된 모집이에요.' : '현재 신청자격 판정 대상이 아니에요.'} 신청 일정과 공고문을 확인해 주세요.</p>
+  } else if (view.freshness === 'RECHECKING') {
+    body = <div role="status"><strong>현재 정보로 다시 확인하고 있어요.</strong><p>현재 정보와 공고 기준으로 판정 중이에요. 이전 판정은 표시하지 않아요.</p></div>
   } else {
     const saved = conditions.stored?.savedAt ? formatMonthDay(conditions.stored.savedAt) : null
     return <section className={styles.section} aria-labelledby={headingId}>
       {head(<Button size="sm" variant="secondary" onClick={() => conditions.openInput({ mode: 'full', step: 1, origin: 'detail' }, { announcementId: detail.announcementId })}>내 조건 수정</Button>,
         `비교 기준일 ${formatDots(view.referenceDate)}${saved ? ` · ${saved} 저장한 내 조건 기준` : ''}`)}
+      {!compared && <Invite detail={detail} labels={view.types.map((type) => type.label)} />}
+      <p role="status"><strong>{view.headline}</strong></p>
+      {view.status === 'ELIGIBLE' && <div className={styles.required}>
+        <strong>지원 가능한 모집 선택지</strong>
+        <ul>{view.types.filter((type) => type.status === 'ELIGIBLE').map((type) => <li key={type.key}>{type.units} · {type.label}</li>)}</ul>
+      </div>}
       <Comparison key={detail.announcementId} announcementId={detail.announcementId} types={view.types} revision={loadedRevision}
-        required={view.requiredQualification} onOpenEvidence={onOpenEvidence} />
-      <p className={styles.note}><InfoIcon size={15} /><span>입력하신 정보로 비교한 기본 조건이에요. 최종 자격과 순위는 공고문과 공적 자료로 확정돼요.</span></p>
+        onOpenEvidence={onOpenEvidence} />
+      {view.scopeNote && <p className={styles.note}>{view.scopeNote}</p>}
+      <p className={styles.note}><InfoIcon size={15} /><span>입력한 정보와 공고 기준에 따른 신청자격 판정이에요. 실제 심사와 선정 결과는 공고문과 제출 자료로 확인해 주세요.</span></p>
     </section>
   }
   return <section className={styles.section} aria-labelledby={headingId}>{head()}{body}</section>
@@ -101,7 +111,7 @@ function Invite({ detail, labels }: { readonly detail: EligibilitySectionDetail;
   const chip = (label: string) => <span key={label} className={styles.chip} role="listitem">{label}<i aria-label="미확인">?</i></span>
   return <div className={styles.invite}>
     <p className={styles.inviteTitle}>{done ? '입력 완료! 결과만 남았어요' : draft ? '작성하던 내 조건이 있어요' : '이 공고, 나도 신청할 수 있을까?'}</p>
-    <p className={styles.inviteSub}>{done ? '저장하면 바로 비교해 드려요' : draft ? `${draft.step}단계까지 입력했어요` : '신청 유형별 기본 조건을 비교해 드려요'}</p>
+    <p className={styles.inviteSub}>{done ? '저장한 정보로 신청자격을 확인해 드려요' : draft ? `${draft.step}단계까지 입력했어요` : '모집 선택지별 신청자격을 확인해 드려요'}</p>
     {labels.length > 0 && <div className={styles.chips} role="list" aria-label="이 공고의 신청 유형">
       <div className={styles.chipRow}>{top.map(chip)}</div>
       {bottom.length > 0 && <div className={styles.chipRow}>{bottom.map(chip)}</div>}
@@ -119,11 +129,10 @@ function openFix(openInput: Open, fields: readonly ProfileField[], announcementI
   else openInput({ mode: 'partial', fields, origin: 'detail' }, { announcementId })
 }
 
-function Comparison({ announcementId, types: raw, revision, required, onOpenEvidence }: {
+function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
   readonly announcementId: string
   readonly types: readonly TypeView[]
   readonly revision: number
-  readonly required: { readonly title: string; readonly body: string; readonly items: readonly string[]; readonly evidence: EvidenceRef | null } | null
   readonly onOpenEvidence: (target: EvidenceTarget) => void
 }) {
   const { lastSave, notify } = useConditions()
@@ -156,23 +165,16 @@ function Comparison({ announcementId, types: raw, revision, required, onOpenEvid
     setSelectedKey(types[next].key)
     tabRefs.current.get(types[next].key)?.focus()
   }
-  const requiredBox = required && <div className={styles.required} role="note">
-    <div className={styles.requiredHead}><WarnIcon size={18} />{required.title}</div>
-    <p>{required.body}</p>
-    <ul>{required.items.map((item) => <li key={item}>{item}</li>)}</ul>
-    {required.evidence && <EvidenceButton evidence={required.evidence} label={required.title} onOpen={onOpenEvidence} />}
-  </div>
   if (types.length === 1) {
-    return <>{requiredBox}<div className={`${styles.panel} ${styles.single}`}><TypePanel announcementId={announcementId} type={selected} just={just} onOpenEvidence={onOpenEvidence} /></div></>
+    return <div className={`${styles.panel} ${styles.single}`}><TypePanel announcementId={announcementId} type={selected} just={just} onOpenEvidence={onOpenEvidence} /></div>
   }
   return <>
-    {requiredBox}
     <div className={styles.tabs} role="tablist" aria-label="신청 유형">
       {types.map((type, index) => <button key={type.key} type="button" role="tab" id={`${tabsId}-${type.key}`}
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={15} className={styles.mark} />{type.label}</span>
+        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={15} className={styles.mark} />{type.label}{type.units && <small>{type.units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
@@ -211,15 +213,17 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
   const { openInput } = useConditions()
   const copy = verdictCopy(type)
   const checks = sortChecks(type.checks)
-  const firstUnmet = checks.find((check) => check.status === 'NOT_SATISFIED')
+  const editableFailures = (items: readonly CheckView[]): CheckView[] => items.flatMap((check) => check.children?.length ? editableFailures(check.children) : check.status === 'NOT_SATISFIED' && check.fields.length > 0 ? [check] : [])
+  const firstUnmet = editableFailures(checks)[0]
   return <>
     <div className={styles.verdict} data-status={type.status}>
       <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={26} className={styles.mark} /></span>
       <div>
         <strong>{copy.title}</strong>
         <p>{copy.message}</p>
-        {(type.status === 'INPUT_NEEDED' && copy.missingFields.length > 1 || copy.showFix && firstUnmet) && <div className={styles.verdictActions}>
-          {type.status === 'INPUT_NEEDED' && copy.missingFields.length > 1 && <Button size="sm" variant="secondary"
+        {type.missingInputMessage && <p>{type.missingInputMessage}</p>}
+        {(copy.missingFields.length > 0 || copy.showFix && firstUnmet) && <div className={styles.verdictActions}>
+          {copy.missingFields.length > 0 && <Button size="sm" variant="secondary"
             onClick={() => openInput({ mode: 'partial', fields: copy.missingFields, origin: 'detail' }, { announcementId })}>△ 항목 한 번에 입력하기</Button>}
           {copy.showFix && firstUnmet && <Button size="sm" variant="secondary" onClick={() => openFix(openInput, firstUnmet.fields, announcementId)}>내 정보 수정하기</Button>}
         </div>}
@@ -230,6 +234,17 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
         {checks.map((check) => <CheckRow key={check.id} announcementId={announcementId} check={check} type={type} just={just.has(`${type.key}:${check.id}`)} onOpenEvidence={onOpenEvidence} />)}
       </ul>
       {type.units && <p className={styles.units}>모집 주택형 · <b>{type.units}</b></p>}
+      {Boolean(type.regionCodes?.length) && <p className={styles.units}>모집 지역 · {type.regionCodes?.map(regionLabel).join(', ')}</p>}
+      {type.qualifications?.map((qualification) => <div className={styles.required} role="note" key={qualification.title}>
+        <div className={styles.requiredHead}><WarnIcon size={18} />신청자격을 직접 확인해 주세요</div>
+        <strong>{qualification.title}</strong>
+        <p>{qualification.title === '지원대상 한부모가족'
+          ? '한부모가족이더라도, 이 공고에서 요구하는 ‘지원대상 한부모가족’에 해당하는지 확인해 주세요.'
+          : '현재 사용자 정보로 확인하지 않는 필수 자격이에요.'}</p>
+        <p>{qualification.body}</p>
+        {qualification.items.map((item) => <p key={item}>{item}</p>)}
+        {qualification.evidence && <EvidenceButton evidence={qualification.evidence} label={qualification.title} onOpen={onOpenEvidence} />}
+      </div>)}
       {type.guidances.length > 0 && <div className={styles.direct}>
         <h4>신청 전 직접 확인할 것</h4>
         <ul>{type.guidances.map((guidance) => <li key={`${guidance.kind}:${guidance.title}`}>
@@ -237,6 +252,13 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
           {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}
         </li>)}</ul>
       </div>}
+      {Boolean(type.exclusions?.length) && <details className={styles.direct}>
+        <summary>⚠️ 신청 불가능한 특수 경우</summary>
+        <ul>{type.exclusions?.map((guidance) => <li key={guidance.title}>
+          <div><strong>{guidance.title}</strong><p>{guidance.body}</p></div>
+          {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}
+        </li>)}</ul>
+      </details>}
     </div>
   </>
 }
@@ -253,9 +275,12 @@ function CheckRow({ announcementId, check, type, just, onOpenEvidence }: { reado
       <div className={styles.top}><strong>{check.label}</strong>{just && <span className={styles.justTag}>방금 확인했어요</span>}</div>
       <p className={styles.criterion}>{check.status === 'DIRECT_CHECK_REQUIRED' ? check.criterion : `기준 ${check.criterion}${check.basis ? ` (${check.basis})` : ''}`}</p>
       {note && <p className={note.quiet ? `${styles.missing} ${styles.quiet}` : styles.missing}>{note.text}</p>}
+      {Boolean(check.children?.length) && <ul className={styles.checks} aria-label={`${check.label} 세부 조건`}>
+        {check.children?.map((child) => <CheckRow key={child.id} announcementId={announcementId} check={child} type={type} just={false} onOpenEvidence={onOpenEvidence} />)}
+      </ul>}
     </div>
     <div className={styles.side}>
-      {check.status === 'SATISFIED' && <b className={styles.mine}>{check.mine}</b>}
+      {check.status === 'SATISFIED' && <b className={styles.mine}>입력값 {check.mine ?? '확인됨'}</b>}
       {check.status === 'NOT_SATISFIED' && field && <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 수정, 지금 값 ${check.mine ?? ''}`}
         onClick={() => openFix(openInput, check.fields, announcementId)}>{check.mine}<PencilIcon size={14} /></button>}
       {check.status === 'INPUT_NEEDED' && field && <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 입력하기`}

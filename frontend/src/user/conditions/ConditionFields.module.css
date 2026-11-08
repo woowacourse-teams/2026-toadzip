@@ -278,7 +278,11 @@
   cursor: not-allowed;
 }
 
-.stepper output {
+.stepper input {
+  width: 64px;
+  border: 0;
+  background: transparent;
+  text-align: center;
   border-inline: 1px solid var(--ds-color-divider);
   font-size: 16px;
   font-weight: var(--ds-weight-strong);

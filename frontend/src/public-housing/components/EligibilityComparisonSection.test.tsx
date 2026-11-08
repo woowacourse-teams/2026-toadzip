@@ -14,23 +14,23 @@ const check = (id: string, status: CheckView['status'], extra: Partial<CheckView
   id, label: id, status, mine: null, criterion: '기준값', basis: null, evidence: null, fields: ['APPLICANT_ASSETS'], missingReason: null, ...extra,
 })
 const type = (key: string, label: string, status: TypeView['status'], checks: CheckView[], extra: Partial<TypeView> = {}): TypeView => ({
-  key, label, coverage: 'GENERAL', status, units: '', checks, guidances: [], ...extra,
+  key, label, status, units: '', checks, guidances: [], ...extra,
 })
 
 const happyView = (types: TypeView[], extra: Partial<ComparisonView> = {}): ComparisonView => ({
-  announcementId: '1', availability: 'AVAILABLE', referenceDate: '2026-11-06', requiredQualification: null, types, ...extra,
+  announcementId: '1', availability: 'AVAILABLE', referenceDate: '2026-11-06', freshness: 'CURRENT', status: 'ELIGIBLE', headline: '지원할 수 있어요', profileVersion: 1, evaluatedProfileVersion: 1, eligibleOptionIdsInRegion: ['youth'], scopeNote: null, types, ...extra,
 })
 
-const youthNeed = type('youth', '청년', 'INPUT_NEEDED', [
+const youthNeed = type('youth', '청년', 'UNDETERMINED', [
   check('나이', 'SATISFIED', { mine: '만 30세', criterion: '만 19~39세', fields: ['BIRTH_DATE'] }),
   check('본인 소득', 'SATISFIED', { mine: '월 230만 원', criterion: '월 256만 4,238원 이하', basis: '2026 중위소득 100%·1인', fields: ['APPLICANT_MONTHLY_INCOME'] }),
   check('본인 자산', 'INPUT_NEEDED', { criterion: '2억 5,400만 원 이하', missingReason: 'LATER', fields: ['APPLICANT_ASSETS'] }),
 ])
-const newlywedNot = type('newlywed', '신혼부부', 'NOT_MATCHED', [
+const newlywedNot = type('newlywed', '신혼부부', 'INELIGIBLE', [
   check('가족 형태', 'NOT_SATISFIED', { mine: '미혼', criterion: '부부·예비부부', fields: ['FAMILY_TYPE'] }),
   check('무주택 세대', 'INPUT_NEEDED', { missingReason: 'FAMILY_SKIPPED', fields: ['FAMILY_OWNS_HOUSE'] }),
 ])
-const seniorMatched = type('senior', '고령자', 'MATCHED', [check('나이', 'SATISFIED', { mine: '만 70세', fields: ['BIRTH_DATE'] })])
+const seniorMatched = type('senior', '고령자', 'ELIGIBLE', [check('나이', 'SATISFIED', { mine: '만 70세', fields: ['BIRTH_DATE'] })])
 
 function context(repository: Partial<ConditionsRepository>, extra: Partial<ConditionsContextValue> = {}): ConditionsContextValue {
   return {
@@ -53,8 +53,8 @@ describe('EligibilityComparisonSection', () => {
     const value = context({ loadComparison: vi.fn(async () => happyView([youthNeed, newlywedNot, seniorMatched])) }, { mode: 'guest', hasProfile: false, stored: null })
     renderSection(value)
     expect(await screen.findByText('이 공고, 나도 신청할 수 있을까?')).toBeInTheDocument()
-    expect(screen.getByText('신청 유형별 기본 조건을 비교해 드려요')).toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: '이 공고의 신청 유형' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['청년?', '신혼부부?', '고령자?'])
+    expect(screen.getByText('모집 선택지별 신청자격을 확인해 드려요')).toBeInTheDocument()
+    expect(value.repository.loadComparison).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '지금 확인해 보기' }))
     expect(value.openInput).toHaveBeenCalledWith({ mode: 'full', step: 1, origin: 'detail' }, { announcementId: '1', resume: true })
   })
@@ -78,21 +78,21 @@ describe('EligibilityComparisonSection', () => {
   it('orders type tabs with matched types first and keeps status text for screen readers', async () => {
     renderSection(context({ loadComparison: vi.fn(async () => happyView([youthNeed, newlywedNot, seniorMatched])) }))
     const tabs = await screen.findAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['고령자, 충족', '청년, 입력 필요', '신혼부부, 미충족'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['고령자, 충족', '청년, 확인 필요', '신혼부부, 미충족'])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     fireEvent.keyDown(tabs[0], { key: 'ArrowRight' })
-    expect(screen.getByRole('tab', { name: '청년, 입력 필요' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: '청년, 입력 필요' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: '청년, 확인 필요' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '청년, 확인 필요' })).toHaveFocus()
   })
 
   it('shows the verdict band and rows with my value and the criterion', async () => {
     renderSection(context({ loadComparison: vi.fn(async () => happyView([youthNeed])) }))
     expect(await screen.findByText('입력하면 확인할 수 있어요')).toBeInTheDocument()
-    expect(screen.getByText('거의 다 왔어요. 1개만 채우면 바로 알려드릴게요.')).toBeInTheDocument()
+    expect(screen.getByText('아래 조건에 필요한 항목을 입력해 주세요.')).toBeInTheDocument()
     const rows = within(screen.getByRole('list', { name: '청년 항목별 비교' })).getAllByRole('listitem')
-    expect(within(rows[0]).getByRole('img', { name: '판정 불가' })).toBeInTheDocument()
+    expect(within(rows[0]).getByRole('img', { name: '정보 부족' })).toBeInTheDocument()
     expect(rows[0]).toHaveTextContent('기준 2억 5,400만 원 이하')
-    expect(rows[0]).toHaveTextContent('나중에 입력하기로 한 항목 · 입력하면 바로 확인돼요')
+    expect(rows[0]).toHaveTextContent('나중에 입력하기로 한 항목 · 입력하면 이 조건을 확인해드릴게요')
     expect(rows[2]).toHaveTextContent('기준 월 256만 4,238원 이하 (2026 중위소득 100%·1인)')
     expect(rows[2]).toHaveTextContent('월 230만 원')
     expect(screen.getByText(/비교 기준일 2026.11.06 · 11월 6일 저장한 내 조건 기준/)).toBeInTheDocument()
@@ -106,11 +106,11 @@ describe('EligibilityComparisonSection', () => {
     const { rerenderWith } = renderSection(value)
     fireEvent.click(await screen.findByRole('button', { name: '본인 자산 입력하기' }))
     expect(value.openInput).toHaveBeenCalledWith({ mode: 'partial', fields: ['APPLICANT_ASSETS'], origin: 'detail' }, { announcementId: '1' })
-    const matched = type('youth', '청년', 'MATCHED', youthNeed.checks.map((item) => item.id === '본인 자산' ? { ...item, status: 'SATISFIED' as const, mine: '3,000만 원' } : item))
+    const matched = type('youth', '청년', 'ELIGIBLE', youthNeed.checks.map((item) => item.id === '본인 자산' ? { ...item, status: 'SATISFIED' as const, mine: '3,000만 원' } : item))
     load.mockImplementation(async () => happyView([matched]))
     rerenderWith({ ...value, revision: 2, lastSave: { revision: 2, origin: 'detail', kind: 'partial', fields: ['APPLICANT_ASSETS'], announcementId: '1' } })
-    expect(await screen.findByText('방금 확인했어요')).toBeInTheDocument()
-    expect(value.notify).toHaveBeenCalledWith('본인 자산을 저장했어요 · 청년: 충족')
+    expect(await screen.findByText('입력값 3,000만 원')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '본인 자산 입력하기' })).not.toBeInTheDocument()
     await act(async () => { vi.advanceTimersByTime(6100) })
     expect(screen.queryByText('방금 확인했어요')).not.toBeInTheDocument()
   })
@@ -120,10 +120,10 @@ describe('EligibilityComparisonSection', () => {
     const value = context({ loadComparison: load })
     const { rerenderWith } = renderSection(value)
     await screen.findByText('입력하면 확인할 수 있어요')
-    const matched = type('youth', '청년', 'MATCHED', youthNeed.checks.map((item) => ({ ...item, status: 'SATISFIED' as const, mine: '값' })))
+    const matched = type('youth', '청년', 'ELIGIBLE', youthNeed.checks.map((item) => ({ ...item, status: 'SATISFIED' as const, mine: '값' })))
     load.mockImplementation(async () => happyView([matched]))
     rerenderWith({ ...value, revision: 2, lastSave: { revision: 2, origin: 'detail', kind: 'full', fields: [], announcementId: '1' } })
-    expect(await screen.findByText('기본 조건을 충족해요')).toBeInTheDocument()
+    expect((await screen.findAllByText('지원할 수 있어요'))[0]).toBeInTheDocument()
     expect(screen.queryByText('방금 확인했어요')).not.toBeInTheDocument()
   })
 
@@ -134,19 +134,22 @@ describe('EligibilityComparisonSection', () => {
     expect(value.openInput).toHaveBeenCalledWith({ mode: 'full', step: 3, origin: 'detail' }, { announcementId: '1' })
     fireEvent.click(screen.getByRole('button', { name: '내 정보 수정하기' }))
     expect(value.openInput).toHaveBeenCalledTimes(2)
-    expect(screen.getByText('다른 조건이 맞지 않아 입력해도 결과는 같아요')).toBeInTheDocument()
+    expect(screen.getByText('입력하면 무주택 세대 조건도 확인해드릴게요.')).toBeInTheDocument()
   })
 
-  it('shows the required qualification box before a single common-only card', async () => {
-    const common = type('permanentCommon', '공통 조건', 'MATCHED', [check('나이', 'SATISFIED', { mine: '만 30세' })], { coverage: 'COMMON_ONLY' })
-    renderSection(context({ loadComparison: vi.fn(async () => happyView([common], { requiredQualification: { title: '별도 신청자격이 필요해요', body: '본문', items: ['생계·의료급여 수급자'], evidence: null } })) }))
-    expect(await screen.findByText('별도 신청자격이 필요해요')).toBeInTheDocument()
-    expect(screen.getByText('공통 조건은 맞아요')).toBeInTheDocument()
-    expect(screen.queryByText(/지원 가능/)).not.toBeInTheDocument()
+  it('shows uncollected mandatory qualification separately without treating a family type as qualified', async () => {
+    const path = type('single-parent', '지원대상 한부모가족 신청자격', 'UNDETERMINED', [check('서울 거주', 'SATISFIED', { mine: '서울' })], {
+      qualifications: [{ title: '지원대상 한부모가족', body: '법정 증명 요건', items: [], evidence: null }],
+    })
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([path], { status: 'UNDETERMINED', headline: '신청자격을 직접 확인해 주세요' })) }))
+    expect(await screen.findByText('법정 증명 요건')).toBeInTheDocument()
+    expect(screen.getByText('한부모가족이더라도, 이 공고에서 요구하는 ‘지원대상 한부모가족’에 해당하는지 확인해 주세요.')).toBeInTheDocument()
+    expect(screen.queryByText('지원할 수 있어요')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /입력하기/ })).not.toBeInTheDocument()
   })
 
   it('opens evidence pages from rows and guidances', async () => {
-    const withEvidence = type('youth', '청년', 'MATCHED', [check('나이', 'SATISFIED', { mine: '만 30세', evidence: { page: 5, location: null, fileName: null } })],
+    const withEvidence = type('youth', '청년', 'ELIGIBLE', [check('나이', 'SATISFIED', { mine: '만 30세', evidence: { page: 5, location: null, fileName: null } })],
       { guidances: [{ kind: 'PROCEDURE', title: '중복 신청 불가', body: '한 유형만', evidence: { page: 3, location: null, fileName: null } }] })
     const { onOpenEvidence } = renderSection(context({ loadComparison: vi.fn(async () => happyView([withEvidence])) }))
     fireEvent.click(await screen.findByRole('button', { name: '근거 공고문 5쪽 열기' }))
@@ -157,8 +160,8 @@ describe('EligibilityComparisonSection', () => {
   })
 
   it('shows the preparing notice for NOT_STRUCTURED', async () => {
-    renderSection(context({ loadComparison: vi.fn(async () => happyView([], { availability: 'NOT_STRUCTURED' })) }, { mode: 'guest', hasProfile: false }))
-    expect(await screen.findByText('자격 비교 준비 중')).toBeInTheDocument()
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([], { availability: 'NOT_STRUCTURED' })) }, { hasProfile: false }))
+    expect(await screen.findByText('신청자격 판정 준비 중')).toBeInTheDocument()
     expect(screen.getByText('신청 자격은 공고문에서 확인해 주세요.')).toBeInTheDocument()
   })
 
@@ -170,17 +173,17 @@ describe('EligibilityComparisonSection', () => {
     const value = context({ loadComparison: load as ConditionsRepository['loadComparison'] })
     const { rerenderWith } = renderSection(value)
     rerenderWith(value, detail({ announcementId: '2' }))
-    expect(await screen.findByText('기본 조건을 충족해요')).toBeInTheDocument()
+    expect((await screen.findAllByText('지원할 수 있어요'))[0]).toBeInTheDocument()
     await act(async () => { resolveFirst(happyView([newlywedNot])) })
-    expect(screen.queryByText('맞지 않는 조건이 있어요')).not.toBeInTheDocument()
-    expect(screen.getByText('기본 조건을 충족해요')).toBeInTheDocument()
+    expect(screen.queryByText('신혼부부 미충족')).not.toBeInTheDocument()
+    expect(screen.getAllByText('지원할 수 있어요')[0]).toBeInTheDocument()
   })
 
   it('shows a retry for a failed comparison', async () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue(happyView([seniorMatched]))
     renderSection(context({ loadComparison: load }))
     fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }))
-    expect(await screen.findByText('기본 조건을 충족해요')).toBeInTheDocument()
+    expect((await screen.findAllByText('지원할 수 있어요'))[0]).toBeInTheDocument()
   })
 
   it('asks a member without saved conditions once per visit on a comparable announcement', async () => {

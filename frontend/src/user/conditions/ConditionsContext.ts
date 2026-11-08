@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { InputOrigin, InputRequest } from './conditionInput'
-import { EMPTY_PROFILE, type ConditionsRepository, type ProfileField, type StoredConditionProfile } from './conditionsModel'
+import { EMPTY_PROFILE, type ConditionsRepository, type EligibilityProcessing, type ProfileField, type StoredConditionProfile } from './conditionsModel'
 
 export type ConditionsMode = 'disabled' | 'loading' | 'guest' | 'member' | 'error'
 export type NudgeVariant = 'detail' | 'afterLogin' | 'list'
@@ -20,6 +20,10 @@ export interface OpenInputOptions {
 }
 
 export interface ConditionsContextValue {
+  readonly sessionKey?: string | null
+  readonly processing?: EligibilityProcessing | null
+  readonly processingError?: boolean
+  readonly retryProfile?: () => void
   readonly mode: ConditionsMode
   readonly repository: ConditionsRepository
   readonly stored: StoredConditionProfile | null
@@ -40,8 +44,11 @@ const noop = () => {}
 const disabledRepository: ConditionsRepository = {
   loadProfile: async () => ({ version: 0, savedAt: null, profile: EMPTY_PROFILE }),
   saveProfile: async () => ({ version: 0, savedAt: null, profile: EMPTY_PROFILE }),
-  loadComparison: async (ref) => ({ announcementId: ref.announcementId, availability: 'NOT_STRUCTURED', referenceDate: '', requiredQualification: null, types: [] }),
+  loadComparison: async (ref) => ({ announcementId: ref.announcementId, availability: 'NOT_STRUCTURED', freshness: 'NOT_AVAILABLE', status: null, headline: null, profileVersion: 0, evaluatedProfileVersion: null, eligibleOptionIdsInRegion: [], scopeNote: null, referenceDate: '', types: [] }),
   loadListResults: async () => new Map(),
+  loadProcessing: async () => ({ profileVersion: 0, requestedVersion: 0, state: 'DONE', failedAttempts: 0 }),
+  loadDiscoveries: async () => ({ items: [], nextCursor: 0, hasMore: false }),
+  acknowledgeDiscovery: async () => {},
 }
 
 const DISABLED: ConditionsContextValue = {

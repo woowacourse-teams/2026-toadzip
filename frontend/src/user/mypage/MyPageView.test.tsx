@@ -121,7 +121,7 @@ it('북마크 세션은 정상이어도 알림 초기화 오류는 재시도할 
 })
 
 it('내 조건 관리를 허브에서 열고 새로고침해도 /mypage/conditions를 유지한다', async () => {
-  const conditionRepository = { loadProfile: vi.fn(async () => ({ version: 0, savedAt: null, profile: { familyDetailsState: 'NOT_STARTED' as const, facts: {} } })), saveProfile: vi.fn(), loadComparison: vi.fn(), loadListResults: vi.fn() }
+  const conditionRepository = { loadProfile: vi.fn(async () => ({ version: 0, savedAt: null, profile: { familyDetailsState: 'NOT_STARTED' as const, facts: {} } })), saveProfile: vi.fn(), loadComparison: vi.fn(), loadProcessing: vi.fn(async () => ({ profileVersion: 0, requestedVersion: 0, state: 'DONE' as const, failedAttempts: 0 })), loadDiscoveries: vi.fn(async () => ({ items: [], nextCursor: 0, hasMore: false })), acknowledgeDiscovery: vi.fn(async () => {}), loadListResults: vi.fn() }
   render(<MemoryRouter initialEntries={['/mypage']}><BookmarkProvider repository={repositoryOf([])} loadUser={async () => ({ id: 7, email: null })}>
     <ConditionsProvider createRepository={() => conditionRepository}><MyPageView {...handlers} /><Location /></ConditionsProvider>
   </BookmarkProvider></MemoryRouter>)

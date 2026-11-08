@@ -3,21 +3,23 @@ import { useConditions } from '../../user/conditions/ConditionsContext'
 import { ChevronRightIcon, CloseIcon, StatusMark } from '../../user/conditions/conditionIcons'
 import { bannerHiddenThisVisit, hideBannerThisVisit } from '../../user/conditions/conditionStorage'
 import type { ListConditionResult } from '../../user/conditions/conditionsModel'
-import { useMissingConditionFields } from './useConditionListResults'
 import { HouseCharacterIcon } from '../components/HouseCharacterIcon'
 import type { AnnouncementListItem } from '../model/publicHousing'
 import styles from './ConditionListBanner.module.css'
 
-export function ConditionListBanner({ items, results, loading = false, filtering, onToggleFilter }: {
+export function ConditionListBanner({ items, results, loading = false, error = false, rechecking = false, onRetry, filtering, onToggleFilter }: {
   readonly items: readonly AnnouncementListItem[]
   readonly results: ReadonlyMap<string, ListConditionResult>
   /** 불러온 공고를 내 조건과 비교하는 중 */
   readonly loading?: boolean
+  readonly error?: boolean
+  readonly rechecking?: boolean
+  readonly onRetry?: () => void
   readonly filtering: boolean
   readonly onToggleFilter: () => void
 }) {
   const { mode, hasProfile, memberDraft, openInput, openNudge, notify } = useConditions()
-  const missing = useMissingConditionFields()
+  const missing = [...new Set([...results.values()].flatMap((item) => item.missingInputs))]
   const [hidden, setHidden] = useState(bannerHiddenThisVisit)
   if (mode === 'disabled' || mode === 'loading' || mode === 'error') return null
   const compared = mode === 'member' && hasProfile
@@ -48,19 +50,22 @@ export function ConditionListBanner({ items, results, loading = false, filtering
       <button type="button" className={styles.action} onClick={() => openNudge('list')}>시작</button>)
   }
 
-  if (loading) {
+  if (error) return shell(<StatusMark status="tri" size={20} />, '신청자격을 불러오지 못했어요',
+    <span className={styles.sub}>실패한 조회를 다시 확인해 주세요.</span>, <button type="button" className={styles.action} onClick={onRetry}>다시 시도</button>)
+
+  if (loading || rechecking) {
     return shell(<HouseCharacterIcon size={22} />, '내 조건과 비교하고 있어요', <span className={styles.sub}>불러온 공고에서 지원 가능 공고를 찾고 있어요</span>, null)
   }
-  const matched = items.filter((item) => results.get(item.announcementId)?.generalMatched).length
+  const matched = items.filter((item) => results.get(item.announcementId)?.eligibleInRegion).length
   if (matched > 0) {
-    const applying = items.filter((item) => item.applicationStatus === 'APPLYING').length
-    return shell(<StatusMark status="ok" size={20} className={styles.mark} />, `지원 가능 공고 ${matched}건`,
+    const applying = items.filter((item) => results.get(item.announcementId)?.eligibleInRegion && item.applicationStatus === 'APPLYING').length
+    return shell(<StatusMark status="ok" size={20} className={styles.mark} />, `불러온 공고 중 지원 가능 ${matched}건`,
       missing.length
-        ? <button type="button" className={styles.subLink} onClick={fill}>미입력 {missing.length}개를 채우면 더 찾을 수 있어요<ChevronRightIcon size={14} /></button>
+        ? <button type="button" className={styles.subLink} onClick={fill}>이 공고들에 필요한 미입력 {missing.length}개 확인<ChevronRightIcon size={14} /></button>
         : <span className={styles.sub}>접수 중 공고 {applying}건 · 내 조건 기준</span>,
       <button type="button" className={styles.action} data-variant={filtering ? 'secondary' : undefined} onClick={onToggleFilter}>{filtering ? '전체 보기' : `${matched}건 보기`}</button>)
   }
-  return shell(<StatusMark status="tri" size={20} className={styles.mark} />, '지원 가능 공고 0건',
-    <span className={styles.sub}>{missing.length ? `미입력 ${missing.length}개를 채우면 더 찾을 수 있어요` : '바뀐 정보가 있다면 고쳐 보세요'}</span>,
+  return shell(<StatusMark status="tri" size={20} className={styles.mark} />, '불러온 공고 중 지원 가능 0건',
+    <span className={styles.sub}>{missing.length ? `이 공고들에 필요한 미입력 ${missing.length}개가 있어요` : '전체 공고의 지원 가능 건수는 아니에요'}</span>,
     <button type="button" className={styles.action} onClick={fill}>{missing.length ? '채우기' : '수정'}</button>)
 }

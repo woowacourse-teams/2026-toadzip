@@ -183,11 +183,13 @@ function CountControl({ field, draft, questionId, partial = false, onChange }: C
       {FIELD_COPY[field].skippable && !partial && <Checkbox checked={laterOn} onToggle={() => onChange(setAnswer(draft, field, laterOn ? undefined : LATER))}>나중에 입력할게요</Checkbox>}
     </>
   }
-  const count = typeof value === 'number' ? value : min
+  const count = typeof value === 'number' ? value : null
   return <div className={styles.stepper} role="group" aria-labelledby={questionId}>
-    <button type="button" aria-label="한 명 줄이기" disabled={count <= min} onClick={() => onChange(setAnswer(draft, field, Math.max(min, count - 1)))}>−</button>
-    <output aria-live="polite">{count}{FIELD_COPY[field].countUnit ?? '명'}</output>
-    <button type="button" aria-label="한 명 늘리기" onClick={() => onChange(setAnswer(draft, field, count + 1))}>+</button>
+    <button type="button" aria-label="한 명 줄이기" disabled={count === null || count <= min} onClick={() => onChange(setAnswer(draft, field, Math.max(min, (count ?? min) - 1)))}>−</button>
+    <input type="number" inputMode="numeric" min={min} aria-labelledby={questionId} placeholder="인원" value={count ?? ''}
+      onChange={(event) => { const raw = event.target.value; const next = Number(raw); onChange(setAnswer(draft, field, raw !== '' && Number.isInteger(next) && next >= min ? next : undefined)) }} />
+    <span>명</span>
+    <button type="button" aria-label="한 명 늘리기" onClick={() => onChange(setAnswer(draft, field, count === null ? min : count + 1))}>+</button>
   </div>
 }
 

@@ -69,7 +69,7 @@ export function partialErrors(fields: readonly ProfileField[], draft: ConditionD
   const errors: FieldErrors = {}
   for (const field of fields) {
     if (current[field]) errors[field] = current[field]
-    else if (draft.answers[field] !== 'NOT_APPLICABLE' && !hasValue(draft.answers[field])) errors[field] = '값을 입력해 주세요.'
+    else if (!isAnswered(field, draft)) errors[field] = '값을 입력해 주세요.'
   }
   return errors
 }

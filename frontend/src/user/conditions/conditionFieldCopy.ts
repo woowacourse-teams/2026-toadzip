@@ -46,7 +46,7 @@ export const FIELD_COPY: Record<ProfileField, FieldCopy> = {
   FAMILY_OWNS_CAR: { label: '가족 자동차 소유', question: '가족 중 자동차를 가진 사람이 있나요?', kind: 'bool', optional: true, help: '본인을 포함해 주세요.' },
   FAMILY_CAR_VALUE: { label: '가족 차량 최고 가격', question: '가족 차량 중 가장 비싼 차량 가격은요?', kind: 'money', skippable: true, optional: true },
   FAMILY_TOTAL_ASSETS: { label: '가족 총자산', question: '가족의 총자산은 얼마인가요?', kind: 'money', skippable: true, optional: true, zeroLabel: '자산이 없어요', help: '본인을 포함한 금액이에요.' },
-  HOUSEHOLD_MONTHLY_INCOME: { label: '세대 합산 월소득', question: '등본상 가족의 월소득을 합하면 얼마인가요?', kind: 'money', monthly: true, skippable: true, optional: true, help: '세전 금액이고, 본인 소득도 포함해 주세요.' },
+  HOUSEHOLD_MONTHLY_INCOME: { label: '세대 합산 월소득', question: '등본상 가족의 월소득을 합하면 얼마인가요?', kind: 'money', monthly: true, skippable: true, help: '세전 금액이고, 본인 소득도 포함해 주세요.' },
 }
 
 export const STEP_COPY: Record<StepNumber, { readonly name: string; readonly title: string; readonly description: string }> = {
@@ -61,4 +61,4 @@ export const FAMILY_TYPE_COPY: Record<FamilyType, { readonly label: string; read
   COUPLE_OR_ENGAGED: { label: '부부·예비부부', description: '혼인신고를 했거나 할 예정이에요' },
 }
 
-export const FAMILY_DETAIL_FIELDS: readonly ProfileField[] = ['FAMILY_OWNS_HOUSE', 'FAMILY_OWNS_CAR', 'FAMILY_CAR_VALUE', 'FAMILY_TOTAL_ASSETS', 'HOUSEHOLD_MONTHLY_INCOME']
+export const FAMILY_DETAIL_FIELDS: readonly ProfileField[] = ['FAMILY_OWNS_HOUSE', 'FAMILY_OWNS_CAR', 'FAMILY_CAR_VALUE', 'FAMILY_TOTAL_ASSETS']

@@ -283,18 +283,18 @@
   background: var(--ds-color-surface-subtle);
 }
 
-.verdict[data-status='MATCHED'] {
+.verdict[data-status='ELIGIBLE'] {
   border-bottom-color: color-mix(in srgb, var(--ds-color-brand) 30%, var(--ds-color-surface));
   background: var(--ds-color-action-soft);
 }
 
 .verdict[data-status='INPUT_NEEDED'],
-.verdict[data-status='PARTIALLY_COMPARED'] {
+.verdict[data-status='UNDETERMINED'] {
   border-bottom-color: color-mix(in srgb, var(--ds-color-status-upcoming) 22%, var(--ds-color-surface));
   background: var(--ds-color-status-upcoming-surface);
 }
 
-.verdict[data-status='NOT_MATCHED'] {
+.verdict[data-status='INELIGIBLE'] {
   border-bottom-color: color-mix(in srgb, var(--ds-color-deadline) 20%, var(--ds-color-surface));
   background: var(--ds-color-error-container);
 }
