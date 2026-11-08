@@ -70,6 +70,28 @@ class GhAnnouncementExternalRepositoryTest {
     }
 
     @Test
+    void 한글과_괄호가_든_실제_주택형_값도_그대로_보낸다() {
+        // 공고 845의 "49형"과 공고 793의 주거약자형 버튼 값이다.
+        for (String houseTypeCode : java.util.List.of("49형", "51A(주거약자형)")) {
+            var form = new java.util.LinkedHashMap<String, String>();
+            for (String field : GhHousingTypeDetails.REQUEST_FIELDS) {
+                form.put(field, "");
+            }
+            form.put("bizCd", "2009104");
+            form.put("houseTyCd", houseTypeCode);
+            var expected = new org.springframework.util.LinkedMultiValueMap<String, String>();
+            form.forEach(expected::add);
+            server.expect(requestTo("https://apply.gh.or.kr/sb/sr/sr7150/selectPblancHouseTyDetail.do"))
+                    .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.content().formData(expected))
+                    .andRespond(withSuccess("<html>팝업</html>", MediaType.TEXT_HTML));
+
+            assertThat(repository.fetchHousingTypeDetail(GhAnnouncementBoard.RENTAL_HOUSE, form)).isEqualTo("<html>팝업</html>");
+            server.verify();
+            server.reset();
+        }
+    }
+
+    @Test
     void 호출_제한은_재시도하지_않고_서버_오류는_재시도_대상으로_바꾼다() {
         String url = GhAnnouncementBoard.RENTAL_HOUSE.listUrl(1);
         server.expect(requestTo(url)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
