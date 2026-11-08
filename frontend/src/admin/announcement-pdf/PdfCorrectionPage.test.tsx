@@ -42,14 +42,13 @@ beforeEach(() => {
   draftApi.saveCorrectionDraft.mockImplementation(async () => ({ revision: draftApi.saveCorrectionDraft.mock.calls.length, updatedAt: '2026-11-03T03:00:00Z' }))
   draftApi.deleteCorrectionDraft.mockResolvedValue(undefined)
 })
-/** 서버 미리보기 응답. 적용 전 확인에 쓴다. */
+/** 서버 미리보기 응답. 적용할 때 검증과 확인 토큰에 쓴다. */
 function previewResult(more: Partial<JsonPreview> = {}): JsonPreview {
   return { confirmationToken: 'confirmed', fields: [], supply: null, schedules: [], attachments: [], housingTypes: [], housingTypeWarnings: [], warnings: [], ...more }
 }
-/** 적용 전 확인을 열고 이대로 적용한다. */
+/** 보정 내용 적용 한 번으로 서버 검증과 저장을 한다. */
 async function applyCorrection() {
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
-  fireEvent.click(await within(await screen.findByRole('region', { name: '적용 전 확인' })).findByRole('button', { name: '이대로 적용' }))
 }
 /** 빈 Blob(첨부 PDF 목)의 SHA-256 */
 const EMPTY_PDF_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
@@ -109,7 +108,7 @@ function placeOf(row: number) {
 function manual(scope: string, label: string) {
   fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 입력' }))
 }
-it('서버 검증을 마친 보정안을 적용 전 확인으로 보여 주고, 확인한 같은 보정안만 한 번 저장한다', async () => {
+it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안을 한 번 저장한다', async () => {
   let finish!: (value: JsonPreview) => void
   api.previewJsonUpdate.mockImplementation(() => new Promise(resolve => { finish = resolve }))
   await open()
@@ -126,14 +125,8 @@ it('서버 검증을 마친 보정안을 적용 전 확인으로 보여 주고, 
   expect(input.housingTypeValues?.map(value => [value.name, value.linkedHousingTypeId])).toEqual([['26A', undefined], ['26B', 10352]])
   await act(async () => finish(previewResult({ housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'], fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }],
     housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] })))
-  const summary = await screen.findByRole('region', { name: '적용 전 확인' })
-  expect(within(summary).getByRole('note', { name: '적용 경고' })).toHaveTextContent('26: 관리자가 고친 세대수를 유지합니다.')
-  // 여러 탭에서 고른 값과 주택형 갱신을 개수가 아니라 변경 전후 값으로 보인다.
-  expect(within(summary).getByRole('region', { name: '기본정보·접수처 변경' })).toHaveTextContent('접수 시작일2026-10-20→2026-10-27')
-  expect(within(summary).getByRole('region', { name: '단지 주택타입 갱신' })).toHaveTextContent('#10353 「26」이름 26 · 공급면적 없음 · 세대수 없음→이름 26A · 공급면적 52.5㎡ · 세대수 120')
-  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
-  fireEvent.click(within(summary).getByRole('button', { name: '이대로 적용' }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
+  expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
   expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
@@ -166,24 +159,6 @@ it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했�
   expect(input.document.announcement).toEqual(expect.objectContaining({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' }))
   expect(await screen.findByRole('heading', { name: '공고를 공개했습니다.' })).toBeInTheDocument()
 })
-it('적용 전 확인을 연 뒤 공개 체크를 바꾸면 이전 보정안으로 적용하지 않고, 다시 확인한 보정안의 공개 여부로 적용한다', async () => {
-  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
-  api.previewJsonUpdate.mockImplementation(async (_id: string, input: JsonUpdateInput) => previewResult({ publishes: Boolean(input.publish) }))
-  await open()
-  const release = () => screen.getByRole('region', { name: '공개 전 확인' })
-  fireEvent.change(within(release()).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
-  fireEvent.change(within(release()).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  fireEvent.click(within(release()).getByRole('checkbox', { name: /이 보정과 함께 공개합니다/ }))
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
-  await screen.findByRole('region', { name: '적용 전 확인' })
-  // 확인 화면이 열린 채 공개 체크를 끄면, 공개를 담은 이전 보정안은 더 이상 적용할 수 없어야 한다.
-  fireEvent.click(within(release()).getByRole('checkbox', { name: /이 보정과 함께 공개합니다/ }))
-  await waitFor(() => expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument())
-  await applyCorrection()
-  await waitFor(() => expect(api.applyJsonUpdate).toHaveBeenCalledTimes(1))
-  expect((api.applyJsonUpdate.mock.calls[0][1] as JsonUpdateInput).publish).toBeFalsy()
-})
 it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보내지 않고 아직 보이지 않는다고 알린다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
   api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
@@ -204,30 +179,6 @@ it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보
 it('공개된 공고에는 공개 전 확인을 보이지 않는다', async () => {
   await open()
   expect(screen.queryByRole('region', { name: '공개 전 확인' })).not.toBeInTheDocument()
-})
-it.each(['공개 요청', '공급 유형', '모집 유형'])('미리보기 뒤 %s을 바꾸면 이전 확인을 버리고 바뀐 선택으로 다시 검증한다', async field => {
-  api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  await open()
-  const release = screen.getByRole('region', { name: '공개 전 확인' })
-  fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
-  fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  fireEvent.click(within(release).getByRole('checkbox'))
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
-  await screen.findByRole('region', { name: '적용 전 확인' })
-
-  if (field === '공개 요청') fireEvent.click(within(release).getByRole('checkbox'))
-  else fireEvent.change(within(release).getByLabelText(field), { target: { value: field === '공급 유형' ? 'HAPPY_HOUSING' : 'NEW' } })
-
-  expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
-  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
-  await screen.findByRole('region', { name: '적용 전 확인' })
-  const input = api.previewJsonUpdate.mock.calls[1][1] as JsonUpdateInput
-  expect(input.publish).toBe(field === '공개 요청' ? undefined : true)
-  expect(input.document.announcement).toEqual(expect.objectContaining({
-    rentalType: field === '공급 유형' ? 'HAPPY_HOUSING' : 'NATIONAL_RENTAL',
-    recruitmentType: field === '모집 유형' ? 'NEW' : 'WAITLIST',
-  }))
 })
 it('기존 행과 전용면적이 맞지 않는 PDF 행은 확인 없이 새 공급정보로 두고, 이름 형식만 다른 같은 면적 단지 주택타입(26)에 이어 보낸다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction)
@@ -983,25 +934,6 @@ it.each([true, false])('미확정 공고 저장 응답을 잃고 공급행만 �
   expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
 })
 
-it('적용 전 확인은 서버가 전용면적으로 정한 주택형과 단지별 변경 전후 합계를 보여 준다', async () => {
-  const [first] = workspace.supply.rows
-  const after = [{ ...first, typeName: '26A·26B', householdCount: 170, housingTypeId: 10353, linkedHousingTypes: [{ housingTypeId: 10352 }] },
-    { ...first, id: null, key: 'new-36', typeName: '36', householdCount: 4, housingTypeId: null, newHousingType: { name: '36', exclusiveArea: 36.1, supplyArea: null } }]
-  api.previewJsonUpdate.mockResolvedValue(previewResult({ supply: { confirmationToken: 's', before: [first], after, warnings: ['저장 경고'] } }))
-  await open()
-  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
-  const summary = await screen.findByRole('region', { name: '적용 전 확인' })
-  expect(within(summary).queryByRole('group', { name: /^통합행 분리/ })).not.toBeInTheDocument()
-  expect(within(summary).queryByRole('note', { name: '남는 LH 행' })).not.toBeInTheDocument()
-  expect(within(summary).getByRole('region', { name: '익산한스빌 적용 전후' })).toHaveTextContent('모집수 합계 170세대 → 174세대')
-  const changed = within(summary).getByRole('list', { name: '익산한스빌 변경 후' })
-  expect(changed).toHaveTextContent('26 · 전용 26.5195㎡ + 26 · 전용 26.4673㎡')
-  expect(changed).toHaveTextContent('새 주택타입 36 · 전용 36.1㎡')
-  expect(within(summary).getByRole('note', { name: '적용 경고' })).toHaveTextContent('저장 경고')
-  fireEvent.click(within(summary).getByRole('button', { name: '돌아가서 수정' }))
-  expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
-  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
-})
 it('공급행 목록은 행마다 저장할 곳과 상태를 요약하고, 단지 주택형 패널에서 기존 주택형을 고른 행에 연결해도 패널을 닫았다 열면 그대로다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction)
   extraction.sharedCounts = []
