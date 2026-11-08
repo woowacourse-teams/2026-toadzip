@@ -23,8 +23,10 @@ def source_row_map(source_rows: object) -> dict[str, set[str]]:
 def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]], source_row_text: dict[str, str],
                       evidence: list[dict], unresolved: list[dict],
                       source_row_values: dict[str, dict[str, str]] | None = None,
-                      target_values: dict[str, dict[str, dict[str, str]]] | None = None) -> list[str]:
-    """공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
+                      target_values: dict[str, dict[str, dict[str, str]]] | None = None,
+                      block_counts: dict[str, dict[str, int]] | None = None) -> list[str]:
+    """block_counts는 주택타입 여럿을 묶은 주택형 공급행의 경로별 수량 합이다. 그 수량은 행 칸 대신 이 합과 대조한다.
+    공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
     target_values는 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표의 행별 묶음 칸이다(target_cells).
     확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 경고는 근거를 확인하지 못한 경로마다 한 줄이고,
     값마다의 사유는 unresolved에만 있다."""
@@ -52,7 +54,8 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
         if supported and (not source_pages or evidence_page in source_pages):
             values = source_row_values or {}
             _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values)
-            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, target_values)
+            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, target_values,
+                                         (block_counts or {}).get(path, {}))
             continue
         if not row_ids:
             reason = "원문 표 행 ID를 확인하지 못함"
@@ -74,8 +77,10 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
 def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
                                  source_row_values: dict[str, dict[str, str]],
                                  unresolved: list[dict],
-                                 target_values: dict[str, dict[str, dict[str, str]]] | None) -> None:
-    """표 근거가 같은 의미의 머리글 열을 지지하지 않으면 수치 값을 미확인으로 낮춘다."""
+                                 target_values: dict[str, dict[str, dict[str, str]]] | None,
+                                 block_counts: dict[str, int]) -> None:
+    """표 근거가 같은 의미의 머리글 열을 지지하지 않으면 수치 값을 미확인으로 낮춘다.
+    주택형 공급행의 수량 합(block_counts)이 있는 필드는 그 합과 같아야 한다. 주택타입 한 행의 수는 그 공급행의 수가 아니다."""
     match = re.fullmatch(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?", path)
     if not match:
         return
@@ -87,7 +92,11 @@ def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
         if value is None:
             continue
         cells = [target_cells(values.get("target"), row_id, source_row_values, target_values) for row_id in row_ids]
-        if any(source_cell_matches(value, cell, field) for cell in cells):
+        if field in block_counts:
+            # 주택형 공급행의 수량은 주택타입 행 수의 합이다. 합을 정하지 못했으면(None) 어떤 값도 확인하지 못한다.
+            if block_counts[field] is not None and value == block_counts[field]:
+                continue
+        elif any(source_cell_matches(value, cell, field) for cell in cells):
             continue
         values[field] = None
         field_path = f"{path}.{field}"

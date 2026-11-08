@@ -89,12 +89,33 @@ class _GhFrame:
             return []
         warnings: list[str] = []
         claims: dict[int, list[int]] = {}
-        unmatched: list[str] = []
+        unmatched: list[int] = []
+        # 틀 지구도 하나, PDF 공급행 단지명도 하나인 공고만 지구명이 달라도 그 단지로 본다(사용자 결정).
+        # 단지가 여럿인 공고는 이름이 맞아야 잇는다.
+        pdf_complexes = {_district_key(_complex_name(row)) for row in supply_rows} - {""}
+        single = len({frame.complex_label for frame in self._rows}) == 1 and len(pdf_complexes) == 1
         for index, row in enumerate(supply_rows):
             row["sourceRow"] = None
-            frame_index = self._candidate(index, row, warnings, unmatched)
+            frame_index = self._candidate(index, row, single, warnings, unmatched)
             if frame_index is not None:
                 claims.setdefault(frame_index, []).append(index)
+        if single:
+            # 주택형으로 맞은 틀 행을 먼저 정하고, 주택형이 같은 틀 행이 없는 공급행만 남은 틀 행과 전용면적으로 맞춘다.
+            # 세부 타입이 둘 이상인 공급행(84 = 84A·84B)은 틀 행 하나가 아니라 여러 주택타입이라 면적으로 잇지 않는다.
+            remaining = [frame_index for frame_index in range(len(self._rows)) if frame_index not in claims]
+            for index in list(unmatched):
+                row = supply_rows[index]
+                if _house_type_count(row) > 1:
+                    continue
+                matches = [frame_index for frame_index in remaining
+                           if _same_area(row.get("exclusiveArea"), self._rows[frame_index].exclusive_area)]
+                if len(matches) == 1:
+                    claims.setdefault(matches[0], []).append(index)
+                    unmatched.remove(index)
+                elif matches:
+                    warnings.append(f"supplyRows[{index}].sourceRow: 주택형이 같은 GH 공급행 틀 행이 없고 전용면적이 같은 "
+                                    f"틀 행이 {len(matches)}개라 하나로 정하지 못함({_row_label(row)})")
+                    unmatched.remove(index)
         for frame_index, indexes in claims.items():
             frame = self._rows[frame_index]
             if len(indexes) == 1:
@@ -103,16 +124,16 @@ class _GhFrame:
             paths = ", ".join(f"supplyRows[{index}]" for index in indexes)
             warnings.append(f"{paths}: 같은 GH 공급행 틀({_label(frame)})에 맞아 하나로 정하지 못함")
         if unmatched:
-            warnings.append(f"GH 공급행 틀과 맞추지 못한 PDF 공급행 {len(unmatched)}개: {', '.join(unmatched)}")
+            labels = [_row_label(supply_rows[index]) for index in unmatched]
+            warnings.append(f"GH 공급행 틀과 맞추지 못한 PDF 공급행 {len(labels)}개: {', '.join(labels)}")
         missing = [_label(frame) for frame_index, frame in enumerate(self._rows) if frame_index not in claims]
         if missing:
             warnings.append(f"PDF에서 찾지 못한 GH 공급행 틀 {len(missing)}개: {', '.join(missing)}")
         return warnings
 
-    def _candidate(self, index: int, row: dict, warnings: list[str], unmatched: list[str]) -> int | None:
-        complex_name = _complex_name(row)
+    def _candidate(self, index: int, row: dict, single: bool, warnings: list[str], unmatched: list[int]) -> int | None:
         housing_type = row.get("sourceHousingTypeName") if isinstance(row.get("sourceHousingTypeName"), str) else ""
-        district = self._district(complex_name)
+        district = self._district(_complex_name(row), single)
         matches = [frame_index for frame_index, frame in enumerate(self._rows)
                    if frame.complex_label == district and _same_type(housing_type, frame.type_name)]
         if len(matches) > 1:
@@ -120,15 +141,14 @@ class _GhFrame:
                        if _same_area(row.get("exclusiveArea"), self._rows[frame_index].exclusive_area)] or matches
         if len(matches) == 1:
             return matches[0]
-        label = f"{complex_name} {housing_type}".strip()
         if matches:
             warnings.append(f"supplyRows[{index}].sourceRow: GH 공급행 틀에 같은 지구·주택형 행이 {len(matches)}개라 "
-                            f"하나로 정하지 못함({label})")
+                            f"하나로 정하지 못함({_row_label(row)})")
         else:
-            unmatched.append(label)
+            unmatched.append(index)
         return None
 
-    def _district(self, complex_name: str) -> str | None:
+    def _district(self, complex_name: str, single: bool) -> str | None:
         """PDF 단지명에 맞는 틀의 지구명. 같은 이름이 없으면 PDF 이름이 들어 있는 지구가 하나뿐일 때만 고른다.
         PDF 이름이 틀 지구명을 품는 방향("광교원천" ⊃ "광교")은 다른 지구일 수 있어 허용하지 않는다."""
         name = _district_key(complex_name)
@@ -138,7 +158,21 @@ class _GhFrame:
         exact = [district for district in districts if _district_key(district) == name]
         found = exact or [district for district in districts
                           if name in _district_key(district)]
+        if not found and single:
+            # 틀과 PDF 모두 단지가 하나뿐이면 지구명이 달라도 그 단지다(사용자 결정: 다산진건B1블록 장기전세주택 ↔ 다산 진건 데시앙).
+            return districts[0]
         return found[0] if len(found) == 1 else None
+
+
+def _house_type_count(row: dict) -> int:
+    """공급행이 묶은 주택타입 수. 세부 타입 이름은 같은 면적의 주택타입을 '·'로 잇는다(84A·84C1·84C2)."""
+    return sum(len(str(subtype.get("name") or "").split("·"))
+               for subtype in row.get("subtypes") or [] if isinstance(subtype, dict))
+
+
+def _row_label(row: dict) -> str:
+    housing_type = row.get("sourceHousingTypeName") if isinstance(row.get("sourceHousingTypeName"), str) else ""
+    return f"{_complex_name(row)} {housing_type}".strip()
 
 
 def _complex_name(row: dict) -> str:

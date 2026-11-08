@@ -649,16 +649,65 @@ def test_rows_by_housing_type_are_labeled_with_the_housing_type_column(label):
     assert [row["sourceHousingTypeName"] for row in rows] == ["72", "84"]
     assert [[subtype["name"] for subtype in row["subtypes"]] for row in rows] == [["72A"], ["84A", "84B"]]
     assert not [item for item in unresolved if item["path"].endswith(".sourceHousingTypeName")]
-    # 주택타입 하나뿐인 72는 그 행의 모집수다. 84는 수량이 주택타입 행마다라 한 행의 값을 84의 모집수로 쓰지 않는다.
-    assert [counts(row) for row in rows] == [(13, 13, 13), (None, None, None)]
+    # 주택타입 하나뿐인 72는 그 행의 모집수다. 84는 주택타입 행마다 적힌 모집수의 합(41+13)이다(사용자 결정).
+    assert [counts(row) for row in rows] == [(13, 13, 13), (54, 54, 54)]
 
 
 def test_housing_type_row_citing_only_its_first_house_type_row_does_not_take_that_rows_count():
+    # 모델이 84 칸이 시작하는 84A 행만 가리켜도 84의 모집수는 84A(41)가 아니라 84A·84B의 합이다.
     rows, _ = assembled(table_pages(SPLIT_COUNT_TABLE), {"rowIds": ["P5:T1:R3"], "housingType": "72"},
                         {"rowIds": ["P5:T1:R4"], "housingType": "84"})
 
     assert rows[1]["sourceHousingTypeName"] == "84"
-    assert counts(rows[1]) == (None, None, None)
+    assert counts(rows[1]) == (54, 54, 54)
+
+
+def test_housing_type_row_count_is_checked_against_the_sum_of_its_house_type_rows():
+    # 주택형 단위 공급행 수량은 주택타입 행마다 적힌 수의 합(41+13)과 대조한다. 한 행의 41은 그 공급행의 수가 아니다.
+    selected = table_pages(SPLIT_COUNT_TABLE)
+    item = {"rowIds": ["P5:T1:R4", "P5:T1:R5"], "housingType": "84"}
+    rows, unresolved = assembled(selected, {**item, "totalSupplyHouseholdCount": 54, "supplyHouseholdCount": 54,
+                                            "reserveCount": 54})
+    assert counts(rows[0]) == (54, 54, 54) and not [finding for finding in unresolved if "Count" in finding["path"]]
+    rows, unresolved = assembled(selected, {**item, "totalSupplyHouseholdCount": 41, "supplyHouseholdCount": 41,
+                                            "reserveCount": 41})
+    assert counts(rows[0]) == (None, None, None)
+    assert {"supplyRows[0].totalSupplyHouseholdCount", "supplyRows[0].targets[0].supplyHouseholdCount",
+            "supplyRows[0].targets[0].reserveCount"} <= {finding["path"] for finding in unresolved}
+    # 단지 주택타입(subtypes)은 세부 타입마다 따로 둔다.
+    assert [subtype["name"] for subtype in rows[0]["subtypes"]] == ["84A", "84B"]
+
+
+@pytest.mark.parametrize("cells", [
+    # 84B의 모집수가 없다.
+    [[None, None, "84B", "84.95", "27.27", "288,550", "14", "", "", ""]],
+    # 84B 예비자 칸이 84A와 병합된 공통 수량이다(모집호수 계는 행마다 있다).
+    [[None, None, "84B", "84.95", "27.27", "288,550", "14", "13", "0", None]],
+    # 84B 수량이 84C와 병합된 공통 수량이다.
+    [[None, None, "84B", "84.95", "27.27", "288,550", "14", "13", "0", "13"],
+     [None, None, "84C", "84.98", "26.23", "288,550", "10", None, None, None]],
+])
+# 모델이 84A 한 타입의 수(41)를 내도 합을 정하지 못한 주택형 공급행에서는 확인된 값이 아니다.
+@pytest.mark.parametrize("model_counts", [{}, {"totalSupplyHouseholdCount": 41, "supplyHouseholdCount": 41,
+                                               "reserveCount": 41}])
+def test_housing_type_row_count_is_left_empty_when_a_house_type_count_is_missing_or_shared(cells, model_counts):
+    table = [*SPLIT_COUNT_TABLE[:4], *cells]
+    block = [f"P5:T1:R{number}" for number in range(4, len(table) + 1)]
+    rows, unresolved = assembled(table_pages(table), {"rowIds": block, "housingType": "84", **model_counts})
+
+    assert counts(rows[0]) == (None, None, None)
+    if model_counts:
+        assert {"supplyRows[0].totalSupplyHouseholdCount", "supplyRows[0].targets[0].supplyHouseholdCount",
+                "supplyRows[0].targets[0].reserveCount"} <= {finding["path"] for finding in unresolved}
+
+
+def test_housing_type_row_sum_does_not_let_other_house_type_cells_confirm_other_values():
+    # 합을 위해 84B 행을 읽어도 84A 행만 가리킨 공급행의 면적은 84A 칸과만 대조한다(84B 면적 84.95는 아니다).
+    rows, _ = assembled(table_pages(SPLIT_COUNT_TABLE), {"rowIds": ["P5:T1:R3"], "housingType": "72"},
+                        {"rowIds": ["P5:T1:R4"], "housingType": "84", "exclusiveArea": 84.95})
+
+    assert counts(rows[1]) == (54, 54, 54)
+    assert rows[1]["exclusiveArea"] is None
 
 
 def test_label_found_in_neither_housing_column_stays_unresolved():
@@ -784,3 +833,19 @@ def test_target_values_without_a_target_name_keep_one_target():
 
     target = tree["data"]["supplyRows"][0]["targets"][0]
     assert (target["target"], target["reserveCount"], target["rentalDeposit"]) == ("전체", 13, 288550000)
+
+
+def test_housing_type_row_with_several_targets_does_not_confirm_one_house_type_count_per_target():
+    # 합(54)을 대상별로 나눌 근거가 없다. 84A 한 칸(41)과 맞는 대상 수량도 확인된 값이 아니다.
+    rows, unresolved = assembled(table_pages(SPLIT_COUNT_TABLE),
+                                 {"rowIds": ["P5:T1:R4", "P5:T1:R5"], "housingType": "84", "target": "일반",
+                                  "totalSupplyHouseholdCount": 54},
+                                 {"rowIds": ["P5:T1:R4", "P5:T1:R5"], "housingType": "84", "target": "우선",
+                                  "supplyHouseholdCount": 41, "reserveCount": 41})
+
+    row = rows[0]
+    assert row["totalSupplyHouseholdCount"] == 54
+    assert [(target["supplyHouseholdCount"], target["reserveCount"]) for target in row["targets"]] == [
+        (None, None), (None, None)]
+    assert {"supplyRows[0].targets[1].supplyHouseholdCount", "supplyRows[0].targets[1].reserveCount"} <= {
+        finding["path"] for finding in unresolved}

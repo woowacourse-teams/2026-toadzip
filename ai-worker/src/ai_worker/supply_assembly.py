@@ -283,9 +283,23 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
     }
     # 문자열·수치는 동일 의미의 머리글 열에서 확인할 수 있을 때만 유지한다.
     row_source_map = source_row_map(source_rows)
+    # 주택타입 행마다 적힌 모집수의 합은 원문 칸 하나에는 없지만 그 행들에서 확인한 값이다.
+    block_counts = {}
+    for index, group in enumerate(groups):
+        counts = group.get("blockCounts", {})
+        block_counts[f"supplyRows[{index}]"] = {key: value for key, value in counts.items()
+                                                 if key == "totalSupplyHouseholdCount"}
+        if len(group["targets"]) == 1:
+            block_counts[f"supplyRows[{index}].targets[0]"] = {key: value for key, value in counts.items()
+                                                                if key != "totalSupplyHouseholdCount"}
+        elif counts:
+            # 대상이 여럿이면 주택타입 행 합을 대상별로 나눌 근거가 없다. 한 타입 칸(41)과 맞아도 대상 수량으로 확인하지 않는다.
+            for target_index in range(len(group["targets"])):
+                block_counts[f"supplyRows[{index}].targets[{target_index}]"] = {
+                    "supplyHouseholdCount": None, "reserveCount": None}
     warnings = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
                                  tree["data"]["unresolvedFields"], selected.supply_row_values,
-                                 selected.supply_row_target_values)
+                                 selected.supply_row_target_values, block_counts)
     tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
     for index, row in enumerate(supply_rows):
         _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
@@ -382,9 +396,10 @@ def _counts_from_source_cells(index: int, group: dict, groups: list[dict], selec
     모집수는 입주자와 예비자를 합한 수다(사용자 결정). 모집호수 칸(입주자·예비자를 나눈 표의 '계')이 있으면 그 값,
     없으면 당첨자 칸과 예비자 칸의 합이다. 다른 공급행도 가리키거나 이 공급행 밖의 행까지 병합된 수량 칸은 여러 공급행의
     공통 수량이라 채우지 않는다(나누거나 복제하지 않는다). 모델이 낸 값은 바꾸지 않고 뒤의 원문 대조에 맡긴다.
-    주택타입이 여럿인 주택형을 한 공급행으로 뽑았으면 수량은 주택타입 행마다라 그중 한 행의 값은 그 공급행의 모집수가 아니다."""
+    주택타입이 여럿인 주택형을 한 공급행으로 뽑았으면 수량은 주택타입 행마다라 그 합이 공급행 모집수다(_block_counts)."""
     unit = _house_type_unit(sorted(group["rowIds"]), selected, per_house_type_tables)
     if unit is not None and not unit.per_house_type and unit.rows[0].block_size > 1:
+        _fill_block_counts(index, group, groups, unit, selected, unresolved)
         return
     count_rows = [row_id for row_id in sorted(group["rowIds"])
                   if any(count_cell(selected.supply_row_values.get(row_id, {}).get(field)) is not None
@@ -414,6 +429,43 @@ def _counts_from_source_cells(index: int, group: dict, groups: list[dict], selec
 
 
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
+
+
+def _fill_block_counts(index: int, group: dict, groups: list[dict], unit: "_HouseTypeUnit",
+                       selected: pages.PromptPages, unresolved: list[dict]) -> None:
+    """주택타입 여럿을 묶은 주택형 공급행(84 = 84A·84B…)의 모집수는 주택타입 행마다 따로 적힌 모집수의 합이다(사용자 결정).
+    예비자 수도 같은 행들의 합이다. 단지 주택타입은 세부 타입마다 따로 두고 이 합은 공고 공급행 한 줄에만 둔다.
+    병합된 공통 수량 칸이 섞이거나, 한 타입이라도 수가 없거나, 다른 공급행도 그 행을 가리키면 정하지 않는다.
+    합은 group["blockCounts"]에 두어 원문 대조가 그 값을 확인된 값으로 본다. 모델이 낸 값은 바꾸지 않는다.
+    합을 정하지 못한 필드는 None으로 두어, 모델이 낸 한 타입의 수(84A 41)도 원문 대조에서 비운다.
+    근거 행(rowIds)은 넓히지 않는다. 다른 주택타입 행의 면적·금액 칸으로 다른 값이 통과하지 않게 수량만 이 합과 대조한다."""
+    group["blockCounts"] = dict.fromkeys(_COUNT_FIELDS)
+    start = unit.rows[0]
+    block = sorted((row_id for row_id in selected.supply_row_values
+                    if (row := _house_type_row(row_id, selected)) is not None and row.start == start.start),
+                   key=lambda row_id: int(row_id.rsplit(":R", 1)[1]))
+    if len(block) != start.block_size or any(_merged_count_rows(row_id, selected) != {row_id} for row_id in block) \
+            or any(set(block) & other["rowIds"] for other in groups if other is not group):
+        return
+    recruited = [recruitment_count(selected.supply_row_values[row_id]) for row_id in block]
+    reserves = [count_cell(selected.supply_row_values[row_id].get("reserveCount")) for row_id in block]
+    if any(count is None for count in recruited):
+        return
+    counts = {"totalSupplyHouseholdCount": sum(recruited), "supplyHouseholdCount": sum(recruited)}
+    if all(count is not None for count in reserves):
+        counts["reserveCount"] = sum(reserves)
+    group["blockCounts"].update(counts)
+    if "totalSupplyHouseholdCount" not in group["rowValues"]:
+        group["rowValues"]["totalSupplyHouseholdCount"] = counts["totalSupplyHouseholdCount"]
+    if len(group["targets"]) != 1:
+        return
+    target = group["targets"][0]
+    if target["supplyHouseholdCount"] is None:
+        target["supplyHouseholdCount"] = counts["supplyHouseholdCount"]
+    if target["reserveCount"] is None and "reserveCount" in counts:
+        target["reserveCount"] = counts["reserveCount"]
+        unresolved[:] = [finding for finding in unresolved
+                         if finding["path"] != f"supplyRows[{index}].targets[0].reserveCount"]
 
 
 def _merged_count_rows(row_id: str, selected: pages.PromptPages) -> set[str]:
