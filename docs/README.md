@@ -17,6 +17,7 @@ docs/
 │   ├── announcements/          # 공고 기능·조회수 집계
 │   ├── authentication/         # 소셜 로그인·계정 생명주기
 │   ├── documents/              # 공고 첨부파일·다운로드·문서 뷰어
+│   ├── eligibility/            # 공고 구조화·입력·신청자격 판정·저장·호환
 │   ├── ingest/                 # 수집·정제·매칭·원천 보존
 │   ├── notifications/          # 알림 신청·생성·전달·사용자 화면
 │   ├── privacy/                # 동의·수집 제어·저장·제거 경계
