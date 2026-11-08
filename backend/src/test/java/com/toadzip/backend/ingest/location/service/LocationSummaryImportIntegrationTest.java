@@ -11,6 +11,10 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplex
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
+import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationRequest;
+import com.toadzip.backend.ingest.mapping.repository.InitialRegistrationTargetRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -38,10 +42,17 @@ class LocationSummaryImportIntegrationTest {
     @Autowired
     private RoadAddressGeocodingService geocodingService;
 
+    @Autowired
+    private MyHomeInitialRegistrationService registration;
+
+    @Autowired
+    private InitialRegistrationTargetRepository targets;
+
     @BeforeEach
     void setUp() {
         locationRepository.deleteAll();
         sourceRepository.deleteAll();
+        targets.deleteAll();
         sourceRepository.save(source("서울특별시 종로구 테스트로 1 (테스트동)"));
     }
 
@@ -72,6 +83,71 @@ class LocationSummaryImportIntegrationTest {
         assertThat(locationRepository.count()).isOne();
         assertThat(geocodingService.geocode("서울특별시 종로구 테스트로 1").roadAddress())
                 .isEqualTo("서울특별시 종로구 테스트로 1");
+    }
+
+    @Test
+    void 주소_일치와_좌표_준비를_구분하고_누락_주소도_보완_목록에_집계한다() throws IOException {
+        sourceRepository.deleteAll();
+        sourceRepository.save(source(null));
+        service.importMatches("full.zip", nationwideZip());
+        var missing = registration.findLocations(0, 20);
+        assertThat(missing.counts()).containsEntry("INVALID_ADDRESS", 1L);
+        assertThat(missing.targets()).singleElement().satisfies(target -> assertThat(target.roadAddress()).isNull());
+
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("서울특별시 종로구 테스트로 1"));
+        var report = service.importMatches("no-coordinates.zip",
+                LocationSummaryZipFixture.nationwideZipWithCoordinates("", ""));
+        assertThat(report.matchedRoadAddressCount()).isOne();
+        assertThat(report.preparedRoadAddressCount()).isZero();
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("COORDINATE_NOT_FOUND", 1L);
+    }
+
+    @Test
+    void 주소가_전혀_일치하지_않아도_단지별_실패_목록에서_원인을_확인한다() throws IOException {
+        var report = service.importMatches("wrong-addresses.zip",
+                LocationSummaryZipFixture.nationwideZipWithoutTargetAddress());
+        assertThat(report.matchedRoadAddressCount()).isZero();
+        assertThat(report.preparedRoadAddressCount()).isZero();
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("ADDRESS_NOT_FOUND", 1L);
+    }
+
+    @Test
+    void 원본_좌표의_변환이_실패하면_주소_일치와_구분해_보완_사유를_저장한다() throws IOException {
+        var report = service.importMatches("bad-coordinates.zip",
+                LocationSummaryZipFixture.nationwideZipWithCoordinates("999999999", "999999999"));
+        assertThat(report.matchedRoadAddressCount()).isOne();
+        assertThat(report.preparedRoadAddressCount()).isZero();
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("COORDINATE_CONVERSION_ERROR", 1L);
+    }
+
+    @Test
+    void 좌표_없는_ZIP과_주소_불일치_ZIP을_올려도_기존_정상_좌표를_보존한다() throws IOException {
+        service.importMatches("good.zip", nationwideZip());
+        var before = geocodingService.geocode("서울특별시 종로구 테스트로 1");
+        service.importMatches("no-coordinates.zip", LocationSummaryZipFixture.nationwideZipWithCoordinates("", ""));
+        service.importMatches("wrong-addresses.zip", LocationSummaryZipFixture.nationwideZipWithoutTargetAddress());
+        assertThat(geocodingService.geocode("서울특별시 종로구 테스트로 1")).isEqualTo(before);
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("READY", 1L);
+    }
+
+    @Test
+    void 주소가_없는_단지를_보완하고_ZIP_재업로드와_상태_재확인에도_관리자_좌표를_보존한다() throws IOException {
+        sourceRepository.deleteAll();
+        sourceRepository.save(source(null));
+        registration.refresh();
+        String identifier = targets.findAll().getFirst().getSourceComplexIdentifier();
+        registration.supplementLocation(new InitialRegistrationLocationRequest(identifier,
+                "서울특별시 종로구 보완로 2", new BigDecimal("37.6"), new BigDecimal("127.1")), "test-admin");
+        service.importMatches("full.zip", nationwideZip());
+        registration.refresh();
+        var restored = targets.findById(identifier).orElseThrow();
+        assertThat(restored.getRoadAddress()).isNull();
+        assertThat(restored.getStatus()).isEqualTo(InitialRegistrationStatus.READY);
+        assertThat(restored.getLocation().getAddress()).isEqualTo("서울특별시 종로구 보완로 2");
+        assertThat(restored.getLocation().getOrigin()).isEqualTo("ADMIN");
+        assertThat(restored.getLocation().getCheckedBy()).isEqualTo("test-admin");
+        assertThat(registration.findLocations(0, 20).totalElements()).isZero();
     }
 
     @Test

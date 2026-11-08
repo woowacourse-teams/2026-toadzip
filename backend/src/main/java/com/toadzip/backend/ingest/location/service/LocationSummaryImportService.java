@@ -4,7 +4,9 @@ import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeCom
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.UtmKCoordinate;
 import com.toadzip.backend.ingest.location.dto.LocationSummaryImportReport;
+import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.repository.LocationSummaryStore;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParseResult;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParser;
@@ -54,28 +56,27 @@ public class LocationSummaryImportService {
 
     private final MyHomeInitialRegistrationService registration;
 
+    private final UtmKCoordinateConverter converter;
+
     public LocationSummaryImportService(
             LocationSummaryFileParser parser,
             LocationSummaryStore locationStore,
             MyHomeComplexSourceReader sourceRepository,
             TransactionTemplate transactionTemplate,
-            MyHomeInitialRegistrationService registration
+            MyHomeInitialRegistrationService registration,
+            UtmKCoordinateConverter converter
     ) {
         this.parser = parser;
         this.locationStore = locationStore;
         this.sourceRepository = sourceRepository;
         this.transactionTemplate = transactionTemplate;
         this.registration = registration;
+        this.converter = converter;
     }
 
     public LocationSummaryImportReport importMatches(String sourceFileName, InputStream input) {
         IngestExecutionScope.requireHeld();
         Set<String> targetAddresses = normalizedTargetAddresses();
-        if (targetAddresses.isEmpty()) {
-            throw new InvalidIngestRequestException(
-                    "좌표를 찾을 단지 도로명주소가 없습니다. 마이홈 단지 원천 데이터를 먼저 수집해야 합니다."
-            );
-        }
 
         Set<String> matchedAddresses = new HashSet<>();
         List<LocationSummaryRecord> selectedRecords = new ArrayList<>();
@@ -86,7 +87,6 @@ public class LocationSummaryImportService {
                 selectedRecords
         ));
         validateNationwide(parseResult);
-        validateMatchedAddresses(matchedAddresses);
 
         ReplacementResult replacement = Objects.requireNonNull(transactionTemplate.execute(
                 status -> replaceLocations(selectedRecords)
@@ -101,6 +101,8 @@ public class LocationSummaryImportService {
                 targetAddresses.size(),
                 matchedAddresses.size(),
                 targetAddresses.size() - matchedAddresses.size(),
+                (int) selectedRecords.stream().filter(this::convertible)
+                        .map(LocationSummaryRecord::normalizedRoadAddress).distinct().count(),
                 replacement.storedLocationCount(),
                 replacement.replacedRowCount(),
                 0, // 기존 관리자 응답과의 호환용 필드: 매핑 후보 상태는 더 이상 사용하지 않는다.
@@ -115,7 +117,7 @@ public class LocationSummaryImportService {
                 addresses.add(new NormalizedRoadAddress(roadAddress).withoutReference());
             }
             catch (IllegalArgumentException ignored) {
-                // 비어 있는 원천 주소는 단지 정제에서 별도 실패로 기록한다.
+                // 주소 누락은 등록 대상별 주소·좌표 준비 결과에서 집계한다.
             }
         }
         return addresses;
@@ -141,15 +143,27 @@ public class LocationSummaryImportService {
     }
 
     private ReplacementResult replaceLocations(List<LocationSummaryRecord> selectedRecords) {
-        long replacedRowCount = locationStore.count();
-        locationStore.truncate();
         long storedLocationCount;
         try (LocationSummaryStore.CopyWriter writer = locationStore.openWriter()) {
-            selectedRecords.forEach(writer::write);
+            selectedRecords.forEach(record -> writer.write(record, convertible(record)));
             storedLocationCount = writer.complete();
         }
+        long replacedRowCount = locationStore.mergeUploadedLocations();
         registration.refresh();
         return new ReplacementResult(storedLocationCount, replacedRowCount);
+    }
+
+    private boolean convertible(LocationSummaryRecord record) {
+        if (record.x() == null || record.y() == null) {
+            return false;
+        }
+        try {
+            converter.convert(new UtmKCoordinate(record.x(), record.y()));
+            return true;
+        }
+        catch (RoadAddressGeocodingException exception) {
+            return false;
+        }
     }
 
     private void validateNationwide(LocationSummaryFileParseResult parseResult) {
@@ -182,16 +196,6 @@ public class LocationSummaryImportService {
         invalid.removeIf(entryName -> NATIONWIDE_ENTRY_PROVINCE_CODES.get(entryName)
                 .equals(actualEntries.get(entryName)));
         return invalid;
-    }
-
-    private void validateMatchedAddresses(Set<String> matchedAddresses) {
-        if (!matchedAddresses.isEmpty()) {
-            return;
-        }
-        throw new InvalidIngestRequestException(
-                "위치정보요약DB에서 단지 도로명주소와 일치하는 "
-                        + "좌표 대상을 찾지 못했습니다."
-        );
     }
 
     private String sourceFileName(String sourceFileName) {

@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.location.service;
 
 import static com.toadzip.backend.ingest.location.service.LocationSummaryZipFixture.nationwideZipWithEmptyRegions;
 import static com.toadzip.backend.ingest.location.service.LocationSummaryZipFixture.nationwideZipWithWrongProvince;
-import static com.toadzip.backend.ingest.location.service.LocationSummaryZipFixture.nationwideZipWithoutTargetAddress;
 import static com.toadzip.backend.ingest.location.service.LocationSummaryZipFixture.partialZip;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -46,7 +45,8 @@ class LocationSummaryImportServiceTest {
         when(sourceRepository.findDistinctRoadAddresses())
                 .thenReturn(List.of("서울특별시 종로구 테스트로 1 (테스트동)"));
         service = new LocationSummaryImportService(
-                new LocationSummaryFileParser(), locationStore, sourceRepository, transactionTemplate, registration
+                new LocationSummaryFileParser(), locationStore, sourceRepository,
+                transactionTemplate, registration, new UtmKCoordinateConverter()
         );
     }
 
@@ -55,15 +55,6 @@ class LocationSummaryImportServiceTest {
         assertThatThrownBy(() -> service.importMatches("partial.zip", partialZip()))
                 .isInstanceOf(InvalidIngestRequestException.class)
                 .hasMessageContaining("전국 월전체분이 아닙니다");
-
-        verifyNoInteractions(locationStore, transactionTemplate);
-    }
-
-    @Test
-    void 대상과_불일치한_ZIP은_저장_전에_거절한다() throws IOException {
-        assertThatThrownBy(() -> service.importMatches("wrong.zip", nationwideZipWithoutTargetAddress()))
-                .isInstanceOf(InvalidIngestRequestException.class)
-                .hasMessageContaining("일치하는 좌표 대상을 찾지 못했습니다");
 
         verifyNoInteractions(locationStore, transactionTemplate);
     }
