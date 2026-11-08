@@ -22,6 +22,8 @@ public class DataPipelineRunner {
 
     private static final String RATE_LIMIT_SKIP_REASON =
             "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.";
+    private static final String BOARD_RATE_LIMIT_SKIP_REASON =
+            "외부 호출 제한에 도달해 남은 요청을 보내지 않았습니다. 이미 받은 묶음은 정제했고, 다시 실행하면 이어서 받습니다.";
 
     private final DataPipelineStepExecutor stepExecutor;
     private final DataPipelineExecutionStateService executionStateService;
@@ -81,7 +83,7 @@ public class DataPipelineRunner {
             }
             DataPipelineStepResult result = stepExecutor.execute(step);
             if (result.failedOnlyByRateLimit()) {
-                executionStateService.skipStep(executionId, step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
+                executionStateService.skipStep(executionId, step, rateLimitSkipReason(step), result.serverResponse());
                 outcome = "rate_limited";
                 return new StepOutcome(true, null);
             }
@@ -113,11 +115,6 @@ public class DataPipelineRunner {
             DataPipelineType type, DataPipelineStep step, boolean collectionRateLimited, boolean lhRateLimited
     ) {
         if (type.requiresSuccessfulCollection(step) && collectionRateLimited) {
-            if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION
-                    || type == DataPipelineType.GH_ANNOUNCEMENT_COLLECTION) {
-                return "수집이 호출 제한으로 완료되지 않아 자동 정제를 실행하지 않았습니다. "
-                        + "수집 결과를 확인한 뒤 해당 기관의 수집을 다시 실행하세요.";
-            }
             return "수집이 호출 제한으로 완료되지 않아 자동 정제를 실행하지 않았습니다. "
                     + "수집 결과를 확인한 뒤 저장된 원천으로 정제를 실행할 수 있습니다.";
         }
@@ -125,6 +122,13 @@ public class DataPipelineRunner {
             return "앞선 LH 공고 단계의 호출 제한으로 이 단계를 건너뛰었습니다.";
         }
         return null;
+    }
+
+    private static String rateLimitSkipReason(DataPipelineStep step) {
+        if (step.isCollectionAndRefinement()) {
+            return BOARD_RATE_LIMIT_SKIP_REASON;
+        }
+        return RATE_LIMIT_SKIP_REASON;
     }
 
     private void startStep(UUID executionId, DataPipelineStep step, DataPipelineStep previousPartiallyFailedStep) {
