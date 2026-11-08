@@ -124,23 +124,12 @@ qualifications로 구조화한 [D11 사례](decisions.md#공고-사례와-재현
 
 ## 현재 화면 연결과 계약 차이
 
-현재 화면의 입력·저장 및 기본 비교 연결은
-[basicComparisonRepository](../../../frontend/src/user/conditions/basicComparisonRepository.ts)가 담당한다.
-프로필은 계약 3과 거주기간·계약 종료일을 사용하지만 판정은 여전히 `/basic-comparison`을 조회한다.
-현재 화면 동작과 최신 신청자격 계약 사이에는 다음 차이가 있다. 최신 기능의 완료 기준으로 삼지 않는다.
+현재 화면은 [eligibilityRepository](../../../frontend/src/user/conditions/eligibilityRepository.ts)를 통해
+최신 `/eligibility` API를 사용한다. 기본 비교의 coverage·MATCHED·이전 요약은 개인 지원 가능 판정이나
+건수에 사용하지 않는다. 공통 프로필은 계약 3을 그대로 사용한다.
 
-| 현재 연결 | 신청자격 계약과의 차이 |
-|---|---|
-| COMMON_ONLY 외 coverage를 GENERAL로 변환하고 MATCHED를 집계 | APPLICATION의 일부 경로 조건 충족이 전체 자격 충족처럼 취급될 수 있음. 공통 조건·필수 자격이 빠진 이전 결과를 사용 |
-| 현재 불러온 공고별 상세를 병렬 조회해 배너에서 “지원 가능 공고 N건” 표시 | 전체 모집·모집예정 공고의 최신 신청자격 집계가 아니며 `/eligibility/summary` 집계도 아님 |
-| 공고 단위 matchedIds로 목록 제한 | 선택 지역 안의 실제 지원 가능 선택지 검사와 다름 |
-| 저장 응답의 reevaluationState를 보존하지 않고 PUT 직후 “비교 결과에 반영했어요” 안내 | 저장 완료와 최신 판정 완료를 구분하지 못함 |
-
-연결 코드는 [목록 결과 조회](../../../frontend/src/public-housing/announcements/useConditionListResults.ts),
-[목록 배너](../../../frontend/src/public-housing/announcements/ConditionListBanner.tsx),
-[입력 상태](../../../frontend/src/user/conditions/ConditionsProvider.tsx)에서 확인한다.
-신청자격 화면으로 연결할 때 [판정·최신성·지역·발견 계약](decisions.md)을 적용해야 한다.
-위 차이는 소스 계약의 차이이며 실제 브라우저·배포 동작을 확인한 기록은 아니다.
+화면의 저장·최신성·지역별 선택지·발견 안내와 아직 전체 검색으로 제공하지 않는 범위는
+[화면과 API 연결](frontend.md)에 기록한다. 위 호환 API가 유지되는 것과 현재 화면에서 사용하는 것은 다르다.
 
 ## 검증 진입점
 
