@@ -11,6 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   stopDataPipeline: vi.fn(),
   getLhAnnouncementQuality: vi.fn(),
   getInitialRegistration: vi.fn(),
+  getLocationPreparation: vi.fn(),
 }))
 
 vi.mock('./api', async (importOriginal) => ({
@@ -19,6 +20,7 @@ vi.mock('./api', async (importOriginal) => ({
 }))
 
 beforeEach(() => {
+  apiMocks.getLocationPreparation.mockResolvedValue({ counts: { READY: 0, INVALID_ADDRESS: 0, ADDRESS_NOT_FOUND: 0, COORDINATE_NOT_FOUND: 0, COORDINATE_CONVERSION_ERROR: 0 }, targets: [], totalElements: 0, page: 0, totalPages: 0 })
   apiMocks.getInitialRegistration.mockResolvedValue({
     counts: { EXISTING: 0, LOCATION_REQUIRED: 0, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 0 },
     targets: [], totalElements: 0, page: 0, totalPages: 0,
@@ -606,7 +608,7 @@ describe('DataPipelineControl', () => {
     fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeEnabled())
     expect(screen.getByRole('tabpanel')).toHaveTextContent('완료')
-    fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
+    fireEvent.click(screen.getByRole('tab', { name: '2 주소·좌표 준비' }))
     expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()
     expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION')
   })
@@ -621,7 +623,7 @@ describe('DataPipelineControl', () => {
     expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
     expect(screen.queryByText('일부 실패')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '단지 저장 결과 확인' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
+    fireEvent.click(screen.getByRole('tab', { name: '2 주소·좌표 준비' }))
     expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()
   })
 

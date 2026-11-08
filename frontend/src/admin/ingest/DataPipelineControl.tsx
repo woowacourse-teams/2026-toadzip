@@ -413,7 +413,7 @@ export function DataPipelineControl({ domain, compact = false }: {
                 <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey('COMPLEX_COLLECTION')}
                   onClick={() => handleRun('COMPLEX_COLLECTION')}>
                   {buttonLabel('COMPLEX_COLLECTION', pipelineStates.COMPLEX_COLLECTION.execution.status)}</Button></li>
-              <li><strong>2. 주소에 맞는 좌표 적재</strong><p>새 단지 주소가 있다면 ZIP을 업로드합니다. 준비된 좌표는 그대로 사용합니다.</p>
+              <li><strong>2. 주소·좌표 준비</strong><p>ZIP으로 주소·좌표를 확인하고, 실패한 단지는 검색하거나 직접 입력해 보완합니다.</p>
                 <Link to="/admin/locations">위치정보 ZIP 업로드</Link></li>
               <li><strong>3. 단지 정제·저장</strong><p>{retiredComplexRefinementNotice}</p>
                 <button type="button" disabled>

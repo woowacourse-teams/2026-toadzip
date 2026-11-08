@@ -21,9 +21,10 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
   const tabId = useId()
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const [uploading, setUploading] = useState(false)
+  const [locationRevision, setLocationRevision] = useState(0)
   const steps = [
     { id: 'complex-collection', label: '1 원천 수집' },
-    { id: 'complex-location', label: '2 좌표 적재' },
+    { id: 'complex-location', label: '2 주소·좌표 준비' },
     { id: 'complex-registration', label: '3 단지 등록' },
   ]
   const selected = location.hash === '#complex-refinement' ? 2
@@ -95,14 +96,15 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
       </div>
       {result('COMPLEX_COLLECTION')}
     </section>
-    <section className={styles.stage} id="complex-location" role="tabpanel" hidden={selected !== 1} aria-labelledby={`${tabId}-1`}>
-      <header><div className={styles.stageTitle}><span className={styles.number}>2</span><div className={styles.helpLabel}><h2 id="complex-location-title">주소에 맞는 좌표 적재</h2>
-        <ComplexStageHelp stage="주소에 맞는 좌표 적재">위치정보요약DB 월 전체분 ZIP을 업로드해 저장된 단지 원본의 주소에 맞는 좌표를 준비합니다.</ComplexStageHelp></div></div></header>
-      <LocationSummaryUpload embedded disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }} />
+    <section className={`${styles.stage} ${styles.locationStage}`} id="complex-location" role="tabpanel" hidden={selected !== 1} aria-labelledby={`${tabId}-1`}>
+      <header><div className={styles.stageTitle}><span className={styles.number}>2</span><div className={styles.helpLabel}><h2 id="complex-location-title">주소·좌표 준비</h2>
+        <ComplexStageHelp stage="주소·좌표 준비">위치정보요약DB ZIP으로 주소와 지도용 좌표를 확인하고, 보완할 단지는 주소 검색 또는 직접 입력으로 준비합니다.</ComplexStageHelp></div></div></header>
+      <LocationSummaryUpload embedded disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }}
+        revision={latest('COMPLEX_COLLECTION').finishedAt ?? ''} onChanged={() => setLocationRevision(value => value + 1)} />
     </section>
     <section id="complex-registration" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
       <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy}
-        revision={`${latest('COMPLEX_COLLECTION').finishedAt ?? ''}-${uploading}`} />
+        revision={`${latest('COMPLEX_COLLECTION').finishedAt ?? ''}-${uploading}-${locationRevision}`} />
     </section>
   </div>
 }
