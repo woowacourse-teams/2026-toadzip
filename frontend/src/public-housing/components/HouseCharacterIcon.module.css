@@ -1,0 +1,8 @@
+.icon {
+  flex: 0 0 auto;
+  color: var(--ds-color-brand-strong);
+}
+
+.face {
+  stroke: var(--ds-color-on-brand);
+}

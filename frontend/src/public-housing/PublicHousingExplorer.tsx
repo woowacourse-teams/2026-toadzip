@@ -72,6 +72,12 @@ import { HousingComplexSummarySheet } from './components/HousingComplexSummarySh
 import { readRecentComplexPreview, withRecentComplexPreview } from './navigation/mobileDetailHistory.ts'
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
+import { ConditionListBanner } from './announcements/ConditionListBanner'
+import { useConditionListResults, useMissingConditionFields } from './announcements/useConditionListResults'
+import { listResultText } from './presentation/comparisonPresentation'
+import { useConditions } from '../user/conditions/ConditionsContext'
+import type { ListConditionResult } from '../user/conditions/conditionsModel'
+import { Button } from '../design-system/components/Button'
 import {
   parseAnnouncementSearchFilters,
   parseComplexSearchFilters,
@@ -572,6 +578,20 @@ export function PublicHousingExplorer({
     announcementFilters,
     announcementFiltersKey,
   )
+  const conditions = useConditions()
+  const conditionList = useConditionListResults(announcementResults.state.items)
+  const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
+  const [onlyMatched, setOnlyMatched] = useState(false)
+  const filteringMatched = onlyMatched && conditionsCompared
+  const lastConditionSave = conditions.lastSave
+  // 목록에서 시작한 저장이 끝나면 지원 가능 공고만 모아 보여 준다.
+  useEffect(() => {
+    if (lastConditionSave?.origin === 'list' && lastConditionSave.kind !== 'clear') setOnlyMatched(true)
+  }, [lastConditionSave])
+  const toggleMatched = useCallback(() => {
+    if (conditionsCompared) setOnlyMatched((current) => !current)
+    else conditions.openNudge('list')
+  }, [conditions, conditionsCompared])
   const updateAnnouncementViewCount = announcementResults.updateViewCount
   const loadMoreAnnouncements = announcementResults.loadMore
 
@@ -1417,13 +1437,19 @@ export function PublicHousingExplorer({
       selectedSearchComplex,
     ],
   )
-  const resultCount = resultCountLabel(
+  const baseResultCount = resultCountLabel(
     activeResultTab,
     complexResults,
     announcementResults.state,
     recentComplexes.length,
 
   )
+  const comparingList = conditionsCompared && conditionList.status === 'loading'
+  const resultCount = filteringMatched && activeResultTab === 'announcements'
+    ? comparingList
+      ? { accessibleLabel: '지원 가능 공고 확인 중', visibleLabel: '지원 가능 확인 중' }
+      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `지원 가능 ${conditionList.matchedIds.size}건` }
+    : baseResultCount
   const complexFilterResultCountLabel = mapFilterResultCountLabel({
     aggregateMapActive,
     requestBlocked,
@@ -1741,11 +1767,14 @@ export function PublicHousingExplorer({
               hidden={activeResultTab !== 'announcements'}
             >
               <div className="housing-results__body">
+                <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList}
+                  filtering={filteringMatched} onToggleFilter={toggleMatched} />
                 <AnnouncementFilterPanel
                   filters={announcementFilters}
                   onApply={applyAnnouncementFilters}
                   regionRepository={regionRepository}
                   resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
+                  eligibilityFilter={conditions.mode === 'disabled' ? undefined : { checked: filteringMatched, onToggle: toggleMatched }}
                 />
                 <div
                   ref={announcementResultsScrollRef}
@@ -1755,6 +1784,9 @@ export function PublicHousingExplorer({
                 >
                   <AnnouncementResultContent
                     state={announcementResults.state}
+                    conditionResults={conditionsCompared ? conditionList.results : null}
+                    matchedIds={filteringMatched ? conditionList.matchedIds : null}
+                    comparing={filteringMatched && comparingList}
                     selectedAnnouncementId={selectedAnnouncementId}
                     onSelect={openAnnouncementDetail}
                     onCardRef={(announcementId, node) => {
@@ -1913,12 +1945,20 @@ function AnnouncementDetailLayer({ returnToMyPage, state, onClose, onOpenComplex
 
 function AnnouncementResultContent({
   state,
+  conditionResults,
+  matchedIds,
+  comparing,
   selectedAnnouncementId,
   onSelect,
   onCardRef,
   onRetry,
 }: {
   state: AnnouncementResultsState
+  conditionResults: ReadonlyMap<string, ListConditionResult> | null
+  /** 지원 가능 공고만 볼 때 남길 공고 */
+  matchedIds: ReadonlySet<string> | null
+  /** 지원 가능 공고만 보는 중 새 목록을 비교하는 중 */
+  comparing: boolean
   selectedAnnouncementId: string | null
   onSelect: (announcementId: string) => void
   onCardRef: (announcementId: string, node: HTMLElement | null) => void
@@ -1956,13 +1996,25 @@ function AnnouncementResultContent({
     )
   }
 
+  if (comparing) {
+    return (
+      <div className="housing-results__state" role="status">
+        <strong>내 조건과 비교하고 있어요.</strong>
+        <span>지원 가능 공고를 찾고 있어요.</span>
+      </div>
+    )
+  }
+  const items = matchedIds ? state.items.filter((announcement) => matchedIds.has(announcement.announcementId)) : state.items
+  if (matchedIds && items.length === 0 && state.status !== 'loading-more') return <NoMatchedAnnouncements />
+
   return (
     <>
       <ul className="housing-results__list">
-        {state.items.map((announcement) => (
+        {items.map((announcement) => (
           <li key={announcement.announcementId}>
             <HousingAnnouncementCard
               announcement={toHousingAnnouncementCardData(announcement)}
+              conditionLine={conditionLineOf(conditionResults?.get(announcement.announcementId))}
               selected={selectedAnnouncementId === announcement.announcementId}
               cardRef={(node) => onCardRef(announcement.announcementId, node)}
               onSelect={onSelect}
@@ -1974,6 +2026,31 @@ function AnnouncementResultContent({
         <RequestError title="공고를 더 불러오지 못했어요." onRetry={onRetry} />
       )}
     </>
+  )
+}
+
+function conditionLineOf(result: ListConditionResult | undefined) {
+  if (!result) return null
+  const text = listResultText(result)
+  if (!text) return null
+  return { status: result.best?.status ?? 'NOT_EVALUATED' as const, text }
+}
+
+function NoMatchedAnnouncements() {
+  const { openInput } = useConditions()
+  const missing = useMissingConditionFields()
+  return (
+    <div className="housing-results__state" role="status">
+      <strong>아직 지원 가능 공고가 없어요</strong>
+      <span>{missing.length
+        ? `입력하지 않은 항목 ${missing.length}개를 채우면 더 찾을 수 있어요.`
+        : '입력한 조건으로는 아직 없어요. 바뀐 정보가 있다면 고쳐 보세요.'}</span>
+      <Button size="sm" onClick={() => missing.length
+        ? openInput({ mode: 'partial', fields: missing, origin: 'list' }, {})
+        : openInput({ mode: 'full', step: 1, origin: 'list' }, {})}>
+        {missing.length ? '내 조건 채우기' : '내 조건 수정'}
+      </Button>
+    </div>
   )
 }
 

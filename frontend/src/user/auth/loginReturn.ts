@@ -5,7 +5,7 @@ export function safeLoginReturn(value: string | null): string {
   if (!value?.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/explore'
   try {
     const url = new URL(value, window.location.origin)
-    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info'].includes(url.pathname)) return '/explore'
+    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info', '/mypage/conditions'].includes(url.pathname)) return '/explore'
     url.searchParams.delete('login')
     url.searchParams.delete('reason')
     return url.pathname + url.search + url.hash

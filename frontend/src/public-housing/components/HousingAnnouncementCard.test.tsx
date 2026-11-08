@@ -56,6 +56,12 @@ function requiredRow(card: HTMLElement, row: string) {
 }
 
 describe('HousingAnnouncementCard', () => {
+  it('shows my conditions result as one line under the card', () => {
+    render(<HousingAnnouncementCard announcement={BASE_ANNOUNCEMENT} conditionLine={{ status: 'MATCHED', text: '청년 지원 가능' }} />)
+    const line = screen.getByText('청년 지원 가능')
+    expect(line.closest('[data-condition-status]')).toHaveAttribute('data-condition-status', 'MATCHED')
+  })
+
   it('서울 날짜 기준 오늘 게시된 공고에 오늘 공고를 표시한다', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-21T15:30:00Z'))

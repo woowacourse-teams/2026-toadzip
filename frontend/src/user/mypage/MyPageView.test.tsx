@@ -3,6 +3,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { InterestContext } from '../../public-housing/interest/NotificationInterestContext'
 import { BookmarkProvider } from '../bookmarks/BookmarkProvider'
+import { ConditionsProvider } from '../conditions/ConditionsProvider'
 import type { BookmarkItem, BookmarkRepository } from '../bookmarks/bookmarkRepository'
 import { MyPageView } from './MyPageView'
 
@@ -117,4 +118,16 @@ it('북마크 세션은 정상이어도 알림 초기화 오류는 재시도할 
   expect(await within(alarms).findByRole('alert')).toHaveTextContent('알림을 불러오지 못했어요')
   fireEvent.click(within(alarms).getByRole('button', { name: '다시 시도' }))
   expect(refreshStatus).toHaveBeenCalledOnce()
+})
+
+it('내 조건 관리를 허브에서 열고 새로고침해도 /mypage/conditions를 유지한다', async () => {
+  const conditionRepository = { loadProfile: vi.fn(async () => ({ version: 0, savedAt: null, profile: { familyDetailsState: 'NOT_STARTED' as const, facts: {} } })), saveProfile: vi.fn(), loadComparison: vi.fn(), loadListResults: vi.fn() }
+  render(<MemoryRouter initialEntries={['/mypage']}><BookmarkProvider repository={repositoryOf([])} loadUser={async () => ({ id: 7, email: null })}>
+    <ConditionsProvider createRepository={() => conditionRepository}><MyPageView {...handlers} /><Location /></ConditionsProvider>
+  </BookmarkProvider></MemoryRouter>)
+  const row = await screen.findByRole('link', { name: /내 조건 관리/ })
+  await waitFor(() => expect(row).toHaveTextContent('미입력'))
+  fireEvent.click(row)
+  expect(screen.getByLabelText('주소')).toHaveTextContent('/mypage/conditions')
+  expect(await screen.findByText('아직 입력한 내 조건이 없어요')).toBeInTheDocument()
 })

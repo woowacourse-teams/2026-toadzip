@@ -90,7 +90,8 @@
   transform: rotate(180deg);
 }
 
-.sort[aria-pressed='true'] {
+.sort[aria-pressed='true'],
+.sort[aria-checked='true'] {
   border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
   color: var(--ds-color-text);

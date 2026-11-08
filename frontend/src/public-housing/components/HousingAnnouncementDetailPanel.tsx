@@ -22,6 +22,9 @@ import {
   DetailSection,
 } from './DetailPrimitives.tsx'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
+import { EligibilityComparisonSection, type EvidenceTarget } from './EligibilityComparisonSection'
+import type { PdfFocus } from './PdfDocumentPreview.tsx'
+import { useConditions } from '../../user/conditions/ConditionsContext'
 import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge.tsx'
 import { ApplicationScheduleGroups } from './ApplicationScheduleGroups'
@@ -135,6 +138,7 @@ interface FloorPlanSelection {
 }
 
 const DETAIL_SECTIONS = [
+  { key: 'eligibility', label: '자격' },
   { key: 'summary', label: '요약' },
   { key: 'schedule', label: '일정' },
   { key: 'housing', label: '주택형' },
@@ -165,6 +169,20 @@ export function HousingAnnouncementDetailPanel({
   const primaryAttachment = announcementFiles.find((attachment) => /\.pdf$/i.test(attachment.fileName?.trim() ?? ''))
     ?? announcementFiles.find((attachment) => /\.hwpx?$/i.test(attachment.fileName?.trim() ?? ''))
     ?? announcementFiles[0]
+  const [evidence, setEvidence] = useState<{ readonly announcementId: string; readonly attachment: HousingAnnouncementDetailAttachment; readonly focus: PdfFocus | null } | null>(null)
+  const { notify } = useConditions()
+  // 근거의 원문 파일이 첨부에 있으면 그 파일, 없으면 대표 공고문을 근거 쪽으로 연다.
+  const openEvidence = ({ evidence: ref, label }: EvidenceTarget) => {
+    const normalize = (name: string) => name.replace(/\s/g, '').toLowerCase()
+    const matched = ref.fileName
+      ? detail.attachments.find((attachment) => hasAttachmentUrl(attachment) && attachment.fileName && normalize(attachment.fileName) === normalize(ref.fileName ?? ''))
+      : undefined
+    const attachment = matched ?? primaryAttachment
+    const pdf = Boolean(attachment && /\.pdf$/i.test(attachment.fileName?.trim() ?? ''))
+    if (!pdf) notify(`공고문 ${ref.page}쪽을 확인해 주세요`)
+    if (!attachment) return
+    setEvidence({ announcementId: detail.announcementId, attachment, focus: pdf ? { page: ref.page, query: ref.location ?? label, nonce: Date.now() } : null })
+  }
   const title = detail.title ?? MISSING_DATA_LABEL
   const titleId = `announcement-detail-title-${detail.announcementId}`
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -219,9 +237,9 @@ export function HousingAnnouncementDetailPanel({
         aria-label={`${title} 상세 내용`}
         tabIndex={0}
       >
-        <div id={`${sectionId}-summary`} className={styles.sectionGroup}
-          role="region" aria-label="요약 영역" tabIndex={-1}
-          ref={(node) => { sectionRefs.current.summary = node }}>
+        <div id={`${sectionId}-eligibility`} className={styles.sectionGroup}
+          role="region" aria-label="자격 영역" tabIndex={-1}
+          ref={(node) => { sectionRefs.current.eligibility = node }}>
           <div className={styles.summaryBlock}>
             <div className={styles.summaryIdentity}>
               <NoticeIntro detail={detail} groups={groups} />
@@ -234,6 +252,11 @@ export function HousingAnnouncementDetailPanel({
               />
             </div>
           </div>
+          <EligibilityComparisonSection detail={detail} onOpenEvidence={openEvidence} />
+        </div>
+        <div id={`${sectionId}-summary`} className={styles.sectionGroup}
+          role="region" aria-label="요약 영역" tabIndex={-1}
+          ref={(node) => { sectionRefs.current.summary = node }}>
           <CoreInformation detail={detail} />
           <ReasonNotice detail={detail} />
         </div>
@@ -274,6 +297,11 @@ export function HousingAnnouncementDetailPanel({
         <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={[primaryAttachment]}
           onClose={() => setAttachmentAnnouncementId(null)} />
       )}
+      {evidence?.announcementId === detail.announcementId && (
+        <AttachmentDialog key={`evidence:${evidence.focus?.nonce ?? evidence.attachment.attachmentId}`} announcementId={detail.announcementId}
+          attachments={[evidence.attachment]} initialAttachmentId={evidence.attachment.attachmentId} focus={evidence.focus}
+          onClose={() => setEvidence(null)} />
+      )}
       {floorPlan && (
         <FloorPlanDialog selection={floorPlan} onClose={() => setFloorPlan(null)} />
       )}
@@ -284,17 +312,17 @@ export function HousingAnnouncementDetailPanel({
 function useAnnouncementSections(announcementId: string) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<DetailSectionKey, HTMLDivElement | null>>({
-    summary: null, schedule: null, housing: null,
+    eligibility: null, summary: null, schedule: null, housing: null,
   })
   const [selection, setSelection] = useState<{ announcementId: string; key: DetailSectionKey }>({
-    announcementId, key: 'summary',
+    announcementId, key: DETAIL_SECTIONS[0].key,
   })
-  const activeSection = selection.announcementId === announcementId ? selection.key : 'summary'
+  const activeSection = selection.announcementId === announcementId ? selection.key : DETAIL_SECTIONS[0].key
 
   const trackSection = useCallback(() => {
     const scroll = scrollRef.current
     if (!scroll) return
-    let key: DetailSectionKey = 'summary'
+    let key: DetailSectionKey = DETAIL_SECTIONS[0].key
     if (scroll.scrollTop > 0) {
       const top = scroll.getBoundingClientRect().top
       for (const section of DETAIL_SECTIONS) {

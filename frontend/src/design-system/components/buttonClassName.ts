@@ -1,7 +1,7 @@
 import styles from './Button.module.css'
 
 export type ButtonAppearance = {
-  readonly size?: 'md' | 'lg'
+  readonly size?: 'sm' | 'md' | 'lg'
   readonly variant?: 'primary' | 'secondary'
 }
 

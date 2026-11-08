@@ -18,6 +18,21 @@ import {
   type HousingAnnouncementDetailData,
 } from './HousingAnnouncementDetailPanel.tsx'
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
+import { ConditionsContext, type ConditionsContextValue } from '../../user/conditions/ConditionsContext'
+import { EMPTY_PROFILE, type ComparisonView, type ConditionsRepository } from '../../user/conditions/conditionsModel'
+
+function evidenceConditions(): ConditionsContextValue {
+  const view: ComparisonView = { announcementId: '101', availability: 'AVAILABLE', referenceDate: '2026-11-06', requiredQualification: null, types: [{
+    key: 'youth', label: '청년', coverage: 'GENERAL', status: 'MATCHED', units: '', guidances: [],
+    checks: [{ id: 'income', label: '본인 소득', status: 'SATISFIED', mine: '월 230만 원', criterion: '월 256만 원 이하', basis: null, evidence: { page: 6, location: '소득표', fileName: null }, fields: ['APPLICANT_MONTHLY_INCOME'], missingReason: null }],
+  }] }
+  return {
+    mode: 'member', hasProfile: true, memberDraft: null, revision: 1, lastSave: null,
+    stored: { version: 1, savedAt: '2026-11-06T00:00:00.000Z', profile: { ...EMPTY_PROFILE, facts: { BIRTH_DATE: { state: 'PROVIDED', value: '1996-03-02' } } } },
+    repository: { loadProfile: vi.fn(), saveProfile: vi.fn(), loadListResults: vi.fn(), loadComparison: vi.fn(async (ref: { announcementId: string }) => ({ ...view, announcementId: ref.announcementId })) } as unknown as ConditionsRepository,
+    openInput: vi.fn(), restartInput: vi.fn(), openNudge: vi.fn(), clearProfile: vi.fn(), notify: vi.fn(),
+  }
+}
 
 describe('HousingAnnouncementDetailPanel', () => {
   it.each([
@@ -37,6 +52,28 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(dialog).queryByRole('button', { name: '파일 목록' })).not.toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: '첨부파일 닫기' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('puts 내 조건 비교 in the 자격 area and opens the main PDF notice from an evidence page', async () => {
+    const conditions = evidenceConditions()
+    render(<ConditionsContext value={conditions}><HousingAnnouncementDetailPanel detail={detail({ attachments: [
+      { attachmentId: 'ref', fileName: '참고자료.pdf', fileTypeLabel: '참고자료', fileUrl: 'https://example.com/reference.pdf' },
+      { attachmentId: 'pdf', fileName: '대표.PDF', fileTypeLabel: '공고문', fileUrl: 'https://example.com/notice.pdf' },
+    ] })} onClose={vi.fn()} /></ConditionsContext>)
+    const area = screen.getByRole('region', { name: '자격 영역' })
+    fireEvent.click(await within(area).findByRole('button', { name: '근거 공고문 6쪽 소득표 열기' }))
+    const dialog = screen.getByRole('dialog', { name: '첨부파일' })
+    expect(within(dialog).getByText('대표.PDF')).toBeVisible()
+    expect(conditions.notify).not.toHaveBeenCalled()
+  })
+
+  it('tells the page when the main notice is not a PDF', async () => {
+    const conditions = evidenceConditions()
+    render(<ConditionsContext value={conditions}><HousingAnnouncementDetailPanel detail={detail({ attachments: [
+      { attachmentId: 'hwp', fileName: '대표.hwpx', fileTypeLabel: '공고문', fileUrl: 'https://example.com/notice.hwpx' },
+    ] })} onClose={vi.fn()} /></ConditionsContext>)
+    fireEvent.click(await screen.findByRole('button', { name: '근거 공고문 6쪽 소득표 열기' }))
+    expect(conditions.notify).toHaveBeenCalledWith('공고문 6쪽을 확인해 주세요')
   })
 
   it('참고자료만 있으면 공고문 보기를 비활성화하고 첨부파일에서는 열 수 있다', () => {
@@ -172,48 +209,53 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(targets).getByRole('cell', { name: '0원' })).toBeVisible()
   })
 
-  it('요약·일정·주택형 링크로 상세 내부를 이동하고 직접 스크롤한 구역을 추적한다', () => {
+  it('자격·요약·일정·주택형 링크로 상세 내부를 이동하고 직접 스크롤한 구역을 추적한다', () => {
     const { rerender } = render(<HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />)
     const navigation = screen.getByRole('navigation', { name: '공고 상세 섹션' })
+    expect(within(navigation).getAllByRole('link').map((link) => link.textContent)).toEqual(['자격', '요약', '일정', '주택형'])
+    const eligibility = within(navigation).getByRole('link', { name: '자격' })
     const summary = within(navigation).getByRole('link', { name: '요약' })
     const schedule = within(navigation).getByRole('link', { name: '일정' })
     const housing = within(navigation).getByRole('link', { name: '주택형' })
     const scroll = screen.getByRole('region', { name: '성남 행복주택 예비입주자 모집 상세 내용' })
-    const sections = [summary, schedule, housing].map((link) => document.getElementById(link.getAttribute('href')!.slice(1))!)
+    const sections = [eligibility, summary, schedule, housing].map((link) => document.getElementById(link.getAttribute('href')!.slice(1))!)
     expect(sections.every(Boolean)).toBe(true)
     expect(scroll).not.toContainElement(navigation)
-    expect(summary).toHaveAttribute('aria-current', 'location')
+    expect(eligibility).toHaveAttribute('aria-current', 'location')
     const rect = (top: number) => ({ top, bottom: top + 400, height: 400, width: 480, left: 0, right: 480, x: 0, y: top, toJSON: () => ({}) })
     vi.spyOn(scroll, 'getBoundingClientRect').mockImplementation(() => rect(100))
-    Object.defineProperties(scroll, { clientHeight: { configurable: true, value: 400 }, scrollHeight: { configurable: true, value: 1600 } })
+    Object.defineProperties(scroll, { clientHeight: { configurable: true, value: 400 }, scrollHeight: { configurable: true, value: 2400 } })
     sections.forEach((section, index) => vi.spyOn(section, 'getBoundingClientRect')
       .mockImplementation(() => rect(100 + index * 600 - scroll.scrollTop)))
     scroll.scrollTo = vi.fn((options: ScrollToOptions) => {
-      scroll.scrollTop = Math.min(options.top ?? 0, 1200)
+      scroll.scrollTop = Math.min(options.top ?? 0, 2000)
       fireEvent.scroll(scroll)
     }) as typeof scroll.scrollTo
 
-    fireEvent.click(schedule)
+    fireEvent.click(summary)
     expect(scroll.scrollTop).toBe(600)
     expect(sections[1]).toHaveFocus()
+    expect(summary).toHaveAttribute('aria-current', 'location')
+    fireEvent.click(schedule)
+    expect(scroll.scrollTop).toBe(1200)
     expect(schedule).toHaveAttribute('aria-current', 'location')
     expect(summary).not.toHaveAttribute('aria-current')
-    scroll.scrollTop = 1210
+    scroll.scrollTop = 2000
     fireEvent.scroll(scroll)
     expect(housing).toHaveAttribute('aria-current', 'location')
     scroll.scrollTop = 300
     fireEvent.scroll(scroll)
-    expect(summary).toHaveAttribute('aria-current', 'location')
+    expect(eligibility).toHaveAttribute('aria-current', 'location')
     fireEvent.click(housing)
     expect(housing).toHaveAttribute('aria-current', 'location')
-    fireEvent.click(summary)
+    fireEvent.click(eligibility)
     expect(scroll.scrollTop).toBe(0)
-    expect(summary).toHaveAttribute('aria-current', 'location')
+    expect(eligibility).toHaveAttribute('aria-current', 'location')
     scroll.scrollTop = 600
     fireEvent.scroll(scroll)
     rerender(<HousingAnnouncementDetailPanel detail={detail({ announcementId: '202' })} onClose={vi.fn()} />)
     expect(scroll.scrollTop).toBe(0)
-    expect(summary).toHaveAttribute('aria-current', 'location')
+    expect(eligibility).toHaveAttribute('aria-current', 'location')
     vi.restoreAllMocks()
   })
 
