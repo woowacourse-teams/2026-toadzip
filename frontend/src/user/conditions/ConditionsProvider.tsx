@@ -274,9 +274,9 @@ export function ConditionsProvider({ children, createRepository = defaultReposit
     if (!handoff) return
     const meta: SaveMeta = { origin: handoff.origin, kind: 'full', fields: [], announcementId: handoff.announcementId, afterLogin: true }
     // 이미 저장한 내 조건이 있으면 바꿀지 먼저 묻는다.
-    if (Object.keys(stored.profile.facts).length > 0) setConflict({ profile: toProfile(handoff.draft), meta, editing: false })
+    if (hasProfile) setConflict({ profile: toProfile(handoff.draft), meta, editing: false })
     else void persist(toProfile(handoff.draft), meta, false, stored.version)
-  }, [ownsProfile, persist, profileStatus, stored])
+  }, [hasProfile, ownsProfile, persist, profileStatus, stored])
 
   const openInput = useCallback((request: InputRequest, options: OpenInputOptions = {}) => {
     setNudge(null)

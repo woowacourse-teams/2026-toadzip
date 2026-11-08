@@ -41,7 +41,7 @@ describe('AnnouncementFilterPanel', () => {
     const onToggle = vi.fn()
     render(<AnnouncementFilterPanel filters={{}} onApply={vi.fn()} regionRepository={{ search: vi.fn().mockResolvedValue([]) }}
       eligibilityFilter={{ checked: true, onToggle }} />)
-    const toggle = screen.getByRole('switch', { name: '지원 가능' })
+    const toggle = screen.getByRole('switch', { name: '불러온 공고 중 지원 가능한 공고' })
     expect(toggle).toHaveAttribute('aria-checked', 'true')
     expect(toggle.className).toBe(screen.getByRole('button', { name: /최신순/ }).className)
     fireEvent.click(toggle)
@@ -241,7 +241,7 @@ describe('AnnouncementFilterPanel', () => {
       .toBeInTheDocument()
     expect(within(districtSelect).queryByRole('option', {
       name: '수원시 장안구',
-    })).not.toBeInTheDocument()
+    })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })

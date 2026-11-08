@@ -113,7 +113,11 @@ function mapReading(id: string, label: string, raw: Json, rule: Json, source: Ev
   const calculated = compared.comparedValue !== undefined && compared.comparedValue !== compared.providedValue
     ? ` (기준일 환산 ${display(compared.comparedValue, null, text(compared.unit))})` : ''
   const mine = compared.vehicleOwned === false ? '자동차 없음' : compared.inputState === 'NOT_APPLICABLE' ? '해당 없음' : supplied ? supplied + calculated : null
-  const basis = record(compared.basis) ? Object.values(compared.basis).filter((item) => typeof item === 'string' || typeof item === 'number').join(' · ') : null
+  const sourceBasis = record(compared.basis) ? compared.basis : {}
+  const basis = [typeof sourceBasis.standardYear === 'number' ? `${sourceBasis.standardYear}년` : '',
+    sourceBasis.standardKind === 'URBAN_WORKER_MONTHLY_INCOME' ? '도시근로자 월평균 소득' : '',
+    typeof sourceBasis.familyCount === 'number' ? `${sourceBasis.familyCount}인 가구` : '',
+    typeof sourceBasis.percent === 'number' ? `${sourceBasis.percent}%` : ''].filter(Boolean).join(' · ') || null
   return { id, label, status: oneOf(raw.status, ['SATISFIED', 'NOT_SATISFIED', 'INPUT_NEEDED', 'DIRECT_CHECK_REQUIRED']),
     mine, criterion: criterion(compared, rule, name), basis, evidence: source,
     fields: missing.length ? missing : name ? [name] : [], missingReason: missing.length ? 'UNANSWERED' : null, children }

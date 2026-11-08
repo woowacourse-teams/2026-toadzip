@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAge, formatDigitsAsDate, formatDots, formatWon, withJosa } from './conditionFormat'
+import { formatAge, formatDigitsAsDate, formatDots, formatMonthDay, formatWon, withJosa } from './conditionFormat'
 
 describe('conditionFormat', () => {
   it('formats won in 억·만 units', () => {
@@ -14,6 +14,11 @@ describe('conditionFormat', () => {
     expect(formatDigitsAsDate('1996')).toBe('1996')
     expect(formatDigitsAsDate('199603')).toBe('1996.03')
     expect(formatDigitsAsDate('19960302')).toBe('1996.03.02')
+  })
+
+  it('shows saved timestamps on the Seoul calendar date', () => {
+    expect(formatMonthDay('2026-11-08T20:00:00Z')).toBe('11월 9일')
+    expect(formatMonthDay('2026-11-08')).toBe('11월 8일')
   })
 
   it('counts the international age at a reference date', () => {

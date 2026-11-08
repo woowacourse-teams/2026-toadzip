@@ -34,7 +34,8 @@ export function formatAge(birthIso: string, referenceIso: string): string {
 
 /** "M월 D일" */
 export function formatMonthDay(iso: string): string {
-  const [, month, day] = iso.slice(0, 10).split('-').map(Number)
+  const dayInSeoul = iso.includes('T') ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)) : iso
+  const [, month, day] = dayInSeoul.slice(0, 10).split('-').map(Number)
   return `${month}월 ${day}일`
 }
 

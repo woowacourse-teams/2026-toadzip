@@ -134,7 +134,7 @@ export function AnnouncementFilterPanel({
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
         <div className={styles.toolbarControls}>
           {eligibilityFilter && <button className={styles.sort} type="button" role="switch" aria-checked={eligibilityFilter.checked}
-            onClick={eligibilityFilter.onToggle}>지원 가능</button>}
+            aria-label="불러온 공고 중 지원 가능한 공고" title="현재 목록에 불러온 공고를 내 신청자격으로 확인합니다." onClick={eligibilityFilter.onToggle}>지원 가능</button>}
           <div className={styles.sortOptions} role="group" aria-label="공고 정렬">
             <button className={styles.sort} type="button" aria-pressed={latestSelected}
               aria-describedby={sortDescriptionId} onClick={changeSort}>
@@ -212,6 +212,7 @@ export function AnnouncementFilterPanel({
           <div className={styles.fields}>
             <div className={styles.grid}>
               <RegionFilterFields
+                includeSubdistricts
                 initialRegionCode={formFilters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
                 loadingMessage="시·군·구 목록을 불러오는 중이에요."

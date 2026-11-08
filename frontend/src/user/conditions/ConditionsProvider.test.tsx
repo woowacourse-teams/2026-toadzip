@@ -10,6 +10,7 @@ import {
   ConditionsConflictError,
   ConditionsSessionError,
   EMPTY_PROFILE,
+  PROFILE_FIELDS,
   type ConditionProfile,
   type ConditionsRepository,
   type StoredConditionProfile,
@@ -181,9 +182,12 @@ describe('ConditionsProvider', () => {
 
   it('hands a guest draft over a real login and saves it after login', async () => {
     saveLoginHandoff({ draft: setAnswer(emptyDraft(), 'BIRTH_DATE', '1996-03-02'), origin: 'list', announcementId: null })
-    const repository = fakeRepository()
+    const repository = fakeRepository({ version: 0, savedAt: null, profile: {
+      familyDetailsState: 'NOT_STARTED', facts: Object.fromEntries(PROFILE_FIELDS.map((field) => [field, { state: 'UNKNOWN' as const }])),
+    } })
     renderProvider(repository)
     expect(await screen.findByText('revision:1')).toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('로그인하고 내 조건을 저장했어요 · 현재 정보로 다시 확인하고 있어요')
     expect(sessionStorage.getItem('toadzip:condition-handoff')).toBeNull()
   })

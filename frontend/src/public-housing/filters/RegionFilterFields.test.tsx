@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { RegionFilterFields } from './RegionFilterFields'
+import { districtRegionOptionsForProvince } from '../model/publicHousingRegion'
 import { topicDraftFromForm } from './searchFilterForm'
 
 const regions = [
@@ -27,4 +28,22 @@ describe('읍면동 지역 선택', () => {
     fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '' } })
     await waitFor(() => expect(screen.getByLabelText('읍·면·동')).toBeDisabled())
   })
+})
+
+const yongin = [
+  { regionCode: '41460', provinceName: '경기도', districtName: '용인시', displayName: '경기도 용인시' },
+  { regionCode: '41463', provinceName: '경기도', districtName: '용인시 기흥구', displayName: '경기도 용인시 기흥구' },
+  { regionCode: '41465', provinceName: '경기도', districtName: '용인시 수지구', displayName: '경기도 용인시 수지구' },
+  { regionCode: '4146510100', provinceName: '경기도', districtName: '용인시 수지구', displayName: '경기도 용인시 수지구 풍덕천동' },
+]
+
+it('공고에서 하위 구 전체를 선택하고 기존 단지 필터의 부모 도시 목록은 유지한다', async () => {
+  expect(districtRegionOptionsForProvince(yongin, '41').map((region) => region.regionCode)).toEqual(['41460'])
+  expect(districtRegionOptionsForProvince(yongin, '41', true).map((region) => region.regionCode)).toEqual(['41460', '41463', '41465'])
+  const { container } = render(<form><RegionFilterFields includeSubdistricts initialRegionCode="41" messageId="region-message" loadingMessage="불러오는 중"
+    repository={{ search: async () => yongin }} styles={{ field: '', regionFields: '', regionError: '' }} /></form>)
+  await screen.findByRole('option', { name: '용인시 수지구' })
+  fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '41465' } })
+  expect(screen.getByLabelText('읍·면·동')).toHaveValue('')
+  expect(topicDraftFromForm('region', new FormData(container.querySelector('form')!))).toEqual({ regionCode: '41465' })
 })

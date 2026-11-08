@@ -13,6 +13,7 @@ import {
 
 interface RegionFilterFieldsProps {
   readonly grid?: boolean
+  readonly includeSubdistricts?: boolean
   readonly onRegionReset?: (regionCode: string) => void
   readonly initialRegionCode: string
   readonly messageId: string
@@ -27,12 +28,12 @@ interface RegionFilterFieldsProps {
 }
 
 export function RegionFilterFields({
-  initialRegionCode, messageId, loadingMessage, repository, styles, grid = false, onRegionReset,
+  initialRegionCode, messageId, loadingMessage, repository, styles, grid = false, onRegionReset, includeSubdistricts = false,
 }: RegionFilterFieldsProps) {
   const {
     provinceCode, districtCode, districtOptions, neighborhoodCode, neighborhoodOptions, loadStatus, fieldsRef,
     selectProvince, selectDistrict, selectNeighborhood,
-  } = useRegionSelection(initialRegionCode, repository)
+  } = useRegionSelection(initialRegionCode, repository, includeSubdistricts)
 
   const [stage, setStage] = useState(0)
   const stageButtons = useRef<(HTMLButtonElement | null)[]>([])
@@ -180,6 +181,7 @@ export function RegionFilterFields({
 function useRegionSelection(
   initialRegionCode: string,
   repository: PublicHousingRegionRepository,
+  includeSubdistricts: boolean,
 ) {
   const initialProvinceCode = provinceCodeFrom(initialRegionCode)
   const initialDistrictCode = initialRegionCode.length >= 5 ? initialRegionCode.slice(0, 5) : ''
@@ -192,14 +194,14 @@ function useRegionSelection(
   const fieldsRef = useRef<HTMLDivElement>(null)
   const provinceName = provinceNameForRegionCode(provinceCode)
   const districtOptions = useMemo(() => {
-    const options = districtRegionOptionsForProvince(regions, provinceCode)
+    const options = districtRegionOptionsForProvince(regions, provinceCode, includeSubdistricts)
     if (districtCode === '' || options.some(({ regionCode }) => regionCode === districtCode)) {
       return options
     }
     const selectedRegion = regions.find(({ regionCode }) => regionCode === districtCode)
       ?? selectedRegionFallback(districtCode, provinceName)
     return [selectedRegion, ...options]
-  }, [districtCode, provinceCode, provinceName, regions])
+  }, [districtCode, provinceCode, provinceName, regions, includeSubdistricts])
 
   const neighborhoodOptions = useMemo(() => {
     const options = neighborhoodRegionOptionsForDistrict(regions, districtCode)

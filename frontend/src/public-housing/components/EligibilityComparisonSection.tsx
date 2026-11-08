@@ -219,8 +219,9 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
     <div className={styles.verdict} data-status={type.status}>
       <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={26} className={styles.mark} /></span>
       <div>
+        <span className={styles.pathLabel}>{type.label}</span>
         <strong>{copy.title}</strong>
-        <p>{copy.message}</p>
+        {copy.message.replace(/[.。]$/, '') !== copy.title.replace(/[.。]$/, '') && <p>{copy.message}</p>}
         {type.missingInputMessage && <p>{type.missingInputMessage}</p>}
         {(copy.missingFields.length > 0 || copy.showFix && firstUnmet) && <div className={styles.verdictActions}>
           {copy.missingFields.length > 0 && <Button size="sm" variant="secondary"
@@ -282,7 +283,7 @@ function CheckRow({ announcementId, check, type, just, onOpenEvidence }: { reado
     <div className={styles.side}>
       {check.status === 'SATISFIED' && <b className={styles.mine}>입력값 {check.mine ?? '확인됨'}</b>}
       {check.status === 'NOT_SATISFIED' && field && <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 수정, 지금 값 ${check.mine ?? ''}`}
-        onClick={() => openFix(openInput, check.fields, announcementId)}>{check.mine}<PencilIcon size={14} /></button>}
+        onClick={() => openFix(openInput, check.fields, announcementId)}>입력값 {check.mine}<PencilIcon size={14} /></button>}
       {check.status === 'INPUT_NEEDED' && field && <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 입력하기`}
         onClick={() => openInput({ mode: 'partial', fields: check.fields, origin: 'detail' }, { announcementId })}>입력하기<PlusIcon size={14} /></button>}
       {check.evidence && <EvidenceButton evidence={check.evidence} label={check.label} onOpen={onOpenEvidence} inline />}

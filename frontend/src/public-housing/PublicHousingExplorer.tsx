@@ -2046,7 +2046,7 @@ function conditionLineOf(result: ListConditionResult | undefined) {
 function NoMatchedAnnouncements() {
   return <div className="housing-results__state" role="status">
     <strong>불러온 공고에는 선택 지역의 지원 가능한 모집 선택지가 없어요</strong>
-    <span>현재 불러온 목록에만 적용한 결과예요. 다음 공고를 불러오거나 필터를 해제해 다른 공고도 확인해 주세요.</span>
+    <span>현재 불러온 목록에만 적용한 결과예요. 필터를 해제해 다른 공고도 확인해 주세요.</span>
   </div>
 }
 
