@@ -220,7 +220,7 @@ it('검색 조건과 페이지를 서버에 전달하고 직접 접근한 오류
   expect(fetchFailures).toHaveBeenCalledWith('announcement','all','PENDING',2,expect.any(AbortSignal),{keyword:'한스빌',executionId:null})
   fireEvent.click(screen.getByRole('button',{name:'닫기'}))
   fireEvent.change(screen.getByLabelText('이름·원천 식별자'), {target:{value:'A-26'}})
-  fireEvent.click(screen.getByRole('button',{name:'오류 검색'}))
+  fireEvent.click(screen.getByRole('button',{name:'검색'}))
   await waitFor(() => expect(fetchFailures).toHaveBeenLastCalledWith('announcement','all','PENDING',0,expect.any(AbortSignal),{keyword:'A-26',executionId:null}))
 })
 
@@ -272,10 +272,9 @@ it('현재 페이지의 같은 공고 주택형 오류를 묶고 원래 필터�
     {...eligible,id:3,reason:'COMPLEX_NOT_FOUND'}, {...eligible,id:4,product:{...product,id:40,deleted:true}},
     {...eligible,id:5,status:'RESOLVED'}, {...eligible,id:6,product:null,productLinkStatus:'NOT_FOUND'}]))
   render(<MemoryRouter initialEntries={['/admin/failures?domain=announcement&category=all&keyword=한스빌']}><IngestFailurePanel domain="announcement" executionId={null}/></MemoryRouter>)
-  const group = await screen.findByRole('region',{name:'PDF로 보정할 공고'})
-  expect(within(group).getByText('이 페이지의 주택형 대응 오류')).toBeVisible()
-  const link = within(group).getByRole('link',{name:'PDF로 보정 · 2건'})
-  expect(within(group).getAllByRole('link')).toHaveLength(1)
+  const link = await screen.findByRole('link', {name: 'PDF로 보정 · 2건'})
+  expect(screen.getAllByRole('link', {name: 'PDF로 보정 · 2건'})).toHaveLength(1)
+  expect(screen.getAllByRole('button', {name: /^확인·처리:/})).toHaveLength(6)
   const url = new URL(link.getAttribute('href')!, 'http://localhost')
   expect(url.pathname).toBe('/admin/announcements/29/pdf-correction')
   const back = new URL(url.searchParams.get('failureReturnTo')!, 'http://localhost')

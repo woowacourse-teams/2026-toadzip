@@ -1,0 +1,18 @@
+.filters[class] { margin-block: var(--ds-space-4) var(--ds-space-6); min-width: 0; }
+.row, .more { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-3); }
+.row { margin: 0; padding: 0; border: 0; background: transparent; }
+.filters[class] .search { position: relative; flex: 1 1 240px; max-width: 460px; min-width: 180px; }
+.filters[class] .search input { width: 100%; height: 40px; padding: 0 44px 0 14px; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.filters[class] .search button { position: absolute; right: 2px; top: 2px; width: 36px; height: 36px; min-height: 0; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--ds-color-muted); }
+.filters[class] label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--ds-text-caption); color: var(--ds-color-muted); white-space: nowrap; font-weight: 400; }
+.filters[class] select { height: 40px; min-width: 100px; max-width: 220px; font-size: var(--ds-text-caption); padding-block: 0; background-color: var(--ds-color-surface); }
+.filters[class] input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--ds-color-action); }
+.filters[class] .toggle { display: inline-flex; gap: 6px; align-items: center; padding: 8px; border: 0; background: transparent; color: var(--ds-color-label); font-weight: 500; }
+.toggle[aria-expanded=true] { color: var(--ds-color-action); }
+.more { margin-top: var(--ds-space-3); }
+.more[hidden] { display: none; }
+.applied { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--ds-space-3); }
+.filters[class] .applied button { display: inline-flex; gap: 8px; align-items: center; padding: 4px 8px; min-height: 28px; background: var(--ds-color-action-soft); color: var(--ds-color-action); border: 0; font-size: var(--ds-text-caption); font-weight: 400; }
+.filters[class] .applied .reset { background: transparent; color: var(--ds-color-muted); text-decoration: underline; }
+.filters[class] :is(button, input, select):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+@media (max-width: 767px) { .filters[class] .search { flex-basis: 100%; max-width: none; } .row, .more { gap: 8px 12px; } .filters[class] select { max-width: 180px; } }

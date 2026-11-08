@@ -62,6 +62,13 @@ class LhAnnouncementComplexLinker {
             if (complex.observeAgain(detail.roadAddress(), detail.totalHouseholdCount())) {
                 tally.updated++;
             }
+            // 원공고에 늦게 이어진 정정·취소공고는 아직 연결이 없는 공고 단지가 원공고의 단지 연결을 이어받는다.
+            if (complex.linkedComplex() == null) {
+                Optional<Long> inherited = inheritedComplexId(announcement, complex.getSourceComplexName());
+                if (inherited.isPresent() && linkTo(complex, inherited.get(), ComplexLinkMethod.AUTO)) {
+                    tally.inherited++;
+                }
+            }
             result.put(detail.name(), complex);
         }
         stored.values().forEach(absent -> {

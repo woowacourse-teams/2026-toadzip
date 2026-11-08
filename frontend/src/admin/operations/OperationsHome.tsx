@@ -20,7 +20,7 @@ const helpText = {
   users: ['유저 집계', '전체 회원과 새 사용자 의견은 조회 시점 기준입니다. 신규 가입·추이에만 선택 기간을 적용하고 바로 앞의 같은 길이 기간과 비교합니다. 오늘은 조회 시각까지 포함하므로 이전 기간과 비교할 때 참고해 주세요. 홈에는 회원 개인정보를 표시하지 않습니다.'],
   notifications: ['알림 집계', '활성 알림은 현재 유효한 신청 설정 수이며 신청 유저는 중복을 제외합니다. 신청·취소는 선택 기간의 실제 상태 변화이며 재신청을 포함하고 자동 만료는 제외합니다. 신청−취소는 활성 알림의 순증이 아닙니다. 미집계 날짜가 포함된 기간은 합계·증감을 미집계로 표시합니다. 오늘과 집계 시작일은 일부 시간만 포함됩니다. 발송 실패·재시도 대기는 현재 상태입니다.'],
   messages: ['카카오톡 메시지 발송', '관리자가 수신 대상을 정하고 카카오톡 API로 메시지를 보내는 기능은 후속 작업입니다. 현재는 준비중 진입점만 제공합니다.'],
-  links: ['연결 기준', '각 숫자는 기존 관리 화면으로 연결합니다. 기관별 단지·원천 변경 재검토·미확정 공고·새 의견·활성 알림·신청 취소 추이·발송 상태는 기존 필터를 적용합니다. 모집중 단지·좌표 미확인·공고 접수 상태와 누락 사유·가입 기간 필터는 후속 작업이며, 현재는 기존 전체 목록으로 연결합니다. 기관별 수집 링크는 기존 공고 수집 이력으로 이동합니다.'],
+  links: ['연결 기준', '각 숫자는 기존 관리 화면으로 연결합니다. 기관별 단지·원천 변경 재검토·미확정 공고·새 의견·활성 알림·신청 취소 추이·발송 상태는 기존 필터를 적용합니다. 모집중·좌표 미확인·공고 접수 상태와 확인 필요 사유도 목록에 적용합니다. 가입 기간 필터는 후속 작업입니다. 기관별 수집 링크는 기존 공고 수집 이력으로 이동합니다.'],
   period: ['기간 적용', '7일·30일 선택은 신규 가입과 알림 신청·취소에만 적용합니다. 오늘을 포함한 한국 시각 기준이며 증감은 바로 앞의 같은 길이 기간과 비교합니다. 전체·활성·현재 상태 지표는 조회 시점 기준으로 유지합니다.'],
 } as const
 export type OperationsHelp = keyof typeof helpText
@@ -49,9 +49,9 @@ export function OperationsHome() {
         <div className={styles.panelTop}><div className={styles.panelTitle}><OperationsIcon name="building" /><h2>단지</h2>{info('complex', '단지 집계 기준')}</div><Link to="/admin/complexes">관리 ↗</Link></div>
         <div className={styles.panelBody}>
           <div className={styles.stats}><OperationsMetric title="전체 단지" value={complex.data?.total} query={complex} href="/admin/complexes" primary />
-            <OperationsMetric title="모집중" value={complex.data?.recruiting} query={complex} href="/admin/complexes" blue pendingFilter /></div>
+            <OperationsMetric title="모집중" value={complex.data?.recruiting} query={complex} href="/admin/complexes?recruiting=true" blue /></div>
           <OperationsStatus query={complex} />
-          <div className={styles.compactStats}><Link to="/admin/complexes" title="좌표 미확인 필터 추가 예정 · 기존 단지 관리로 이동">좌표 미확인 <strong>{operationCount(complex.data?.missingCoordinates, complex)}</strong></Link>
+          <div className={styles.compactStats}><Link to="/admin/complexes?missingCoordinates=true">좌표 미확인 <strong>{operationCount(complex.data?.missingCoordinates, complex)}</strong></Link>
             <Link to="/admin/complexes?review=true"><OperationsIcon name="refresh" />재검토 <strong>{operationCount(complex.data?.reviewRequired, complex)}</strong></Link></div>
           <div className={styles.agencySection}><h3>기관별 단지</h3><div className={styles.agencyBar} aria-hidden="true">{(['LH', 'SH', 'GH'] as const).map(agency => <span key={agency} data-agency={agency} style={{ flex: complex.data?.agencies[agency] ?? 0 }} />)}</div>
             <div className={styles.agencyCounts}>{(['LH', 'SH', 'GH'] as const).map(agency => <Link key={agency} to={`/admin/complexes?provider=${agency}`}><span data-agency={agency}>{agency}</span>{' '}<strong>{operationCount(complex.data?.agencies[agency], complex)}</strong></Link>)}</div></div>
@@ -61,10 +61,10 @@ export function OperationsHome() {
       <section className={styles.panel} aria-label="공고">
         <div className={styles.panelTop}><div className={styles.panelTitle}><OperationsIcon name="document" /><h2>공고</h2>{info('announcement', '공고 집계 기준')}</div><Link to="/admin/announcements">관리 ↗</Link></div>
         <div className={styles.panelBody}>
-          <div className={`${styles.stats} ${styles.announcementStats}`}>{([['BEFORE_APPLICATION', '공고중'], ['APPLYING', '접수중'], ['CLOSED', '접수마감']] as const).map(([status, label]) => <OperationsMetric key={status} title={label} value={announcement.data?.statuses[status]} query={announcement} href="/admin/announcements" blue={status === 'APPLYING'} pendingFilter />)}</div>
-          <div className={styles.otherStatuses}>{[['CONDITIONAL', '조건부 접수'], ['CANCELLED', '공고취소'], ['UNKNOWN', '일정 미정']].map(([status, label]) => <Link key={status} to="/admin/announcements" title="접수 상태 필터 추가 예정 · 기존 공고 관리로 이동">{label} <strong>{operationCount(announcement.data?.statuses[status], announcement)}</strong></Link>)}</div>
-          <div className={styles.review}><div className={styles.reviewHead}><Link to="/admin/announcements" title="확인 필요 통합 필터 추가 예정"><OperationsIcon name="alert" />확인 필요 <strong>{operationCount(announcement.data?.attention, announcement)}</strong> ↗</Link>{info('review', '확인 필요 집계 기준')}</div>
-            <div className={styles.reviewReasons}>{[['SCHEDULE_MISSING', '일정 누락'], ['SUPPLY_MISSING', '공급정보 누락'], ['UNCONFIRMED', '미확정']].map(([reason, label]) => <Link key={reason} to={reason === 'UNCONFIRMED' ? '/admin/announcements?unconfirmed=true' : '/admin/announcements'} title={reason === 'UNCONFIRMED' ? undefined : '사유 필터 추가 예정 · 기존 공고 관리로 이동'}>{label} <strong>{operationCount(announcement.data?.reasons[reason], announcement)}</strong></Link>)}</div>
+          <div className={`${styles.stats} ${styles.announcementStats}`}>{([['BEFORE_APPLICATION', '공고중'], ['APPLYING', '접수중'], ['CLOSED', '접수마감']] as const).map(([status, label]) => <OperationsMetric key={status} title={label} value={announcement.data?.statuses[status]} query={announcement} href={`/admin/announcements?applicationStatus=${status}`} blue={status === 'APPLYING'} />)}</div>
+          <div className={styles.otherStatuses}>{[['CONDITIONAL', '조건부 접수'], ['CANCELLED', '공고취소'], ['UNKNOWN', '일정 미정']].map(([status, label]) => <Link key={status} to={`/admin/announcements?applicationStatus=${status}`}>{label} <strong>{operationCount(announcement.data?.statuses[status], announcement)}</strong></Link>)}</div>
+          <div className={styles.review}><div className={styles.reviewHead}><Link to="/admin/announcements?attention=ANY"><OperationsIcon name="alert" />확인 필요 <strong>{operationCount(announcement.data?.attention, announcement)}</strong> ↗</Link>{info('review', '확인 필요 집계 기준')}</div>
+            <div className={styles.reviewReasons}>{[['SCHEDULE_MISSING', '일정 누락'], ['SUPPLY_MISSING', '공급정보 누락'], ['UNCONFIRMED', '미확정']].map(([reason, label]) => <Link key={reason} to={`/admin/announcements?attention=${reason}`}>{label} <strong>{operationCount(announcement.data?.reasons[reason], announcement)}</strong></Link>)}</div>
           </div><OperationsStatus query={announcement} />
           <table className={styles.sourceTable}><caption className={styles.srOnly}>기관별 공고 수집·정제 실행</caption><thead><tr><th>최근 수집</th><th>마지막 성공</th><th>최근 실행</th></tr></thead><tbody>{(['LH', 'SH', 'GH'] as const).map(agency => {
             const source = sources.data?.sources.find(item => item.agency === agency)
@@ -83,7 +83,7 @@ export function OperationsHome() {
       </section>
       <OperationsNotifications revision={revision} days={days} onHelp={openHelp} />
     </div>
-    <div className={styles.footer}><button type="button" onClick={() => openHelp('links')}>연결 기준 · 추가 예정 필터 ⓘ</button></div>
+    <div className={styles.footer}><button type="button" onClick={() => openHelp('links')}>연결 기준 ⓘ</button></div>
     <dialog ref={dialog} className={styles.helpDialog} aria-labelledby={helpId}><header><h2 id={helpId}>{helpText[help][0]}</h2><button type="button" aria-label="도움말 닫기" onClick={() => dialog.current?.close()}>×</button></header><p>{helpText[help][1]}</p></dialog>
   </section>
 }

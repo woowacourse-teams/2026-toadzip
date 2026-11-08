@@ -17,13 +17,17 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
   const label = pipelineLabels[execution.type]
   const domain = execution.type.startsWith('COMPLEX_') ? 'complex' : 'announcement'
   const board = execution.type === 'SH_ANNOUNCEMENT_COLLECTION' ? 'SH' : execution.type === 'GH_ANNOUNCEMENT_COLLECTION' ? 'GH' : null
-  const boardRefinement = selected === 'MAP_SH_ANNOUNCEMENTS' || selected === 'MAP_GH_ANNOUNCEMENTS'
+  // 합친 수집·정제 단계와 합치기 전의 정제 단계는 정제 실패 원천을 보고서에서 읽는다.
+  const legacyBoardRefinement = selected === 'MAP_SH_ANNOUNCEMENTS' || selected === 'MAP_GH_ANNOUNCEMENTS'
+  const boardRefinement = legacyBoardRefinement
+    || selected === 'COLLECT_REFINE_SH_ANNOUNCEMENTS' || selected === 'COLLECT_REFINE_GH_ANNOUNCEMENTS'
   const selectedName = selected ? definitions[selected] : null
   const skipped = execution.skippedSteps.find(item => item.stepName === selectedName)
   const partial = execution.partiallyFailedSteps.find(item => item.stepName === selectedName)
   const completed = execution.completedStepResults?.find(item => item.stepName === selectedName)
   const failure = execution.failure?.stepName === selectedName ? execution.failure : null
   const report = partial?.report ?? failure?.serverResponse ?? skipped?.serverResponse ?? completed?.report
+  const refinementFailures = refinementFailuresOf(report)
   const category = selected?.startsWith('COLLECT_') ? 'collection' : selected === 'ENRICH_LH_ANNOUNCEMENTS' ? 'enrichment' : domain
 
   return <article className={`${styles.execution} ${focused ? styles.focused : ''}`} aria-label="현재 작업 단계">
@@ -66,12 +70,12 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
       <header className={styles.heading}><h4>{selectedName}</h4><button type="button" onClick={() => setSelected(null)}>접기</button></header>
       <p>{failure?.message ?? skipped?.reason ?? (partial ? '일부 대상 처리에 실패했습니다. 상세 보고서와 실패 대상을 확인해 주세요.'
         : `단계 상태: ${states[stepState(execution, selected)][1]}`)}</p>
-      {(partial || failure || skipped) && !boardRefinement && <Link to={`/admin/failures?domain=${domain}&category=${category}&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+      {(partial || failure || skipped) && !legacyBoardRefinement && <Link to={`/admin/failures?domain=${domain}&category=${category}&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
         실패 대상 확인</Link>}
-      {boardRefinement && board && (partial || failure || skipped) && <>
+      {boardRefinement && board && (partial || failure || skipped) && (legacyBoardRefinement || refinementFailures.length > 0) && <>
         <p>실패한 원천을 확인한 뒤 위의 {board} 공고 수집을 다시 실행하세요. 저장된 원천을 다시 정제하며 관리자 보정값은 유지합니다.</p>
-        {isRecord(report) && Array.isArray(report.failures) && <ul aria-label="정제 실패 원천">
-          {report.failures.filter(isRecord).filter(item => typeof item.sourceKey === 'string' && typeof item.detail === 'string').map((item, index) =>
+        {refinementFailures.length > 0 && <ul aria-label="정제 실패 원천">
+          {refinementFailures.filter(isRecord).filter(item => typeof item.sourceKey === 'string' && typeof item.detail === 'string').map((item, index) =>
             <li key={index}><Link to={`/admin/sources?category=${board}_ANNOUNCEMENT&keyword=${encodeURIComponent(String(item.sourceKey))}`}>
               {String(item.sourceKey)}</Link>: {String(item.detail)}</li>)}
         </ul>}
@@ -85,6 +89,13 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     </div>
     </div>
   </article>
+}
+
+/** 합친 단계의 보고서는 정제 수치를 refinement 안에, 옛 정제 단계의 보고서는 바로 담고 있다. */
+function refinementFailuresOf(report: unknown): unknown[] {
+  if (!isRecord(report)) return []
+  const refinement = isRecord(report.refinement) ? report.refinement : report
+  return Array.isArray(refinement.failures) ? refinement.failures : []
 }
 
 function formatTime(value: string | null | undefined): string {

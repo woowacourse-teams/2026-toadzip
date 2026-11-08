@@ -1,10 +1,15 @@
 package com.toadzip.backend.ingest.gh.refinement.service;
 
+import com.toadzip.backend.ingest.refinement.domain.BoardRefinementOutcome;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
+import com.toadzip.backend.ingest.refinement.domain.BoardRevisionName;
+import com.toadzip.backend.ingest.refinement.service.BoardRevisionLinker;
+import com.toadzip.backend.ingest.refinement.service.BoardRevisionLinker.LinkResult;
+import com.toadzip.backend.ingest.refinement.service.BoardRefinementAttempt;
 import com.toadzip.backend.ingest.refinement.service.SourceAttachmentWriter;
 import com.toadzip.backend.ingest.refinement.service.SourceAttachmentWriter.SourceAttachment;
 import java.util.ArrayList;
@@ -32,14 +37,15 @@ class GhAnnouncementRefiner {
     private final SourceAttachmentWriter attachmentWriter;
     private final GhAnnouncementComplexLinker complexLinker;
     private final GhSupplyRowWriter supplyRowWriter;
+    private final BoardRevisionLinker revisionLinker;
 
-    Outcome refine(GhAnnouncementSource source, GhComplexIndex index, Runnable recheck) {
+    BoardRefinementOutcome refine(GhAnnouncementSource source, GhComplexIndex index, BoardRefinementAttempt attempt) {
         Optional<Announcement> existing = announcements.findBySourceAnnouncementIdentifier(source.getSourceKey())
                 .flatMap(found -> announcements.findByIdForUpdate(found.getId()));
         if (existing.isPresent() && existing.get().isAdminDeleted()) {
-            return Outcome.TRASHED;
+            return BoardRefinementOutcome.TRASHED;
         }
-        Outcome outcome = Outcome.CREATED;
+        BoardRefinementOutcome outcome = BoardRefinementOutcome.CREATED;
         Announcement announcement;
         if (existing.isEmpty()) {
             announcement = announcements.save(Announcement.createUnconfirmed(source.getSourceKey(), source.getTitle(),
@@ -49,12 +55,17 @@ class GhAnnouncementRefiner {
             announcement = existing.get();
             outcome = update(announcement, source);
         }
+        LinkResult link = revisionLinker.link(announcement, BoardRevisionName::gh);
+        attempt.recordLink(link);
+        if (link == LinkResult.LINKED && outcome == BoardRefinementOutcome.UNCHANGED) {
+            outcome = BoardRefinementOutcome.UPDATED;
+        }
         if (source.getDistricts() != null) {
             JsonNode districts = JSON.readTree(source.getDistricts());
             Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, districts,
                     GhComplexIndex.rentalType(source.getSupplyType()), index);
             if (supplyRowWriter.write(announcement, source.getTitle(), districts, complexes)) {
-                recheck.run();
+                attempt.requireSupplyRecheck();
             }
         }
         if (source.getAttachments() != null) {
@@ -63,15 +74,15 @@ class GhAnnouncementRefiner {
         return outcome;
     }
 
-    private Outcome update(Announcement announcement, GhAnnouncementSource source) {
+    private BoardRefinementOutcome update(Announcement announcement, GhAnnouncementSource source) {
         boolean reviewBefore = announcement.isSourceReviewRequired();
         if (announcement.updateFromAgencySource(source.getTitle(), source.getPostedDate(), source.getOriginalUrl())) {
-            return Outcome.UPDATED;
+            return BoardRefinementOutcome.UPDATED;
         }
         if (!reviewBefore && announcement.isSourceReviewRequired()) {
-            return Outcome.REVIEW_REQUIRED;
+            return BoardRefinementOutcome.REVIEW_REQUIRED;
         }
-        return Outcome.UNCHANGED;
+        return BoardRefinementOutcome.UNCHANGED;
     }
 
     private static List<SourceAttachment> attachments(JsonNode sourceAttachments) {
@@ -83,7 +94,4 @@ class GhAnnouncementRefiner {
         return files;
     }
 
-    enum Outcome {
-        CREATED, UPDATED, UNCHANGED, REVIEW_REQUIRED, TRASHED
-    }
 }

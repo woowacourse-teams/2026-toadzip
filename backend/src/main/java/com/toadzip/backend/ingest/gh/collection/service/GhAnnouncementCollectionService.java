@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.gh.collection.service;
 
+import com.toadzip.backend.ingest.collection.board.service.BoardPageListener;
 import com.toadzip.backend.ingest.collection.board.service.BoardSourceCollector;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -31,7 +32,12 @@ public class GhAnnouncementCollectionService {
     }
 
     public ExternalDataCollectionReport collect() {
+        return collect(BoardPageListener.NONE);
+    }
+
+    /** 목록 페이지를 처리할 때마다 listener가 그 페이지의 글을 이어받는다. */
+    public ExternalDataCollectionReport collect(BoardPageListener listener) {
         IngestExecutionScope.requireHeld();
-        return collector.collect(board, lookbackDays, requestInterval);
+        return collector.collect(board, lookbackDays, requestInterval, listener);
     }
 }

@@ -63,12 +63,11 @@ it('정확한 대상 연결이 없는 오류를 미등록이나 미노출로 단
   expect(screen.queryByRole('link',{name:'단지 확인·수정'})).not.toBeInTheDocument()
 })
 
-it('단지 정제는 지원 종료로 다시 실행할 수 없고 안내만 보인다', async () => {
+it('단지 문제에는 종료된 재정제 버튼과 안내를 표시하지 않는다', async () => {
   render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
-  await waitFor(() => expect(getDataPipelineStatus).toHaveBeenCalledWith('COMPLEX_REFINEMENT'))
-  expect(screen.getByRole('button',{name:'단지 정제 다시 실행'})).toBeDisabled()
-  expect(screen.getByText('지원 종료: 단지·주택형은 공고와 PDF 보정으로만 바뀝니다.')).toBeVisible()
-  fireEvent.click(screen.getByRole('button',{name:'단지 정제 다시 실행'}))
+  await screen.findByText('총 41건')
+  expect(screen.queryByRole('button', { name: '단지 정제 다시 실행' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/지원 종료:/)).not.toBeInTheDocument()
   expect(startDataPipeline).not.toHaveBeenCalled()
 })
 

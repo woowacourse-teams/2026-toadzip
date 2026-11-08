@@ -53,8 +53,10 @@ public class AdminHousingComplexManagementController {
 
     @GetMapping
     public ApiResponse<AdminPage<AdminDataSummary>> search(@Valid @ModelAttribute AdminSearch search,
-            @RequestParam(required = false) ComplexVerificationStatus verification) {
-        return new ApiResponse<>(service.search(search, verification));
+            @RequestParam(required = false) ComplexVerificationStatus verification,
+            @RequestParam(defaultValue = "false") boolean recruiting,
+            @RequestParam(defaultValue = "false") boolean missingCoordinates) {
+        return new ApiResponse<>(service.search(search, verification, recruiting, missingCoordinates));
     }
 
     @GetMapping("/{id}/verification")

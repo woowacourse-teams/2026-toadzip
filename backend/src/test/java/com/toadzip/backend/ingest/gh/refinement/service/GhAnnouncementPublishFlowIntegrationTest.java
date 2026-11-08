@@ -96,7 +96,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
     void 관리자가_고쳐_연결하고_공개를_요청한_GH_공고만_공개되고_그_뒤_재정제는_관리자_작업을_덮지_않는다() throws Exception {
         long wrong = complex("잘못 고른 다산 단지");
         collect(ROW);
-        owned(ownership, refinement::refineAll);
+        owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         long id = announcementId();
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(wrong);
         assertThat(rows(id)).extracting(row -> row.get("announcement_complex_id")).containsOnly(dasanComplexId(id));
@@ -112,10 +112,10 @@ class GhAnnouncementPublishFlowIntegrationTest {
                 .andExpect(status().isOk());
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
 
-        owned(ownership, refinement::refineAll);
+        owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         assertThat(supplyRecheckRequired(id)).isFalse();
         changeSourceSupplyCount();
-        assertThat(owned(ownership, refinement::refineAll).supplyRecheckRequired()).isOne();
+        assertThat(owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources)).supplyRecheckRequired()).isOne();
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
         assertThat(supplyRecheckRequired(id)).isTrue();
@@ -132,7 +132,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
 
         collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
         changeSourceSupplyCount();
-        owned(ownership, refinement::refineAll);
+        owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         assertThat(jdbc.queryForObject("SELECT name FROM announcements WHERE id = ?", String.class, id))
                 .isEqualTo(ROW.title());
         assertThat(jdbc.queryForObject("SELECT source_review_required FROM announcements WHERE id = ?",
@@ -145,7 +145,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
     @Test
     void GH_공급행_틀은_작업실에_GH_원천_행_키를_함께_내보낸다() throws Exception {
         collect(ROW);
-        owned(ownership, refinement::refineAll);
+        owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         long id = announcementId();
 
         var workspace = data("/api/admin/announcements/" + id + "/supply-corrections");
