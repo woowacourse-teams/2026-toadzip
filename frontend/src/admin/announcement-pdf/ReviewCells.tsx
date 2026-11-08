@@ -33,7 +33,7 @@ export function ReviewCells({ cells, scope, housingTypes = [], otherHousingTypes
     const change = (value: string) => update(cell.path, editCell(cell, value))
     const value = cell.input ?? String(cell.value ?? '')
     return <label className={styles.manualField}><span className={styles.srOnly}>{scope} {cell.label} 수정</span>{cell.kind === 'housingType'
-      ? <select value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)}><option value="">{cell.before == null ? '전용면적으로 자동 연결' : '주택형 미연결'}</option>{housingTypes.map(type => <option key={type.id} value={type.id}>{display(cell, type.id)}</option>)}</select>
+      ? <select value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)}><option value="">{cell.before == null ? '전용면적으로 자동 연결' : '주택타입 미연결'}</option>{housingTypes.map(type => <option key={type.id} value={type.id}>{display(cell, type.id)}</option>)}</select>
       : cell.kind === 'method' || cell.kind === 'scheduleType'
         ? <select value={value} onChange={event => change(event.target.value)}><option value="">미확인</option>{choices[cell.kind].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
         : cell.field === 'applicationCondition' ? <textarea rows={3} value={value} aria-invalid={cell.state === 'invalid' || undefined} onChange={event => change(event.target.value)} />

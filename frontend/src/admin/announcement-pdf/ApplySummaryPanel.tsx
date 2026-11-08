@@ -30,7 +30,7 @@ export function ApplySummaryPanel({ summary, busy, onApply, onBack }: { summary:
     </section>)}
     <ChangeList title="기본정보·접수처 변경" items={summary.fields} />
     <ChangeList title="일정 변경" items={summary.schedules} />
-    <ChangeList title="단지 주택형 갱신" items={summary.housingTypes} hint="연결한 단지 주택형의 값이 바뀝니다. 사용자 화면의 단지 가격·검색 조건에도 쓰입니다." />
+    <ChangeList title="단지 주택타입 갱신" items={summary.housingTypes} hint="연결한 단지 주택타입의 값이 바뀝니다. 사용자 화면의 단지 가격·검색 조건에도 쓰입니다." />
     {summary.targets.length > 0 && <section aria-label="임대조건 변경"><h3>임대조건 추가·변경 {summary.targets.length}건</h3><ul>{summary.targets.map((item, index) => <li key={index}>{`${item.row} · ${item.kind === 'new' ? '추가' : '변경'} · ${item.detail}`}</li>)}</ul></section>}
     <div className={styles.actions}><Button data-design-system disabled={busy} onClick={onApply}>{busy ? '적용 중…' : '이대로 적용'}</Button><Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={onBack}>돌아가서 수정</Button></div>
   </section>

@@ -482,9 +482,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
     </>}
     {phase === 'result' && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 단지를 확인한 뒤 공개를 요청해 다시 적용하세요.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
-      {(typeResult.housingTypes.length > 0 || typeResult.housingTypeWarnings.length > 0) && <section className={styles.renames} aria-labelledby="housing-type-result-title"><h3 id="housing-type-result-title">공고로 갱신한 주택형</h3><p className={styles.hint}>공급행에 연결한 주택형의 이름·공급면적·세대수(건설호수)를 이번 공고 값으로 맞췄습니다. 관리자가 직접 고친 값과 더 최근 공고의 값은 유지합니다.</p>
-        {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택형 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
-        {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택형 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
+      {(typeResult.housingTypes.length > 0 || typeResult.housingTypeWarnings.length > 0) && <section className={styles.renames} aria-labelledby="housing-type-result-title"><h3 id="housing-type-result-title">공고로 갱신한 주택타입</h3><p className={styles.hint}>공급행에 연결한 주택타입의 이름·공급면적·세대수(건설호수)를 이번 공고 값으로 맞췄습니다. 관리자가 직접 고친 값과 더 최근 공고의 값은 유지합니다.</p>
+        {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택타입 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
+        {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
     </section>}
   </section>
 }
@@ -502,8 +502,8 @@ function changeSummary(changes: PendingChange[]) {
 
 
 const failureReasons: Record<string, string> = {
-  AMBIGUOUS_HOUSING_TYPE: '같은 면적의 주택형이 여러 개라 하나로 정하지 못했습니다',
-  HOUSING_TYPE_NOT_FOUND: '맞는 주택형을 찾지 못했습니다',
+  AMBIGUOUS_HOUSING_TYPE: '같은 면적의 주택타입이 여러 개라 하나로 정하지 못했습니다',
+  HOUSING_TYPE_NOT_FOUND: '맞는 주택타입을 찾지 못했습니다',
 }
 // 실패 검토에서 들어오면 어떤 공급행의 무엇을 고치러 왔는지 먼저 보여 준다.
 function FailureTargets({ rows, workspace }: { rows: string[]; workspace: JsonWorkspace }) {

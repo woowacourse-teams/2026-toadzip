@@ -57,11 +57,11 @@ it('저장된 공통 모집 묶음이 관리하는 모집수에는 불필요한 
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 })
 
-it('현재 연결 주택형이 비어 있으면 기존 값 선택을 저장할 때 전용면적으로 자동 연결하는 것으로 표시한다', () => {
+it('현재 연결 주택타입이 비어 있으면 기존 값 선택을 저장할 때 전용면적으로 자동 연결하는 것으로 표시한다', () => {
   const row = scenario('gongju').review.rows[0]
   const type = { ...row.cells.find(item => item.field === 'housingTypeId')!, before: null, mode: 'keep' as const, selected: false }
   renderCell(type)
-  // 비어 있는 연결 주택형은 해당 없음 칸으로 접혀 있다.
+  // 비어 있는 연결 주택타입은 해당 없음 칸으로 접혀 있다.
   fireEvent.click(screen.getByRole('button', { name: '같음·해당 없음 1개 보기' }))
   // 보이는 이름과 접근 가능한 이름이 같아야 화면 읽기·음성 명령 사용자가 같은 버튼을 찾는다.
   expect(screen.getByRole('button', { name: '자동 연결' })).toBeVisible()

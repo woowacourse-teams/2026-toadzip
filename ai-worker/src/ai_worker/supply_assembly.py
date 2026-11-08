@@ -6,7 +6,7 @@
 
 import re
 
-from ai_worker import checks, pages
+from ai_worker import checks, pages, tables
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
     check_source_rows, normalize_source_text, numeric_cell_matches, source_row_map, source_texts, target_cells,
@@ -57,6 +57,7 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                 "items": [],
                 "rowValues": {},
                 "subtypes": [],
+                "tableSubtypes": [],
                 "targets": [],
             })
         group = groups[group_index]
@@ -66,7 +67,9 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
             finding["path"] = finding["path"].replace("[__target__]", f"[{target_index}]")
         group["rowIds"].update(row_ids)
         group["items"].append(item)
-        for subtype in checks.objects(item.get("subtypes")):
+        table_subtypes = _table_subtypes(row_ids, housing_type, selected)
+        group["tableSubtypes"].extend(table_subtypes)
+        for subtype in [] if table_subtypes else checks.objects(item.get("subtypes")):
             subtype_name = _compact_string(subtype.get("name"))
             if not subtype_name:
                 continue
@@ -190,7 +193,7 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
             "supplyArea": _compact_number(group["rowValues"].get("supplyArea"), "supplyArea"),
             "constructedHouseholdCount": _compact_number(group["rowValues"].get("constructedHouseholdCount"),
                                                           "constructedHouseholdCount"),
-            "subtypes": group["subtypes"],
+            "subtypes": _subtype_values(group["tableSubtypes"]) or group["subtypes"],
             "targets": [],
         }
         supply_rows.append(row)
@@ -278,6 +281,24 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
     for index, row in enumerate(supply_rows):
         _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
     return tree, warnings
+
+
+def _table_subtypes(row_ids: list[str], housing_type: str | None, selected: pages.PromptPages) -> list[tables.TableSubtype]:
+    """공급행이 가리키는 주택형(신청형) 행에 표의 주택타입 열에서 읽은 세부 타입이 있으면 그 세부 타입이다.
+    표 칸에서 읽은 값이라 모델이 낸 세부 타입 대신 쓴다. 다른 주택형이 적힌 행의 세부 타입은 이 공급행 것이 아니다."""
+    wanted = normalize_source_text(housing_type or "")
+    if not wanted:
+        return []
+    return [subtype for row_id in row_ids
+            if normalize_source_text(selected.supply_row_values.get(row_id, {}).get("housingType", "")) == wanted
+            for subtype in selected.supply_row_subtypes.get(row_id, ())]
+
+
+def _subtype_values(subtypes: list[tables.TableSubtype]) -> list[dict]:
+    """같은 신청형 행이 여럿(신청형을 행마다 다시 적은 표, 두 표)이어도 한 공급행 안 세부 타입은 전용면적마다 하나다."""
+    return [{"name": subtype.name, "exclusiveArea": subtype.exclusive_area, "commonArea": subtype.common_area,
+             "supplyArea": subtype.supply_area, "constructedHouseholdCount": None}
+            for subtype in tables.merge_subtypes(subtypes)]
 
 
 _LABELED_AREA = re.compile(r"\(\s*([A-Za-z0-9]+)\s*\)\s*(\d+(?:\.\d+)?)")

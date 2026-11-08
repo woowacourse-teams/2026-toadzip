@@ -5,8 +5,8 @@ import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { isRecord } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
-import { createRowReview, needsComplex, preserveCellChoice, remapTarget, type Review, type RowReview } from './review'
-import { areaClaimedRows, chooseDestination, destinationReason, emptySourceRows, ghFrameReason, ghFrameRows, sameComplex, supersedeNote, takenRows, type RowProposal, lhTypeNamesByRow } from './matching'
+import { needsComplex, reproposeRow, type Review } from './review'
+import { chooseDestination, destinationReason, emptySourceRows, ghFrameReason, ghFrameRows, sameComplex, supersedeNote, takenRows, type RowProposal } from './matching'
 import { NewComplexRegistration, type MyHomeComplexOverview } from './NewComplexRegistration'
 import { createPdfHousingTypes } from './pdfHousingTypes'
 import styles from './PdfCorrection.module.css'
@@ -82,34 +82,21 @@ function ComplexDecision({ name, indexes, review, workspace, onChange }: { name:
       const rows = current.rows.map((old, index) => {
         if (!currentIndexes.includes(index)) return old
         const source = current.extraction.supplyRows[index], ownCount = source.values.totalSupplyHouseholdCount
-        const oldCells = [...old.cells, ...old.targets.flatMap(target => target.cells)]
-        const retain = (cell: RowReview['cells'][number]) => cell.field === 'housingTypeId' ? cell : preserveCellChoice(cell, oldCells.find(item => item.path === cell.path))
-        const retainTargets = (next: RowReview) => {
-          const saved = workspace.supply.rows.find(row => row.key === next.proposal.destination)?.targets ?? []
-          const nextReview = { ...current, rows: current.rows.map((row, at) => at === index ? { ...next, targets: old.targets } : row) }
-          return next.targets.map((target, at) => {
-            const previous = old.targets[at]?.destination
-            return previous === 'exclude' || (previous === 'new' && old.proposal.destination === next.proposal.destination) || saved.some(item => (item.id ? String(item.id) : item.key) === previous)
-              ? remapTarget(nextReview, index, at, previous, workspace)
-              : { ...target, cells: target.cells.map(retain) }
-          })
-        }
-        // 처음 제안(proposeRows)과 같은 순서로 고른다: 워커가 맞춘 GH 틀 행, 전용면적, 형명(다른 PDF 행이 면적으로 가리키는 행 제외).
+        // 처음 제안(proposeRows)과 같은 순서로 고른다: 워커가 맞춘 GH 틀 행, 그다음 전용면적.
         const used = takenRows(proposals), frames = ghFrameRows(source, workspace.supply, used)
         const { chosen, legacy, superseded } = frames.length ? { chosen: frames[0], legacy: false, superseded: frames.slice(1) }
-          : chooseDestination(source, related, used, { [id]: candidates }, typeof ownCount === 'number' ? ownCount : null,
-            lhTypeNamesByRow(workspace.supply.lhSupplyRows), areaClaimedRows(current.extraction, workspace.supply.rows, { [id]: candidates }))
+          : chooseDestination(source, related, used, { [id]: candidates }, typeof ownCount === 'number' ? ownCount : null)
         const anchor = chosen ?? linked[0]
         // 단지에 연결된 행을 기준으로 삼으면 그 행의 단지를 쓰고, 단지 없는 원천행을 고치거나 기준 행이 없으면 고른 단지를 연결한다.
         const newComplex = anchor?.housingComplexId === id ? undefined : { id, name: complexName, pnu: chosen?.pnu || pnu,
           category: chosen?.category ?? (created ? 'NEW_SUPPLY' as const : old.proposal.newComplex?.category ?? 'RESUPPLY' as const) }
-        const proposal: RowProposal = { ...old.proposal, createdComplex: undefined, destination: chosen?.key ?? 'new', anchorKey: anchor?.key ?? '', complexId: id, candidates, newComplex,
+        // 단지를 다시 정하면 저장할 곳도 새로 자동으로 고르므로, 그 전에 관리자가 바꾼 저장할 곳과 그때의 추천은 버린다.
+        const proposal: RowProposal = { ...old.proposal, createdComplex: undefined, automatic: undefined, destination: chosen?.key ?? 'new', anchorKey: anchor?.key ?? '', complexId: id, candidates, newComplex,
           reason: frames.length ? ghFrameReason(frames[0], superseded, workspace.supply.rows)
             : [destinationReason(source, chosen, legacy), supersedeNote(workspace.supply.rows, superseded.map(item => item.key))].filter(Boolean).join(' '),
           needsConfirmation: false, supersedes: superseded.length ? superseded.map(item => item.key) : undefined }
         proposals.push(proposal)
-        const next = createRowReview(current.extraction, index, proposal, workspace)
-        return { ...next, key: chosen ? next.key : old.key, include: old.include, reviewed: false, cells: next.cells.map(retain), targets: retainTargets(next) }
+        return reproposeRow(current, index, proposal, workspace)
       })
       onChange({ ...current, rows }); setRegistering(false)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 불러오지 못했습니다.') }

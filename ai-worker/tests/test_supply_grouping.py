@@ -28,6 +28,7 @@ def assemble(tables, tableless_pages=()):
         supply_row_ids=frozenset(values), supply_row_text={key: "row" for key in values},
         notice_text="", notice_pages=[], complex_candidates=[], table_structure_fallback=False,
         ambiguous_supply_tables=False, supply_row_values=grouped.row_values,
+        supply_row_subtypes={row.id: row.subtypes for item in tables for row in item.rows if row.subtypes},
     )
     tree, _ = supply_assembly.assemble(grouped.compact, selected)
     return grouped, tree
@@ -422,3 +423,18 @@ def test_a_blank_area_on_the_first_row_of_the_next_page_is_not_filled_when_the_r
     _, tree = assemble([page4, page5])
 
     assert tree["data"]["supplyRows"][1]["commonArea"] is None
+
+
+def test_code_grouped_housing_type_row_gets_subtypes_from_its_house_type_column():
+    quantity = table(3, [
+        ["Alpha", "059.9000A", "59A", "청년", "10", "59.98", "21.5309"],
+        [None, None, "59A1", None, None, None, None],
+        [None, None, "59C", None, None, "59.99", "21.5345"],
+    ], header=[["단지명", "청약구분", "주택타입", "공급대상", "모집호수 예비자", "주거전용", "주거공용"]])
+
+    _, tree = assemble([quantity])
+
+    row, = tree["data"]["supplyRows"]
+    assert (row["sourceHousingTypeName"], row["exclusiveArea"]) == ("059.9000A", 59.98)
+    assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in row["subtypes"]] == [
+        ("59A·59A1", 59.98, 21.5309), ("59C", 59.99, 21.5345)]

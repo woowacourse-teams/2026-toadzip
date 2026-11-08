@@ -52,7 +52,7 @@ it('임대조건은 바뀐 항목만 변경 전후로 보이고, 전환보증금
   expect(counted.targets).toEqual([{ row: '51A', kind: 'changed', detail: '일반 · 대상별 모집수 3 → 5 · 예비자 수 없음 → 2' }])
 })
 
-it('적용 전 확인은 기본정보·접수처·일정·단지 주택형 갱신을 개수가 아니라 변경 전후 값으로 보인다', () => {
+it('적용 전 확인은 기본정보·접수처·일정·단지 주택타입 갱신을 개수가 아니라 변경 전후 값으로 보인다', () => {
   const schedule = { scheduleType: 'APPLICATION', name: '접수', startAt: '2026-10-20T10:00:00', endAt: '2026-10-22T17:00:00' }
   const summary = summarizePreview({ ...preview([], []), supply: null,
     fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }, { field: 'receptionPlace.method', before: null, after: 'ONLINE' }, { field: 'rentalType', before: null, after: 'NATIONAL_RENTAL' }],
@@ -62,7 +62,7 @@ it('적용 전 확인은 기본정보·접수처·일정·단지 주택형 갱�
   expect(summary.fields).toEqual([{ label: '접수 시작일', before: '2026-10-20', after: '2026-10-27' }, { label: '접수 방식', before: '없음', after: '온라인' }, { label: '공급 유형', before: '없음', after: '국민임대' }])
   expect(summary.schedules).toEqual([{ label: '접수', before: '2026-10-20 10:00 ~ 2026-10-22 17:00', after: '2026-10-27 10:00 ~ 2026-10-22 17:00' }, { label: '당첨자 발표', before: '새 일정', after: '2026-11-10' }])
   expect(summary.housingTypes).toEqual([{ label: '#501 「51A」', before: '이름 51A · 기본 보증금 1,000원', after: '이름 051.9800A · 기본 보증금 2,000원' },
-    { label: '새 주택형 「59B」', before: '없음', after: '이름 59B · 공급면적 없음 · 세대수 15' }])
+    { label: '새 주택타입 「59B」', before: '없음', after: '이름 59B · 공급면적 없음 · 세대수 15' }])
 })
 
 it('일정은 이름이나 종류만 바뀌어도 변경 전후 문구가 달라 무엇이 바뀌는지 보인다', () => {

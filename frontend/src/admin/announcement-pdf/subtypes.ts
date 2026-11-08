@@ -4,13 +4,13 @@ import { areaKey } from './areas'
 import { type Evidence, type ExtractedRow, type Extraction, type ExtractionNote, type SharedCount, type Subtype } from './extraction'
 
 export type Notes = { sharedCounts: SharedCount[]; unresolved: ExtractionNote[]; notApplicable: ExtractionNote[]; evidence: Evidence[] }
-const groupedAreaNote = '세부 타입마다 면적이 달라 공급행 면적은 대표 주택형을 따릅니다.'
+const groupedAreaNote = '세부 타입마다 면적이 달라 공급행 면적은 대표 주택타입을 따릅니다.'
 
 export function subtypesOf(row: JsonObject) { return Array.isArray(row.subtypes) ? row.subtypes as JsonObject[] : [] }
 
 /**
  * "26A/B/C"처럼 세부 타입을 묶은 공급행(subtypes)은 모집수 하나를 함께 쓰는 공급행 하나라 펼치지 않고 한 행으로 둔다. 모집수·대상은 그 행의 값이고,
- * 세부 타입마다 형명·면적·건설호수를 subtypes에 담는다. 세부 타입이 하나면 그 값을 행 값으로 쓴다.
+ * 세부 타입마다 형명·면적·건설호수를 subtypes에 담는다. 세부 타입이 하나면 그 값을 행 값으로 쓰고, 그 이름(주택타입)은 values.houseTypeName에 둔다.
  * 세부 타입 경로의 공용면적(subtypes[n].commonArea)은 계산한 공급면적 경로로 옮긴다. 공급면적은 전용 + 공용으로 계산한다.
  */
 export function readSubtypes(source: JsonObject[], parsed: Notes): Notes & { rows: ExtractedRow[] } {
@@ -18,7 +18,8 @@ export function readSubtypes(source: JsonObject[], parsed: Notes): Notes & { row
   const rows = source.map((row, index): ExtractedRow => {
     const reference = isRecord(row.complexReference) ? row.complexReference : {}
     const { subtypes: _subtypes, ...values } = row, subtypes = subtypesOf(row)
-    const single = subtypes.length === 1 ? { ...values, sourceHousingTypeName: text(subtypes[0].name), exclusiveArea: subtypes[0].exclusiveArea ?? null,
+    // 세부 타입 하나는 그 값을 행 값으로 쓰되, 공고 표기는 신청형(행 표기) 그대로 두고 세부 타입 이름(주택타입)은 houseTypeName에 남긴다.
+    const single = subtypes.length === 1 ? { ...values, sourceHousingTypeName: text(values.sourceHousingTypeName) ?? text(subtypes[0].name), houseTypeName: text(subtypes[0].name), exclusiveArea: subtypes[0].exclusiveArea ?? null,
       commonArea: subtypes[0].commonArea ?? null, supplyArea: subtypes[0].supplyArea ?? null, constructedHouseholdCount: subtypes[0].constructedHouseholdCount ?? row.constructedHouseholdCount ?? null } : values
     const grouped = subtypes.length > 1 ? subtypes.map(subtype => ({ name: text(subtype.name)!, exclusiveArea: area(subtype.exclusiveArea),
       supplyArea: area(supplyArea(subtype)), constructedHouseholdCount: count(subtype.constructedHouseholdCount) })) : []
@@ -42,7 +43,8 @@ export function readSubtypes(source: JsonObject[], parsed: Notes): Notes & { row
 /** 공급행이 연결할 주택형 값. 세부 타입 묶음이면 세부 타입마다, 아니면 행 하나의 형명·면적이다. */
 export function pdfTypes(row: ExtractedRow): Subtype[] {
   if (row.subtypes.length) return row.subtypes
-  return [{ name: row.typeName ?? '', exclusiveArea: area(row.values.exclusiveArea), supplyArea: area(row.values.supplyArea), constructedHouseholdCount: count(row.values.constructedHouseholdCount) }]
+  // 세부 타입이 하나뿐인 행은 그 주택타입 이름(houseTypeName)이 단지 쪽 이름이다. 없으면 공고 표기를 쓴다.
+  return [{ name: text(row.values.houseTypeName) ?? row.typeName ?? '', exclusiveArea: area(row.values.exclusiveArea), supplyArea: area(row.values.supplyArea), constructedHouseholdCount: count(row.values.constructedHouseholdCount) }]
 }
 
 /** 공급면적 = 주거전용 + 주거공용. 공용면적이 없으면 공고문의 공급면적을 그대로 쓴다. 자릿수는 두 값 중 긴 쪽에 맞춘다. */
@@ -54,6 +56,17 @@ export function supplyArea(values: JsonObject) {
 }
 
 /** 끝에 붙은 괄호 묶음(중첩 포함)만 뗀다. "26(고령(주거약자용))" → "26", "(구)36(청년)" → "(구)36" */
+const nameKey = (value: unknown) => typeof value === 'string' ? withoutTrailingParentheses(value).normalize('NFKC').replace(/\s+/g, '').toLowerCase() : ''
+/**
+ * 단지 주택타입 이름을 바꿀 PDF 주택타입 이름. 공고 표기는 주택형(신청형, 059.9000B)이고 단지 쪽 이름은 주택타입(59B)이다.
+ * 그 전용면적의 주택타입이 하나일 때('·'로 잇지 않은 이름)만 쓰고, 신청형과 같은 이름(모델이 세부 타입을 신청형으로 낸 경우)은 쓰지 않는다.
+ */
+export function renamedTypeName(houseType: unknown, applyType: unknown): string | null {
+  if (typeof houseType !== 'string' || !houseType.trim() || houseType.includes('·') || nameKey(houseType) === nameKey(applyType)) return null
+  return withoutTrailingParentheses(houseType)
+}
+/** 새로 만들 단지 주택타입 이름. 한 면적에 주택타입이 여럿이면 첫 표기를 쓰고 끝 괄호는 뗀다(서버 newTypeName과 같은 규칙). */
+export function createdTypeName(name: string) { return withoutTrailingParentheses(name.split('·')[0]) }
 export function withoutTrailingParentheses(value: string) {
   let result = value.trim()
   while (result.endsWith(')')) {
@@ -149,7 +162,9 @@ export function foldSameHousingType(extraction: Extraction): Extraction {
     const sourceRows = [...new Set(indexes.map(index => source[index].values.sourceRow).filter((value): value is string => typeof value === 'string'))]
     indexes.forEach(index => { places[index].grouped = !single })
     rows.push({ ...first, typeName, subtypes: single ? [] : subtypes, targets,
-      values: { ...first.values, sourceRow: sourceRows[0] ?? null, sourceRows, sourceHousingTypeName: typeName, totalSupplyHouseholdCount: foldedCount(extraction, indexes), commonArea: null,
+      // 접은 행들의 주택타입 이름(houseTypeName)이 모두 같을 때만 남긴다. 다르면 단지 주택타입 이름을 바꾸지 않는다.
+      values: { ...first.values, houseTypeName: new Set(indexes.map(index => extraction.supplyRows[index].values.houseTypeName ?? null)).size === 1 ? first.values.houseTypeName ?? null : null,
+        sourceRow: sourceRows[0] ?? null, sourceRows, sourceHousingTypeName: typeName, totalSupplyHouseholdCount: foldedCount(extraction, indexes), commonArea: null,
         exclusiveArea: single?.exclusiveArea ?? null, supplyArea: single?.supplyArea ?? null, constructedHouseholdCount: single?.constructedHouseholdCount ?? null } })
   }
   const remap = (path: string): string[] => {

@@ -515,3 +515,82 @@ def test_area_is_not_taken_from_a_cited_row_of_another_housing_type():
     tree, _ = supply_assembly.assemble({"data": {"rows": [item]}}, selected)
 
     assert tree["data"]["supplyRows"][0]["exclusiveArea"] is None
+
+
+HOUSE_TYPE_TABLE = [
+    ["주택형 (신청형)", "주택 타입", "주거 전용", "주거 공용", "금회 예비입주자 모집 호수"],
+    ["049.7600A", "49A", "49.76", "17.8623", "35"],
+    ["059.9000A", "59A", "59.98", "21.5309", "125"],
+    [None, "59A1", None, None, None],
+    [None, None, "59.99", "21.5345", None],
+    [None, "59A2", None, None, None],
+    ["059.9000B", "59B", "59.93", "21.5130", "25"],
+    [None, "59B1", "59.92", "21.5094", None],
+]
+
+
+def house_type_pages():
+    rows = tables.SupplyTable.of(3, 1, HOUSE_TYPE_TABLE, None, False).rows
+    return pages.PromptPages(
+        rental_rows=0, supply_text="table", supply_pages=[3], supply_row_ids=frozenset(row.id for row in rows),
+        supply_row_text={row.id: row.text for row in rows}, notice_text="body", notice_pages=[1],
+        complex_candidates=[], table_structure_fallback=False, ambiguous_supply_tables=False,
+        supply_row_values={row.id: row.values for row in rows},
+        supply_row_subtypes={row.id: row.subtypes for row in rows if row.subtypes},
+    )
+
+
+def assembled_row(selected, **item):
+    tree, _ = supply_assembly.assemble({"data": {"rows": [{"complexName": "", "target": "일반", **item}]}}, selected)
+    return tree["data"]["supplyRows"][0], tree["data"]["unresolvedFields"]
+
+
+def test_subtypes_of_a_housing_type_row_come_from_its_house_type_column_instead_of_the_model():
+    # 모델은 신청형 행의 첫 면적만 읽고 세부 타입을 신청형 이름으로 냈다. 표의 주택타입 열이 세부 타입을 정한다.
+    row, unresolved = assembled_row(house_type_pages(), rowIds=["P3:T1:R3", "P3:T1:R4"], housingType="059.9000A",
+                                    exclusiveArea=59.98, subtypes=[{"name": "059.9000A", "exclusiveArea": 59.98}])
+
+    assert row["subtypes"] == [
+        {"name": "59A·59A1", "exclusiveArea": 59.98, "commonArea": 21.5309, "supplyArea": None,
+         "constructedHouseholdCount": None},
+        {"name": "59A2", "exclusiveArea": 59.99, "commonArea": 21.5345, "supplyArea": None,
+         "constructedHouseholdCount": None},
+    ]
+    # 공급행 자체의 면적은 지금처럼 모델이 낸 첫 면적을 원문 칸과 대조한 값이다.
+    assert row["exclusiveArea"] == 59.98
+    assert not [item for item in unresolved if ".subtypes" in item["path"]]
+
+
+def test_housing_type_with_one_house_type_still_gets_that_subtype_and_keeps_its_area_from_the_source_cell():
+    row, _ = assembled_row(house_type_pages(), rowIds=["P3:T1:R2"], housingType="049.7600A")
+
+    assert [(item["name"], item["exclusiveArea"]) for item in row["subtypes"]] == [("49A", 49.76)]
+    assert row["exclusiveArea"] == 49.76
+
+
+def test_subtypes_of_a_cited_row_of_another_housing_type_are_not_used():
+    row, _ = assembled_row(house_type_pages(), rowIds=["P3:T1:R3", "P3:T1:R7", "P3:T1:R8"], housingType="059.9000B")
+
+    assert [(item["name"], item["exclusiveArea"]) for item in row["subtypes"]] == [("59B", 59.93), ("59B1", 59.92)]
+
+
+def test_subtypes_of_several_rows_of_one_housing_type_stay_one_per_exclusive_area():
+    # 신청형 칸을 병합하지 않고 행마다 다시 적은 표. 같은 면적 59.98은 세부 타입 하나다.
+    rows = tables.SupplyTable.of(3, 1, [
+        ["주택형", "주택타입", "주거전용", "주거공용", "예비자"],
+        ["059.9000A", "59A", "59.98", "21.5309", "10"],
+        ["059.9000A", "59A1", "59.98", "21.5400", ""],
+        ["059.9000A", "59C", "59.99", "21.5345", ""],
+    ], None, False).rows
+    selected = pages.PromptPages(
+        rental_rows=0, supply_text="table", supply_pages=[3], supply_row_ids=frozenset(row.id for row in rows),
+        supply_row_text={row.id: row.text for row in rows}, notice_text="body", notice_pages=[1],
+        complex_candidates=[], table_structure_fallback=False, ambiguous_supply_tables=False,
+        supply_row_values={row.id: row.values for row in rows},
+        supply_row_subtypes={row.id: row.subtypes for row in rows if row.subtypes},
+    )
+
+    row, _ = assembled_row(selected, rowIds=["P3:T1:R2", "P3:T1:R3", "P3:T1:R4"], housingType="059.9000A")
+
+    assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in row["subtypes"]] == [
+        ("59A·59A1", 59.98, None), ("59C", 59.99, 21.5345)]

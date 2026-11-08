@@ -217,6 +217,65 @@ def test_prompt_pages_carries_header_columns_to_a_real_continuation_table_page(m
     }
 
 
+def test_prompt_pages_keeps_house_type_subtypes_under_the_housing_type_row_id(monkeypatch):
+    cells = [
+        ["주택형 (신청형)", "주택 타입", "주거 전용", "주거 공용", "금회 예비입주자 모집 호수"],
+        ["059.9000B", "59B", "59.93", "21.5130", "25"],
+        [None, "59B1", "59.92", "21.5094", None],
+    ]
+    monkeypatch.setattr(tables, "detected_tables", lambda page: ([tables.DetectedTable(cells, tuple(page.rect))], False))
+    with pages.open_pdf(continued_supply_pdf()) as document:
+        split = pages.prompt_pages(document, [1], time.monotonic() + 30)
+
+    assert split.supply_row_subtypes == {"P1:T1:R2": (
+        tables.TableSubtype("59B", 59.93, 21.513, None), tables.TableSubtype("59B1", 59.92, 21.5094, None))}
+
+
+@pytest.mark.parametrize("repeated_header", [[], [["주택형", "주택타입", "주거전용", "주거공용", "예비자"]]])
+def test_housing_type_continued_on_the_next_page_has_no_partial_subtypes(monkeypatch, repeated_header):
+    first_page = [
+        ["주택형", "주택타입", "주거전용", "주거공용", "예비자"],
+        ["049.7600A", "49A", "49.76", "17.8623", "35"],
+        ["059.9000A", "59A", "59.98", "21.5309", "125"],
+    ]
+    # 쪽을 넘은 병합 칸은 머리글 없는 이어짐 표 첫 행에서 빈칸('')으로 읽힌다.
+    # 다음 쪽 표는 머리글을 다시 적을 수도 있다.
+    continuation = [
+        *repeated_header,
+        ["", "59A1", "59.99", "21.5345", ""],
+        ["059.9000B", "59B", "59.93", "21.5130", "25"],
+    ]
+    matrix = {0: first_page, 1: continuation}
+    monkeypatch.setattr(tables, "detected_tables",
+                        lambda page: ([tables.DetectedTable(matrix[page.number], tuple(page.rect))], False))
+    with pages.open_pdf(continued_supply_pdf()) as document:
+        split = pages.prompt_pages(document, [1, 2], time.monotonic() + 30)
+
+    assert {row_id: [item.name for item in subtypes] for row_id, subtypes in split.supply_row_subtypes.items()} == {
+        "P1:T1:R2": ["49A"], f"P2:T1:R{2 + len(repeated_header)}": ["59B"]}
+
+
+def test_continued_housing_type_without_subtypes_keeps_the_subtypes_of_the_housing_type_before_it(monkeypatch):
+    # 앞 쪽 마지막 신청형(059.9000A)은 면적을 읽지 못해 세부 타입이 없다. 그 앞 신청형(049.7600A)의 세부 타입은 남는다.
+    first_page = [
+        ["주택형", "주택타입", "주거전용", "주거공용", "예비자"],
+        ["049.7600A", "49A", "49.76", "17.8623", "35"],
+        ["059.9000A", "59A", "", "", "125"],
+    ]
+    continuation = [
+        ["", "59A1", "59.99", "21.5345", ""],
+        ["059.9000B", "59B", "59.93", "21.5130", "25"],
+    ]
+    matrix = {0: first_page, 1: continuation}
+    monkeypatch.setattr(tables, "detected_tables",
+                        lambda page: ([tables.DetectedTable(matrix[page.number], tuple(page.rect))], False))
+    with pages.open_pdf(continued_supply_pdf()) as document:
+        split = pages.prompt_pages(document, [1, 2], time.monotonic() + 30)
+
+    assert {row_id: [item.name for item in subtypes] for row_id, subtypes in split.supply_row_subtypes.items()} == {
+        "P1:T1:R2": ["49A"], "P2:T1:R2": ["59B"]}
+
+
 def continued_supply_pdf() -> bytes:
     document = pymupdf.open()
     headers = [

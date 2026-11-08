@@ -5,9 +5,13 @@
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 import pymupdf
+
+from ai_worker.checks import area_key
 
 log = logging.getLogger(__name__)
 
@@ -19,6 +23,8 @@ _RENT_HEADER = re.compile(r"임대조건|월임대료")
 _SUPPLY_TABLE_HEADER = re.compile(r"공급형|공급유형|주택형|모집\s*(?:호수|세대수|인원|가구)|임대보증금|월\s*임대료")
 _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
+_AREA_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_HOUSE_TYPE_HEADER = re.compile(r"주택형|주택타입|신청형")
 _TABLE_HEADER = re.compile(r"단지명|공급형|주택형|공급대상|공급계층|청약구분|전용|임대조건|임대보증금|월임대료")
 # 머리글 줄 뒤에 데이터 줄 글자(26·31)가 이어 붙을 수 있어 앞에서부터 보고, 뒤에 한글 낱말이 붙은 "공급형별 임대보증금" 같은 열은 뺀다.
 # 다만 합계 줄 표기(총계·합계·계)가 머리글에 이어 붙은 "공급형별총계"는 주택형 열이다(대구연호 통합공공임대).
@@ -34,6 +40,18 @@ _TABLE_HEADER_CELL = re.compile(
 
 
 @dataclass(frozen=True)
+class TableSubtype:
+    """주택형(신청형) 행이 가리키는 단지 주택타입 묶음 하나. 전용면적(소수 둘째 자리)마다 하나이고,
+    이름은 그 면적의 주택타입을 표 순서대로 '·'로 잇는다(59A·59A1·59C)."""
+
+    name: str
+    exclusive_area: float
+    # 묶음의 면적 행들이 같은 값을 적었을 때만 둔다.
+    common_area: float | None
+    supply_area: float | None
+
+
+@dataclass(frozen=True)
 class TableRow:
     """공급표의 행 하나. 행 ID는 원본 쪽·표·행에서 정한다."""
 
@@ -43,6 +61,8 @@ class TableRow:
     values: dict[str, str]
     # 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표에서 묶음 이름별 금액 칸. 대상 이름이 묶음 이름이면 이 칸과 대조한다.
     target_values: dict[str, dict[str, str]] = field(default_factory=dict)
+    # 주택타입 열이 있는 표에서 이 행이 주택형(신청형) 칸이 시작하는 행이면 그 신청형의 세부 타입
+    subtypes: tuple[TableSubtype, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -54,16 +74,28 @@ class SupplyTable:
     columns: dict[str, int]
     ambiguous: bool
     rows: list[TableRow]
+    # 머리글 줄 다음 첫 데이터 행이 신청형 칸 없이 주택타입으로 시작한다. 열 구성이 같은 앞 표의 마지막 신청형이 이어진 것이다.
+    continues_subtypes: bool = False
 
     @classmethod
     def of(cls, page: int, number: int, cells: list[list[str | None]], inherited_columns: dict[str, int] | None,
            ambiguous: bool) -> "SupplyTable":
         """셀에서 열 역할과 행 값을 읽어 공급표를 만든다. 머리글에서 열 역할을 찾지 못하면 inherited_columns를 쓴다."""
         columns = _table_field_columns(cells) or inherited_columns or {}
+        subtypes = _house_type_subtypes(cells, columns)
         rows = [TableRow(source_row_id(page, number, index), "\t".join(cell or "" for cell in row),
-                         _table_row_field_values(cells, index - 1, columns), _row_target_group_values(cells, index - 1))
+                         _table_row_field_values(cells, index - 1, columns), _row_target_group_values(cells, index - 1),
+                         subtypes.get(index - 1, ()))
                 for index, row in enumerate(cells, 1)]
-        return cls(page, number, cells, columns, ambiguous, rows)
+        return cls(page, number, cells, columns, ambiguous, rows, _starts_with_house_types(cells, columns))
+
+    def last_housing_type_row_id(self) -> str | None:
+        """신청형(주택형) 칸이 시작하는 마지막 행. 다음 표로 이어질 수 있는 신청형이다."""
+        column = self.columns.get("housingType")
+        if column is None:
+            return None
+        return next((row.id for row, cells in zip(reversed(self.rows), reversed(self.cells))
+                     if (_cell(cells, column) or "").strip()), None)
 
 
 @dataclass(frozen=True)
@@ -84,6 +116,8 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         # 리츠·통합공공임대 공급표는 단지명 대신 첫 열을 '블록'(동탄2 A40BL)이나 '단지'·'지구'로 둔다.
         "complexName": lambda header: bool(re.search(r"단지명|^(?:블록|단지|지구)(?!.*(?:면적|형|호수))", header)),
         "housingType": lambda header: bool(re.search(r"청약구분|주택형|공급유형", header)),
+        # 공고의 주택형(신청형, 059.9000A)을 나눈 단지 주택타입(59A·59A1) 열
+        "houseType": lambda header: bool(re.search(r"주택타입", header)),
         # 영구임대 임대조건표는 대상 열을 '적용구분'(「가」군·「나」군)으로 둔다.
         "target": lambda header: bool(re.search(r"공급대상|공급계층|청약대상|적용\s*구분", header)),
         "reserveCount": lambda header: bool(re.search(r"예비(?:입주자)?", header))
@@ -134,6 +168,84 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if detail is not None:
         columns["targetDetail"] = detail
     return columns
+
+
+def _house_type_subtypes(cells: list[list[str | None]], columns: dict[str, int]) -> dict[int, tuple[TableSubtype, ...]]:
+    """주택타입 열이 있는 표에서 주택형(신청형) 칸이 시작하는 행마다 세부 타입을 읽는다. 신청형 칸이 아래 행에 걸쳐
+    병합(None)되면 그 행들의 주택타입도 같은 신청형이고, 주택타입 행의 면적 칸이 병합(None)이면 위 행의 면적을 이어받는다.
+    면적 행과 이름 행이 어긋나 이름 없이 면적만 있는 행도 아래 주택타입들의 면적이다.
+    주택타입 하나라도 면적을 숫자로 읽지 못하면(머리글 줄, 빈칸) 그 신청형은 세부 타입을 내지 않는다."""
+    housing, house, area = columns.get("housingType"), columns.get("houseType"), columns.get("exclusiveArea")
+    if housing is None or house is None or area is None:
+        return {}
+    # 신청형 칸이 시작하는 행 → (주택타입, 면적을 읽은 행) 목록. 면적을 모르는 주택타입이 있으면 None이다.
+    blocks: dict[int, list[tuple[str, list[str | None]]] | None] = {}
+    start, area_row = None, None
+    for index, row in enumerate(cells):
+        head = _cell(row, housing)
+        if head is not None:  # 병합 칸만 None이다. 값이나 실제 빈칸이 있으면 앞 신청형 칸이 끝난다.
+            start, area_row = (index if head.strip() else None), None
+            if start is not None:
+                blocks[start] = []
+        members = blocks.get(start) if start is not None else None
+        if members is None:
+            continue
+        cell = _cell(row, area)
+        if cell is not None:
+            area_row = row if _AREA_NUMBER.fullmatch(cell.strip()) else None
+        name = _cell(row, house)
+        if name and name.strip():
+            if area_row is None:
+                blocks[start] = None
+            else:
+                members.append((_WHITESPACE.sub(" ", name).strip(), area_row))
+    return {start: _area_subtypes(members, columns) for start, members in blocks.items() if members}
+
+
+def _starts_with_house_types(cells: list[list[str | None]], columns: dict[str, int]) -> bool:
+    housing, house = columns.get("housingType"), columns.get("houseType")
+    if housing is None or house is None:
+        return False
+    for row in cells:
+        head, name = _cell(row, housing), _cell(row, house)
+        # 머리글 줄(주택형·주택타입 머리글, 병합된 머리글 아래 줄)은 쪽마다 다시 적힐 수 있어 건너뛴다.
+        if (head is None and name is None) or _HOUSE_TYPE_HEADER.search(_compact(head) + _compact(name)):
+            continue
+        return not (head or "").strip() and bool((name or "").strip())
+    return False
+
+
+def _area_subtypes(members: list[tuple[str, list[str | None]]], columns: dict[str, int]) -> tuple[TableSubtype, ...]:
+    area, common, supply = columns["exclusiveArea"], columns.get("commonArea"), columns.get("supplyArea")
+    return merge_subtypes(TableSubtype(name, float(row[area]), _area_cell(row, common), _area_cell(row, supply))
+                          for name, row in members)
+
+
+def merge_subtypes(subtypes: Iterable[TableSubtype]) -> tuple[TableSubtype, ...]:
+    """세부 타입을 전용면적(소수 둘째 자리)마다 하나로 묶는다. 같은 면적은 단지 주택타입 하나로 잇기 때문이다.
+    이름은 주택타입을 나온 순서대로 '·'로 잇고, 공용·공급면적은 묶인 값이 모두 같을 때만 둔다."""
+    groups: dict[Decimal, list[TableSubtype]] = {}
+    for subtype in subtypes:
+        groups.setdefault(area_key(subtype.exclusive_area), []).append(subtype)
+    merged = []
+    for items in groups.values():
+        names = dict.fromkeys(name for item in items for name in item.name.split("·"))
+        commons = {item.common_area for item in items}
+        supplies = {item.supply_area for item in items}
+        merged.append(TableSubtype("·".join(names), items[0].exclusive_area,
+                                   commons.pop() if len(commons) == 1 else None,
+                                   supplies.pop() if len(supplies) == 1 else None))
+    return tuple(merged)
+
+
+def _area_cell(row: list[str | None], column: int | None) -> float | None:
+    """면적 행의 공용·공급면적 칸. 병합·빈칸이면 정하지 않는다."""
+    value = (_cell(row, column) or "").strip() if column is not None else ""
+    return float(value) if _AREA_NUMBER.fullmatch(value) else None
+
+
+def _cell(row: list[str | None], column: int) -> str | None:
+    return row[column] if column < len(row) else ""
 
 
 def _matching_columns(headers: list[str], matches) -> list[int]:

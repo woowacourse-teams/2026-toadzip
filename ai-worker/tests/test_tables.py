@@ -241,3 +241,83 @@ def test_application_category_column_of_a_permanent_rental_rent_table_is_the_tar
     ]
 
     assert tables.SupplyTable.of(1, 2, rows, None, False).rows[1].values["target"] == "「가」군"
+
+
+# 대구 달서·달성 10년 공공임대 리츠: 주택형(신청형) 칸이 주택타입 행들에 걸쳐 세로 병합되고, 병합된 면적 칸은 None이다.
+HOUSE_TYPE_ROWS = [
+    ["주택형 (신청형)", "주택 타입", "세대당 주택면적(㎡)", None, "금회 예비입주자 모집 호수"],
+    [None, None, "주거 전용", "주거 공용", None],
+    ["합 계", None, None, None, "250"],
+    ["049.7600A", "49A", "49.76", "17.8623", "35"],
+    ["059.9000A", "59A", "59.98", "21.5309", "125"],
+    [None, "59A1", None, None, None],
+    [None, "59C", None, None, None],
+    # 면적 행과 이름 행이 어긋나 이름 없이 면적만 있는 행. 아래 주택타입들이 이 면적을 이어받는다.
+    [None, None, "59.99", "21.5345", None],
+    [None, "59A2", None, None, None],
+    [None, "59D", None, None, None],
+    ["059.9000B", "59B", "59.93", "21.5130", "25"],
+    [None, "59B1", "59.92", "21.5094", None],
+    ["084.0000A", "84A", "84.67", "30.3939", "35"],
+    [None, "84B", None, None, None],
+    [None, "84A1", "84.96", "30.4980", None],
+]
+
+
+def subtypes_by_housing_type(table):
+    return {row.values["housingType"]: [(item.name, item.exclusive_area, item.common_area) for item in row.subtypes]
+            for row in table.rows if row.subtypes}
+
+
+def test_house_type_rows_under_a_merged_housing_type_cell_become_one_subtype_per_exclusive_area():
+    table = tables.SupplyTable.of(3, 1, HOUSE_TYPE_ROWS, None, False)
+
+    assert subtypes_by_housing_type(table) == {
+        "049.7600A": [("49A", 49.76, 17.8623)],
+        "059.9000A": [("59A·59A1·59C", 59.98, 21.5309), ("59A2·59D", 59.99, 21.5345)],
+        "059.9000B": [("59B", 59.93, 21.513), ("59B1", 59.92, 21.5094)],
+        "084.0000A": [("84A·84B", 84.67, 30.3939), ("84A1", 84.96, 30.498)],
+    }
+    # 공급행 값은 지금처럼 신청형 행의 칸이다(첫 면적).
+    assert table.rows[4].values["exclusiveArea"] == "59.98"
+
+
+def test_subtype_common_and_supply_areas_come_from_its_area_rows_only_when_they_agree():
+    rows = [
+        ["주택형", "주택타입", "주거전용", "주거공용", "공급면적", "예비자"],
+        ["059.9000A", "59A", "59.98", "21.5309", "81.5109", "10"],
+        [None, "59A1", "59.98", "21.5400", "81.5200", None],
+        [None, "59C", None, None, None, None],
+        ["074.9700A", "74A", "74.97", "26.9119", "101.8819", "5"],
+    ]
+
+    table = tables.SupplyTable.of(3, 1, rows, None, False)
+
+    assert table.rows[1].subtypes == (tables.TableSubtype("59A·59A1·59C", 59.98, None, None),)
+    assert table.rows[4].subtypes == (tables.TableSubtype("74A", 74.97, 26.9119, 101.8819),)
+
+
+def test_housing_type_with_a_house_type_whose_area_is_blank_has_no_subtypes():
+    rows = [
+        ["주택형", "주택타입", "주거전용", "예비자"],
+        ["059.9000A", "59A", "59.98", "10"],
+        [None, "59A1", "", None],
+        ["074.9700A", "74A", "74.97", "5"],
+    ]
+
+    table = tables.SupplyTable.of(3, 1, rows, None, False)
+
+    assert [row.subtypes for row in table.rows] == [(), (), (), (tables.TableSubtype("74A", 74.97, None, None),)]
+
+
+def test_table_without_a_house_type_column_has_no_subtypes():
+    rows = [
+        ["주택형", "주거전용", "주거공용", "예비자"],
+        ["059.9000A", "59.98", "21.5309", "10"],
+        [None, "59.99", "21.5345", None],
+    ]
+
+    table = tables.SupplyTable.of(3, 1, rows, None, False)
+
+    assert "houseType" not in table.columns
+    assert all(row.subtypes == () for row in table.rows)

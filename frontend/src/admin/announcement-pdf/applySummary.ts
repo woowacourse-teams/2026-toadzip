@@ -16,8 +16,8 @@ export type ApplySummary = { complexes: ComplexSummary[]; targets: TargetChange[
 function typeLabel(row: CorrectionRow, housing: HousingCandidates) {
   const types = row.housingComplexId === null ? [] : housing[row.housingComplexId] ?? []
   const name = (id: number) => { const type = types.find(item => item.id === id); return type ? `${type.name} · 전용 ${type.exclusiveArea}㎡` : `주택형 #${id}` }
-  const housingType = row.housingTypeId !== null ? name(row.housingTypeId) : row.newHousingType ? `새 주택형 ${row.newHousingType.name} · 전용 ${row.newHousingType.exclusiveArea}㎡` : '주택형 미연결'
-  const linked = (row.linkedHousingTypes ?? []).map(link => link.housingTypeId != null ? name(link.housingTypeId) : `새 주택형 ${link.newHousingType!.name}`)
+  const housingType = row.housingTypeId !== null ? name(row.housingTypeId) : row.newHousingType ? `새 주택타입 ${row.newHousingType.name} · 전용 ${row.newHousingType.exclusiveArea}㎡` : '주택타입 미연결'
+  const linked = (row.linkedHousingTypes ?? []).map(link => link.housingTypeId != null ? name(link.housingTypeId) : `새 주택타입 ${link.newHousingType!.name}`)
   return { housingType, linked }
 }
 /** 제외하지 않은 행의 모집수 합. 공통 모집 묶음은 한 번만 센다. 모르는 모집수가 있으면 null이다. */
@@ -68,7 +68,7 @@ function valueChanges(preview: JsonPreview) {
   const housingTypes = preview.housingTypes.map(change => {
     const shown = change.before === null ? typeParts.filter(([key]) => key === 'name' || key === 'supplyArea' || key === 'householdCount' || change.after[key] != null)
       : typeParts.filter(([key]) => (change.before![key] ?? null) !== (change.after[key] ?? null))
-    return { label: change.housingTypeId === null ? `새 주택형 「${change.after.name}」` : `#${change.housingTypeId} 「${change.typeName}」`,
+    return { label: change.housingTypeId === null ? `새 주택타입 「${change.after.name}」` : `#${change.housingTypeId} 「${change.typeName}」`,
       before: change.before === null ? '없음' : shown.map(([, read]) => read(change.before!)).join(' · '), after: shown.map(([, read]) => read(change.after)).join(' · ') }
   })
   return { fields, schedules, housingTypes }

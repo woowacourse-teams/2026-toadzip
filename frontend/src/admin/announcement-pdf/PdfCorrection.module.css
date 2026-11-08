@@ -374,3 +374,17 @@ button.statusBadge::after { content:' ›'; }
 .sharedRepair .repairChoice input { width:auto; flex:none; }
 .repairMember { display:flex; align-items:end; gap:var(--ds-space-2); min-width:0; }
 .repairMember label { flex:1; min-width:0; }
+/* 저장할 곳: 한 문장과 '바꾸기'. 바꾸기를 열면 추천과 새 공급정보 추가, 다른 기존 공급정보 검색을 보인다. */
+.placement { display:grid; gap:var(--ds-space-2); }
+.placementSentence { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); }
+.page .placementSentence p { margin:0; font-weight:var(--ds-weight-strong); }
+.placementPicker { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
+.placementPicker label { display:grid; gap:var(--ds-space-1); font-size:var(--ds-text-caption); }
+.placementOptions { display:grid; max-height:240px; overflow:auto; margin:0; padding:0; list-style:none; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); scrollbar-width:thin; }
+.placementOptions li + li { border-top:1px solid var(--ds-color-divider); }
+.placementOptions button { display:block; width:100%; padding:var(--ds-space-2) var(--ds-space-3); border:0; background:none; color:inherit; font:inherit; font-size:var(--ds-text-caption); text-align:left; cursor:pointer; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.placementOptions button:hover:not(:disabled), .placementOptions button:focus-visible { background:var(--ds-color-control-hover); }
+.placementOptions button:disabled { color:var(--pdf-quiet-text); cursor:not-allowed; }
+.placementOptions button[aria-pressed=true] { background:var(--ds-color-action-soft); color:var(--ds-color-action); font-weight:600; }
+.placementOptions small { color:var(--ds-color-action); }
+.placementOptions .hint { padding:var(--ds-space-2) var(--ds-space-3); }
