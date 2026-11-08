@@ -1,8 +1,9 @@
 # 신청자격 저장 구조 전환과 재판정 운영
 
-공고 구조화 JSON을 관계형 행과 함께 저장하는 writer와 최신 결과·재판정 작업 테이블을 도입할 때의
-절차다. 적용 대상은 primary 애플리케이션 DB다. 테이블·불변식은
-[저장 설계](../../features/eligibility/storage.md), API 계약은 [기능 문서](../../features/eligibility/README.md)가 원본이다.
+공고 구조화 JSON을 관계형 행과 함께 저장하는 writer의 도입 절차다.
+최신 결과·재판정 작업 테이블의 도입 절차도 함께 다룬다. 적용 대상은 primary 애플리케이션 DB다.
+테이블과 불변식의 원본은 [저장 설계](../../features/eligibility/storage.md)이며 API 계약의 원본은
+[기능 문서](../../features/eligibility/README.md)다.
 이 문서나 CI 통과는 특정 환경의 적용 완료를 뜻하지 않는다.
 
 ## 적용 조건
@@ -36,7 +37,7 @@
 3. 기존 계약 버전 분포와 현재 작성 내용·프로필 건수를 기록한다. 복제본에서 새 writer의 초안 저장·복사·
    공개, 입력 계약 2 읽기와 3 저장, 최신/이전 API 계약을 확인한다. 서비스 DB에 임의 시험 공고를 만들지 않는다.
 4. [특별 배포](../deployment.md#db-전환계약-변경이-필요한-특별-배포)에 따라 자동 배포와 별도 자동화를 조정한다.
-   실행 중인 배포가 없는지 확인하고, 실패 시 어느 버전의 앱·DB를 복원할지 정한다.
+   실행 중인 배포가 없는지 확인하고 실패 시 어느 버전의 앱·DB를 복원할지 정한다.
 
 앱은 트래픽을 받기 전에도 [마이그레이션 시작 구성](../../../backend/src/main/java/com/toadzip/backend/privacy/configuration/PrivacyMigrationConfiguration.java)에
 따라 사전 검사 → application Flyway → privacy Flyway를 실행한다. 새 컨테이너 기동을 단순 읽기 점검으로
@@ -63,7 +64,7 @@
 ## 사후 검증
 
 [읽기 전용 점검 SQL](../../queries/eligibility-status.sql)은 _01~05 적용 후 실행한다.
-psql의 연결 대상은 승인된 환경에서 별도로 선택하며, 원문·프로필 값 없이 집계만 출력한다.
+psql의 연결 대상은 승인된 환경에서 별도로 선택하며 원문·프로필 값 없이 집계만 출력한다.
 대규모 투영 비교는 전체 작성 내용을 읽으므로 먼저 복제본에서 비용을 확인한다.
 
 ```sh

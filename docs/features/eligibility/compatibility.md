@@ -6,7 +6,7 @@
 
 ## 유지하는 API
 
-USER 세션 인증, 사용자 ID의 세션 취득, `{"data": ...}` 응답과 `Cache-Control: no-store`를 적용한다.
+USER 세션으로 인증하고 사용자 ID를 세션에서 취득한다. `{"data": ...}` 응답과 `Cache-Control: no-store`를 적용한다.
 
 | 요청 | 범위 |
 |---|---|
@@ -79,7 +79,7 @@ NOT_STRUCTURED/NOT_PUBLISHED/CANCELLED에는 result가 없다. 존재하지 않�
 | PROCEDURE | 중복신청·서류·입주 전 이행·접수 절차 |
 
 안내 범위·공유 물량·임대조건·일정의 의미는 [구조화 계약](authoring.md#구조화-내용)을 따른다.
-이전 SH 영구임대 fixture는 별도 자격을 안내 문구로 표현하지만, 현재 APPLICATION 경로와
+이전 SH 영구임대 fixture는 별도 자격을 안내 문구로 표현하지만 현재 APPLICATION 경로와
 qualifications로 구조화한 [D11 사례](decisions.md#공고-사례와-재현-fixture)는 별개의 계약이다.
 
 응답의 원문 파일·근거·신청 단위·물량·임대조건·일정은 공고 표시 자료다.
@@ -90,7 +90,7 @@ qualifications로 구조화한 [D11 사례](decisions.md#공고-사례와-재현
 
 [기존 공고 검색의 접수 정책](../../../backend/src/main/java/com/toadzip/backend/announcement/repository/ApplicationScheduleSql.java)을
 재사용한다. 검토된 확정 일정이 있으면 원천 공고의 대략적인 날짜보다 우선한다. 조건부 접수만 있는 공고는
-접수 중으로 세지 않는다. 최신 공개·미삭제 게시물만 대상으로 하고, 정정 전 게시물과 취소공고는 제외한다.
+접수 중으로 세지 않는다. 최신 공개·미삭제 게시물만 대상으로 하고 정정 전 게시물과 취소공고는 제외한다.
 조회 묶음을 넘어도 keyset으로 모든 대상 공고를 한 번씩 처리한다.
 
 | 필드 | 집계 |
