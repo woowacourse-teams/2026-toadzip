@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.domain.RoadAddressLocation;
+import com.toadzip.backend.ingest.location.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.location.domain.Wgs84Coordinate;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.math.BigDecimal;
@@ -71,6 +73,32 @@ class RoadAddressGeocodingServiceTest {
                             assertThat(exception).hasMessageContaining("ZIP");
                         }
                 );
+    }
+
+    @Test
+    void 첫_출입구의_변환이_실패해도_다른_정상_출입구의_좌표를_사용한다() {
+        var first = location(true);
+        var second = RoadAddressLocation.from(new LocationSummaryRecord(
+                "11140", "2", "1114010300", "서울특별시", "중구", "태평로1가",
+                "111402005001", "세종대로", "0", 110, 0, BigDecimal.ONE, BigDecimal.TEN));
+        var converter = mock(UtmKCoordinateConverter.class);
+        when(locationRepository.findAllByNormalizedRoadAddressOrderByIdEntranceSerialAsc(
+                "서울특별시 중구 세종대로 110")).thenReturn(List.of(first, second));
+        when(converter.convert(first.coordinate().orElseThrow())).thenThrow(new RoadAddressGeocodingException(
+                RoadAddressGeocodingFailureReason.COORDINATE_CONVERSION_ERROR, "변환 실패"));
+        when(converter.convert(new UtmKCoordinate(BigDecimal.ONE, BigDecimal.TEN)))
+                .thenReturn(new Wgs84Coordinate(new BigDecimal("37.5"), new BigDecimal("127")));
+        var result = new RoadAddressGeocodingService(locationRepository, converter)
+                .geocode("서울특별시 중구 세종대로 110");
+        assertThat(result.latitude()).isEqualByComparingTo("37.5");
+    }
+
+    @Test
+    void 도로명과_건물번호가_없는_주소는_형식_오류로_구분한다() {
+        assertThatThrownBy(() -> service.geocode("주소 확인 필요"))
+                .isInstanceOfSatisfying(RoadAddressGeocodingException.class,
+                        exception -> assertThat(exception.getReason())
+                                .isEqualTo(RoadAddressGeocodingFailureReason.INVALID_ADDRESS));
     }
 
     @Test
