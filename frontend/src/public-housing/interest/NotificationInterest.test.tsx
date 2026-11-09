@@ -7,7 +7,7 @@ import { createNotificationInterestRepository, type NotificationInterestEvent, t
 
 vi.mock('../../analytics/productAnalytics', () => {
   const captureProductEvent = vi.fn()
-  return { captureProductEvent, setProductAuthState: vi.fn(), setReplaySensitive: vi.fn(),
+  return { captureProductEvent, createAnalyticsId: vi.fn(() => 'analytics-id'), setProductAuthState: vi.fn(), setReplaySensitive: vi.fn(),
     prepareNotificationCompletion: vi.fn(() => (properties: unknown, options: unknown) => {
       captureProductEvent('notification_preregistration_completed', properties, options)
       return true
@@ -89,12 +89,12 @@ it('탭을 떠나기 전 조회가 대기 중이어도 복귀 후 새 세션을 
   expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
 })
 
-it('비회원은 이전 브라우저 설정을 무시하고 로그인 안내를 닫으면 포커스를 복원한다', async () => {
+it('비회원은 이전 브라우저 설정을 무시하고 로그인 모달을 닫으면 포커스를 복원한다', async () => {
   localStorage.setItem('toadzip.notification-interest.requested:COMPLEX:1', '1')
   const repo = repository(guest)
   render(example(repo))
   const button = await click()
-  const dialog = await screen.findByRole('dialog', { name: '로그인이 필요해요' })
+  const dialog = await screen.findByRole('dialog', { name: '로그인' })
   expect(dialog).toHaveAttribute('open')
   fireEvent(dialog, new Event('cancel', { cancelable: true }))
   await waitFor(() => expect(dialog).not.toBeInTheDocument())
@@ -190,7 +190,7 @@ it.each(['resolve', 'reject'] as const)('저장소 변경 전 요청이 %s되어
   await act(async () => { if (settlement === 'resolve') pending.resolve(); else pending.reject(new Error('old')) })
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await click()
-  expect(screen.getByRole('dialog')).toHaveTextContent('로그인한 사용자만 이용할 수 있어요.')
+  expect(screen.getByRole('dialog', { name: '로그인' })).toBeVisible()
 })
 
 it('창으로 돌아오면 서버에서 변경된 설정을 반영한다', async () => {

@@ -37,10 +37,9 @@ it('비회원은 설정을 저장하지 않고 로그인 모달로 이동한다'
   const button = screen.getByRole('button', { name: '서울 알림 받기' })
   await waitFor(() => expect(button).toBeEnabled())
   fireEvent.click(button)
-  expect(await screen.findByRole('dialog')).toHaveTextContent('로그인한 사용자만 이용할 수 있어요.')
-  expect(repository.record).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: '로그인' }))
   expect(await screen.findByRole('dialog', { name: '로그인' })).toBeVisible()
+  expect(screen.queryByText('로그인한 사용자만 이용할 수 있어요.')).not.toBeInTheDocument()
+  expect(repository.record).not.toHaveBeenCalled()
 })
 
 vi.mock('../../privacy/usePrivacy', async (importOriginal) => {
