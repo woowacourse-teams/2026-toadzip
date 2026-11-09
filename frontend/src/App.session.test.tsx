@@ -80,7 +80,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
     expect(screen.getByRole('textbox', { name: '현재 검색어' })).toHaveValue('서울')
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '로그인이 필요해요' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '로그인' })).toBeVisible()
   })
 
   it('로그아웃 실패는 기존 회원 신청을 지우거나 다시 읽지 않는다', async () => {

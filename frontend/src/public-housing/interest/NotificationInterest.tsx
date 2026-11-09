@@ -75,7 +75,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const revision = useRef(0)
   const [selection, setSelection] = useState<Selection | null>(null)
   const session = useRef<string | null>(null)
-  const [dialog, setDialog] = useState<'guest' | 'confirm' | 'completed' | 'login' | null>(null)
+  const [dialog, setDialog] = useState<'confirm' | 'completed' | 'login' | null>(null)
   const [busy, setBusy] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
   const [batchError, setBatchError] = useState('')
@@ -306,7 +306,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     const isRequested = requested.has(requestedKey(selection.target))
     captureProductEvent('notification_cta_clicked', { target_type: selection.target.type, target_id: selection.target.id,
       source: selection.source, action: isRequested ? 'cancel' : 'subscribe' })
-    if (mode === 'guest') { setDialog('guest'); return }
+    if (mode === 'guest') { setDialog('login'); return }
     if (!isRequested) { setSelection(selection); setDialog('confirm'); return }
     if (isRequested) captureProductEvent('notification_cancel_requested', {
       target_type: selection.target.type, target_id: selection.target.id, source: selection.source,
@@ -414,13 +414,6 @@ export function NotificationInterestProvider({ children, repository = notificati
 
   return <InterestContext.Provider value={context}>
     {children}
-    {dialog === 'guest' && <InterestDialog onDismiss={dismiss} label="로그인이 필요해요">
-      <h2>로그인이 필요해요</h2><p className={styles.description}>로그인한 사용자만 이용할 수 있어요.</p>
-      <div className={styles.actions}>
-        <button className={styles.submit} type="button" onClick={() => setDialog('login')}>로그인</button>
-        <button className={styles.cancel} type="button" onClick={dismiss}>닫기</button>
-      </div>
-    </InterestDialog>}
     {dialog === 'login' && <LoginModal loginFailed={false} sessionError={false} onClose={dismiss} returnFocusRef={trigger} />}
     {dialog === 'confirm' && selection && <InterestDialog onDismiss={dismiss} label={`${selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?`}>
       <h2>{selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?</h2>
