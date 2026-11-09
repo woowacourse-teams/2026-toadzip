@@ -124,8 +124,12 @@ export function foldSameHousingType(extraction: Extraction): Extraction {
   const find = (index: number): number => root[index] === index ? index : (root[index] = find(root[index]))
   const join = (left: number, right: number) => { const a = find(left), b = find(right); if (a !== b) root[Math.max(a, b)] = Math.min(a, b) }
   const types = source.map(row => applicationTypeKey(row.typeName))
+  // 단지가 둘 이상인 공고에서 단지명이 빈 행은 어느 단지인지 모른다. 신청형이 같아도 다른 블록의 행(광주선운2 A-1·A-3블록의
+  // 55B-1)일 수 있어 접지 않는다. 행은 따로 두고 저장할 곳·단지 정하기에서 단지를 정한다.
+  const complexNames = new Set([...extraction.complexes.map(complex => complex.name.trim()), ...source.map(complexOf)].filter(Boolean))
+  const sameKnownComplex = (left: ExtractedRow, right: ExtractedRow) => complexOf(left) === complexOf(right) && (Boolean(complexOf(left)) || complexNames.size < 2)
   source.forEach((row, left) => source.forEach((other, right) => {
-    if (left < right && types[left] && complexOf(row) === complexOf(other) && types[left] === types[right]) join(left, right)
+    if (left < right && types[left] && sameKnownComplex(row, other) && types[left] === types[right]) join(left, right)
   }))
   // 공고문이 여러 행에 걸쳐 한 번만 적은 모집수는 그 행들이 한 공급행이라는 뜻이다(면적이 달라도 세부 타입으로 접는다, 결정 1).
   // 대상 예비자 수만 여러 행에 걸친 경우는 행마다 자기 모집수·대상 공급 수가 없을 때만이다(GH 예비자 모집). 따로 있으면 행은 그대로 둔다.
@@ -135,7 +139,7 @@ export function foldSameHousingType(extraction: Extraction): Extraction {
     const rowCount = group.paths.every(path => rowTotal.test(path))
     if (!rowCount && indexes.some(index => typeof source[index].values.totalSupplyHouseholdCount === 'number'
       || source[index].targets.some(target => typeof target.supplyHouseholdCount === 'number'))) continue
-    if (indexes.every(index => complexOf(source[index]) === complexOf(source[indexes[0]]))) indexes.forEach(index => join(indexes[0], index))
+    if (indexes.every(index => sameKnownComplex(source[index], source[indexes[0]]))) indexes.forEach(index => join(indexes[0], index))
   }
   const members = new Map<number, number[]>()
   source.forEach((_, index) => members.set(find(index), [...members.get(find(index)) ?? [], index]))

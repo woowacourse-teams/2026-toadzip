@@ -812,6 +812,22 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
     expect(review.rows[0].proposal).toMatchObject({ destination: workspace.supply.rows[0].key, needsConfirmation: false })
   })
 
+  it('단지가 둘 이상인 공고에서 단지명이 빈 행은 신청형이 같아도 접지 않는다', () => {
+    // 광주선운2: 블록 제목 아래 표라 단지명을 확인하지 못하면 A-1·A-3블록의 55B-1이 같은 단지의 같은 신청형으로 보인다.
+    const rows = [pdfRow('', '55B-1 (주거약자)', 55.57, null, [target('신혼부부·한부모가족')]), pdfRow('', '55B-1 (주거약자)', 55.77, null, [target('신혼부부·한부모가족')])]
+    const twoBlocks = extract(rows)
+    twoBlocks.complexes = ['광주선운2 A-1블록', '광주선운2 A-3블록'].map(name => ({ name, address: null, totalHouseholdCount: null, parkingCount: null }))
+    expect(foldSameHousingType(twoBlocks).supplyRows).toHaveLength(2)
+    // 단지가 하나뿐인 공고(단지명 열 없는 표)는 지금처럼 같은 신청형을 접는다.
+    expect(foldSameHousingType(extract(rows)).supplyRows).toHaveLength(1)
+    // 행 모집수 하나를 함께 쓰는 단지명 빈 행도 단지가 둘 이상이면 어느 단지끼리인지 몰라 접지 않는다(그 공통 수는 저장하지 않는다).
+    const shared = extract([pdfRow('', '26A', 26.01, null, [target('일반')]), pdfRow('', '26B', 26.1, null, [target('일반')])],
+      [{ paths: ['supplyRows[0].totalSupplyHouseholdCount', 'supplyRows[1].totalSupplyHouseholdCount'], count: 4, page: 3, quote: '26A 26B 4' }])
+    expect(foldSameHousingType(shared).supplyRows).toHaveLength(1)
+    shared.complexes = twoBlocks.complexes
+    expect(foldSameHousingType(shared).supplyRows).toHaveLength(2)
+  })
+
   it('같은 면적이어도 신청형이 다르면(26A·26B(주거약자)) 접지 않고, 신청자 표기만 다른 같은 신청형(26A·26A(고령자))만 공급행 하나로 접는다', () => {
     const folded = foldSameHousingType(extract([pdfRow('A단지', '26A', 26.0100, 3, [target('일반')]), pdfRow('A단지', '26B(주거약자)', 26.01, 2, [target('주거약자')]),
       pdfRow('A단지', '26A [고령자]', 26.01, 4, [target('고령자')]), pdfRow('B단지', '26A', 26.01, 5, [target('일반')])]))
