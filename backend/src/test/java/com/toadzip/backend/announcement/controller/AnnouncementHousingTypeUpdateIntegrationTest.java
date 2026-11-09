@@ -194,9 +194,8 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         var request = request();
         value(request, "row:" + row.getId(), "36A", "50.6512", 120);
 
-        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(request.toString()))
-                .andExpect(status().isBadRequest());
+        // 더 최근 공고 값을 지키느라 바꿀 주택형이 없으면 '변경 없음'으로 넘어간다(거절하지 않는다).
+        assertThat(preview(request).path("unchanged").asBoolean()).isTrue();
 
         request.withArray("fields").add("name");
         var preview = preview(request);
@@ -326,9 +325,14 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         var request = request();
         value(request, "row:" + row.getId(), "36", "50.1", null);
 
-        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+        var preview = json.readTree(mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(request.toString()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+
+        assertThat(preview.path("unchanged").asBoolean()).isTrue();
+        assertThat(preview.path("housingTypes")).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT announcement_observed_at FROM housing_types WHERE id = ?", Timestamp.class,
+                type.getId()).toInstant()).isEqualTo(POSTED_AT);
     }
 
     @Test

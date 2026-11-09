@@ -14,6 +14,7 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 
@@ -21,6 +22,10 @@ import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 public class LhAnnouncementEnrichmentMapper {
 
     private static final int MAX_RECEPTION_NAME_LENGTH = 255;
+    private static final int MAX_RECEPTION_GUIDANCE_LENGTH = 1000;
+    private static final String RECEPTION_NAME_FALLBACK = "LH 접수처";
+    private static final Pattern RECEPTION_DETAIL_PREFIX = Pattern.compile("^(?:\\s*\\([^)]*\\)|[\\s,·])+");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     private final LhAnnouncementValueParser parser = new LhAnnouncementValueParser();
 
@@ -77,13 +82,34 @@ public class LhAnnouncementEnrichmentMapper {
         return SupplyNameNormalizer.sameComplex(left, right);
     }
 
+    /** LH 접수처 행에는 접수처 이름이 없다. 안내문은 이름이 아니라 안내 문구로 둔다. */
     private ReceptionPlace receptionOf(LhAnnouncementDetailSourceView detail) {
         String address = joined(detail.getReceptionAddress(), detail.getReceptionDetailAddress());
-        String name = textWithin(detail.getReceptionGuidance(), MAX_RECEPTION_NAME_LENGTH);
-        if (name == null || name.isBlank()) {
-            name = "LH 접수처";
+        String guidance = textWithin(oneLine(detail.getReceptionGuidance()), MAX_RECEPTION_GUIDANCE_LENGTH);
+        return ReceptionPlace.create(receptionNameOf(detail.getReceptionDetailAddress()), ReceptionMethod.VISIT, address,
+                detail.getPhone(), null, guidance);
+    }
+
+    /**
+     * 상세주소가 장소 이름(관리사무소, LH 하남권주거복지지사)이면 그 이름을 쓴다. 상세주소는 주소 괄호 꼬리('(서정동,○○타워)')로
+     * 시작하기도 해서 앞 괄호·구두점을 떼고, 남는 것이 없으면 지금까지 쓰던 'LH 접수처'로 둔다(관리자가 고친 공고의 원천 변경 확인이 이름이 바뀌었다고 켜지지 않게).
+     */
+    private String receptionNameOf(String detailAddress) {
+        if (parser.blank(detailAddress)) {
+            return RECEPTION_NAME_FALLBACK;
         }
-        return ReceptionPlace.create(name, ReceptionMethod.VISIT, address, detail.getPhone(), null);
+        String name = RECEPTION_DETAIL_PREFIX.matcher(detailAddress).replaceFirst("").strip();
+        if (name.isEmpty() || name.length() > MAX_RECEPTION_NAME_LENGTH) {
+            return RECEPTION_NAME_FALLBACK;
+        }
+        return name;
+    }
+
+    private String oneLine(String value) {
+        if (value == null) {
+            return null;
+        }
+        return WHITESPACE.matcher(value).replaceAll(" ").strip();
     }
 
     private String textWithin(String value, int maximumLength) {

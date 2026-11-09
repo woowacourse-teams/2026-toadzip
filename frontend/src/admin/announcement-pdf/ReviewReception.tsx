@@ -8,8 +8,8 @@ import styles from './PdfCorrection.module.css'
 const methodLabel = (value: unknown) => choices.method.find(([key]) => key === value)?.[1] ?? shown(value)
 
 /**
- * 접수처를 한 곳씩 보인다. PDF 접수처는 접수 방식과 이름이 같은 지금 접수처와 짝지어 칸마다 고르고(짝이 없으면 새 접수처), PDF에 없는 지금 접수처는 값만 보이며
- * 저장에서 뺄 수 있다. 뺀 접수처는 저장하면 사라진다.
+ * 접수처를 한 곳씩 보인다. PDF 접수처는 같은 곳인 지금 접수처와 짝지어 칸마다 고르고(짝이 없으면 새 접수처), PDF에 없는 지금 접수처는 값만 보이며
+ * 저장에서 뺄 수 있다. 남길 접수처와 같은 곳인 지금 접수처는 중복으로 기본에서 뺀다. 뺀 접수처는 저장하면 사라진다.
  */
 export function ReviewReception({ review, workspace, needs, filter, onChange, onEvidence }: { review: Review; workspace: JsonWorkspace; needs: Map<string, string>; filter: ReviewFilter
   onChange: (review: Review) => void; onEvidence: (evidence: Evidence, cell?: Cell) => void }) {
@@ -22,7 +22,8 @@ export function ReviewReception({ review, workspace, needs, filter, onChange, on
     const name = receptionName(review, index)
     const before = entry.existing === null ? null : current[entry.existing]
     const evidence = entry.extracted === null ? null : evidenceFor(review.extraction.evidence, `receptionPlaces[${entry.extracted}]`)
-    const [decision, tone] = !entry.include ? [entry.existing === null ? '추가 안 함' : '저장할 때 뺌', 'muted']
+    const twin = entry.duplicateOf == null ? -1 : review.reception.findIndex(other => other.existing === entry.duplicateOf)
+    const [decision, tone] = !entry.include ? [entry.existing === null ? '추가 안 함' : twin >= 0 ? `${receptionName(review, twin)}과 같은 곳 · 저장할 때 뺌` : '저장할 때 뺌', 'muted']
       : entry.extracted === null ? ['PDF에 없음 · 유지', 'warning'] : entry.existing === null ? ['새 접수처 추가', 'done'] : ['기존 접수처와 대조', 'done']
     return <li key={`${entry.extracted ?? 'current'}:${entry.existing ?? 'new'}`} data-review-id={`reception:${index}`} tabIndex={-1} data-excluded={!entry.include || undefined}>
       <div className={styles.scheduleHead}><strong>{name}</strong><span className={styles.statusBadge} data-tone={tone}>{decision}</span></div>

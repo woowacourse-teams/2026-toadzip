@@ -14,6 +14,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 @Getter
 @Entity
@@ -63,6 +65,45 @@ public class SupplyTarget {
     @Column(nullable = false)
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminExcluded;
+
+    /** 이 대상이 다른 대상과 함께 쓰는 공급세대수. 묶인 동안 이 대상의 공급세대수 칸은 비운다. */
+    @ManyToOne(fetch = LAZY)
+    @JoinColumn(name = "supply_count_group_id")
+    @OnDelete(action = OnDeleteAction.SET_NULL)
+    private SupplyTargetCountGroup supplyCountGroup;
+
+    /** 이 대상이 다른 대상과 함께 쓰는 예비자 모집수. 묶인 동안 이 대상의 예비자수 칸은 비운다. */
+    @ManyToOne(fetch = LAZY)
+    @JoinColumn(name = "reserve_count_group_id")
+    @OnDelete(action = OnDeleteAction.SET_NULL)
+    private SupplyTargetCountGroup reserveCountGroup;
+
+    /**
+     * 공통 모집수 묶음에 넣거나(null이면 뺀다) 바꾼다. 묶음과 같은 종류의 칸에 이 대상만의 수가 있으면 같은 세대를 두 번 세므로 막는다.
+     * 다른 공급행의 묶음에도 넣지 않는다.
+     */
+    public void shareCounts(SupplyTargetCountGroup supplyGroup, SupplyTargetCountGroup reserveGroup) {
+        checkGroup(supplyGroup, SupplyTargetCountGroup.Kind.SUPPLY, supplyHouseholdCount);
+        checkGroup(reserveGroup, SupplyTargetCountGroup.Kind.RESERVE, reserveCount);
+        supplyCountGroup = supplyGroup;
+        reserveCountGroup = reserveGroup;
+    }
+
+    private boolean sameRow(SupplyRow other) {
+        return other == supplyRow || other != null && other.getId() != null && other.getId().equals(supplyRow.getId());
+    }
+
+    private void checkGroup(SupplyTargetCountGroup group, SupplyTargetCountGroup.Kind kind, Integer ownCount) {
+        if (group == null) {
+            return;
+        }
+        if (group.getKind() != kind || !sameRow(group.getSupplyRow())) {
+            throw new IllegalArgumentException(target + ": 같은 공급행·종류의 공통 모집수에만 넣을 수 있습니다.");
+        }
+        if (ownCount != null) {
+            throw new IllegalArgumentException(target + ": 공통 모집수를 쓰는 대상에는 그 대상만의 모집수를 넣을 수 없습니다.");
+        }
+    }
 
     public void correctPresentation(boolean excluded, int order) {
         validateNonNegative(order, "표시 순서");
@@ -195,6 +236,7 @@ public class SupplyTarget {
             BigDecimal rentalDeposit, BigDecimal monthlyRent, BigDecimal convertedDeposit, String applicationCondition) {
         SupplyTarget incoming = create(supplyRow, target, supplyRank, supplyHouseholdCount, reserveCount,
                 rentalDeposit, monthlyRent, convertedDeposit, applicationCondition, displayOrder);
+        incoming.shareCounts(supplyCountGroup, reserveCountGroup);
         this.target = incoming.target;
         this.supplyRank = incoming.supplyRank;
         this.supplyHouseholdCount = incoming.supplyHouseholdCount;

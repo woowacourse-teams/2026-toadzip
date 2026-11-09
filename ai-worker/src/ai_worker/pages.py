@@ -215,6 +215,9 @@ class PromptPages:
     supply_tables: list[tables.SupplyTable] = field(default_factory=list)
     # 표를 찾지 못했지만 공급표 같은 본문이 있는 쪽. 선이 없는 표의 행이 빠졌을 수 있다.
     tableless_supply_pages: list[int] = field(default_factory=list)
+    # 공급표 행마다 같은 쪽에서 그 표 위에 있는 글. 단지명 열 없이 블록 제목(■ 광주선운2 A-1블록) 아래 표를 둔 공고에서
+    # 모델이 낸 단지명을 표 위의 가장 가까운 제목과 대조한다(source_check).
+    supply_row_headings: dict[str, str] = field(default_factory=dict)
 
 
 def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) -> PromptPages:
@@ -222,7 +225,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
     deadline은 page_texts와 같다. 표 찾기가 쪽마다 1초 안팎이라 쪽마다 확인한다."""
     notice_parts, supply_parts = [], []
     rental, supply_row_ids, supply_row_text, supply_row_values, candidates = set(), set(), {}, {}, []
-    supply_row_target_values, supply_row_subtypes = {}, {}
+    supply_row_target_values, supply_row_subtypes, supply_row_headings = {}, {}, {}
     notice_pages, supply_pages, fallback_pages, unstructured_supply_pages = [], [], [], []
     supply_tables, tableless_supply_pages = [], []
     previous_supply: tables.SupplyContinuation | None = None
@@ -258,7 +261,9 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
                     supply_row_subtypes.pop(supply_tables[-1].last_housing_type_row_id(), None)
                 supply_parts.append(f"[표 {table.number} / 원본 {number}쪽]")
                 supply_tables.append(table)
+                heading = _text_above(page, found.table_boxes[table.number - 1])
                 for row in table.rows:
+                    supply_row_headings[row.id] = heading
                     supply_row_ids.add(row.id)
                     supply_row_text[row.id] = row.text
                     supply_row_values[row.id] = row.values
@@ -305,7 +310,13 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
         unstructured_supply_pages=list(dict.fromkeys(unstructured_supply_pages)),
         supply_tables=supply_tables,
         tableless_supply_pages=tableless_supply_pages,
+        supply_row_headings=supply_row_headings,
     )
+
+
+def _text_above(page: pymupdf.Page, box: tuple[float, float, float, float]) -> str:
+    """같은 쪽에서 표 위쪽(쪽 맨 위부터 표 윗변까지)의 글. 앞 표의 칸 글자도 들어간다."""
+    return page.get_text("text", clip=pymupdf.Rect(page.rect.x0, page.rect.y0, page.rect.x1, box[1]), sort=True)
 
 
 def _has_supply_table_text(text: str) -> bool:

@@ -9,6 +9,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyTargetCountGroup;
 import com.toadzip.backend.announcement.dto.response.AgencyResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
@@ -33,6 +34,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -239,8 +241,9 @@ final class AnnouncementResponseMapper {
         for (SupplyRow supplyRow : supplyRows) {
             if (supplyRow.isAdminExcluded()) { continue; }
             List<SupplyTarget> rowTargets = targetsBySupplyRowId.getOrDefault(supplyRow.getId(), List.of());
+            Map<Long, List<String>> sharing = sharingTargets(rowTargets);
             List<SupplyTargetResponse> targetResponses = rowTargets.stream()
-                    .map(this::supplyTargetResponse)
+                    .map(target -> supplyTargetResponse(target, sharing))
                     .toList();
             responses.add(supplyRowResponse(supplyRow, targetResponses));
             rowTargets.stream().map(SupplyTarget::getTarget).forEach(targets::add);
@@ -303,7 +306,7 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyTargetResponse supplyTargetResponse(SupplyTarget supplyTarget) {
+    private SupplyTargetResponse supplyTargetResponse(SupplyTarget supplyTarget, Map<Long, List<String>> sharing) {
         return new SupplyTargetResponse(
                 supplyTarget.getId(),
                 supplyTarget.getTarget(),
@@ -313,8 +316,30 @@ final class AnnouncementResponseMapper {
                 exactLong(supplyTarget.getRentalDeposit()),
                 exactLong(supplyTarget.getMonthlyRent()),
                 exactLong(supplyTarget.getConvertedDeposit()),
-                supplyTarget.getApplicationCondition()
+                supplyTarget.getApplicationCondition(),
+                sharedCount(supplyTarget.getSupplyCountGroup(), sharing),
+                sharedCount(supplyTarget.getReserveCountGroup(), sharing)
         );
+    }
+
+    /** 공급행 안의 공통 모집수 묶음마다 그 수를 함께 쓰는 대상 이름(표시 순서). */
+    private Map<Long, List<String>> sharingTargets(List<SupplyTarget> rowTargets) {
+        Map<Long, List<String>> sharing = new HashMap<>();
+        for (SupplyTarget target : rowTargets) {
+            for (SupplyTargetCountGroup group : Arrays.asList(target.getSupplyCountGroup(), target.getReserveCountGroup())) {
+                if (group != null) {
+                    sharing.computeIfAbsent(group.getId(), id -> new ArrayList<>()).add(target.getTarget());
+                }
+            }
+        }
+        return sharing;
+    }
+
+    private SupplyTargetResponse.SharedCount sharedCount(SupplyTargetCountGroup group, Map<Long, List<String>> sharing) {
+        if (group == null) {
+            return null;
+        }
+        return new SupplyTargetResponse.SharedCount(group.getHouseholdCount(), sharing.getOrDefault(group.getId(), List.of()));
     }
 
     private Long exactLong(BigDecimal amount) {

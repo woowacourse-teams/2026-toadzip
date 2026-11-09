@@ -373,6 +373,14 @@ export interface RawAnnouncementSupplyTarget {
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
   readonly applicationCondition: string | null
+  readonly sharedSupplyHouseholdCount?: SharedTargetCount | null
+  readonly sharedWaitlistCount?: SharedTargetCount | null
+}
+
+/** 같은 공급행의 다른 대상과 함께 쓰는 수. 대상마다 나누지 않은 공고문 그대로의 수와 그 수를 함께 쓰는 대상 이름이다. */
+export interface SharedTargetCount {
+  readonly count: number
+  readonly targets: readonly string[]
 }
 
 export interface RawAnnouncementSupplyRow {
@@ -470,6 +478,8 @@ export interface AnnouncementSupplyTarget {
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
   readonly applicationCondition: string | null
+  readonly sharedSupplyHouseholdCount?: SharedTargetCount | null
+  readonly sharedWaitlistCount?: SharedTargetCount | null
 }
 
 export interface AnnouncementSupplyRow {

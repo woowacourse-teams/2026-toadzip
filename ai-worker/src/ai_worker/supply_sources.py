@@ -43,15 +43,16 @@ class Supply:
 class CodeSupply:
     """코드가 표 셀에서 묶은 공급행. 모델을 부르지 않는다."""
 
-    def __init__(self, grouped: supply_grouping.Grouped, selected: pages.PromptPages):
+    def __init__(self, grouped: supply_grouping.Grouped, selected: pages.PromptPages, source_names: list[str]):
         self._grouped = grouped
         self._selected = replace(selected, supply_row_values=grouped.row_values)
+        self._source_names = source_names
 
     def wait(self) -> None:
         """기다릴 모델 호출이 없다."""
 
     def read(self) -> Supply:
-        tree, source_warnings = assemble(self._grouped.compact, self._selected)
+        tree, source_warnings = assemble(self._grouped.compact, self._selected, self._source_names)
         return Supply(tree, [*self._grouped.warnings, *source_warnings], [], "code")
 
 
@@ -61,6 +62,7 @@ class ModelSupply:
     def __init__(self, model: Model, rows: list[SourceSupplyRow], selected: pages.PromptPages, deadline: float,
                  pool: Executor):
         self._selected = selected
+        self._source_names = [row.complex_label for row in rows]
         self._future = pool.submit(model.chat, stage_prompts.supply_prompt(rows, selected), deadline)
 
     def wait(self) -> None:
@@ -77,7 +79,7 @@ class ModelSupply:
             warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
         if selected.ambiguous_supply_tables:
             warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
-        tree, source_warnings = assemble(compact, selected)
+        tree, source_warnings = assemble(compact, selected, self._source_names)
         return Supply(tree, [*warnings, *source_warnings], [reply.usage], "model")
 
 
@@ -101,7 +103,7 @@ class SupplyPlan:
         """본문 단계 호출을 보낸 뒤에 부른다. Jev 확인은 본문 단계 호출과 겹쳐 돈다.
         cutoff는 Jev에 물을 수 있는 마지막 시각, deadline은 모델 호출 마감이다."""
         if self._grouped and _counts_confirmed(self._column_judge, self._grouped, self._first_pages, cutoff):
-            return CodeSupply(self._grouped, self._selected)
+            return CodeSupply(self._grouped, self._selected, [row.complex_label for row in self._rows])
         return ModelSupply(self._model, self._rows, self._selected, deadline, pool)
 
 
