@@ -9,6 +9,7 @@ import java.util.stream.Stream;
 
 public enum DataPipelineType {
     COMPLEX_COLLECTION("complex-collection", Domain.COMPLEX, true, false, null),
+    COMPLEX_REGISTRATION("complex-registration", Domain.COMPLEX, false, false, null),
     COMPLEX_REFINEMENT("complex-refinement", Domain.COMPLEX, false, false, Retirement.COMPLEX_REFINEMENT),
     ANNOUNCEMENT_COLLECTION("announcement-collection", Domain.ANNOUNCEMENT, true, false, null),
     ANNOUNCEMENT_REFINEMENT("announcement-refinement", Domain.ANNOUNCEMENT, false, false, null),
@@ -57,6 +58,7 @@ public enum DataPipelineType {
 
     public List<DataPipelineStep> steps() {
         return switch (this) {
+            case COMPLEX_REGISTRATION -> List.of(DataPipelineStep.REGISTER_MYHOME_COMPLEXES);
             case ANNOUNCEMENT_REGISTRATION -> List.of(
                     DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,

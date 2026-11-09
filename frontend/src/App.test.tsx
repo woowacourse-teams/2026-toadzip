@@ -178,7 +178,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('navigation', { name: '관리자 메뉴' })).getByRole('link', { name: '단지 관리' }))
     fireEvent.click(screen.getByRole('link', { name: '단지 추가' }))
     expect(screen.getByRole('heading', { name: '단지 관리',level:1 })).toBeVisible()
@@ -192,7 +192,7 @@ describe('App', () => {
     fireEvent.click(screen.getByText('수집·원천 도구', { selector: 'summary' }))
     fireEvent.click(screen.getByRole('link', { name: '주소 데이터' }))
     expect(screen.getByRole('heading', { name: '주소 데이터', level: 1 })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '공고 수집' }))
     expect(screen.getByRole('heading', { name: '공고 수집', level: 1 })).toBeVisible()
   })
@@ -228,7 +228,7 @@ describe('App', () => {
     render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '직접 입력' })).toBeVisible()
     expect(screen.getByRole('link', { name: '공고 관리' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
   })
 
   it.each([false, true])('인증 복원 대기 중 로그인하면 관리자 화면을 연다 (실패 후 재시도: %s)', async retry => {

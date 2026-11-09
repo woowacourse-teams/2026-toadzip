@@ -24,16 +24,17 @@ import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefinement
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementSharedRequestCollector;
+import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
-import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationExecutionService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
@@ -425,7 +426,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(GhAnnouncementCollectionService.class),
                         mock(ShAnnouncementRefinementService.class),
                         mock(GhAnnouncementRefinementService.class),
-                        mock(DataPipelineExecutionRepository.class)
+                        mock(DataPipelineExecutionRepository.class),
+                        mock(MyHomeInitialRegistrationExecutionService.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()
@@ -458,7 +460,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(GhAnnouncementCollectionService.class),
                         mock(ShAnnouncementRefinementService.class),
                         mock(GhAnnouncementRefinementService.class),
-                        mock(DataPipelineExecutionRepository.class)
+                        mock(DataPipelineExecutionRepository.class),
+                        mock(MyHomeInitialRegistrationExecutionService.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()

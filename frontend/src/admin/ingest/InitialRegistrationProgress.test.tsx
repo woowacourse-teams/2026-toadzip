@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { InitialRegistrationProgress } from './InitialRegistrationProgress'
-import { getInitialRegistration, refreshInitialRegistration, type InitialRegistrationResponse } from './api'
+import { InitialRegistrationProgress as Progress } from './InitialRegistrationProgress'
+import type { ComponentProps } from 'react'
+import { getInitialRegistration, refreshInitialRegistration, registerReadyComplexes, type InitialRegistrationResponse } from './api'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(),
-  getInitialRegistration: vi.fn(), refreshInitialRegistration: vi.fn(),
+  getInitialRegistration: vi.fn(), refreshInitialRegistration: vi.fn(), registerReadyComplexes: vi.fn(),
 }))
 const response: InitialRegistrationResponse = {
   counts: { EXISTING: 0, LOCATION_REQUIRED: 10, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 90 },
@@ -18,6 +19,91 @@ beforeEach(() => {
   localStorage.removeItem('toadzip:admin:initial-registration:page-size')
   vi.mocked(getInitialRegistration).mockResolvedValue(response)
   vi.mocked(refreshInitialRegistration).mockResolvedValue()
+})
+
+it('현황 숫자를 누르면 해당 상태의 첫 페이지로 이동한다', async () => {
+  render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
+  await screen.findByText('남은 단지')
+  fireEvent.click(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' }))
+  await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('LOCATION_REQUIRED', 0, 20))
+  expect(screen.getByLabelText('진행 상태')).toHaveValue('LOCATION_REQUIRED')
+  expect(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('보류 사유를 바로 보여주고 원천과 확인 시각은 단지 상세를 펼쳤을 때 보여준다', async () => {
+  render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
+  expect(await screen.findByText('주소·좌표 확인 필요')).toBeVisible()
+  expect(screen.getByText('123:HAPPY_HOUSING')).not.toBeVisible()
+  fireEvent.click(screen.getByLabelText('남은 단지 상세 정보'))
+  expect(screen.getByText('123:HAPPY_HOUSING')).toBeVisible()
+})
+
+it('등록 가능한 신규 단지가 있을 때 등록 실행을 제공한다', async () => {
+  vi.mocked(getInitialRegistration).mockResolvedValue({ ...response, counts: { ...response.counts, READY: 2 } })
+  render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
+  await screen.findByText('남은 단지')
+  expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeEnabled()
+})
+
+it('새로고침으로 실행 중인 등록을 복원하고 자동으로 완료 수를 갱신한다', async () => {
+  const running = { ...idle, executionId: 'run-1', status: 'RUNNING' as const }
+  const view = render(<InitialRegistrationProgress disabled={true} revision="" onBusyChange={vi.fn()}
+    registration={{ execution: running, requestError: null, errorResponse: null }} />)
+  await screen.findByText('남은 단지')
+  expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
+  expect(screen.getByText('등록 준비 중…')).toBeVisible()
+  vi.mocked(getInitialRegistration).mockResolvedValue({ ...response, counts: { ...response.counts, COMPLETED: 95 } })
+  await waitFor(() => expect(screen.getByLabelText('등록 현황')).toHaveTextContent('95곳'), { timeout: 3500 })
+  view.rerender(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()}
+    registration={{ execution: { ...running, status: 'COMPLETED', finishedAt: '2026-11-09T01:00:00Z' }, requestError: null, errorResponse: null }} />)
+  expect(screen.getByLabelText('등록 실행 상태')).toHaveTextContent('완료')
+})
+
+it('실행 상태 조회에 실패해도 진행 중 상태를 유지하고 등록을 다시 보내지 않는다', async () => {
+  render(<InitialRegistrationProgress disabled={true} revision="" onBusyChange={vi.fn()}
+    registration={{ execution: { ...idle, status: 'RUNNING' }, requestError: '조회 실패', errorResponse: null }} />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('마지막 실행 상태를 유지')
+  expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
+  expect(registerReadyComplexes).not.toHaveBeenCalled()
+})
+
+it('실행 중에는 처리 건수와 중지 버튼을 함께 표시한다', async () => {
+  const onStop = vi.fn()
+  render(<InitialRegistrationProgress disabled={true} revision="" onBusyChange={vi.fn()}
+    stopControl={<button onClick={onStop}>등록 중지</button>}
+    registration={{ execution: { ...idle, status: 'RUNNING', workProgress: {
+      label: '등록', unit: '곳', completedCount: 106, totalCount: 2239,
+      startedAt: '2026-11-09T00:00:00Z', updatedAt: '2026-11-09T00:01:00Z',
+    } }, requestError: null, errorResponse: null }} />)
+  expect(await screen.findByText('등록 중 106 / 2,239곳')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '등록 중지' }))
+  expect(onStop).toHaveBeenCalledOnce()
+  expect(screen.queryByRole('button', { name: '실행 이력 보기' })).not.toBeInTheDocument()
+})
+
+it('완료 후에는 안내와 기존 실행 이력을 여는 버튼만 표시한다', async () => {
+  const onShowHistory = vi.fn()
+  render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()}
+    onShowHistory={onShowHistory}
+    registration={{ execution: { ...idle, status: 'COMPLETED', completedStepResults: [{ step: 'REGISTER_MYHOME_COMPLEXES',
+      stepName: '준비된 신규 단지 등록', report: { targetCount: 2, uniqueAddressCount: 1,
+        counts: { ...response.counts, COMPLETED: 2 } } }] }, requestError: null, errorResponse: null }} />)
+  expect(await screen.findByRole('status', { name: '등록 실행 상태' })).toHaveTextContent('등록이 완료되었습니다.')
+  expect(screen.queryByText(/고유 원천 주소/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: '최근 등록 실행' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '실행 이력 보기' }))
+  expect(onShowHistory).toHaveBeenCalledOnce()
+  expect(within(screen.getByLabelText('등록 현황')).getByText('90')).toBeVisible()
+})
+
+it('기존 단지와 완료 대상은 원천 비교 및 변경 이력 화면으로 연결한다', async () => {
+  vi.mocked(getInitialRegistration).mockResolvedValue({ ...response,
+    targets: [{ ...response.targets[0], status: 'COMPLETED', housingComplexId: 7 }] })
+  render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
+  fireEvent.click(await screen.findByLabelText('남은 단지 상세 정보'))
+  expect(screen.getByRole('link', { name: '원천·적용값 비교' })).toHaveAttribute('href', '/admin/complexes/7?section=verification')
+  expect(screen.getByRole('link', { name: '출처·변경 이력' })).toHaveAttribute('href', '/admin/complexes/7?section=history')
+  expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
 })
 
 it('90곳 완료와 남은 10곳의 필요한 작업을 구분해 표시한다', async () => {
@@ -122,3 +208,9 @@ it('브라우저 저장소가 차단되어도 기본 조회와 건수 변경을 
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('', 0, 100))
   expect(screen.getByRole('combobox', { name: '표시 건수' })).toHaveValue('100')
 })
+
+const idle = { executionId: null, type: 'COMPLEX_REGISTRATION' as const, status: 'IDLE' as const,
+  currentStepName: null, currentStepIndex: 0, totalStepCount: 1, completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null }
+function InitialRegistrationProgress(props: Partial<ComponentProps<typeof Progress>> & Pick<ComponentProps<typeof Progress>, 'disabled' | 'revision' | 'onBusyChange'>) {
+  return <Progress registration={{ execution: idle, requestError: null, errorResponse: null }} starting={false} onRegister={vi.fn()} onRefreshRegistration={vi.fn()} {...props} />
+}

@@ -32,8 +32,11 @@ final class InitialRegistrationProductIndex {
         return identifiers.get(identifier);
     }
 
-    List<Product> candidates(List<MyHomeComplexSourceView> sources) {
+    List<Product> candidates(List<MyHomeComplexSourceView> sources, String preparedAddress) {
         Set<Product> result = new LinkedHashSet<>();
+        if (preparedAddress != null && !preparedAddress.isBlank()) {
+            result.addAll(candidates.getOrDefault("address:" + address(preparedAddress), List.of()));
+        }
         sources.forEach(source -> {
             result.addAll(candidates.getOrDefault("pnu:" + source.getPnu(), List.of()));
             result.addAll(candidates.getOrDefault("address:" + address(source.getRnAdres()), List.of()));
