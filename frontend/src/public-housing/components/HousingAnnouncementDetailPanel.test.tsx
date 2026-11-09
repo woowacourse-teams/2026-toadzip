@@ -492,6 +492,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getByLabelText('접수 시작까지 3일')).toHaveTextContent('접수 시작 D-3')
   })
 
+  it('접수마감 배지와 띄어쓰기만 다른 마감 문구를 상단에 다시 적지 않는다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      applicationStatus: 'CLOSED', applicationStatusLabel: '접수마감', dDay: -3,
+    })} onClose={vi.fn()} />)
+    const context = screen.getByRole('group', { name: '공고 분류 및 접수 상태' })
+    expect(within(context).getByText('접수마감')).toBeVisible()
+    expect(within(context).queryByText('접수 마감')).not.toBeInTheDocument()
+  })
+
   it('조건부 접수의 상단에 확정 디데이를 표시하지 않는다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({
       applicationStatus: 'CONDITIONAL', applicationStatusLabel: '조건부 접수', dDay: 3,

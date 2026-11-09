@@ -365,7 +365,8 @@ function StickyHeader({
               accessible: deadlineAccessibleLabel(detail),
             } : null}
           />
-          {!hasCountdown && deadlineLabel(detail) !== statusLabel
+          {/* 상태 배지가 '접수마감'처럼 띄어쓰기만 다르게 같은 말을 하면 다시 적지 않는다. */}
+          {!hasCountdown && withoutSpaces(deadlineLabel(detail)) !== withoutSpaces(statusLabel)
             && deadlineLabel(detail) !== detail.rentalTypeLabel && (
             <span aria-label={deadlineAccessibleLabel(detail)}>{deadlineLabel(detail)}</span>
           )}
@@ -667,6 +668,10 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
 
 function DisabledLink({ children }: { children: ReactNode }) {
   return <span className={styles.disabledLink} aria-disabled="true">{children}</span>
+}
+
+function withoutSpaces(value: string) {
+  return value.replace(/\s/g, '')
 }
 
 function deadlineLabel(detail: HousingAnnouncementDetailData) {
