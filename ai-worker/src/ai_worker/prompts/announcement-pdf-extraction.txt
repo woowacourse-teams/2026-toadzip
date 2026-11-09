@@ -19,6 +19,11 @@
 - 기간은 startAt에 시작일의 시작 시각, endAt에 마감일의 마감 시각을 씁니다. 한 시점은 endAt을 startAt과 같게 씁니다. 시각이 없으면 00:00:00으로 씁니다.
 - "개별안내"처럼 날짜가 없는 일정은 schedules에 넣지 말고 notApplicable에 path "schedules"와 어떤 일정인지 적으세요.
 
+[신청자격]
+- applicationConditions: 신청자격 장의 핵심 자격 조건을 짧게 씁니다. 공고 전체 신청자에게 적용되는 조건(예: 무주택세대구성원, 소득·자산 기준 충족, 성년자, 거주지역)은 target을 null로 씁니다. 공고 전체가 한 신청자 집단만 받으면(예: 고령자복지주택의 65세 이상 고령자, 신혼부부 전용 공고) 그 조건도 target null입니다.
+- 특정 공급대상에만 해당하는 조건(예: 고령자 65세 이상, 신혼부부 혼인 7년 이내, 청년 만 19~39세)은 target에 공급 표의 대상 이름(고령자, 신혼부부·한부모가족, 청년 등)을 그대로 씁니다.
+- condition은 원문에 있는 요건만 120자 이내로 요약합니다. 우선배정·가점·순위·제출서류·유의사항은 쓰지 마세요. 신청자격이 없으면 빈 배열입니다.
+
 [단지]
 - 아래 [공급 표에서 읽은 단지명 후보]에 있는 이름을 그대로 사용하세요. 본문에서 주소·전체 세대수·주차대수를 확인해 complexes에 씁니다. 같은 단지 이름이 여러 후보 표기로 보이면 원문에서 확인되는 표기 하나만 쓰세요.
 - 후보 이름을 본문에서 확인할 수 없으면 후보를 그대로 만들지 말고 data.unresolvedFields에 complexes 경로와 이유를 적으세요. 주소는 도로명주소 우선, 없으면 지번입니다. 시·도부터 번지까지 쓰고 약칭은 펼치지 마세요. 괄호 속 동·단지명, "일원", "외 N필지"는 빼고 대표 번지 하나만 씁니다.
@@ -27,5 +32,5 @@
 - complexes에는 sourceComplexName, address, totalHouseholdCount, parkingCount를 출력하세요. 공급 표 단계에서 같은 값이 추출되면 코드가 대조하며, 서로 다르면 미확인으로 남깁니다.
 
 [근거]
-- 아래 경로마다 evidence를 하나씩 씁니다: announcement.name, announcement.postedDate, announcement.applicationStartDate, announcement.applicationEndDate, announcement.winnerAnnouncementDate, receptionPlaces[n], schedules[n], complexes[n].
+- 아래 경로마다 evidence를 하나씩 씁니다: announcement.name, announcement.postedDate, announcement.applicationStartDate, announcement.applicationEndDate, announcement.winnerAnnouncementDate, receptionPlaces[n], schedules[n], complexes[n], applicationConditions[n].
 - page는 첨부 쪽 번호이며 [원본 N쪽]은 원본 PDF 쪽을 알려주는 참고 표시입니다. quote는 원문을 그대로 복사한 40자 이내 문구로, 줄바꿈은 공백 하나로 바꿉니다.

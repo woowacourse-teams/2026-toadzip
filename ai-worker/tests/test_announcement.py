@@ -505,6 +505,30 @@ def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_n
     assert not any(".targets[" in finding["path"] for finding in tree["data"]["unresolvedFields"])
     assert len(tree["sharedCounts"]) == 1
 
+def test_announcement_wide_application_condition_reaches_each_target_with_its_evidence(monkeypatch):
+    """본문 단계의 신청자격(공고 전체 조건)이 원문 대조 검산 뒤에도 모든 대상의 신청 조건과 근거로 남는다."""
+    from test_tables import SACHEON_RENT_CELLS, SACHEON_SUPPLY_CELLS
+    cells = {1: SACHEON_SUPPLY_CELLS, 2: SACHEON_RENT_CELLS}
+    monkeypatch.setattr(tables, "detected_tables", lambda page: (
+        [tables.DetectedTable(cells[page.number], tuple(page.rect))] if page.number in cells else [], False))
+    supply = {"data": {"rows": [
+        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "가군", "reserveCount": 110,
+         "rentalDeposit": 2520000, "monthlyRent": 50160},
+    ]}, "sharedCounts": []}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": [],
+                       "applicationConditions": [{"target": None, "condition": "영구임대 예비입주자 자격"}]},
+              "notApplicable": [], "evidence": [{"path": "applicationConditions[0]", "page": 1, "quote": "영구임대주택 예비입주자 모집"}]}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY, RENT), {}))
+
+    tree = json.loads(result["json"])
+    [row] = tree["data"]["supplyRows"]
+    assert [target["applicationCondition"] for target in row["targets"]] == ["영구임대 예비입주자 자격"]
+    assert {(item["path"], item["page"]) for item in tree["evidence"] if item["path"].endswith(".applicationCondition")} == {
+        ("supplyRows[0].targets[0].applicationCondition", 1)}
+    assert "applicationConditions" not in tree["data"]
+
+
 def test_gh_frame_rows_keep_the_code_path_and_link_the_grouped_row_by_district_and_type():
     model = FakeModel()
     job_input = {"sourceSupplyRows": [
