@@ -9,6 +9,7 @@ public record LocationSummaryImportReport(
         int targetRoadAddressCount,
         int matchedRoadAddressCount,
         int unmatchedRoadAddressCount,
+        int preparedRoadAddressCount,
         long storedLocationCount,
         long replacedRowCount,
         long invalidatedMappingCandidateCount,

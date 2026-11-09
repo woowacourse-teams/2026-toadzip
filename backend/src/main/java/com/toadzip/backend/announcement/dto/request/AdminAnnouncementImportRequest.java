@@ -2,6 +2,7 @@ package com.toadzip.backend.announcement.dto.request;
 
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
+import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
@@ -28,7 +29,10 @@ public record AdminAnnouncementImportRequest(
         String schemaVersion,
         @NotNull(message = "필수 값입니다.") @Valid SourceRequest source,
         @NotNull(message = "필수 값입니다.") @Valid AnnouncementRequest announcement,
-        @NotNull(message = "필수 값입니다.") @Valid ReceptionPlaceRequest receptionPlace,
+        @NotEmpty(message = "한 개 이상이어야 합니다.") @Size(max = 20, message = "20개 이하여야 합니다.")
+        List<@NotNull(message = "필수 값입니다.") @Valid ReceptionPlaceRequest> receptionPlaces,
+        /** 접수처를 한 곳만 받던 예전 JSON의 접수처. 읽을 때 receptionPlaces로 옮기고 비운다. */
+        @Valid ReceptionPlaceRequest receptionPlace,
         @NotEmpty(message = "한 개 이상이어야 합니다.") @Size(max = 200, message = "200개 이하여야 합니다.")
         List<@NotNull(message = "필수 값입니다.") @Valid SupplyRowRequest> supplyRows,
         @NotNull(message = "필수 값입니다.") @Size(max = 100, message = "100개 이하여야 합니다.")
@@ -38,6 +42,19 @@ public record AdminAnnouncementImportRequest(
         @NotNull(message = "필수 값입니다.") @Size(max = 200, message = "200개 이하여야 합니다.")
         List<@NotNull(message = "필수 값입니다.") @Valid UnresolvedFieldRequest> unresolvedFields
 ) implements RejectUnknownJsonFields {
+
+    public AdminAnnouncementImportRequest {
+        if (receptionPlaces == null && receptionPlace != null) {
+            receptionPlaces = List.of(receptionPlace);
+            // 예전 JSON의 미확인 경로(receptionPlace.contact)도 첫 접수처 경로로 읽어 미확인 값이 적용되지 않게 한다.
+            if (unresolvedFields != null) {
+                unresolvedFields = unresolvedFields.stream().map(field -> field == null || field.path() == null ? field
+                        : new UnresolvedFieldRequest(field.path().replaceFirst("^(\\$\\.)?receptionPlace(?=$|[.\\[])", "$1receptionPlaces[0]"),
+                        field.reason())).toList();
+            }
+        }
+        receptionPlace = null;
+    }
 
     public record SourceRequest(
             @NotBlank(message = "필수 값입니다.") @Size(max = 255, message = "255자 이하여야 합니다.")
@@ -67,12 +84,17 @@ public record AdminAnnouncementImportRequest(
             String name,
             @NotNull(message = "필수 값입니다.") ReceptionMethod method,
             @Size(max = 255, message = "255자 이하여야 합니다.") String address,
-            @NotBlank(message = "필수 값입니다.") @Size(max = 255, message = "255자 이하여야 합니다.")
-            String contact,
+            // 인터넷 접수처는 전화번호 없이 주소(URL)만 있는 경우가 많아 연락처를 접수처마다 요구하지 않는다.
+            @Size(max = 255, message = "255자 이하여야 합니다.") String contact,
             @Size(max = 255, message = "255자 이하여야 합니다.")
             @Pattern(regexp = "^https?://[^\\s]+$", message = "HTTP(S) URL이어야 합니다.")
-            String url
+            String url,
+            @Size(max = 1000, message = "1000자 이하여야 합니다.") String guidance
     ) implements RejectUnknownJsonFields {
+
+        public ReceptionPlace toPlace() {
+            return ReceptionPlace.create(name, method, address, contact, url, guidance);
+        }
     }
 
     public record SupplyRowRequest(

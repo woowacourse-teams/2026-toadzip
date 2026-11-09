@@ -44,11 +44,11 @@ async function saved() {
   return vi.mocked(previewSupply).mock.calls[0][1].rows
 }
 
-it('지금 연결을 이름으로 보여 주고, 대표·연결과 같은 면적을 뺀 같은 단지 주택형만 추가 후보로 준다', async () => {
+it('지금 연결을 이름으로 보여 주고, 대표·연결한 주택형을 뺀 같은 단지 주택형을 추가 후보로 준다(같은 면적의 다른 주택타입도 후보다)', async () => {
   const section = await open('26A/B/C')
   expect(await within(section).findByText(/26C · 전용 26.5㎡ · #10/)).toBeVisible()
   const options = within(within(section).getByLabelText('기존 주택형 추가')).getAllByRole('option').map(option => option.textContent)
-  expect(options).toEqual(['주택형 선택', '26B · 전용 26.3㎡ · #9'])
+  expect(options).toEqual(['주택형 선택', '26B · 전용 26.3㎡ · #9', '26A 다른 이름 · 전용 26.1㎡ · #11'])
   fireEvent.change(within(section).getByLabelText('기존 주택형 추가'), { target: { value: '9' } })
   const rows = await saved()
   expect(rows.find(row => row.key === 'row:1')?.linkedHousingTypes).toEqual([{ housingTypeId: 9 }, { housingTypeId: 10, newHousingType: null }])
@@ -60,14 +60,18 @@ it('연결을 빼면 남은 목록을 명시해 보내고, 마지막 하나를 �
   const rows = await saved()
   expect(rows.find(row => row.key === 'row:1')?.linkedHousingTypes).toEqual([])
 })
-it('새 주택형을 이름·전용·공급면적으로 만들어 연결하고, 단지에 같은 면적이 있으면 막는다', async () => {
+it('새 주택형을 이름·전용·공급면적으로 만들어 연결하고, 단지에 같은 이름이 있으면 막는다(같은 면적은 막지 않는다)', async () => {
   const section = await open('26A/B/C')
   await within(section).findByText(/26C · 전용 26.5㎡/)
   fireEvent.click(within(section).getByRole('button', { name: '새 주택형 만들어 연결' }))
+  fireEvent.change(within(section).getByLabelText('함께 모집할 새 주택형 이름'), { target: { value: ' 26b형 ' } })
+  fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.7' } })
+  expect(within(section).getByRole('alert')).toHaveTextContent('이 단지에 같은 이름의 주택형이 있습니다')
+  expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeDisabled()
+  // 26B와 전용면적(26.3)이 같아도 이름이 다르면 다른 주택타입이다.
   fireEvent.change(within(section).getByLabelText('함께 모집할 새 주택형 이름'), { target: { value: ' 26D ' } })
   fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.3' } })
-  expect(within(section).getByRole('alert')).toHaveTextContent('이 단지에 같은 전용면적 주택형이 있습니다')
-  expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeDisabled()
+  expect(within(section).queryByRole('alert')).not.toBeInTheDocument()
   fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.7' } })
   fireEvent.change(within(section).getByLabelText('새 주택형 공급면적 (㎡)'), { target: { value: '43.2' } })
   fireEvent.click(within(section).getByRole('button', { name: '새 주택형 연결' }))
@@ -76,7 +80,7 @@ it('새 주택형을 이름·전용·공급면적으로 만들어 연결하고, 
   expect(rows.find(row => row.key === 'row:1')?.linkedHousingTypes).toEqual([{ housingTypeId: 10, newHousingType: null },
     { newHousingType: { name: '26D', exclusiveArea: 26.7, supplyArea: 43.2 } }])
 })
-it('연결이 없던 행에서 새 주택형을 만들면 단지 주택형을 불러와 같은 면적을 막고, 불러오기 전에는 연결하지 않는다', async () => {
+it('연결이 없던 행에서 새 주택형을 만들면 단지 주택형을 불러와 같은 이름을 막고, 불러오기 전에는 연결하지 않는다', async () => {
   let resolve!: (types: MatchingHousingType[]) => void
   vi.mocked(getMatchingHousingTypes).mockReturnValue(new Promise(done => { resolve = done }))
   const section = await open('36')
@@ -87,8 +91,9 @@ it('연결이 없던 행에서 새 주택형을 만들면 단지 주택형을 �
   await waitFor(() => expect(within(section).getByLabelText('새 주택형 전용면적 (㎡)')).toBeEnabled())
   fireEvent.change(within(section).getByLabelText('함께 모집할 새 주택형 이름'), { target: { value: '26B' } })
   fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.3' } })
-  expect(within(section).getByRole('alert')).toHaveTextContent('이 단지에 같은 전용면적 주택형이 있습니다')
+  expect(within(section).getByRole('alert')).toHaveTextContent('이 단지에 같은 이름의 주택형이 있습니다')
   expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeDisabled()
+  fireEvent.change(within(section).getByLabelText('함께 모집할 새 주택형 이름'), { target: { value: '26E' } })
   fireEvent.change(within(section).getByLabelText('새 주택형 전용면적 (㎡)'), { target: { value: '26.7' } })
   expect(within(section).getByRole('button', { name: '새 주택형 연결' })).toBeEnabled()
 })

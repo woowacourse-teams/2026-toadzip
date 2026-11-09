@@ -131,6 +131,10 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange }
             <span className={styles.badge} data-status={target.status}>{labels[target.status]}</span>
           </div>
           <p className={styles.detail} data-status={target.status}>{target.detail}</p>
+          {target.location?.address && <p className={styles.address}>
+            {target.location.origin === 'ADMIN' ? '관리자 보완' : 'ZIP 준비'}: {target.location.address}
+            {' · '}위도 {target.location.latitude}, 경도 {target.location.longitude}
+          </p>}
           <dl className={styles.metadata}>
             <div><dt>원천</dt><dd>{target.sourceComplexIdentifier}</dd></div>
             {target.housingComplexId !== null && <div><dt>서비스 단지</dt><dd>{target.housingComplexId}</dd></div>}

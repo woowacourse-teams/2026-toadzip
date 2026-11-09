@@ -49,7 +49,7 @@ class AdminHousingComplexControllerTest {
     }
 
     @Test
-    void 필수_숫자_누락과_범위_위반은_검증_오류를_반환한다() throws Exception {
+    void 숫자_범위_위반은_검증_오류를_반환한다() throws Exception {
         mockMvc.perform(post(ENDPOINT)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(invalidRequest()))
@@ -144,6 +144,7 @@ class AdminHousingComplexControllerTest {
                   "buildingType": "APARTMENT",
                   "corridorType": "STAIR",
                   "hasElevator": true,
+                  "totalHouseholdCount": -1,
                   "totalParkingCount": -1
                 }
                 """;

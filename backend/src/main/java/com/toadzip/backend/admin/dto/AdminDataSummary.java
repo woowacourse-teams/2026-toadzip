@@ -2,11 +2,12 @@ package com.toadzip.backend.admin.dto;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public record AdminDataSummary(long id, String name, String subtitle, String provider, String rental,
         boolean deleted, boolean modified, boolean reviewRequired, Instant updatedAt,
         ComplexSummary complex, AnnouncementSummary announcement) {
-    public record ComplexSummary(String sourceIdentifier, LocalDate completionDate, int totalHouseholdCount,
+    public record ComplexSummary(String sourceIdentifier, LocalDate completionDate, Integer totalHouseholdCount,
             Integer totalParkingCount, String heatingType, String buildingType, String corridorType,
             Boolean hasElevator, Integer moveOutCountLastYear, String verificationStatus, int reviewedFieldCount) { }
 
@@ -14,5 +15,13 @@ public record AdminDataSummary(long id, String name, String subtitle, String pro
     public record AnnouncementSummary(String sourceIdentifier, String originalUrl, String recruitmentType,
             LocalDate postedDate, LocalDate applicationStartDate, LocalDate applicationEndDate,
             LocalDate winnerAnnouncementDate, String publicationType, String origin, String supplyOwner,
-            String releaseStatus) { }
+            String releaseStatus, String applicationStatus, List<String> attentionReasons) {
+        public AnnouncementSummary(String sourceIdentifier, String originalUrl, String recruitmentType,
+                LocalDate postedDate, LocalDate applicationStartDate, LocalDate applicationEndDate,
+                LocalDate winnerAnnouncementDate, String publicationType, String origin, String supplyOwner,
+                String releaseStatus) {
+            this(sourceIdentifier, originalUrl, recruitmentType, postedDate, applicationStartDate, applicationEndDate,
+                    winnerAnnouncementDate, publicationType, origin, supplyOwner, releaseStatus, null, null);
+        }
+    }
 }

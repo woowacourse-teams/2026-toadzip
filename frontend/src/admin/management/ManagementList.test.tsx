@@ -22,7 +22,7 @@ beforeEach(() => { vi.clearAllMocks(); mocks.getManagementPage.mockResolvedValue
 
 it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[complex, { ...legacy, id: 8, name: '미확인 단지' }]} resource="complexes" returnTo="/admin/complexes?provider=LH" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '검토 상태', '확인할 상태'])
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '공급 기관', '공급 유형', '세대수', '검토 상태', '확인할 상태'])
   expect(screen.getByRole('cell', { name: '0' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미확인' })).toBeVisible()
   expect(screen.getAllByText('미검토')).toHaveLength(2)
@@ -32,10 +32,10 @@ it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분�
   expect(screen.getAllByLabelText('특이 상태 없음')[0]).toHaveTextContent('—')
 })
 
-it('공고 표는 모집 유형과 접수 기간을 함께 표시한다', () => {
+it('공고 표는 접수 상태와 접수 기간을 함께 표시한다', () => {
   render(<MemoryRouter><ManagementSummaryTable items={[announcement]} resource="announcements" /></MemoryRouter>)
-  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '모집 유형', '공고 구분', '게시일', '접수 기간', '확인할 상태'])
-  expect(screen.getByRole('cell', { name: '예비 입주자' })).toBeVisible()
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '접수 상태', '공고 구분', '게시일', '접수 기간', '확인할 상태'])
+  expect(screen.getByRole('columnheader', { name: '접수 상태' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '2026-10-10 ~ 2026-10-15' })).toBeVisible()
   expect(screen.queryByText('LH-7')).not.toBeInTheDocument()
 })
@@ -109,16 +109,17 @@ it('단지에서 공고로 전환할 때 단지 행을 공고 표에 표시하�
   expect(screen.getByRole('table', { name: '정제 공고 목록' })).toBeVisible()
 })
 
-it('페이지 조회 실패 후 재시도하는 동안 기존 표를 유지한다', async () => {
+it('페이지 조회 실패 시 이전 표와 건수를 숨기고 재시도로 복구한다', async () => {
   const retry = deferred<ManagementPage>()
   mocks.getManagementPage.mockResolvedValueOnce(page()).mockRejectedValueOnce(new Error('연결 실패')).mockReturnValueOnce(retry.promise)
   render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
-  const table = await screen.findByRole('table')
+  await screen.findByRole('table')
   fireEvent.click(screen.getByRole('button', { name: '다음' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('연결 실패')
-  expect(screen.getByRole('table')).toBe(table)
+  expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  expect(screen.queryByText(/총 41건/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '다시 불러오기' }))
-  expect(screen.getByRole('table')).toBe(table)
+  expect(screen.getByRole('table')).toBeVisible()
   await act(() => retry.resolve(page(complex, 1)))
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(screen.getByText('2 / 3 페이지')).toBeVisible()
@@ -148,6 +149,7 @@ it('검토 필터로 검색하고 페이지 이동과 상세 복귀 링크에 �
 it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호환한다', () => {
   const detail = (summary: unknown) => ({ summary, sourceIdentifier: 'TEST', data: { version: 1 } })
   expect(parseManagementDetail(detail(complex)).summary.complex?.totalHouseholdCount).toBe(0)
+  expect(parseManagementDetail(detail({ ...complex, complex: { ...complex.complex, totalHouseholdCount: null } })).summary.complex?.totalHouseholdCount).toBeNull()
   expect(parseManagementDetail(detail(announcement)).summary.announcement?.postedDate).toBe('2026-10-01')
   expect(parseManagementDetail(detail(legacy)).summary.name).toBe('두꺼비 단지')
   for (const complexValue of [{ ...complex.complex, totalParkingCount: -1 }, { ...complex.complex, hasElevator: 'false' }, { ...complex.complex, totalHouseholdCount: '0' }, { ...complex.complex, completionDate: 2020 }]) {
@@ -178,7 +180,7 @@ it('현재 페이지의 행을 골라 한꺼번에 휴지통으로 옮기고 목
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<MemoryRouter initialEntries={['/admin/complexes']}><ManagementList resource="complexes" /></MemoryRouter>)
   await screen.findByRole('table')
-  expect(screen.getByRole('button', { name: '선택 삭제' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: '선택 삭제' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('checkbox', { name: '이 페이지 전체 선택' }))
   expect(screen.getByText('1개 선택')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }))
@@ -204,12 +206,35 @@ it('휴지통 탭으로 지운 항목을 보고, 검색해도 휴지통 조건�
 it('공고 목록은 미확정 공고만 보는 필터를 서버로 보내고 단지 목록에는 두지 않는다', async () => {
   mocks.getManagementPage.mockResolvedValue(page(announcement))
   const view = render(<MemoryRouter initialEntries={['/admin/announcements?unconfirmed=true&provider=GH']}><ManagementList resource="announcements" /></MemoryRouter>)
-  const checkbox = await screen.findByRole('checkbox', { name: '공개 전 확인 필요(미확정)' })
-  expect(checkbox).toBeChecked()
+  const condition = await screen.findByRole('combobox', { name: '확인 필요' })
+  expect(condition).toHaveValue('UNCONFIRMED')
   expect(mocks.getManagementPage.mock.lastCall?.[1].get('unconfirmed')).toBe('true')
   expect(mocks.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('GH')
   view.unmount()
   render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
   await screen.findByRole('region', { name: '정제 단지 목록 가로 스크롤' })
-  expect(screen.queryByRole('checkbox', { name: '공개 전 확인 필요(미확정)' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: '확인 필요' })).not.toBeInTheDocument()
+})
+
+
+it('필터는 제출한 검색어로 즉시 조회하고 작성 중 검색어를 보존한다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes?keyword=서울&page=2']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  fireEvent.change(screen.getByLabelText('단지명·주소'), { target: { value: '부산' } })
+  fireEvent.change(screen.getByLabelText('기관'), { target: { value: 'LH' } })
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH'))
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('서울')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].has('page')).toBe(false)
+  expect(screen.getByLabelText('단지명·주소')).toHaveValue('부산')
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('부산'))
+  fireEvent.click(screen.getByRole('button', { name: 'LH 해제' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].has('provider')).toBe(false))
+})
+
+it('초기화는 휴지통을 유지하고 목록 조건과 페이지를 비운다', async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes?deleted=true&recruiting=true&keyword=서울&page=2']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].toString()).toBe('deleted=true'))
 })

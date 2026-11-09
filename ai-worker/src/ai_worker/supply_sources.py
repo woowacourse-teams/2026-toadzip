@@ -1,7 +1,8 @@
 """공급표를 코드로 읽을지 모델로 읽을지 정한다. 어느 쪽이든 같은 모양의 공급 단계 결과(Supply)를 돌려준다.
 
 공급표 구조를 코드가 확신하면(supply_grouping) 숫자를 셀에서 직접 읽고 공급 단계 모델 호출을 생략한다(CodeSupply).
-정규식이 고른 수량 열의 뜻을 Jev가 확인하지 못하거나 LH 공고면 공급 단계를 모델에 맡긴다(ModelSupply).
+정규식이 고른 수량 열의 뜻을 Jev가 확인하지 못하면 공급 단계를 모델에 맡긴다(ModelSupply).
+LH 공급 API 행은 공급행을 정하지 않는 참고 자료라 어느 경로를 쓸지에 영향을 주지 않는다. 모델 단계에만 참고 목록으로 준다.
 """
 
 import logging
@@ -92,9 +93,8 @@ class SupplyPlan:
         self._rows = rows
         self._selected = selected
         self._first_pages = first_pages
-        # LH 공고는 모델이 LH API 행 번호로 공급행을 나누고 맞추므로 모델 단계를 그대로 쓴다. rows는 LH 행만이다.
-        # GH 틀은 코드로 묶은 공급행에 결과를 만든 뒤 맞추므로(source_frame) 코드 경로를 막지 않는다.
-        self._grouped = None if rows else supply_grouping.group(
+        # 공급행은 PDF 표가 정한다. LH 행(rows)이 있어도 코드 경로를 먼저 보고, 모델 단계로 갈 때만 참고 목록으로 준다.
+        self._grouped = supply_grouping.group(
             selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
 
     def start(self, cutoff: float, deadline: float, pool: Executor) -> CodeSupply | ModelSupply:

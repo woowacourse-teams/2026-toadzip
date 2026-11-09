@@ -72,7 +72,7 @@ public class LhHousingTypeHouseholdMatcher {
     Map<MatchKey, List<HousingComplex>> index(List<HousingComplex> complexes) {
         Map<MatchKey, List<HousingComplex>> indexed = new HashMap<>();
         for (HousingComplex complex : complexes) {
-            if (!"LH".equals(complex.getProvider())) {
+            if (!"LH".equals(complex.getProvider()) || complex.getTotalHouseholdCount() == null) {
                 continue;
             }
             MatchKey key = new MatchKey(complex.getSupplyType(), complex.getTotalHouseholdCount());

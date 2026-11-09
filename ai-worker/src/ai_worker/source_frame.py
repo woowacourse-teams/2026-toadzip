@@ -1,8 +1,9 @@
-"""Spring이 input.sourceSupplyRows에 담아 보낸 기관 공급 원천 행(공급행 틀)을 읽고, 결과 공급행마다 그 행이 나온
-원천 행의 식별자(sourceRow)를 채운다. 화면은 목록 위치가 아니라 이 식별자로 공급 보정 작업실의 행을 맞춘다.
+"""Spring이 input.sourceSupplyRows에 담아 보낸 기관 공급 원천 행을 읽는다.
 
-LH 행은 공급 단계 모델에 틀로 주고, 모델이 쓴 목록 번호(1부터)를 그 행의 식별자로 바꾼다.
-GH 행은 모델에 주지 않는다. 묶은 공급행을 지구명·주택형으로 코드가 맞추고, 하나로 정할 수 없으면 비워 관리자가 확인하게 한다.
+LH 행은 공급행을 정하지 않는 참고 자료다. 공급 단계 모델에 참고 목록으로 주고, 같은 전용면적 공급행의 모집수 검산(checks)에만 쓴다.
+공급행에 LH 행 식별자를 채우지 않는다. LH 행과 공급행의 대응은 화면이 전용면적으로 따로 맞춘다.
+GH 행(공급행 틀)은 모델에 주지 않는다. 묶은 공급행을 지구명·주택형으로 코드가 맞춰 그 틀 행의 식별자(sourceRow)를 채우고,
+하나로 정할 수 없으면 비워 관리자가 확인하게 한다. 화면은 목록 위치가 아니라 이 식별자로 공급 보정 작업실의 행을 맞춘다.
 """
 
 import re
@@ -46,7 +47,7 @@ class SourceSupplyRow:
 
 
 class SourceFrame:
-    """한 작업의 원천 공급 행. lh_rows는 공급 단계 모델에 틀로 줄 행이고, link가 결과 공급행에 원천 행 식별자를 채운다."""
+    """한 작업의 원천 공급 행. lh_rows는 공급 단계 모델과 검산에 줄 참고 행이고, link가 결과 공급행에 GH 틀 행 식별자를 채운다."""
 
     def __init__(self, rows: list[SourceSupplyRow]):
         self._lh = [row for row in rows if row.source == _LH]
@@ -58,28 +59,15 @@ class SourceFrame:
 
     @property
     def lh_rows(self) -> list[SourceSupplyRow]:
-        """공급 단계 모델에 틀로 줄 LH 행. 이 행이 있으면 모델이 번호로 공급행을 나누고 맞추므로 공급표를 모델 단계로 읽는다."""
+        """공급 단계 모델에 참고 목록으로 주고 모집수 검산에 쓰는 LH 행. 공급표를 어디서 읽을지에는 영향을 주지 않는다."""
         return self._lh
 
     def __len__(self) -> int:
         return len(self._lh) + len(self._gh)
 
     def link(self, tree: dict) -> list[str]:
-        """결과 공급행의 sourceRow를 원천 행 식별자로 채우고, 맞추지 못한 행의 경고를 돌려준다.
-        LH 번호 검산(번호 없음·범위 밖·모집수)은 checks가 이미 했다."""
-        rows = checks.objects(tree["data"].get("supplyRows"))
-        _link_lh_numbers(rows, self._lh)
-        return self._gh.link(rows)
-
-
-def _link_lh_numbers(rows: list[dict], lh_rows: list[SourceSupplyRow]) -> None:
-    """모델은 공급행이 나온 LH 행을 프롬프트 목록의 번호(1부터)로 쓴다. 번호가 없거나 범위를 벗어나면(LH 행이 없을 때 포함) null이다."""
-    for row in rows:
-        if "sourceRow" not in row:
-            continue
-        number = row["sourceRow"]
-        valid = isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(lh_rows)
-        row["sourceRow"] = lh_rows[number - 1].row_identifier if valid else None
+        """결과 공급행의 sourceRow를 GH 틀 행 식별자로 채우고, 맞추지 못한 행의 경고를 돌려준다. LH 행은 채우지 않는다."""
+        return self._gh.link(checks.objects(tree["data"].get("supplyRows")))
 
 
 class _GhFrame:
@@ -101,12 +89,33 @@ class _GhFrame:
             return []
         warnings: list[str] = []
         claims: dict[int, list[int]] = {}
-        unmatched: list[str] = []
+        unmatched: list[int] = []
+        # 틀 지구도 하나, PDF 공급행 단지명도 하나인 공고만 지구명이 달라도 그 단지로 본다(사용자 결정).
+        # 단지가 여럿인 공고는 이름이 맞아야 잇는다.
+        pdf_complexes = {_district_key(_complex_name(row)) for row in supply_rows} - {""}
+        single = len({frame.complex_label for frame in self._rows}) == 1 and len(pdf_complexes) == 1
         for index, row in enumerate(supply_rows):
             row["sourceRow"] = None
-            frame_index = self._candidate(index, row, warnings, unmatched)
+            frame_index = self._candidate(index, row, single, warnings, unmatched)
             if frame_index is not None:
                 claims.setdefault(frame_index, []).append(index)
+        if single:
+            # 주택형으로 맞은 틀 행을 먼저 정하고, 주택형이 같은 틀 행이 없는 공급행만 남은 틀 행과 전용면적으로 맞춘다.
+            # 세부 타입이 둘 이상인 공급행(84 = 84A·84B)은 틀 행 하나가 아니라 여러 주택타입이라 면적으로 잇지 않는다.
+            remaining = [frame_index for frame_index in range(len(self._rows)) if frame_index not in claims]
+            for index in list(unmatched):
+                row = supply_rows[index]
+                if _house_type_count(row) > 1:
+                    continue
+                matches = [frame_index for frame_index in remaining
+                           if _same_area(row.get("exclusiveArea"), self._rows[frame_index].exclusive_area)]
+                if len(matches) == 1:
+                    claims.setdefault(matches[0], []).append(index)
+                    unmatched.remove(index)
+                elif matches:
+                    warnings.append(f"supplyRows[{index}].sourceRow: 주택형이 같은 GH 공급행 틀 행이 없고 전용면적이 같은 "
+                                    f"틀 행이 {len(matches)}개라 하나로 정하지 못함({_row_label(row)})")
+                    unmatched.remove(index)
         for frame_index, indexes in claims.items():
             frame = self._rows[frame_index]
             if len(indexes) == 1:
@@ -115,16 +124,16 @@ class _GhFrame:
             paths = ", ".join(f"supplyRows[{index}]" for index in indexes)
             warnings.append(f"{paths}: 같은 GH 공급행 틀({_label(frame)})에 맞아 하나로 정하지 못함")
         if unmatched:
-            warnings.append(f"GH 공급행 틀과 맞추지 못한 PDF 공급행 {len(unmatched)}개: {', '.join(unmatched)}")
+            labels = [_row_label(supply_rows[index]) for index in unmatched]
+            warnings.append(f"GH 공급행 틀과 맞추지 못한 PDF 공급행 {len(labels)}개: {', '.join(labels)}")
         missing = [_label(frame) for frame_index, frame in enumerate(self._rows) if frame_index not in claims]
         if missing:
             warnings.append(f"PDF에서 찾지 못한 GH 공급행 틀 {len(missing)}개: {', '.join(missing)}")
         return warnings
 
-    def _candidate(self, index: int, row: dict, warnings: list[str], unmatched: list[str]) -> int | None:
-        complex_name = _complex_name(row)
+    def _candidate(self, index: int, row: dict, single: bool, warnings: list[str], unmatched: list[int]) -> int | None:
         housing_type = row.get("sourceHousingTypeName") if isinstance(row.get("sourceHousingTypeName"), str) else ""
-        district = self._district(complex_name)
+        district = self._district(_complex_name(row), single)
         matches = [frame_index for frame_index, frame in enumerate(self._rows)
                    if frame.complex_label == district and _same_type(housing_type, frame.type_name)]
         if len(matches) > 1:
@@ -132,15 +141,14 @@ class _GhFrame:
                        if _same_area(row.get("exclusiveArea"), self._rows[frame_index].exclusive_area)] or matches
         if len(matches) == 1:
             return matches[0]
-        label = f"{complex_name} {housing_type}".strip()
         if matches:
             warnings.append(f"supplyRows[{index}].sourceRow: GH 공급행 틀에 같은 지구·주택형 행이 {len(matches)}개라 "
-                            f"하나로 정하지 못함({label})")
+                            f"하나로 정하지 못함({_row_label(row)})")
         else:
-            unmatched.append(label)
+            unmatched.append(index)
         return None
 
-    def _district(self, complex_name: str) -> str | None:
+    def _district(self, complex_name: str, single: bool) -> str | None:
         """PDF 단지명에 맞는 틀의 지구명. 같은 이름이 없으면 PDF 이름이 들어 있는 지구가 하나뿐일 때만 고른다.
         PDF 이름이 틀 지구명을 품는 방향("광교원천" ⊃ "광교")은 다른 지구일 수 있어 허용하지 않는다."""
         name = _district_key(complex_name)
@@ -150,7 +158,21 @@ class _GhFrame:
         exact = [district for district in districts if _district_key(district) == name]
         found = exact or [district for district in districts
                           if name in _district_key(district)]
+        if not found and single:
+            # 틀과 PDF 모두 단지가 하나뿐이면 지구명이 달라도 그 단지다(사용자 결정: 다산진건B1블록 장기전세주택 ↔ 다산 진건 데시앙).
+            return districts[0]
         return found[0] if len(found) == 1 else None
+
+
+def _house_type_count(row: dict) -> int:
+    """공급행이 묶은 주택타입 수. 세부 타입 이름은 같은 면적의 주택타입을 '·'로 잇는다(84A·84C1·84C2)."""
+    return sum(len(str(subtype.get("name") or "").split("·"))
+               for subtype in row.get("subtypes") or [] if isinstance(subtype, dict))
+
+
+def _row_label(row: dict) -> str:
+    housing_type = row.get("sourceHousingTypeName") if isinstance(row.get("sourceHousingTypeName"), str) else ""
+    return f"{_complex_name(row)} {housing_type}".strip()
 
 
 def _complex_name(row: dict) -> str:

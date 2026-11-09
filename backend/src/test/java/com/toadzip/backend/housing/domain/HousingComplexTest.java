@@ -16,6 +16,16 @@ import org.junit.jupiter.params.provider.ValueSource;
 class HousingComplexTest {
 
     @Test
+    void 미확인_세대수는_나중에_보완하거나_다시_비울_수_있다() {
+        HousingComplex complex = createHousingComplex(validStringFields(), createAddress(), null, null, 0, 0);
+        assertEquals(null, complex.getTotalHouseholdCount());
+        complex.reviseByAdmin(createHousingComplex(validStringFields(), createAddress(), 500, null, 0, 0));
+        assertEquals(500, complex.getTotalHouseholdCount());
+        complex.reviseByAdmin(createHousingComplex(validStringFields(), createAddress(), null, null, 0, 0));
+        assertEquals(null, complex.getTotalHouseholdCount());
+    }
+
+    @Test
     void 공급유형별_단지를_생성한다() {
         Address address = createAddress();
         LocalDate completionDate = LocalDate.of(2020, 6, 30);
@@ -26,7 +36,7 @@ class HousingComplexTest {
                         String.class,
                         String.class,
                         Address.class,
-                        int.class,
+                        Integer.class,
                         String.class,
                         LocalDate.class,
                         String.class,
@@ -146,7 +156,7 @@ class HousingComplexTest {
     private HousingComplex createHousingComplex(
             String[] fields,
             Address address,
-            int totalHouseholdCount,
+            Integer totalHouseholdCount,
             LocalDate completionDate,
             int parkingSpaceCount,
             Integer recentOneYearMoveOutCount

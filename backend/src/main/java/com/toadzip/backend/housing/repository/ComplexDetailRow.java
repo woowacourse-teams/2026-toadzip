@@ -20,7 +20,7 @@ public record ComplexDetailRow(
         String heatingType,
         String corridorType,
         Integer moveOutCountLastYear,
-        int totalHouseholdCount,
+        Integer totalHouseholdCount,
         Integer totalParkingCount,
         Long depositMin,
         Long depositMax,

@@ -7,7 +7,6 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Apply;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.AttachmentChange;
@@ -55,10 +54,11 @@ import tools.jackson.databind.node.ObjectNode;
 @PreAuthorize("hasRole('ADMIN')")
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class AnnouncementJsonCorrectionService {
+    /** 접수처는 목록 전체를 한 항목으로 바꾼다. 화면이 지금 접수처에 고른 PDF 값을 합친 목록을 보낸다. */
+    private static final String RECEPTION_PLACES = "receptionPlaces";
     private static final Set<String> FIELDS = Set.of("name", "rentalType", "recruitmentType", "agencyCode",
             "postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate", "originalUrl",
-            "receptionPlace.name", "receptionPlace.method", "receptionPlace.address", "receptionPlace.contact",
-            "receptionPlace.url");
+            RECEPTION_PLACES);
     private final AnnouncementRepository announcements;
     private final AnnouncementScheduleRepository schedules;
     private final AnnouncementAttachmentRepository attachments;
@@ -152,8 +152,7 @@ public class AnnouncementJsonCorrectionService {
         var metadata = metadata(before.detail().data(), request, fieldChanges);
         find(id).validateAdminRevision(incoming(find(id), metadata));
         SupplyCorrection.Preview supply = null;
-        if (!request.correction().newGroups().isEmpty()
-                || !hash(before.supply().rows()).equals(hash(withLinks(before.supply().rows(), request.correction().rows())))) {
+        if (!hash(before.supply().rows()).equals(hash(withLinks(before.supply().rows(), request.correction().rows())))) {
             supply = supplies.preview(id, before.supply(), request.correction());
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {
@@ -196,11 +195,10 @@ public class AnnouncementJsonCorrectionService {
 
     /**
      * 함께 모집하는 주택형을 생략하거나 순서만 다르게 준 행은 저장된 연결과 같으므로 공급행을 바꾼 요청으로 보지 않는다.
-     * 저장 방식(saveMode)만 적은 행도 값이 같으면 바꾼 요청이 아니다.
      */
     private static List<SupplyCorrection.Row> withLinks(List<SupplyCorrection.Row> before, List<SupplyCorrection.Row> requested) {
         var byId = before.stream().collect(Collectors.toMap(SupplyCorrection.Row::id, Function.identity()));
-        return requested.stream().map(row -> row.withLinksFrom(row.id() == null ? null : byId.get(row.id())).withoutSaveMode())
+        return requested.stream().map(row -> row.withLinksFrom(row.id() == null ? null : byId.get(row.id())))
                 .toList();
     }
 
@@ -235,10 +233,11 @@ public class AnnouncementJsonCorrectionService {
                 throw new IllegalArgumentException("지원하지 않거나 중복된 기본정보 항목입니다: " + field);
             }
             String inputPath = "announcement." + field;
-            if (field.startsWith("receptionPlace.")) { inputPath = field; }
+            if (field.equals(RECEPTION_PLACES)) { inputPath = field; }
             if (field.equals("originalUrl")) { inputPath = "source.originalUrl"; }
             var value = at(document, inputPath);
-            if (value.isMissingNode() || value.isNull() || !value.isValueNode() || unresolved(request, inputPath)) {
+            boolean shaped = field.equals(RECEPTION_PLACES) ? value.isArray() : value.isValueNode();
+            if (value.isMissingNode() || value.isNull() || !shaped || unresolved(request, inputPath)) {
                 throw new IllegalArgumentException("미확인 항목은 적용할 수 없습니다: " + inputPath);
             }
             var previous = at(after, field);
@@ -335,15 +334,10 @@ public class AnnouncementJsonCorrectionService {
     }
 
     private Announcement incoming(Announcement stored, AdminAnnouncementUpdateRequest request) {
-        ReceptionPlace reception = null;
-        if (request.receptionPlace() != null) {
-            var place = request.receptionPlace();
-            reception = ReceptionPlace.create(place.name(), place.method(), place.address(), place.contact(), place.url());
-        }
         return Announcement.create(stored.getSourceAnnouncementIdentifier(), null, null, request.name(),
                 AnnouncementPublicationType.ORIGINAL, request.rentalType(), request.recruitmentType(), request.agencyCode(),
                 request.postedDate(), request.applicationStartDate(), request.applicationEndDate(),
-                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
+                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, request.places());
     }
 
     private String unconfirmedWarning(boolean publishes) {

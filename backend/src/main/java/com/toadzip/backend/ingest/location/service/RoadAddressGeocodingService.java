@@ -4,9 +4,9 @@ import static com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFai
 import static com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason.COORDINATE_NOT_FOUND;
 import static com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason.INVALID_ADDRESS;
 
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressLocation;
-import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.util.List;
@@ -38,22 +38,30 @@ public class RoadAddressGeocodingService {
                             + "새 단지 주소를 수집했다면 위치정보요약DB ZIP을 다시 업로드하세요."
             );
         }
-        RoadAddressLocation resolved = locations.stream()
-                .filter(location -> location.coordinate().isPresent())
-                .findFirst()
-                .orElseThrow(() -> new RoadAddressGeocodingException(
-                        COORDINATE_NOT_FOUND,
-                        "위치정보요약DB에 해당 도로명주소의 좌표가 제공되지 않습니다."
-                ));
-        return GeocodedRoadAddress.of(
-                resolved.getRoadAddress(),
-                coordinateConverter.convert(resolved.coordinate().orElseThrow())
-        );
+        RoadAddressGeocodingException failure = new RoadAddressGeocodingException(
+                COORDINATE_NOT_FOUND, "위치정보요약DB에 해당 도로명주소의 좌표가 제공되지 않습니다.");
+        for (RoadAddressLocation location : locations) {
+            if (location.coordinate().isEmpty()) {
+                continue;
+            }
+            try {
+                return GeocodedRoadAddress.of(location.getRoadAddress(),
+                        coordinateConverter.convert(location.coordinate().orElseThrow()));
+            }
+            catch (RoadAddressGeocodingException exception) {
+                failure = exception;
+            }
+        }
+        throw failure;
     }
 
     private NormalizedRoadAddress normalize(String rawRoadAddress) {
         try {
-            return new NormalizedRoadAddress(rawRoadAddress);
+            NormalizedRoadAddress address = new NormalizedRoadAddress(rawRoadAddress);
+            if (!address.withoutReference().matches(".*(?:로|길)\\s+(?:지하\\s+)?\\d+(?:-\\d+)?")) {
+                throw new IllegalArgumentException("도로명과 건물번호가 필요합니다.");
+            }
+            return address;
         }
         catch (IllegalArgumentException exception) {
             throw new RoadAddressGeocodingException(

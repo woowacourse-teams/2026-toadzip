@@ -7,13 +7,13 @@ Postgres `ai_jobs` 작업 큐를 처리하는 Python 워커다. Spring은 작업
 - `src/ai_worker/worker.py`: `run_once`가 작업 하나를 꺼내 추출하고 기록한다. 처리하는 동안 1분마다 lease(3분)를 늘리고, 재시도 간격은 1분 → 5분, 넣은 지 40분이 지난 작업은 실패로 끝낸다. 한 번의 추출은 10분(`ATTEMPT_BUDGET`) 안에 끝나야 하고, 마감까지 그만큼 남지 않은 작업은 꺼내지 않는다. `run`은 종료 신호까지 `run_once`를 되풀이하고, 오류가 나도 멈추지 않고 DB 연결이 끊기면 다시 연결한다.
 - `src/ai_worker/announcement.py`: 공고문 PDF 추출기의 실행 흐름(`AnnouncementPdfExtractor.extract`). 아래 모듈을 차례로 부르고, `checks.py`가 쪽 번호를 원본 기준으로 바꾸고 검산 불일치를 경고로 남긴다.
 - `src/ai_worker/pages.py`: PDF를 열어 추출에 보낼 쪽을 고르고(`select`), 고른 쪽을 공급 단계·본문 단계 입력으로 나눈다(`prompt_pages`).
-- `src/ai_worker/tables.py`: 쪽의 표를 찾아 셀을 읽고, 공급표인지와 열 머리글의 역할(필드)을 판단한다(`page_tables`). 앞 쪽 공급표의 열 역할을 머리글 없는 이어짐 표에 물려준다.
-- `src/ai_worker/supply_sources.py`: 공급표를 코드로 읽을지(`CodeSupply`) 모델로 읽을지(`ModelSupply`) 정한다. `SupplyPlan`이 본문 단계 호출 전에 코드로 행을 묶어 두고, `start`가 Jev 확인 뒤 둘 중 하나를 돌려준다. 둘은 같은 인터페이스(`wait`·`read`)로 같은 모양의 결과를 돌려준다. 코드 경로의 행 묶기(`supply_grouping.py`)와 Jev 확인(`jev.py`)은 이 안에서만 쓴다.
-- `src/ai_worker/stage_prompts.py`: 단계별 프롬프트. 본문 단계 스키마를 그 단계 필드로 줄이고, LH 공고의 공급 단계에 LH 행 틀을 붙인다.
+- `src/ai_worker/tables.py`: 쪽의 표를 찾아 셀을 읽고, 공급표인지와 열 머리글의 역할(필드)을 판단한다(`page_tables`). 앞 쪽 공급표의 열 역할을 머리글 없는 이어짐 표에 물려준다. 주택타입 열이 있으면 주택형(신청형) 행마다 세부 타입(`TableSubtype`)을 읽고, `supply_assembly.py`가 그 공급행의 `subtypes`로 쓴다.
+- `src/ai_worker/supply_sources.py`: 공급표를 코드로 읽을지(`CodeSupply`) 모델로 읽을지(`ModelSupply`) 정한다. LH 공급 API 행이 있어도 코드 경로를 먼저 본다. `SupplyPlan`이 본문 단계 호출 전에 코드로 행을 묶어 두고, `start`가 Jev 확인 뒤 둘 중 하나를 돌려준다. 둘은 같은 인터페이스(`wait`·`read`)로 같은 모양의 결과를 돌려준다. 코드 경로의 행 묶기(`supply_grouping.py`)와 Jev 확인(`jev.py`)은 이 안에서만 쓴다.
+- `src/ai_worker/stage_prompts.py`: 단계별 프롬프트. 본문 단계 스키마를 그 단계 필드로 줄이고, LH 공고의 공급 단계에 LH 행을 번호 없는 참고 목록으로 붙인다.
 - `src/ai_worker/supply_assembly.py`: 짧은 공급행 목록을 관리자 계약의 공급행·단지로 조립하고(`assemble`), 값마다 그 칸이 있는 원문 표 행을 근거로 둔다. 원문 대조 검산(`source_check.py`)은 여기서 한 번만 한다.
 - `src/ai_worker/source_check.py`: 공급행 값을 같은 의미의 원문 표 칸과 대조하고(`check_source_rows`), 확인하지 못한 값은 비우고 미확인으로 남긴다.
 - `src/ai_worker/merge.py`: 공급 단계와 본문 단계 결과를 합치고(`merge`) 단지 경로를 합친 순번으로 고친다.
-- `src/ai_worker/source_frame.py`: Spring이 넘긴 기관 공급 원천 행(`SourceFrame`)을 읽는다. LH 행은 공급 단계 모델의 틀로 주고 결과의 LH 행 번호를 Spring 식별자로 바꾸며, GH 공급행 틀은 결과 공급행과 지구명·주택형으로 맞춰 식별자를 채운다(`sourceRow`).
+- `src/ai_worker/source_frame.py`: Spring이 넘긴 기관 공급 원천 행(`SourceFrame`)을 읽는다. LH 행은 공급행을 정하지 않는 참고 자료라 공급 단계 모델의 참고 목록과 `checks.py`의 같은 전용면적 모집수 검산에만 쓰고, GH 공급행 틀은 결과 공급행과 지구명·주택형으로 맞춰 식별자를 채운다(`sourceRow`).
 - `src/ai_worker/prompts/`: 추출 프롬프트·응답 스키마와 텍스트 입력용 앞뒤 문구. 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 
 스키마는 Spring Flyway가 관리한다. 워커는 `toadzip_ai_worker` 역할로 접속하고, 이 역할은 `ai_jobs`를 읽고 상태·결과 열만 고칠 수 있다.

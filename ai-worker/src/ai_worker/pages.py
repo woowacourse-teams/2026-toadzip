@@ -60,6 +60,9 @@ _SECTIONS = (
     _Section(False, (re.compile("공급일정|신청일정|신청기간|접수기간|신청일시"),), _DATE, 1),
     _Section(False, (re.compile("문의처|신청문의|임대문의|접수장소|접수처"),), _PHONE, 1),
     _Section(False, (re.compile(r"[가나]군\(|「[가나]」군|입주자선정방법|선정순위"),)),
+    # 단지 주소가 공급표 밖 단지 개요에만 있어도 읽는다. 주소 없는 안내·목차만으로는 쪽을 늘리지 않는다.
+    _Section(False, (re.compile("건설위치|단지개요|단지현황|주택소재지|단지소재지|단지주소|공급위치|사업위치"),),
+             re.compile(r"(?:대로|로|길|동|리|가)\s*\d+"), 1),
 )
 
 
@@ -202,6 +205,10 @@ class PromptPages:
     ambiguous_supply_tables: bool
     # 표 머리글에서 바로 확인한 필드별 원문 셀. 숫자 추출값은 같은 의미의 열과 대조한다.
     supply_row_values: dict[str, dict[str, str]] = field(default_factory=dict)
+    # 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표의 행별 묶음 이름 → 금액 칸. 대상 이름이 묶음 이름이면 이 칸과 대조한다.
+    supply_row_target_values: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
+    # 주택타입 열이 있는 공급표에서 주택형(신청형) 칸이 시작하는 행의 세부 타입(tables.TableSubtype)
+    supply_row_subtypes: dict[str, tuple[tables.TableSubtype, ...]] = field(default_factory=dict)
     # 표 행을 만들지 못했지만 공급표로 보이는 쪽. 이 상태는 성공 결과로 조용히 내보내지 않는다.
     unstructured_supply_pages: list[int] = field(default_factory=list)
     # 공급표의 셀 구조. 병합 칸(None)과 빈칸('')을 구분해 코드가 공급행을 묶는다.
@@ -215,6 +222,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
     deadline은 page_texts와 같다. 표 찾기가 쪽마다 1초 안팎이라 쪽마다 확인한다."""
     notice_parts, supply_parts = [], []
     rental, supply_row_ids, supply_row_text, supply_row_values, candidates = set(), set(), {}, {}, []
+    supply_row_target_values, supply_row_subtypes = {}, {}
     notice_pages, supply_pages, fallback_pages, unstructured_supply_pages = [], [], [], []
     supply_tables, tableless_supply_pages = [], []
     previous_supply: tables.SupplyContinuation | None = None
@@ -245,12 +253,19 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
                 supply_pages.append(number)
                 supply_parts.append(f"[첨부 {len(supply_pages)}쪽 / 원본 {number}쪽]")
             for table in found.supply_tables:
+                if table.continues_subtypes and supply_tables and supply_tables[-1].columns == table.columns:
+                    # 쪽을 넘은 신청형은 앞 표에서 주택타입 일부만 읽혔다. 일부만 내면 화면이 N개 중 일부 타입만 잇는다.
+                    supply_row_subtypes.pop(supply_tables[-1].last_housing_type_row_id(), None)
                 supply_parts.append(f"[표 {table.number} / 원본 {number}쪽]")
                 supply_tables.append(table)
                 for row in table.rows:
                     supply_row_ids.add(row.id)
                     supply_row_text[row.id] = row.text
                     supply_row_values[row.id] = row.values
+                    if row.target_values:
+                        supply_row_target_values[row.id] = row.target_values
+                    if row.subtypes:
+                        supply_row_subtypes[row.id] = row.subtypes
                     supply_parts.append(f"[{row.id}] {row.text}")
             candidates.extend(found.complex_candidates)
         previous_supply = found.continuation
@@ -285,6 +300,8 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
         table_structure_fallback=fallback,
         ambiguous_supply_tables=ambiguous_table,
         supply_row_values=supply_row_values,
+        supply_row_target_values=supply_row_target_values,
+        supply_row_subtypes=supply_row_subtypes,
         unstructured_supply_pages=list(dict.fromkeys(unstructured_supply_pages)),
         supply_tables=supply_tables,
         tableless_supply_pages=tableless_supply_pages,

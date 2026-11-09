@@ -207,6 +207,16 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 세대수_미확인_단지가_섞이면_그룹을_일부만_병합_후보로_제시하지_않는다() throws Exception {
+        jdbc.sql("UPDATE housing_complexes SET total_household_count = NULL WHERE id = :id")
+                .param("id", ids.getFirst()).update();
+        mvc.perform(get(ENDPOINT + "/candidates").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        assertThat(complexes.count()).isEqualTo(3);
+    }
+
+    @Test
     void 같은_이름과_PNU여도_확인하기_전에는_각_단지를_유지하고_후보만_보여준다() throws Exception {
         owned(ownership, mapping::mapAll);
         mvc.perform(get(ENDPOINT + "/candidates").with(user("admin").roles("ADMIN")))
@@ -786,7 +796,7 @@ class MyHomeComplexMergeIntegrationTest {
                 "merge-announcement", null, null, "통합 확인 공고", "원공고", "행복주택", "신규모집", "LH",
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 14),
                 LocalDate.of(2026, 10, 1), "https://apply.lh.or.kr/announcement", null, 0L,
-                ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")));
+                List.of(ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://apply.lh.or.kr"))));
         User user = users.save(User.create("merge-test-user", LocalDateTime.of(2026, 9, 1, 0, 0)));
         for (long id : ids) {
             HousingComplex complex = complexes.findById(id).orElseThrow();

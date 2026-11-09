@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceView;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
@@ -176,11 +177,15 @@ class MyHomeHousingTypeSynchronizer {
         return deletable.size();
     }
 
-    /** 관리자가 만든 주택형 중 같은 이름, 없으면 같은 전용면적이 하나뿐인 주택형 */
+    /**
+     * 관리자가 만든 주택형 중 같은 이름, 없으면 같은 전용면적이 하나뿐인 주택형. 이름은 단지 주택타입 기준({@link HousingTypeNames#sameType})으로도
+     * 비교해 마이홈의 면적 숫자 형명(059.9100A)이 PDF 보정이 만든 같은 집(59A)을 이어받게 한다.
+     */
     private HousingType adminCreatedType(Map<String, HousingType> remainingStoredByIdentifier, MyHomeHousingTypeMappingData incoming) {
         List<HousingType> adminCreated = remainingStoredByIdentifier.values().stream().filter(HousingType::isAdminCreated).toList();
         List<HousingType> sameName = adminCreated.stream()
-                .filter(type -> SupplyNameNormalizer.sameHousingType(type.getName(), incoming.name())).toList();
+                .filter(type -> SupplyNameNormalizer.sameHousingType(type.getName(), incoming.name())
+                        || HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), incoming.name(), incoming.exclusiveArea())).toList();
         if (sameName.size() == 1) {
             return sameName.getFirst();
         }

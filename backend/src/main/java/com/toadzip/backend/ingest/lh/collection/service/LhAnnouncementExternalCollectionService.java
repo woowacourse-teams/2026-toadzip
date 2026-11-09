@@ -5,11 +5,13 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementSharedRequestCollector.BundleReport;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +56,39 @@ public class LhAnnouncementExternalCollectionService {
                 report.skippedRequestCount()
         );
         return report;
+    }
+
+    /**
+     * 공급·상세를 요청 묶음 단위로 받고, 묶음을 다 받을 때마다 listener가 그 묶음의 공고를 이어받는다. 호출 제한이나 실패로
+     * 받지 못한 묶음은 대기 상태로 남아 다음 실행이 이어받는다.
+     */
+    public BundleReport collectBundles(Consumer<List<Candidate>> listener) {
+        IngestExecutionScope.requireHeld();
+        List<Candidate> candidates = measurePreparation(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, false,
+                candidateResolver::resolveCatalogTargets);
+        Map<String, Candidate> selected = new LinkedHashMap<>();
+        candidates.forEach(candidate -> selected.put(candidate.sourceAnnouncementKey(), candidate));
+        for (ExternalDataSource source : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
+            pending.rememberAll(source, selected, 0);
+        }
+        // 한쪽 원천만 대기 중인 요청도 같은 묶음에서 공급과 상세를 함께 받는다.
+        for (ExternalDataSource source : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
+            pending.find(source).stream().map(target -> pending.read(target, Candidate.class))
+                    .forEach(candidate -> selected.putIfAbsent(candidate.sourceAnnouncementKey(), candidate));
+        }
+        List<Candidate> remaining = List.copyOf(selected.values());
+        if (remaining.isEmpty()) {
+            return new BundleReport(ExternalDataCollectionReport.empty(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY.operation()),
+                    ExternalDataCollectionReport.empty(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL.operation()));
+        }
+        Map<String, List<Candidate>> byRequest = remaining.stream().collect(
+                Collectors.groupingBy(Candidate::requestDescription, LinkedHashMap::new, Collectors.toList()));
+        IngestExecutionScope.verifyCanContinue();
+        IngestExecutionScope.beginWork("LH 공고 수집·정제", "요청", byRequest.size());
+        return sharedRequests.collectBundles(List.copyOf(byRequest.values()), listener).withSelectedPanIds(
+                remaining.stream().map(Candidate::panId).collect(Collectors.toSet()));
     }
 
     /** 최신 공고목록에 있는 LH 공고(panId)의 요청을 종료 정책과 관계없이 다시 받는다. */

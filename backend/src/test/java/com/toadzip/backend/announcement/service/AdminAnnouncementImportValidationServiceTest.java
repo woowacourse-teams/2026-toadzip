@@ -164,13 +164,15 @@ class AdminAnnouncementImportValidationServiceTest {
                         LocalDate.of(2026, 9, 12),
                         LocalDate.of(2026, 10, 1)
                 ),
-                new ReceptionPlaceRequest(
+                List.of(new ReceptionPlaceRequest(
                         "LH 청약플러스",
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
-                        "https://apply.lh.or.kr"
-                ),
+                        "https://apply.lh.or.kr",
+                        null
+                )),
+                null,
                 List.of(new SupplyRowRequest(
                         new ComplexReferenceRequest("두꺼비 행복주택", pnu),
                         "36A",

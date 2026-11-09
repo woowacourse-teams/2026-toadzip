@@ -6,7 +6,7 @@ import re
 
 from ai_worker import checks
 from ai_worker.checks import deduplicate
-from ai_worker.supply_assembly import add_complex_name, complex_key
+from ai_worker.supply_assembly import add_complex_name, address_key, complex_key, normalize_address
 
 
 def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
@@ -48,7 +48,7 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
     tree = {
         "data": {
             "announcement": notice_data["announcement"],
-            "receptionPlace": notice_data["receptionPlace"],
+            "receptionPlaces": notice_data["receptionPlaces"],
             "complexes": complexes,
             "supplyRows": supply_rows,
             "schedules": notice_data["schedules"],
@@ -83,7 +83,7 @@ def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[d
         record = {"sourceComplexName": name, "address": None, "totalHouseholdCount": None, "parkingCount": None}
         conflicted_fields = set()
         for source_items, source_map, fields in (
-            (supply, supply_indexes, ("totalHouseholdCount", "parkingCount")),
+            (supply, supply_indexes, ("address", "totalHouseholdCount", "parkingCount")),
             (notice, notice_indexes, ("address", "totalHouseholdCount", "parkingCount")),
         ):
             for source_index, item in enumerate(source_items):
@@ -95,7 +95,7 @@ def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[d
                     value = item.get(field)
                     if value is None or field in conflicted_fields:
                         continue
-                    if record[field] is not None and record[field] != value:
+                    if record[field] is not None and not _same_value(field, record[field], value):
                         record[field] = None
                         conflicted_fields.add(field)
                         reason = "표·본문 단계의 값이 달라 미확인으로 남김"
@@ -105,6 +105,13 @@ def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[d
                         record[field] = value
         merged.append(record)
     return merged, supply_indexes, notice_indexes, unresolved, warnings
+
+
+def _same_value(field: str, left: object, right: object) -> bool:
+    """주소는 표기만 다른 같은 주소(시·도 약칭, 띄어쓰기)를 같은 값으로 본다. 먼저 읽은 공급 표 원문 값을 남긴다."""
+    if field == "address" and isinstance(left, str) and isinstance(right, str):
+        return address_key(normalize_address(left) or left) == address_key(normalize_address(right) or right)
+    return left == right
 
 
 def _is_not_applicable(path: str, items: list[dict]) -> bool:

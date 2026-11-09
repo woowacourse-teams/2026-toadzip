@@ -175,7 +175,6 @@ export function HousingComplexRegistrationForm({
               label="전체 세대수"
               min={0}
               name="totalHouseholdCount"
-              required
               type="number"
             />
             <RegistrationTextField
@@ -262,7 +261,7 @@ function housingRequest(formData: FormData): HousingComplexCreateRequest {
       latitude: numberValue(formData, 'address.latitude'),
       longitude: numberValue(formData, 'address.longitude'),
     },
-    totalHouseholdCount: numberValue(formData, 'totalHouseholdCount'),
+    totalHouseholdCount: optionalStringValue(formData, 'totalHouseholdCount') === null ? null : numberValue(formData, 'totalHouseholdCount'),
     completionDate: stringValue(formData, 'completionDate'),
     heatingType: stringValue(formData, 'heatingType'),
     buildingType: stringValue(formData, 'buildingType'),

@@ -44,7 +44,7 @@ class LocationSummaryImportControllerTest {
     void 월전체_ZIP에서_단지주소와_일치한_좌표만_선별_적재한다() throws Exception {
         when(importService.importMatches(eq("summary.zip"), any(InputStream.class)))
                 .thenReturn(new LocationSummaryImportReport(
-                        "summary.zip", 16, 6_422_078, 20_001, 19_900, 101,
+                        "summary.zip", 16, 6_422_078, 20_001, 19_900, 101, 19_800,
                         21_000, 20_900, 0, List.of("11", "26", "50")
                 ));
         MockMultipartFile file = new MockMultipartFile(

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { IngestFailurePanel } from './IngestFailurePanel'
 import { getDataPipelineStatus, startDataPipeline, type DataPipelineExecution, type DataPipelineType } from './api'
-import { pipelineStatusLabels, retiredComplexRefinementNotice } from './pipelineLabels'
+import { pipelineStatusLabels } from './pipelineLabels'
 import type { FailureDomain } from './failureReviewApi'
 import styles from './IngestFailurePanel.module.css'
 import { FailureRetryButton } from './FailureRetryButton'
@@ -88,9 +88,9 @@ export function FailureReviewPage() {
     : current && current.status !== 'IDLE' ? `${label} 정제: ${pipelineStatusLabels[current.status]} · 처리 결과에 따라 오류 목록을 갱신합니다.` : ''
 
   return <section className={`management-page ${styles.page}`}>
-    <header className="management-heading"><div><h1>실패·검토 항목</h1></div><Link to="/admin/ingest">수집·정제 진행 상황</Link></header>
-    <div className={`${styles.tabs} admin-folder-tabs`} role="tablist" aria-label="문제 대상">
-      {(['complex','announcement'] as const).map((value,index,values) => <button key={value} type="button" role="tab"
+    <header className={styles.heading}><div><h1>실패·검토 항목</h1></div><Link to="/admin/ingest">수집·정제 진행 상황</Link></header>
+    <div className={styles.tabs} role="tablist" aria-label="문제 대상">
+      {(['complex','announcement'] as const).map((value,index,values) => <button key={value} data-design-system="list-tab" type="button" role="tab"
         id={`failure-tab-${value}`} aria-selected={domain === value} aria-controls="failure-review-panel" tabIndex={domain === value ? 0 : -1}
         onClick={() => selectDomain(value)} onKeyDown={event => {
           let next: number
@@ -104,12 +104,8 @@ export function FailureReviewPage() {
     </div>
     <div id="failure-review-panel" role="tabpanel" aria-labelledby={`failure-tab-${domain}`}>
       <div className={styles.workflow}>
-        <Link to={`/admin/${domain === 'complex' ? 'complexes' : 'announcements'}?review=true`}>원천 변경 검토</Link>
-        <Link to={`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`}>API 키 입력·원천 수집</Link>
-        <FailureRetryButton key={domain} label={label} disabled={busy || retired} onRetry={() => void retry()}/>
+        {!retired && <FailureRetryButton key={domain} label={label} disabled={busy} onRetry={() => void retry()}/>}
       </div>
-      <p className={styles.hint}>{retired ? retiredComplexRefinementNotice
-        : `${label} 전체를 다시 정제합니다. 문제가 사라지면 해결됨으로, 재발하면 미해결로 표시됩니다.`}</p>
       {runMessage ? <p role="status" className={styles.runMessage}>{runMessage}</p> : null}
       {runNotice ? <p role="status">{runNotice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}

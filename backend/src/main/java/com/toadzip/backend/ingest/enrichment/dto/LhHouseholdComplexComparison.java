@@ -28,7 +28,7 @@ public final class LhHouseholdComplexComparison {
     public record HousingTypeCount(BigDecimal exclusiveArea, int householdCount) {
     }
 
-    public record Candidate(long id, String name, String supplyType, int totalHouseholdCount, String roadAddress,
+    public record Candidate(long id, String name, String supplyType, Integer totalHouseholdCount, String roadAddress,
             List<BigDecimal> exclusiveAreas) {
     }
 

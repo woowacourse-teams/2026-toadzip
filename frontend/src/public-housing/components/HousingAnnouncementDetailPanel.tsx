@@ -57,6 +57,7 @@ export interface HousingAnnouncementDetailReceptionPlace {
   readonly address: string | null
   readonly phoneNumber: string | null
   readonly url: string | null
+  readonly guidance: string | null
 }
 
 export interface HousingAnnouncementDetailSchedule {
@@ -606,6 +607,7 @@ function ReceptionPlaces({
                 </div>
                 {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
               </div>
+              {hasText(place.guidance) && <p className={styles.receptionGuidance}>{place.guidance}</p>}
               {(hasText(place.address) || hasText(place.phoneNumber)) && (
                 <DetailFacts appearance="list">
                   {hasText(place.address) && <DetailFact term="주소" value={place.address} wide />}

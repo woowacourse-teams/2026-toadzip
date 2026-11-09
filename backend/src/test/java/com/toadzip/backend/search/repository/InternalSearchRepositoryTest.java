@@ -25,6 +25,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import java.util.List;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -238,7 +239,7 @@ class InternalSearchRepositoryTest {
                 "https://example.com/" + suffix,
                 null,
                 0,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, null, null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, null, null))
         );
         entityManager.persist(announcement);
         return announcement;

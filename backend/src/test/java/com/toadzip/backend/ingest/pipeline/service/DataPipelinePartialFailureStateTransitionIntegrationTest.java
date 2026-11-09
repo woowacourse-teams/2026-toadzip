@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -24,9 +25,11 @@ import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAn
 import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementSharedRequestCollector;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -278,14 +281,16 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     }
 
     @Test
-    void 마지막_수집_부분_실패는_통합_정제를_막고_독립_정제로_복구할_수_있다() {
+    void 수집_정제_단계의_수집_부분_실패는_처리한_묶음의_정제를_남기고_독립_정제로_복구할_수_있다() {
         var catalogService = successfulCatalogService();
         var collectionService = mock(LhAnnouncementExternalCollectionService.class);
         var refinementService = mock(LhAnnouncementRefinementService.class);
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
-                .thenReturn(ExternalDataCollectionReport.empty("lh-announcement-supply"));
-        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
-                .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 1, 1));
+        var run = mock(LhAnnouncementRefinementService.Run.class);
+        when(run.report()).thenReturn(lhRefinementReport());
+        when(refinementService.begin()).thenReturn(run);
+        when(collectionService.collectBundles(any())).thenReturn(new LhAnnouncementSharedRequestCollector.BundleReport(
+                ExternalDataCollectionReport.empty("lh-announcement-supply"),
+                new ExternalDataCollectionReport("lh-announcement-detail", 1, 1, 1)));
         var service = service(runner(catalogService, collectionService, refinementService),
                 mock(DataPipelineExecutionLock.Lease.class));
 
@@ -293,11 +298,11 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         var failed = query().find(accepted.executionId());
 
         assertThat(failed.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
-        assertThat(failed.currentStepIndex()).isEqualTo(3);
-        assertThat(failed.totalStepCount()).isEqualTo(4);
+        assertThat(failed.currentStepIndex()).isEqualTo(2);
+        assertThat(failed.totalStepCount()).isEqualTo(2);
         assertThat(failed.partiallyFailedSteps()).singleElement()
-                .extracting("step").isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
-        verifyNoInteractions(refinementService);
+                .extracting("step").isEqualTo(DataPipelineStep.COLLECT_REFINE_LH_ANNOUNCEMENTS);
+        verify(refinementService, never()).refineAll();
 
         when(refinementService.refineAll()).thenReturn(lhRefinementReport());
         var recovered = service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
@@ -306,8 +311,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         assertThat(query().find(recovered.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
         assertThat(query().find(failed.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         verify(catalogService).collect();
-        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
-        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        verify(collectionService).collectBundles(any());
         verify(refinementService).refineAll();
     }
 
@@ -326,13 +330,13 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
         assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
         assertThat(result.skippedSteps()).extracting("stepName").containsExactly(
-                "LH 공고 목록 수집", "LH 공고 공급 원본 수집", "LH 공고 상세 원본 수집", "LH 공고 정제");
-        assertThat(result.skippedSteps().get(3).reason()).contains("자동 정제를 실행하지 않았습니다");
+                "LH 공고 목록 수집", "LH 공고 수집·정제");
+        assertThat(result.skippedSteps().get(1).reason()).contains("호출 제한");
         verifyNoInteractions(collectionService, refinementService);
     }
 
     @ParameterizedTest
-    @CsvSource({"COMPLEX_SYNC, 3, 4", "ANNOUNCEMENT_SYNC, 4, 4"})
+    @CsvSource({"COMPLEX_SYNC, 3, 4", "ANNOUNCEMENT_SYNC, 2, 2"})
     void 통합_실행의_정제_순서와_완료를_저장하고_조회한다(
             DataPipelineType type, int refinementIndex, int totalSteps
     ) {
@@ -420,7 +424,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(ShAnnouncementCollectionService.class),
                         mock(GhAnnouncementCollectionService.class),
                         mock(ShAnnouncementRefinementService.class),
-                        mock(GhAnnouncementRefinementService.class)
+                        mock(GhAnnouncementRefinementService.class),
+                        mock(DataPipelineExecutionRepository.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()
@@ -452,7 +457,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                         mock(ShAnnouncementCollectionService.class),
                         mock(GhAnnouncementCollectionService.class),
                         mock(ShAnnouncementRefinementService.class),
-                        mock(GhAnnouncementRefinementService.class)
+                        mock(GhAnnouncementRefinementService.class),
+                        mock(DataPipelineExecutionRepository.class)
                 ),
                 executionStateService,
                 new SimpleMeterRegistry()

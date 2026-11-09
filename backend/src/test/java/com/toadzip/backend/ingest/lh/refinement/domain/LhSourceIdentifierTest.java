@@ -31,10 +31,10 @@ class LhSourceIdentifierTest {
     }
 
     @Test
-    void LH_원천_소유_공고의_공급행_키는_공고_단지_주택형명_순번으로_만들고_LH_원천으로_보지_않는다() {
-        String row = LhSourceIdentifier.lhOwnedSupplyRow(12L, "59A(청년)", 2);
+    void LH_원천_소유_공고의_공급행_키는_공고_단지_신청형_순번으로_만들고_LH_원천으로_보지_않는다() {
+        String row = LhSourceIdentifier.lhOwnedSupplyRow(12L, "59a", 2);
 
-        assertThat(row).isEqualTo("LHROW:12:59A(청년)#2");
+        assertThat(row).isEqualTo("LHROW:12:59a#2");
         assertThat(LhSourceIdentifier.isLhSourceOfAny(row, Set.of("12"))).isFalse();
     }
 

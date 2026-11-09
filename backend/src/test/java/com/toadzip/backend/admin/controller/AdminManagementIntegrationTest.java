@@ -355,7 +355,7 @@ class AdminManagementIntegrationTest {
                 "recruitmentType":"NEW","agencyCode":"LH","postedDate":"2026-09-01",
                 "applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-20",
                 "winnerAnnouncementDate":"2026-10-01","originalUrl":"https://example.com/notice",
-                "receptionPlace":{"name":"LH","method":"ONLINE","contact":"1600-1004"},
+                "receptionPlaces": [{"name":"LH","method":"ONLINE","contact":"1600-1004"}],
                 "supplyRow":{"sourceComplexName":"테스트 단지","sourceHousingTypeName":"36A",
                 "supplyPnu":"1114010100100010000","supplyCategory":"NEW_SUPPLY","totalSupplyHouseholdCount":5}}
                 """.formatted(complexId);
@@ -457,11 +457,17 @@ class AdminManagementIntegrationTest {
         mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))))
                 .andExpect(status().isConflict());
+        // 공백·대소문자만 다른 이름도 같은 주택타입이다.
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))
+                                .replace("16A", "16 a")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 이름")));
+        // 단지 주택타입은 공고문 표기 이름으로 나누므로 같은 전용면적이어도 이름이 다르면 추가한다(59B-1·59D-1).
         mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))
                                 .replace("16A", "16B").replace("16.37", "16.3700")))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 전용면적")));
+                .andExpect(status().isOk());
         mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
                 .andExpect(jsonPath("$.data[0].action").value("CREATE_HOUSING_TYPE"));
     }
@@ -571,7 +577,7 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
-    void 주택형_면적_수정과_복구도_같은_전용면적_주택형을_단지에_둘_만들지_않는다() throws Exception {
+    void 주택형_이름_수정과_복구는_같은_이름_주택형을_단지에_둘_만들지_않고_같은_면적은_막지_않는다() throws Exception {
         long id = createComplex();
         long first = createHousingType(id);
         var second = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-59-" + id, "59A", new BigDecimal("59.5"), null);
@@ -579,36 +585,45 @@ class AdminManagementIntegrationTest {
         entityManager.flush();
         String path = "/api/admin/housing-complexes/" + id;
         String secondPath = path + "/housing-types/" + second.getId();
-        String areaBody = """
-                {"version": %d, "name": "59A", "exclusiveArea": %s, "householdCount": null}
+        String body = """
+                {"version": %d, "name": "%s", "exclusiveArea": %s, "householdCount": null}
                 """;
+        // 같은 전용면적(46.8)으로 바꾸는 것은 막지 않는다. 이름이 다르면 다른 주택타입이다.
         mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "46.8000")))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 전용면적")));
-        // 면적을 그대로 두는 수정은 막지 않는다.
-        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "59.5").replace("\"59A\"", "\"59B\"")))
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "59A", "46.8000")))
                 .andExpect(status().isOk());
+        // 다른 주택형과 같은 이름으로는 바꾸지 않는다.
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "46A형", "46.8")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 이름")));
 
         mvc.perform(delete(path + "/housing-types/" + first).param("version", String.valueOf(getData(path).get("data").get("version").asLong()))
                 .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isOk());
         mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "46.8").replace("\"59A\"", "\"59B\"")))
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "46A", "46.8")))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("휴지통에 같은 전용면적")));
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("휴지통에 같은 이름")));
 
-        // 휴지통 주택형과 같은 면적의 주택형이 그사이 생겼으면 복구하지 않는다.
-        var legacy = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-46B-" + id, "46B", new BigDecimal("46.8"), null);
+        // 휴지통 주택형과 같은 이름의 주택형이 그사이 생겼으면 복구하지 않는다.
+        var legacy = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-46A2-" + id, "46A", new BigDecimal("46.9"), null);
         entityManager.persist(legacy);
         entityManager.flush();
         mvc.perform(post(path + "/housing-types/" + first + "/restore").param("version", String.valueOf(getData(path).get("data").get("version").asLong()))
                         .with(user("admin").roles("ADMIN")).with(csrf()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("복구할 수 없습니다")));
-        // 이미 같은 면적 주택형이 겹친 기존 단지라도 면적을 바꾸지 않는 이름 수정은 막지 않는다.
+        // 면적만 바꿔 숫자 형명이 다른 주택형과 같은 집이 되면(046.9700A를 46.9로 고치면 46.9의 46A와 같음) 막는다.
+        var coded = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-CODED-" + id, "046.9700A", new BigDecimal("46.97"), null);
+        entityManager.persist(coded);
+        entityManager.flush();
+        mvc.perform(put(path + "/housing-types/" + coded.getId()).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "046.9700A", "46.9")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("같은 이름")));
+        // 이름·면적을 바꾸지 않는 수정(세대수)은 같은 이름 주택형이 겹친 기존 단지에서도 막지 않는다.
         mvc.perform(put(path + "/housing-types/" + legacy.getId()).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(areaBody.formatted(getData(path).get("data").get("version").asLong(), "46.8").replace("\"59A\"", "\"46C\"")))
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "46A", "46.9").replace("\"householdCount\": null", "\"householdCount\": 12")))
                 .andExpect(status().isOk());
     }
 
@@ -722,7 +737,7 @@ class AdminManagementIntegrationTest {
     @Test
     void 연락처가_미확인인_기존_공고도_수정하고_null을_보존한다() throws Exception {
         long id = createAnnouncement(createComplex());
-        entityManager.createNativeQuery("UPDATE announcements SET reception_contact = NULL WHERE id = :id")
+        entityManager.createNativeQuery("UPDATE announcement_reception_places SET contact = NULL WHERE announcement_id = :id")
                 .setParameter("id", id).executeUpdate();
         entityManager.clear();
         String path = "/api/admin/announcements/" + id;
@@ -732,12 +747,60 @@ class AdminManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.data.name").value("단지 탭에서 수정한 공고"))
-                .andExpect(jsonPath("$.data.data.receptionPlace.contact").isEmpty());
+                .andExpect(jsonPath("$.data.data.receptionPlaces[0].contact").isEmpty());
         var updated = (ObjectNode) getData(path).get("data");
-        ((ObjectNode) updated.get("receptionPlace")).put("name", " ");
+        ((ObjectNode) updated.get("receptionPlaces").get(0)).put("name", " ");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 공고_접수처는_보낸_목록_순서대로_저장하고_줄이거나_순서를_바꿔도_그대로_반영한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        var data = (ObjectNode) getData(path).get("data");
+        var places = data.putArray("receptionPlaces");
+        places.addObject().put("name", "LH 청약플러스").put("method", "ONLINE").put("url", "https://apply.lh.or.kr");
+        places.addObject().put("name", "견본주택").put("method", "VISIT").put("address", "서울시 1")
+                .put("guidance", "인터넷 취약계층만 현장 접수");
+        places.addObject().put("name", "지역본부").put("method", "VISIT").put("contact", "02-000-0000");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                .andExpect(status().isOk());
+        assertThat(receptionRows(id)).containsExactly("0|LH 청약플러스|ONLINE|null", "1|견본주택|VISIT|인터넷 취약계층만 현장 접수",
+                "2|지역본부|VISIT|null");
+
+        var reordered = (ObjectNode) getData(path).get("data");
+        var kept = reordered.withArray("receptionPlaces");
+        var visit = kept.get(1).deepCopy();
+        kept.removeAll();
+        kept.add(visit);
+        kept.addObject().put("name", "LH 청약플러스").put("method", "ONLINE");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(reordered.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.receptionPlaces.length()").value(2));
+        entityManager.clear();
+        assertThat(receptionRows(id)).containsExactly("0|견본주택|VISIT|인터넷 취약계층만 현장 접수", "1|LH 청약플러스|ONLINE|null");
+
+        // 배포 전에 열린 화면은 접수처 하나를 receptionPlace로 보낸다. 무시하고 지우지 않고 한 곳으로 읽는다.
+        var legacy = (ObjectNode) getData(path).get("data");
+        legacy.remove("receptionPlaces");
+        legacy.putObject("receptionPlace").put("name", "LH 청약센터").put("method", "ONLINE");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(legacy.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.receptionPlace").doesNotExist());
+        entityManager.clear();
+        assertThat(receptionRows(id)).containsExactly("0|LH 청약센터|ONLINE|null");
+    }
+
+    private List<String> receptionRows(long id) {
+        return ((List<?>) entityManager.createNativeQuery("""
+                        SELECT display_order || '|' || name || '|' || method || '|' || COALESCE(guidance, 'null')
+                        FROM announcement_reception_places WHERE announcement_id = :id ORDER BY display_order
+                        """).setParameter("id", id).getResultList()).stream().map(String::valueOf).toList();
     }
 
     @Test

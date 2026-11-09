@@ -36,11 +36,13 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
@@ -101,7 +103,9 @@ class LhAnnouncementRefiner {
         }
         Announcement announcement = existing.map(found -> adopt(found, values.get(), tally))
                 .orElseGet(() -> create(request.panId(), values.get(), tally));
-        announcement.enrichFromLh(request.panId(), data.correctionReason(), data.receptionPlace());
+        // LH 상세는 접수처를 한 곳만 준다.
+        announcement.enrichFromLh(request.panId(), data.correctionReason(),
+                data.receptionPlace() == null ? List.of() : List.of(data.receptionPlace()));
         scheduleWriter.write(announcement, data, null);
         linkRevision(announcement, tally);
         Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, detailComplexes(details),
@@ -199,23 +203,20 @@ class LhAnnouncementRefiner {
             return;
         }
         String base = name.baseName();
-        List<Announcement> lh = announcements.findAllByLhPanIdIsNotNullAndAdminDeletedFalse();
-        List<Long> taken = lh.stream().map(Announcement::getPreviousAnnouncement).filter(Objects::nonNull)
-                .map(Announcement::getId).toList();
-        List<Announcement> candidates = lh.stream()
-                .filter(candidate -> !candidate.getId().equals(revision.getId()) && !taken.contains(candidate.getId()))
-                .filter(candidate -> !candidate.getPostedDate().isAfter(revision.getPostedDate()))
+        List<Announcement> candidates = announcements
+                .findLhLinkableOriginals(revision.getId(), revision.getPostedDate()).stream()
                 .filter(candidate -> new LhRevisionName(candidate.getName()).baseName().equals(base))
                 .toList();
         Optional<LocalDate> latest = candidates.stream().map(Announcement::getPostedDate).max(Comparator.naturalOrder());
         List<Announcement> newest = candidates.stream()
                 .filter(candidate -> latest.filter(candidate.getPostedDate()::equals).isPresent()).toList();
         if (newest.size() != 1) {
-            tally.revisionsUnlinked++;
+            tally.unlinkedRevisionPanIds.add(revision.getLhPanId());
             return;
         }
-        if (revision.linkLhRevision(newest.getFirst(), type.get())) {
+        if (revision.linkRevision(newest.getFirst(), type.get())) {
             tally.revisionsLinked++;
+            tally.linkedRevisionPanIds.add(revision.getLhPanId());
         }
     }
 
@@ -291,7 +292,9 @@ class LhAnnouncementRefiner {
             documentOwned += other.documentOwned;
             recheckRequired += other.recheckRequired;
             revisionsLinked += other.revisionsLinked;
-            revisionsUnlinked += other.revisionsUnlinked;
+            linkedRevisionPanIds.addAll(other.linkedRevisionPanIds);
+            unlinkedRevisionPanIds.removeAll(other.linkedRevisionPanIds);
+            unlinkedRevisionPanIds.addAll(other.unlinkedRevisionPanIds);
             complexes.add(other.complexes);
             supplies.add(other.supplies);
         }
@@ -305,9 +308,24 @@ class LhAnnouncementRefiner {
             }
         }
 
+        Set<String> unlinkedRevisionPanIds() {
+            return Set.copyOf(unlinkedRevisionPanIds);
+        }
+
+        /** 실행 끝 재연결의 결과를 합친다. 처음 정제에서 센 공고(만든·이어받은·보류)는 다시 세지 않는다. */
+        void addRelinked(Tally other, Set<String> retriedPanIds) {
+            updated += other.updated;
+            recheckRequired += other.recheckRequired;
+            revisionsLinked += other.revisionsLinked;
+            unlinkedRevisionPanIds.removeAll(retriedPanIds);
+            unlinkedRevisionPanIds.addAll(other.unlinkedRevisionPanIds);
+            complexes.add(other.complexes);
+            supplies.add(other.supplies);
+        }
+
         LhAnnouncementRefinementReport toReport(int targetCount, int failedCount) {
             return new LhAnnouncementRefinementReport(targetCount, created, adopted, updated, held, failedCount,
-                    documentOwned, recheckRequired, revisionsLinked, revisionsUnlinked, complexes.toCounts(),
+                    documentOwned, recheckRequired, revisionsLinked, unlinkedRevisionPanIds.size(), complexes.toCounts(),
                     supplies.toCounts());
         }
 
@@ -318,7 +336,9 @@ class LhAnnouncementRefiner {
         private int documentOwned;
         private int recheckRequired;
         private int revisionsLinked;
-        private int revisionsUnlinked;
+        private final Set<String> linkedRevisionPanIds = new LinkedHashSet<>();
+        /** 원공고를 하나로 정하지 못한 정정·취소공고의 LH 공고 ID. 실행 끝에서 다시 잇는다. */
+        private final Set<String> unlinkedRevisionPanIds = new LinkedHashSet<>();
         private final LhAnnouncementComplexLinker.Tally complexes = new LhAnnouncementComplexLinker.Tally();
         private final LhSupplyRowWriter.Tally supplies = new LhSupplyRowWriter.Tally();
     }

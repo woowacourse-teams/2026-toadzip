@@ -403,7 +403,7 @@ class QualityComparisonIntegrationTest {
                 "recruitmentType":"NEW","agencyCode":"LH","postedDate":"2026-09-01",
                 "applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-20",
                 "winnerAnnouncementDate":"2026-10-01","originalUrl":"https://example.com/notice",
-                "receptionPlace":{"name":"LH","method":"ONLINE","contact":"1600-1004"},
+                "receptionPlaces": [{"name":"LH","method":"ONLINE","contact":"1600-1004"}],
                 "supplyRow":{"sourceComplexName":"비교 단지","sourceHousingTypeName":"26A",
                 "supplyPnu":"1114010300100010000","supplyCategory":"NEW_SUPPLY","totalSupplyHouseholdCount":5}}
                 """.formatted(complexId);

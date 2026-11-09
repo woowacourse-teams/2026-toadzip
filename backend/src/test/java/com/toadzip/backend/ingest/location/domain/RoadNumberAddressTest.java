@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.lh.refinement.domain;
+package com.toadzip.backend.ingest.location.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -1,21 +1,24 @@
 package com.toadzip.backend.ingest.mapping.controller;
 
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationRequest;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationResponse;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -53,6 +56,32 @@ class MyHomeInitialRegistrationControllerTest {
         mvc.perform(post("/api/admin/ingest/myhome/initial-registration/refresh"))
                 .andExpect(status().isNoContent());
         verify(service).refresh();
+    }
+
+    @Test
+    void 주소와_지도용_좌표를_관리자_보완값으로_저장한다() throws Exception {
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/locations")
+                        .principal(() -> "admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"sourceComplexIdentifier":"1:HAPPY_HOUSING", "address":"서울특별시 종로구 테스트로 1",
+                                 "latitude":37.12345678, "longitude":127.12345678}
+                                """))
+                .andExpect(status().isNoContent());
+        verify(service).supplementLocation(new InitialRegistrationLocationRequest(
+                "1:HAPPY_HOUSING", "서울특별시 종로구 테스트로 1",
+                new BigDecimal("37.12345678"), new BigDecimal("127.12345678")), "admin");
+    }
+
+    @Test
+    void 좌표_누락과_범위_초과는_보완_요청에서_거절한다() throws Exception {
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/locations")
+                        .principal(() -> "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"sourceComplexIdentifier":"1:HAPPY_HOUSING", "address":"보완 주소",
+                                 "latitude":91, "longitude":null}
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
