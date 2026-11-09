@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { DataPipelineExecution, DataPipelineWorkProgress } from './api'
+import type { DataPipelineExecution, DataPipelineType, DataPipelineWorkProgress } from './api'
+import { InitialRegistrationReport } from './InitialRegistrationReport'
 
 export function DataPipelineProgress({ execution, label }: { execution: DataPipelineExecution, label: string }) {
   const [now, setNow] = useState(Date.now)
@@ -64,7 +65,8 @@ function remainingTime(work: DataPipelineWorkProgress, now: number): string {
   return `약 ${Math.floor(seconds / 3_600)}시간 ${Math.ceil(seconds % 3_600 / 60)}분`
 }
 
-export function PipelineReport({ report }: { report: unknown }) {
+export function PipelineReport({ report, type }: { report: unknown; type?: DataPipelineType }) {
+  if (type === 'COMPLEX_REGISTRATION') return <InitialRegistrationReport report={report} />
   if (typeof report !== 'object' || report === null) return null
   // 수집·정제를 합친 단계는 수집 수치와 정제 수치를 나눠 보여 준다.
   const groups = ([['collection', '수집'], ['supply', '공급 수집'], ['detail', '상세 수집'], ['refinement', '정제']] as const)

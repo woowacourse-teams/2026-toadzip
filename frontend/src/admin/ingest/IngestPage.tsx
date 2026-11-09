@@ -37,7 +37,7 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
         backdropPressed.current = false
       }}>
       <header><h2 id="complex-history-title">실행 이력</h2><ComplexIconButton icon="close" label="이력 닫기" onClick={closeHistory} /></header>
-      {historyOpen && <PipelineHistory domain="complex" compact readOnlyComplex />}
+      {historyOpen && <PipelineHistory domain="complex" compact readOnlyComplex onShowRegistration={closeHistory} />}
     </dialog> : null}
   </section>
 }

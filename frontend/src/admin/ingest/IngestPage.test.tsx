@@ -41,6 +41,22 @@ it('등록 완료 안내의 실행 이력 보기도 기존 이력 창을 연다'
   expect(getPipelineHistory).toHaveBeenCalledWith(0, 'complex')
 })
 
+it('현재 등록 현황 링크를 누르면 같은 등록 탭에서도 이력 창을 닫는다', async () => {
+  vi.mocked(getPipelineHistory).mockResolvedValueOnce([{
+    executionId: 'registration-1', type: 'COMPLEX_REGISTRATION', status: 'FAILED',
+    currentStepName: null, currentStepIndex: 1, totalStepCount: 1,
+    completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null,
+  }])
+  render(<MemoryRouter initialEntries={['/admin/ingest/complexes#complex-registration']}><IngestPage domain="complex" /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '실행 이력' }))
+  fireEvent.click(await screen.findByRole('button', { name: /상세 펼치기/ }))
+  const link = screen.getByRole('link', { name: '현재 등록 현황 보기' })
+  expect(link).toHaveAttribute('href', '/admin/ingest/complexes#complex-registration')
+  fireEvent.click(link)
+  expect(screen.queryByRole('dialog', { name: '실행 이력' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
+})
+
 it('모달 내부와 내부에서 시작한 드래그는 유지하고 바깥을 눌렀을 때만 닫는다', async () => {
   render(<MemoryRouter><IngestPage domain="complex" /></MemoryRouter>)
   fireEvent.click(screen.getByRole('button', { name: '실행 이력' }))

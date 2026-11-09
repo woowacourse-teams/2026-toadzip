@@ -12,6 +12,40 @@ const getHistory = vi.mocked(getPipelineHistory)
 beforeEach(() => { getHistory.mockReset(); vi.mocked(getFailureReviews).mockClear() })
 
 describe('데이터 실행 이력', () => {
+  it.each(['COMPLETED', 'FAILED'] as const)('신규 등록 %s 이력에 단지·주소 수와 상태별 결과를 표시한다', async status => {
+    const result = { step: 'REGISTER_MYHOME_COMPLEXES', stepName: '준비된 신규 단지 등록', report: {
+      targetCount: 3, uniqueAddressCount: 2,
+      counts: { COMPLETED: 2, FAILED: 1, EXISTING: 4, READY: 0, INFORMATION_REQUIRED: 0, LOCATION_REQUIRED: 0 },
+    } }
+    getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REGISTRATION', status, totalStepCount: 1,
+      completedSteps: status === 'COMPLETED' ? [result.stepName] : [],
+      completedStepResults: status === 'COMPLETED' ? [result] : [],
+      partiallyFailedSteps: status === 'FAILED' ? [result] : [],
+    })])
+    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /상세 (펼치기|접기)/ }))
+    const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
+    for (const [label, count] of [['등록 대상 단지', '3'], ['고유 원천 주소', '2'], ['등록 완료', '2'],
+      ['등록 실패', '1'], ['기존 단지 건너뜀', '4'], ['등록 가능', '0'], ['정보 보완 필요', '0'], ['좌표 준비 필요', '0']]) {
+      expect(within(detail).getByText(label).nextSibling).toHaveTextContent(count)
+    }
+    expect(within(detail).queryByText('대상 공고')).not.toBeInTheDocument()
+  })
+  it.each([true, false])('등록 실패 이력(단지 전용=%s)은 기존 오류 조회 대신 현재 등록 현황으로 안내한다', async readOnlyComplex => {
+    getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REGISTRATION', status: 'FAILED',
+      failure: { stepName: '준비된 신규 단지 등록', message: '단지 저장 실패', serverResponse: null },
+    })])
+    render(<MemoryRouter><PipelineHistory domain="complex" readOnlyComplex={readOnlyComplex} /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /상세 (펼치기|접기|보기)/ }))
+    const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
+    expect(within(detail).getByRole('alert')).toHaveTextContent('단지 저장 실패')
+    expect(within(detail).queryByRole('button', { name: '결과 오류 조회' })).not.toBeInTheDocument()
+    expect(within(detail).getByRole('link', { name: '현재 등록 현황 보기' }))
+      .toHaveAttribute('href', '/admin/ingest/complexes#complex-registration')
+    expect(detail).toHaveTextContent('현재 상태')
+    expect(detail).toHaveTextContent('상태 필터')
+    expect(getFailureReviews).not.toHaveBeenCalled()
+  })
   it('단지 이력은 아이콘으로 페이지 이동·새로고침·상세 닫기를 제공한다', async () => {
     const first = Array.from({ length: 20 }, (_, index) => execution({ executionId: `run-${index}` }))
     getHistory.mockResolvedValueOnce(first).mockResolvedValueOnce([execution()]).mockResolvedValueOnce(first).mockResolvedValueOnce(first)
