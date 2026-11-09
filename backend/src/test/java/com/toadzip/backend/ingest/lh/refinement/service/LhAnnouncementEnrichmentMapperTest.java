@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
+import com.toadzip.backend.announcement.domain.ReceptionMethod;
+import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.collection.fixture.LhAnnouncementDetailFixtures;
 import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
@@ -19,6 +21,7 @@ import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -268,6 +271,37 @@ class LhAnnouncementEnrichmentMapperTest {
         assertThatThrownBy(() -> mapper.map(PAN_ID, List.of(), List.of(supply)))
                 .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
                 .hasMessage("월 임대료 형식이 올바르지 않습니다.");
+    }
+
+    @Test
+    void LH_접수처는_안내문을_이름으로_쓰지_않고_상세주소를_이름으로_안내문은_안내_문구로_둔다() {
+        var result = mapper.map(PAN_ID, List.of(receptionDetail("경기도 평택시 팽성읍 팽성송화로 163(주공아파트)", "관리사무소",
+                "* 자세한 사항은 반드시 공고문을 확인하시기 바랍니다.")), List.of());
+
+        assertThat(result.receptionPlace()).extracting(ReceptionPlace::getName, ReceptionPlace::getMethod,
+                        ReceptionPlace::getAddress, ReceptionPlace::getContact, ReceptionPlace::getGuidance)
+                .containsExactly("관리사무소", ReceptionMethod.VISIT, "경기도 평택시 팽성읍 팽성송화로 163(주공아파트) 관리사무소",
+                        "031-651-6776", "* 자세한 사항은 반드시 공고문을 확인하시기 바랍니다.");
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "'(서정동,신한헤센스마트 서정아트타워)' | LH 접수처",
+            "', 태백궁전 LH 주거행복지원센터' | 태백궁전 LH 주거행복지원센터",
+            "'(우산동,광주우산 LH 1단지) 관리사무소' | 관리사무소",
+            "'' | LH 접수처",
+    }, delimiter = '|')
+    void LH_접수처_이름은_상세주소의_앞_괄호와_구두점을_떼고_남는_것이_없으면_LH_접수처로_둔다(String detailAddress, String name) {
+        var result = mapper.map(PAN_ID, List.of(receptionDetail("경기도 평택시 정암로 10", detailAddress, null)), List.of());
+
+        assertThat(result.receptionPlace().getName()).isEqualTo(name);
+    }
+
+    private LhAnnouncementDetailSourceView receptionDetail(String address, String detailAddress, String guidance) {
+        return LhSourceViews.detail(0, PAN_ID, new LhAnnouncementDetailSourceSnapshot(
+                "RECEPTION", null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, address, detailAddress, "2026.11.05", "2027.04.02", "031-651-6776",
+                guidance, null, null, null, null, null, null));
     }
 
     private LhAnnouncementDetailSourceView complexDetail(int order, String complexName, String expectedMoveInYearMonth) {

@@ -243,7 +243,7 @@ function NewSupplyComplex({ row, index, onChange, onJump }: { row: RowReview; in
 
 /** 단지가 다른 공급행끼리 함께 쓰는 행 모집수는 공통 모집 묶음을 새로 만들지 않아 저장하지 않는다. 같은 단지의 행은 공급행 하나로 접힌다. */
 const sharedUnstored = ' 단지가 다른 공급행끼리 함께 쓰는 모집수라 공급행 모집수로 정하지 않습니다. 필요하면 행마다 직접 입력하세요.'
-/** 공통 모집수가 묶은 대상을 읽기 쉽게 적는다. 대상별 묶음은 저장할 곳이 없어 각 대상의 모집수를 비워 둔다. */
+/** 공통 모집수가 묶은 대상을 읽기 쉽게 적는다. 한 공급행 안 대상끼리의 수는 공통 모집수로 저장하고, 공급행이 다른 대상끼리의 수는 저장하지 않는다. */
 function sharedLabel(review: Review, paths: string[]) {
   const at = paths.map(path => /^supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?/.exec(path)).filter(match => match !== null)
   if (at.length && at.every(match => match[2] !== undefined)) {
@@ -260,7 +260,8 @@ function sharedLabel(review: Review, paths: string[]) {
       const row = review.extraction.supplyRows[index]
       return byRow.size === 1 ? `${row?.typeName ?? '공급행'}에서 ${targets.join(' · ')} 대상` : `${row?.typeName ?? '공급행'}의 ${targets.join(' · ')} 대상`
     }).join('과 ')
-    return `${detail}이 함께 쓰는 ${quantity}입니다. 대상별 ${reserve ? '예비자 수' : '모집수'}는 비워 둡니다.`
+    const one = byRow.size === 1
+    return `${detail}이 함께 쓰는 ${quantity}입니다. ${one ? `대상마다 나누지 않고 공통 ${quantity}로 저장합니다.` : `공급행이 달라 저장하지 않습니다. 대상별 ${reserve ? '예비자 수' : '모집수'}는 비워 둡니다.`}`
   }
   return `${at.map(match => review.extraction.supplyRows[Number(match[1])]?.typeName).join(' · ')} 전체의 모집수입니다. 각 행에 나누거나 중복 기입하지 않습니다.`
 }

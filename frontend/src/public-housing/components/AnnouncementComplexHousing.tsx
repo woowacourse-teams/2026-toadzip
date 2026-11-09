@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import type { AnnouncementSupplyTarget } from '../model/publicHousing.ts'
+import type { AnnouncementSupplyTarget, SharedTargetCount } from '../model/publicHousing.ts'
 import type { HousingAnnouncementSupplyComplexGroup } from '../presentation/announcementDetailPresentation.ts'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
 import { formatHousingMoney, formatHousingMoneyReadable } from '../presentation/housingMoney'
@@ -257,16 +257,7 @@ function HousingTypeDetail({ complexName, row, areaUnit, chosen, onOpenFloorPlan
                 <span aria-label={`보증금 ${formatHousingMoneyReadable(target.deposit)}`}>{formatHousingMoneyReadable(target.deposit)}</span>
                 <span aria-label={`월 임대료 ${formatHousingMoneyReadable(target.monthlyRent)}`}>{formatHousingMoneyReadable(target.monthlyRent)}</span>
               </div>
-              {(isFiniteNumber(target.supplyHouseholdCount) || isFiniteNumber(target.waitlistCount)
-                || hasText(target.applicationCondition)) && (
-                <p className={styles.targetMeta}>
-                  {[
-                    isFiniteNumber(target.supplyHouseholdCount) ? `공급 ${target.supplyHouseholdCount.toLocaleString('ko-KR')}세대` : null,
-                    isFiniteNumber(target.waitlistCount) ? `예비자 ${target.waitlistCount.toLocaleString('ko-KR')}명` : null,
-                    hasText(target.applicationCondition) ? target.applicationCondition : null,
-                  ].filter(Boolean).join(' · ')}
-                </p>
-              )}
+              <TargetMeta target={target} />
             </li>
           ))}
         </ul>
@@ -319,7 +310,26 @@ function visibleTargets(row: HousingAnnouncementDetailSupplyRow) {
   return row.targets.filter((target) => (
     [target.target, target.priority, target.applicationCondition].some(hasText)
     || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(isFiniteNumber)
+    || target.sharedSupplyHouseholdCount != null || target.sharedWaitlistCount != null
   ))
+}
+
+function TargetMeta({ target }: { target: AnnouncementSupplyTarget }) {
+  const parts = [
+    labeledCount('공급', target.supplyHouseholdCount, target.sharedSupplyHouseholdCount, '세대', target.target),
+    labeledCount('예비자', target.waitlistCount, target.sharedWaitlistCount, '명', target.target),
+    hasText(target.applicationCondition) ? target.applicationCondition : null,
+  ].filter((part) => part !== null)
+  return parts.length > 0 ? <p className={styles.targetMeta}>{parts.join(' · ')}</p> : null
+}
+
+/** 다른 대상과 함께 쓰는 수는 대상마다 나누지 않고 '예비자 공통 20명 · 청년(소득 있음)과 함께'로 보인다. */
+function labeledCount(label: string, own: number | null, shared: SharedTargetCount | null | undefined, unit: string, self: string | null) {
+  if (shared) {
+    const others = shared.targets.filter((name) => name !== self)
+    return `${label} 공통 ${shared.count.toLocaleString('ko-KR')}${unit}${others.length > 0 ? ` · ${others.join('·')}과 함께` : ''}`
+  }
+  return isFiniteNumber(own) ? `${label} ${own.toLocaleString('ko-KR')}${unit}` : null
 }
 
 function targetName(target: AnnouncementSupplyTarget) {

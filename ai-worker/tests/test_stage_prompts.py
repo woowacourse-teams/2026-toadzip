@@ -19,6 +19,8 @@ def test_stage_prompts_include_projected_schema_and_separate_inputs():
     assert "[추출 단계: 공고 본문]" in notice and "table rows" not in notice
     assert '"rowIds"' in supply and '"supplyRows"' not in supply and '"sourceRows"' not in supply
     assert '"supplyRows"' not in notice
+    # 신청자격 요약은 본문 단계만 받는다. merge가 대상 신청 조건에 합친다.
+    assert '"applicationConditions"' in notice and '"applicationConditions"' not in supply
     # LH 행은 번호 없는 참고 목록이다. 번호를 붙이면 모델이 줄마다 공급행을 만들거나 번호로 맞추려 한다.
     assert "\n- 단지= | 주택형=39 | 전용=39.95 | 공급=55.10 | 모집수=20\n" in supply
     assert "1. 주택형" not in supply and "lhSourceRow" not in supply

@@ -387,6 +387,8 @@ class AnnouncementControllerTest {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null
         );
         SupplyRowResponse matchedRow = new SupplyRowResponse(
@@ -584,7 +586,9 @@ class AnnouncementControllerTest {
                         "deposit": null,
                         "monthlyRent": null,
                         "convertibleDeposit": null,
-                        "applicationCondition": null
+                        "applicationCondition": null,
+                        "sharedSupplyHouseholdCount": null,
+                        "sharedWaitlistCount": null
                       }]
                     }, {
                       "supplyRowId": 302,

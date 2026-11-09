@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { LocationPreparation } from './LocationPreparation'
 import { getLocationPreparation, refreshInitialRegistration, supplementInitialRegistrationLocation,
   type LocationPreparationResponse } from './api'
-import { lookupAddresses } from '../announcement-pdf/addressLookupApi'
+import { lookupAddresses, type AddressCandidate } from '../announcement-pdf/addressLookupApi'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(),
   getLocationPreparation: vi.fn(), refreshInitialRegistration: vi.fn(), supplementInitialRegistrationLocation: vi.fn(),
@@ -16,8 +16,9 @@ const response: LocationPreparationResponse = {
     location: { address: null, latitude: null, longitude: null, origin: null, failure: 'INVALID_ADDRESS',
       checkedAt: '2026-11-05T00:00:00Z', checkedBy: null } }], totalElements: 4, page: 0, totalPages: 1,
 }
-const candidate = { roadAddress: '서울특별시 종로구 테스트로 1', jibunAddress: '', pnu: '1111010100100010000',
-  legalDongCode: '1111010100', provinceCode: '11', cityCountyDistrictCode: '11110', latitude: 37.12345678, longitude: 127.12345678 }
+const candidate: AddressCandidate = { roadAddress: '서울특별시 종로구 테스트로 1', jibunAddress: '', pnu: '1111010100100010000',
+  legalDongCode: '1111010100', provinceCode: '11', cityCountyDistrictCode: '11110', latitude: 37.12345678, longitude: 127.12345678,
+  matchesKeyword: false, registeredComplexes: [] }
 beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(getLocationPreparation).mockResolvedValue(response)

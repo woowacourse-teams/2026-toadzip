@@ -45,6 +45,7 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
                 item.get("path") == path for item in unresolved
             ):
                 unresolved.append({"path": path, "reason": "공급 표와 본문에서 확인하지 못함"})
+    evidence += _apply_conditions(supply_rows, notice_data.get("applicationConditions"), notice_evidence)
     tree = {
         "data": {
             "announcement": notice_data["announcement"],
@@ -60,6 +61,69 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
     }
     checks.first_json_object(json.dumps(tree, ensure_ascii=False))
     return tree, complex_warnings
+
+
+_CONDITION_LIMIT = 255
+_CONDITION_SEPARATOR = " · "
+
+
+def _apply_conditions(supply_rows: list[dict], conditions, notice_evidence: list[dict]) -> list[dict]:
+    """본문 신청자격을 대상 신청 조건에 합친다. 공고 전체 조건(target 없음)은 모든 대상에, 대상 조건은 이름이 같거나 한쪽이 다른 쪽을
+    품는 대상(고령자 ↔ 고령자(주거약자))에 붙이고, 표에 적힌 조건은 뒤에 둔다. 대상 이름은 바꾸지 않는다(PDF 보정이 기존 대상과 짝짓는 이름).
+    255자(저장 칸 길이)를 넘으면 조건 단위로 자른다. 근거는 처음 붙인 본문 조건의 근거를 그 대상 칸에 옮긴다."""
+    items = [item for item in checks.objects(conditions) if _present(item.get("condition"))]
+    if not items:
+        return []
+    quotes = {item.get("path"): item for item in notice_evidence}
+    added = []
+    for row_index, row in enumerate(supply_rows):
+        for target_index, target in enumerate(checks.objects(row.get("targets"))):
+            matched = [(index, item) for index, item in enumerate(items) if _condition_applies(item.get("target"), target.get("target"))]
+            if not matched:
+                continue
+            own = target.get("applicationCondition")
+            notice_parts = [item["condition"].strip() for _, item in matched]
+            target["applicationCondition"] = _joined_within_limit(list(dict.fromkeys(notice_parts)),
+                                                                  own.strip() if _present(own) else None)
+            source = quotes.get(f"applicationConditions[{conditions.index(matched[0][1])}]")
+            if source:
+                added.append({**source, "path": f"supplyRows[{row_index}].targets[{target_index}].applicationCondition"})
+    return added
+
+
+def _condition_applies(condition_target, target_name) -> bool:
+    """공고 전체 조건은 모든 대상에, 대상 조건은 괄호 앞 핵심 이름이 같은 대상(고령자 ↔ 고령자(주거약자))이나 · 로 묶은 대상의
+    한 이름(신혼부부 ↔ 신혼부부·한부모가족)에만 붙인다. 부분 문자열로 맞추면 '신혼부부'가 '예비신혼부부'에, '청년 창업인'이 '청년'에 붙는다."""
+    if not _present(condition_target):
+        return True
+    wanted = _core(condition_target)
+    names = {_core(part) for part in re.split(r"[·,/]", target_name)} | {_core(target_name)} if isinstance(target_name, str) else set()
+    return bool(wanted) and wanted in names
+
+
+def _core(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", re.split(r"[(\[]", value, maxsplit=1)[0])
+
+
+def _joined_within_limit(parts: list[str], own: str | None) -> str:
+    """본문 조건을 앞에, 표에 적힌 대상 조건을 맨 뒤에 둔다. 255자(저장 칸 길이)를 넘으면 표 조건은 남기고 본문 조건을 조건 단위로 자른다."""
+    tail = [own] if own and own not in parts else []
+    budget = _CONDITION_LIMIT - (len(own) + len(_CONDITION_SEPARATOR) if tail else 0)
+    kept: list[str] = []
+    for part in parts:
+        candidate = _CONDITION_SEPARATOR.join([*kept, part])
+        if len(candidate) > budget:
+            break
+        kept.append(part)
+    if not kept and not tail and parts:
+        return parts[0][:_CONDITION_LIMIT]
+    return _CONDITION_SEPARATOR.join([*kept, *tail])[:_CONDITION_LIMIT]
+
+
+def _present(value) -> bool:
+    return isinstance(value, str) and value.strip() != ""
 
 
 def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[dict]):

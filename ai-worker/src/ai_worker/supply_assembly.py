@@ -10,29 +10,36 @@ from dataclasses import dataclass
 from ai_worker import checks, pages, tables
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
-    check_source_rows, count_cell, normalize_source_text, numeric_cell_matches, recruitment_count, source_cell_matches,
-    source_row_map, source_texts, target_cells,
+    Headings, check_source_rows, count_cell, normalize_source_text, numeric_cell_matches, recruitment_count,
+    source_cell_matches, source_row_map, source_texts, target_cells,
 )
 
 
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
-def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str]]:
-    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다."""
+def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tuple[dict, list[str]]:
+    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다.
+    source_names는 LH 공급행의 단지명이다. 표 위 블록 제목과 단지명을 대조할 때 후보로 쓴다(Headings)."""
     groups: list[dict] = []
     group_indexes: dict[tuple, int] = {}
     unresolved: list[dict] = []
     compact_paths: dict[int, tuple[int, int | None]] = {}
     items = checks.objects(compact.get("data", {}).get("rows"))
     per_house_type_tables = _per_house_type_tables(items, selected)
+    headings = Headings(selected.supply_row_headings, tuple(
+        name for name in (*(item.get("complexName") for item in items), *source_names) if isinstance(name, str)))
 
     for item_index, item in enumerate(items):
         unresolved_start = len(unresolved)
         row_ids = _row_ids(item)
-        complex_name = _compact_source_text(item.get("complexName"), "complexName", row_ids, selected,
-                                            "supplyRows[__item__].complexReference.sourceComplexName", unresolved,
-                                            missing_value="")
+        complex_name = None
+        if headings.confirms(item.get("complexName"), row_ids, selected.supply_row_values):
+            complex_name = _normalize_source_display(item["complexName"], "complexName")
+        if complex_name is None:
+            complex_name = _compact_source_text(item.get("complexName"), "complexName", row_ids, selected,
+                                                "supplyRows[__item__].complexReference.sourceComplexName", unresolved,
+                                                missing_value="")
         unit = _house_type_unit(row_ids, selected, per_house_type_tables)
         if unit is None:
             housing_type = _compact_source_text(item.get("housingType"), "housingType", row_ids, selected,
@@ -299,7 +306,7 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                     "supplyHouseholdCount": None, "reserveCount": None}
     warnings = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
                                  tree["data"]["unresolvedFields"], selected.supply_row_values,
-                                 selected.supply_row_target_values, block_counts)
+                                 selected.supply_row_target_values, block_counts, headings)
     tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
     for index, row in enumerate(supply_rows):
         _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])

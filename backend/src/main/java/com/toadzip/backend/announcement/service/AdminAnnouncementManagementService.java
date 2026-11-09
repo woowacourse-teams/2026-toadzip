@@ -13,6 +13,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyTargetCountGroup;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
@@ -260,9 +261,7 @@ public class AdminAnnouncementManagementService {
             }
             if (count != null) { total += count; }
             if (!row.isTargetCountsComparable() || row.getTotalSupplyHouseholdCount() == null) { continue; }
-            long targetCount = targets.findAllBySupplyRow(row).stream().filter(target -> !target.isAdminExcluded())
-                    .map(SupplyTarget::getSupplyHouseholdCount).filter(Objects::nonNull)
-                    .mapToLong(Integer::longValue).sum();
+            long targetCount = SupplyTargetCountGroup.householdTotal(targets.findAllBySupplyRow(row));
             if (targetCount > row.getTotalSupplyHouseholdCount()) {
                 throw new IllegalArgumentException("같은 범위로 확인한 대상별 모집수 합계가 행 모집수를 초과합니다.");
             }

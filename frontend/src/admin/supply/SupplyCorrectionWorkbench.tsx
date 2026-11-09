@@ -8,7 +8,7 @@ import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
 import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
-import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { applySupply, blankRow, dropLoneGroups, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import { mergeInto, possibleLhDuplicates, unattachedLhNotice, unattachedLhRows } from './lhSupplyOwnership'
 import { SupplyMergePanel } from './SupplyMergePanel'
 import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
@@ -66,7 +66,10 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     setBusy(true); setError(''); setNotice('')
     // 삭제 예정 행은 요청 행에서 빼고 deletedRowKeys로 보낸다. 서버는 관리자가 추가한 행만 지운다.
     const input: SupplyCorrectionInput = { operationId: crypto.randomUUID(), snapshotToken: workspace.snapshotToken, reason: reason.trim(), sourceUrl: url.trim(), sourcePage: page.trim() || null,
-      rows: rows.filter(row => !deleted.includes(row.key)), ...(deleted.length ? { deletedRowKeys: deleted } : {}) }
+      rows: rows.filter(row => !deleted.includes(row.key)).map(row => {
+        // 공통 모집수를 쓰는 대상을 제외하거나 지우면 그 묶음을 풀어 서버가 거절하지 않게 한다.
+        const targets = row.targets.map(target => ({ ...target })); dropLoneGroups(targets); return { ...row, targets }
+      }), ...(deleted.length ? { deletedRowKeys: deleted } : {}) }
     try {
       const result = await previewSupply(id, input)
       const checked = { input, result }; setPreview(checked); setStale(false)

@@ -45,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -78,6 +79,7 @@ public class SupplyCorrectionService {
     private final ObjectMapper json;
     private final AnnouncementComplexAdminLinks adminLinks;
     private final AnnouncementComplexRepository announcementComplexRepository;
+    private final SupplyTargetCountGroups countGroups;
 
     public SupplyCorrection.Workspace workspace(long id) {
         return snapshot(id).workspace();
@@ -195,6 +197,16 @@ public class SupplyCorrectionService {
     /** 같은 트랜잭션에서 이미 읽은 공급정보로 미리보기를 만든다. 원천 비교 스냅샷을 다시 계산하지 않는다. */
     public SupplyCorrection.Preview preview(long id, SupplyCorrection.Workspace before,
             SupplyCorrection.Request request) {
+        return previewChanges(id, before, request)
+                .orElseThrow(() -> new IllegalArgumentException("변경한 공급정보가 없습니다."));
+    }
+
+    /**
+     * 공급행을 바꾸는 요청이면 미리보기를, 검증한 뒤의 공급행이 지금과 같으면(행 순서·생략한 연결만 다른 요청) 빈 값을 돌려준다.
+     * PDF 보정은 공급정보가 그대로여도 기본정보·일정 변경을 저장해야 하므로 빈 값을 '공급정보 변경 없음'으로 쓴다.
+     */
+    public Optional<SupplyCorrection.Preview> previewChanges(long id, SupplyCorrection.Workspace before,
+            SupplyCorrection.Request request) {
         if (!before.snapshotToken().equals(request.snapshotToken())) {
             log.warn("event=announcement.supply_correction.conflict_detected announcementId={} check=snapshot "
                     + "requestToken={} currentToken={}", id, shortToken(request.snapshotToken()),
@@ -209,10 +221,10 @@ public class SupplyCorrectionService {
         var warnings = new ArrayList<>(validateSchedulesAndCounts(id, planned));
         warnings.addAll(adminLinks.warnings(adminLinks.plan(announcement, before.rows(), planned)));
         if (same(before.rows(), planned)) {
-            throw new IllegalArgumentException("변경한 공급정보가 없습니다.");
+            return Optional.empty();
         }
-        return new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned))), before.rows(), planned,
-                List.copyOf(warnings));
+        return Optional.of(new SupplyCorrection.Preview(hash(List.of(request, planned, candidateValues(planned))),
+                before.rows(), planned, List.copyOf(warnings)));
     }
 
     @Transactional
@@ -439,7 +451,9 @@ public class SupplyCorrectionService {
         String pnu = row.pnu();
         var transientRow = SupplyRow.create(announcement, complex, type, "PREVIEW:" + row.key(), row.displayOrder(),
                 complexName, row.typeName(), pnu, row.moveInMonth(), row.category(), null, row.householdCount());
-        var plannedTargets = planTargets(transientRow, old, row.targets());
+        var requestedTargets = countGroups.withStoredKeys(storedTargets(old), row.targets());
+        countGroups.validate(row.typeName(), requestedTargets);
+        var plannedTargets = planTargets(transientRow, old, requestedTargets);
         BigDecimal exclusiveArea = row.exclusiveArea();
         BigDecimal supplyArea = row.supplyArea();
         if (!row.areaOverride()) {
@@ -493,6 +507,11 @@ public class SupplyCorrectionService {
         return row.withLinksFrom(old).linkedHousingTypes();
     }
 
+    private static List<Target> storedTargets(Row old) {
+        if (old == null) { return List.of(); }
+        return old.targets();
+    }
+
     private List<Target> planTargets(SupplyRow row, Row old, List<Target> requested) {
         Map<Long, Target> known = Map.of();
         if (old != null) { known = old.targets().stream().collect(Collectors.toMap(Target::id, Function.identity())); }
@@ -513,7 +532,8 @@ public class SupplyCorrectionService {
             boolean modified = previous == null || previous.protectedValues() || !same(previous, target);
             result.add(new Target(target.id(), target.key(), target.excluded(), modified, target.displayOrder(),
                     target.target(), target.supplyRank(), target.householdCount(), target.reserveCount(),
-                    decimal(target.deposit()), decimal(target.rent()), decimal(target.convertedDeposit()), target.condition()));
+                    decimal(target.deposit()), decimal(target.rent()), decimal(target.convertedDeposit()), target.condition(),
+                    target.householdCountGroup(), target.reserveCountGroup()));
         }
         if (!seen.equals(known.keySet())) {
             throw new IllegalArgumentException("기존 공급대상을 생략할 수 없습니다. 필요 없는 조건은 제외로 표시하세요.");
@@ -547,14 +567,18 @@ public class SupplyCorrectionService {
                 warnings.add(row.complexName() + " · " + row.typeName() + ": 단지 또는 주택형 연결이 미확정입니다.");
             }
             var active = row.targets().stream().filter(target -> !target.excluded()).toList();
-            long sum = active.stream().map(Target::householdCount).filter(Objects::nonNull).mapToLong(Integer::longValue).sum();
+            // 대상끼리 함께 쓰는 모집수는 묶음마다 한 번만 더한다.
+            long sum = active.stream().map(Target::householdCount).filter(Objects::nonNull).mapToLong(Integer::longValue).sum()
+                    + active.stream().map(Target::householdCountGroup).filter(Objects::nonNull).distinct()
+                    .mapToLong(group -> group.count().longValue()).sum();
             if (row.targetCountsComparable() && row.householdCount() != null && sum > row.householdCount()) {
                 throw new IllegalArgumentException(row.typeName() + ": 대상별 모집수 합계가 행 모집수를 초과합니다.");
             }
             if (!row.targetCountsComparable() && active.size() > 1) {
                 warnings.add(row.typeName() + ": 대상별 수량의 범위·중복 여부를 확인하지 않아 합계 검증을 하지 않았습니다.");
             }
-            if (row.householdCount() == null || active.stream().anyMatch(target -> target.householdCount() == null)) {
+            if (row.householdCount() == null || active.stream()
+                    .anyMatch(target -> target.householdCount() == null && target.householdCountGroup() == null)) {
                 warnings.add(row.typeName() + ": 미확정 모집수는 0으로 간주하지 않습니다.");
             }
             if (active.isEmpty()) { warnings.add(row.typeName() + ": 표시할 공급대상·임대조건이 없습니다."); }
@@ -590,21 +614,32 @@ public class SupplyCorrectionService {
         stored.correctPresentation(input.excluded(), input.displayOrder(), input.areaOverride(),
                 input.exclusiveArea(), input.supplyArea());
         stored.confirmTargetCountScope(input.targetCountsComparable());
-        var existing = targets.findAllBySupplyRow(stored).stream()
-                .collect(Collectors.toMap(SupplyTarget::getId, Function.identity()));
+        var storedTargets = targets.findAllBySupplyRow(stored);
+        var existing = storedTargets.stream().collect(Collectors.toMap(SupplyTarget::getId, Function.identity()));
+        // 묶음이 바뀌면 대상 값을 고치기 전에 옛 공통 모집수에서 빼고, 대상을 다 쓴 뒤 새 묶음에 넣는다.
+        var release = countGroups.release(storedTargets, input.targets());
+        Map<String, SupplyTarget> written = new HashMap<>();
         for (var target : input.targets()) {
             var condition = existing.get(target.id());
-            if (condition != null && same(targetData(condition), target)) { continue; }
-            if (condition == null) {
-                condition = targets.save(SupplyTarget.create(stored, target.target(), target.supplyRank(),
-                        target.householdCount(), target.reserveCount(), target.deposit(), target.rent(),
-                        target.convertedDeposit(), target.condition(), target.displayOrder()));
-            }
-            condition.reviseByAdmin(target.target(), target.supplyRank(), target.householdCount(), target.reserveCount(),
-                    target.deposit(), target.rent(), target.convertedDeposit(), target.condition());
-            condition.correctPresentation(target.excluded(), target.displayOrder());
+            written.put(target.key(), writeTarget(stored, condition, target));
         }
+        countGroups.attach(release, stored, written, input.targets());
         return stored;
+    }
+
+    private SupplyTarget writeTarget(SupplyRow stored, SupplyTarget condition, Target target) {
+        if (condition != null && same(targetData(condition).withoutCountGroups(), target.withoutCountGroups())) {
+            return condition;
+        }
+        if (condition == null) {
+            condition = targets.save(SupplyTarget.create(stored, target.target(), target.supplyRank(),
+                    target.householdCount(), target.reserveCount(), target.deposit(), target.rent(),
+                    target.convertedDeposit(), target.condition(), target.displayOrder()));
+        }
+        condition.reviseByAdmin(target.target(), target.supplyRank(), target.householdCount(), target.reserveCount(),
+                target.deposit(), target.rent(), target.convertedDeposit(), target.condition());
+        condition.correctPresentation(target.excluded(), target.displayOrder());
+        return condition;
     }
 
     /** 한 저장에서 같은 단지·이름의 새 주택형은 대표든 함께 모집하는 주택형이든 행이 달라도 하나를 만들어 함께 쓴다(checkNewTypes가 면적이 같음을 확인한다). */
@@ -780,7 +815,8 @@ public class SupplyCorrectionService {
         return new Target(target.getId(), "target:" + target.getId(), target.isAdminExcluded(), target.isAdminModified(),
                 target.getDisplayOrder(), target.getTarget(), target.getSupplyRank(), target.getSupplyHouseholdCount(),
                 target.getReserveCount(), decimal(target.getRentalDeposit()), decimal(target.getMonthlyRent()),
-                decimal(target.getConvertedDeposit()), target.getApplicationCondition());
+                decimal(target.getConvertedDeposit()), target.getApplicationCondition(),
+                countGroups.read(target.getSupplyCountGroup()), countGroups.read(target.getReserveCountGroup()));
     }
 
     private BigDecimal decimal(BigDecimal value) {

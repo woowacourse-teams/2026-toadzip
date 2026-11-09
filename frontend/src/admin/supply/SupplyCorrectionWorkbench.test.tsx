@@ -67,6 +67,21 @@ it('제외·복구와 순서 변경은 하위 임대조건을 지우지 않는�
   fireEvent.click(screen.getByRole('button', { name: '한스빌 26 편집' }))
   expect(screen.getByLabelText('보증금 (원)')).toHaveValue('100000000')
 })
+it('공통 모집수를 쓰는 대상을 제외하면 그 묶음을 풀어 보내 서버가 거절하지 않는다', async () => {
+  const shared = { key: 'group:5', count: 20 }
+  const grouped = { ...row, targets: [
+    { ...row.targets[0], id: 2, key: 'target:2', target: '청년(소득 없음)', householdCount: null, reserveCountGroup: shared },
+    { ...row.targets[0], id: 3, key: 'target:3', target: '청년(소득 있음)', displayOrder: 1, householdCount: null, reserveCountGroup: shared }] }
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone({ ...workspace, rows: [grouped] }))
+  await setup()
+  expect(screen.getAllByText(/함께 쓰는 수\(공통 모집수\)/)).toHaveLength(2)
+  fireEvent.click(screen.getAllByRole('button', { name: '대상 제외' })[1])
+  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '소득 있음 대상 중복' } })
+  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
+  await waitFor(() => expect(previewSupply).toHaveBeenCalled())
+  const sent = vi.mocked(previewSupply).mock.calls[0][1].rows[0].targets
+  expect(sent.map(target => [target.excluded, target.reserveCountGroup ?? null])).toEqual([[false, null], [true, null]])
+})
 it('관리자가 추가한 저장 행만 삭제할 수 있고, 삭제 예정 행은 요청 행에서 빼고 deletedRowKeys로 보낸다', async () => {
   const manual = { ...row, id: 5, key: 'row:5', complexName: '한스빌', typeName: '36', targets: [] }
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [row, manual], deletableRowKeys: ['row:5'] })
