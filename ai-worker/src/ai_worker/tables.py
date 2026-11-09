@@ -30,6 +30,12 @@ _TABLE_HEADER = re.compile(r"단지명|공급형|주택형|공급대상|공급�
 # 다만 합계 줄 표기(총계·합계·계)가 머리글에 이어 붙은 "공급형별총계"는 주택형 열이다(대구연호 통합공공임대).
 _HOUSING_TYPE_FALLBACK = re.compile(r"공급형별?(?:\([^)]*\))?(?:(?:총계|합계|소계|계)(?![가-힣])|(?![가-힣]))")
 _MONEY_FIELDS = ("rentalDeposit", "monthlyRent", "convertedDeposit")
+# 전환가능 보증금 한도액 칸은 증액(+)·감액(-) 한도를 한 칸에 함께 적거나("(+) 5,000,000 (-) 26,000,000") 위아래 줄로 나누고,
+# 부호를 왼쪽 칸에 따로 적기도 한다("(+)" | "27,000,000"). 부호 표시는 "( ) , (- )"처럼 쪼개져 나오기도 한다.
+_SIGN_MARK = re.compile(r"\(\s*[+-]?\s*\)")
+_INCREASE_LIMIT = re.compile(r"\(\s*\+\s*\)\s*(\d[\d,]*)")
+# 쉼표가 줄바꿈 뒤로 밀린 금액("9000000\n, ,")도 금액 칸이다.
+_AMOUNT = re.compile(r"\d{1,3}(?:,\d{3})+|\d{4,}")
 # 오른쪽 하위 열까지 덮는 병합 머리글. 하위 열 이름만으로는 뜻이 모호하다(최소·최대 보증금, 계약면적·주거 아래 전용).
 _PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$")
 _TABLE_HEADER_CELL = re.compile(
@@ -151,7 +157,9 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         ),
         "convertedDeposit": lambda header: bool(
             not re.search(r"월임대료", header)
-            and re.search(r"(?:전환|증액|최대).*보증금|보증금.*(?:전환|증액|최대)", header)
+            and (re.search(r"(?:전환|증액|최대).*보증금|보증금.*(?:전환|증액|최대)", header)
+                 # 증액·감액 조건을 나눈 표는 "증액 > 한도액"처럼 보증금 없이 한도만 적는다. 감액 한도는 전환보증금이 아니다.
+                 or (re.search(r"(?:전환|증액).*한도", header) and not re.search(r"감액", header)))
         ),
     }
     columns: dict[str, int] = {}
@@ -161,6 +169,8 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         # 주택형 열을 "공급형별(㎡)"로만 적은 표가 있다. "공급형"은 다른 머리글에도 섞여 다른 주택형 열이 없을 때만 본다.
         if name == "housingType" and not indexes:
             indexes = _matching_columns(normalized_headers, lambda header: bool(_HOUSING_TYPE_FALLBACK.match(header)))
+        if name == "convertedDeposit" and len(indexes) > 1:
+            indexes = _conversion_limit_columns(rows, normalized_headers, indexes)
         if len(indexes) == 1:
             columns[name] = indexes[0]
     # 하위 열 없는 모집호수 옆에 예비자 열이 따로 있으면 모집호수는 입주자(당첨자) 수다. 모집수는 둘의 합이라(사용자 결정)
@@ -177,6 +187,31 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if detail is not None:
         columns["targetDetail"] = detail
     return columns
+
+
+def _conversion_limit_columns(rows: list[list[str | None]], headers: list[str], indexes: list[int]) -> list[int]:
+    """전환보증금 후보 열이 여럿이면 한도액 열만 남긴다. "최대전환 시 임대조건 > 보증금"은 전환 뒤 총액이라 한도가 아니다.
+    한도액 머리글이 부호 칸((+)·(-))과 금액 칸을 함께 덮으면 금액이 적힌 칸이 한도액 열이다."""
+    limits = [column for column in indexes if "한도" in headers[column]]
+    if len(limits) > 1:
+        limits = [column for column in limits
+                  if any(column < len(row) and _AMOUNT.search(row[column] or "") for row in rows)]
+    return limits
+
+
+def increase_limit(row: list[str | None], column: int) -> str | None:
+    """전환보증금 열 칸에서 증액(+) 한도 금액 글자. 전환보증금은 증액 한도다. 부호 없이 금액만 적힌 칸은 그대로 두고,
+    감액(-) 한도만 있거나 증액 한도가 '-'인 칸은 ''이다. 병합 칸은 None이다."""
+    cell = _cell(row, column)
+    if cell is None:
+        return None
+    sign = _cell(row, column - 1) if column > 0 else ""
+    if sign and _SIGN_MARK.fullmatch(sign.strip()):
+        cell = f"{sign} {cell}"
+    if not _SIGN_MARK.search(cell):
+        return cell
+    match = _INCREASE_LIMIT.search(cell)
+    return match.group(1) if match else ""
 
 
 def _house_type_subtypes(cells: list[list[str | None]], columns: dict[str, int]) -> dict[int, tuple[TableSubtype, ...]]:
@@ -305,6 +340,12 @@ def _table_row_field_values(rows: list[list[str | None]], row_index: int,
     for name, column in (inherited_columns or {}).items():
         columns.setdefault(name, column)
     values = {name: row[column] for name, column in columns.items() if column < len(row) and row[column]}
+    if "convertedDeposit" in values:
+        limit = increase_limit(row, columns["convertedDeposit"])
+        if limit:
+            values["convertedDeposit"] = limit
+        else:
+            del values["convertedDeposit"]
     # 단지명 칸이 세로로 병합되면 아래 행 칸은 None이다(실제 빈칸은 ''). 병합 칸은 위 행 값과 같은 칸이라 이어받는다.
     column = columns.get("complexName")
     if column is not None and "complexName" not in values and column < len(row) and row[column] is None:

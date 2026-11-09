@@ -849,3 +849,31 @@ def test_housing_type_row_with_several_targets_does_not_confirm_one_house_type_c
         (None, None), (None, None)]
     assert {"supplyRows[0].targets[1].supplyHouseholdCount", "supplyRows[0].targets[1].reserveCount"} <= {
         finding["path"] for finding in unresolved}
+
+
+# 임대조건표의 전환가능 보증금 한도액 칸(삼척도계). 증액(+)·감액(-) 한도가 위아래 줄이고, 옆 열은 전환 뒤 총액이다.
+SAMCHEOK_CONVERSION_TABLE = [
+    ["단지명", "주 택 형", "임대조건", None, None, None, "전환가능 보증금 한도액(원)", "최대전환시 임대조건", None],
+    [None, None, "임대보증금(원)", None, None, "월임대료 (원)", None, None, None],
+    [None, None, None, None, None, None, None, "보증금 (원)", "월임대료 (원)"],
+    [None, None, "계", "계약금", "잔금", None, None, None, None],
+    ["삼척도계", "46", "24,546,000", "1,200,000", "23,346,000", "92,720", "(+) 6,000,000", "30,546,000", "62,720"],
+    [None, None, None, None, None, None, "(-) 20,000,000", "4,546,000", "151,050"],
+]
+
+
+@pytest.mark.parametrize(("converted", "expected"), [
+    (6000000, 6000000),
+    (20000000, None),  # 감액 한도
+    (30546000, None),  # 최대전환 시 보증금(전환 뒤 총액)
+])
+def test_converted_deposit_is_confirmed_only_against_the_increase_limit_cell(converted, expected):
+    tree, _ = supply_assembly.assemble({"data": {"rows": [{
+        "rowIds": ["P2:T1:R5", "P2:T1:R6"], "complexName": "삼척도계", "housingType": "46", "target": "일반",
+        "rentalDeposit": 24546000, "monthlyRent": 92720, "convertedDeposit": converted}]}},
+        table_pages(SAMCHEOK_CONVERSION_TABLE, page=2))
+
+    target = tree["data"]["supplyRows"][0]["targets"][0]
+    assert (target["rentalDeposit"], target["monthlyRent"], target["convertedDeposit"]) == (24546000, 92720, expected)
+    assert any(finding["path"] == "supplyRows[0].targets[0].convertedDeposit"
+               for finding in tree["data"]["unresolvedFields"]) == (expected is None)
