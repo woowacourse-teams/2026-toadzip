@@ -30,6 +30,7 @@ import type {
   AnnouncementHousingType,
   AnnouncementSupplyComplex,
   AnnouncementSupplyTarget,
+  SharedTargetCount,
 } from '../model/publicHousing.ts'
 import {
   groupAnnouncementSupplyRows,
@@ -994,11 +995,19 @@ function HousingTypeCard({
   )
 }
 
+/** 다른 대상과 함께 쓰는 수는 대상마다 나누지 않고 '공통 20명 · 청년(소득 있음)과 함께'로 보인다. */
+function sharedOrOwnCount(own: number | null, shared: SharedTargetCount | null | undefined, unit: string, self: string | null) {
+  if (!shared) return formatNullableCount(own, unit)
+  const others = shared.targets.filter((name) => name !== self)
+  return `공통 ${formatNullableCount(shared.count, unit)}${others.length ? ` · ${others.join('·')}과 함께` : ''}`
+}
+
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
   const idPrefix = useId()
   const visibleTargets = targets.filter((target) => (
     [target.target, target.priority, target.applicationCondition].some(hasText)
     || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(Number.isFinite)
+    || target.sharedSupplyHouseholdCount != null || target.sharedWaitlistCount != null
   ))
   if (visibleTargets.length === 0) return null
   return (
@@ -1018,11 +1027,11 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
               <tr>
                 <th id={`${idPrefix}-${index}-count`} scope="row">공급 세대수</th>
                 <td headers={`${idPrefix}-${index}-count`} data-numeric="true">
-                  {formatNullableCount(target.supplyHouseholdCount, '세대')}
+                  {sharedOrOwnCount(target.supplyHouseholdCount, target.sharedSupplyHouseholdCount, '세대', target.target)}
                 </td>
                 <th id={`${idPrefix}-${index}-waitlist`} scope="row">모집 예비자 수</th>
                 <td headers={`${idPrefix}-${index}-waitlist`} data-numeric="true">
-                  {formatNullableCount(target.waitlistCount, '명')}
+                  {sharedOrOwnCount(target.waitlistCount, target.sharedWaitlistCount, '명', target.target)}
                 </td>
               </tr>
               <tr>

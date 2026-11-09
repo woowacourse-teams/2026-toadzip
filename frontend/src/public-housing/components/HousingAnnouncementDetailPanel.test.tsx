@@ -172,6 +172,17 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(targets).getByRole('cell', { name: '0원' })).toBeVisible()
   })
 
+  it('대상끼리 함께 쓰는 예비자 수는 대상마다 나누지 않고 공통 수와 함께 쓰는 대상으로 보인다', () => {
+    const shared = { count: 20, targets: ['청년(소득 없음)', '청년(소득 있음)'] }
+    const target = (supplyTargetId: string, name: string) => ({ supplyTargetId, target: name, priority: null, applicationCondition: null,
+      supplyHouseholdCount: null, waitlistCount: null, deposit: 13_780_000, monthlyRent: 166_640, convertibleDeposit: null,
+      sharedSupplyHouseholdCount: null, sharedWaitlistCount: shared })
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow({ targets: [target('a', '청년(소득 없음)'), target('b', '청년(소득 있음)')] })] })} onClose={vi.fn()} />)
+    const targets = screen.getByRole('list', { name: '대상별 공급 조건' })
+    expect(within(targets).getByRole('cell', { name: '공통 20명 · 청년(소득 있음)과 함께' })).toBeVisible()
+    expect(within(targets).getByRole('cell', { name: '공통 20명 · 청년(소득 없음)과 함께' })).toBeVisible()
+  })
+
   it('요약·일정·주택형 링크로 상세 내부를 이동하고 직접 스크롤한 구역을 추적한다', () => {
     const { rerender } = render(<HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />)
     const navigation = screen.getByRole('navigation', { name: '공고 상세 섹션' })
