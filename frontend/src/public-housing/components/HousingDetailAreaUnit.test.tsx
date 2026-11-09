@@ -30,6 +30,12 @@ function openComplex(complexId = '17') {
   return render(<HousingComplexDetailPanel detail={{ ...complexDetail, complexId }} onClose={() => {}} />)
 }
 
+function announcementArea(area: string) {
+  // 공고 상세의 단지 카드 주택형 표에서 면적은 행머리 첫 글자로 보인다.
+  return within(screen.getByRole('table', { name: '서울가람 행복주택 주택형별 금액' }))
+    .getByRole('rowheader', { name: new RegExp(`^${area}`) })
+}
+
 function openAnnouncement(announcementId = '201') {
   return render(<HousingAnnouncementDetailPanel detail={{ ...announcementDetail, announcementId }} onClose={() => {}} />)
 }
@@ -41,8 +47,8 @@ describe('상세 면적 단위 설정', () => {
     firstComplex.unmount()
 
     const announcement = openAnnouncement()
-    expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
-    expect(within(screen.getByRole('table', { name: '서울가람 행복주택 36A 공급 정보' })).getByText('0평', { selector: 'td' })).toBeVisible()
+    expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(1)
+    expect(announcementArea('0평')).toBeVisible()
     announcement.unmount()
 
     const otherComplex = openComplex('18')
@@ -71,8 +77,8 @@ describe('상세 면적 단위 설정', () => {
     complex.unmount()
 
     openAnnouncement()
-    expect(screen.getAllByRole('button', { name: button })).toHaveLength(2)
-    expect(within(screen.getByRole('table', { name: '서울가람 행복주택 36A 공급 정보' })).getByText(area, { selector: 'td' })).toBeVisible()
+    expect(screen.getAllByRole('button', { name: button })).toHaveLength(1)
+    expect(announcementArea(area)).toBeVisible()
   })
 
   it.each(['', 'unknown', '"pyeong"'])('잘못 저장된 단위 %s는 ㎡로 표시하고 다음 선택은 유효한 값으로 저장한다', (stored) => {
@@ -94,9 +100,9 @@ describe('상세 면적 단위 설정', () => {
     complex.unmount()
 
     openAnnouncement()
-    expect(within(screen.getByRole('table', { name: '서울가람 행복주택 36A 공급 정보' })).getByText('0평', { selector: 'td' })).toBeVisible()
+    expect(announcementArea('0평')).toBeVisible()
     fireEvent.click(screen.getAllByRole('button', { name: '㎡ 전환' })[0])
-    expect(within(screen.getByRole('table', { name: '서울가람 행복주택 36A 공급 정보' })).getByText('0㎡', { selector: 'td' })).toBeVisible()
+    expect(announcementArea('0㎡')).toBeVisible()
   })
 
   it('저장에 실패해도 이전 저장값 대신 방금 선택한 단위를 다음 상세에 적용한다', () => {
@@ -106,7 +112,7 @@ describe('상세 면적 단위 설정', () => {
     })
     const announcement = openAnnouncement()
     fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
-    expect(within(screen.getByRole('table', { name: '서울가람 행복주택 36A 공급 정보' })).getByText('0평', { selector: 'td' })).toBeVisible()
+    expect(announcementArea('0평')).toBeVisible()
     announcement.unmount()
 
     openComplex()

@@ -4,7 +4,6 @@ import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
-  type PointerEvent,
   type RefObject,
   type ReactNode,
   useCallback,
@@ -18,7 +17,6 @@ import {
   DetailCloseButton,
   DetailFact,
   DetailFacts,
-  DetailTable,
   DetailSection,
 } from './DetailPrimitives.tsx'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
@@ -36,16 +34,14 @@ import {
   type HousingAnnouncementSupplyComplexGroup,
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
-import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
 import { useAreaUnit } from '../presentation/useAreaUnit'
-import { AreaUnitToggle } from './AreaUnitToggle'
 import { formatPhoneNumber } from '../presentation/phoneNumber'
 import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
 import { ScheduleGroupCard } from './ScheduleGroupCard'
 import { SchedulePeriod } from './SchedulePeriod'
 import scheduleStyles from './ScheduleGroups.module.css'
-import { formatHousingMoneyReadable } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
+import { AnnouncementComplexHousing, type FloorPlanSelection } from './AnnouncementComplexHousing'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 export interface HousingAnnouncementDetailReceptionPlace {
@@ -126,13 +122,6 @@ export interface HousingAnnouncementDetailPanelProps {
   readonly onClose: () => void
   readonly backButton?: ReactNode
   readonly onOpenComplex?: (complexId: string) => void
-}
-
-interface FloorPlanSelection {
-  readonly complexName: string
-  readonly housingTypeName: string
-  readonly twoDimensionalUrl: string | null
-  readonly threeDimensionalUrl: string | null
 }
 
 const DETAIL_SECTIONS = [
@@ -247,24 +236,15 @@ export function HousingAnnouncementDetailPanel({
         <div id={`${sectionId}-housing`} className={styles.sectionGroup}
           role="region" aria-label="주택형 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.housing = node }}>
-          <ComplexComparison
+          <AnnouncementComplexHousing
+            key={`complex-housing:${detail.announcementId}`}
             areaUnit={areaUnit}
             onToggleAreaUnit={toggleAreaUnit}
             groups={groups}
-            rentalTypeLabel={detail.rentalTypeLabel}
-            supplyComplexCount={detail.supplyComplexCount}
             supplyHouseholdCount={detail.supplyHouseholdCount}
             onOpenComplex={onOpenComplex}
+            onOpenFloorPlan={setFloorPlan}
           />
-          {groups.length > 0 && (
-            <HousingTypeComparison
-              key={`housing-types:${detail.announcementId}`}
-              areaUnit={areaUnit}
-              onToggleAreaUnit={toggleAreaUnit}
-              groups={groups}
-              onOpenFloorPlan={setFloorPlan}
-            />
-          )}
           <AttachmentList key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments} />
         </div>
       </div>
@@ -594,466 +574,6 @@ function ReceptionPlaces({
   )
 }
 
-function ComplexComparison({
-  areaUnit,
-  onToggleAreaUnit,
-  groups,
-  rentalTypeLabel,
-  supplyComplexCount,
-  supplyHouseholdCount,
-  onOpenComplex,
-}: {
-  areaUnit: AreaUnit
-  onToggleAreaUnit: () => void
-  groups: readonly HousingAnnouncementSupplyComplexGroup[]
-  rentalTypeLabel: string
-  supplyComplexCount: number
-  supplyHouseholdCount: number | null
-  onOpenComplex?: (complexId: string) => void
-}) {
-  return (
-    <DetailSection appearance="block"
-      title="단지 비교"
-      actions={groups.length > 0 ? <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} /> : undefined}
-      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
-    >
-      {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
-      <div className={styles.complexList}>
-        {groups.map((group) => (
-          <ComplexCard
-            areaUnit={areaUnit}
-            key={group.key}
-            group={group}
-            rentalTypeLabel={rentalTypeLabel}
-            onOpenComplex={onOpenComplex}
-          />
-        ))}
-      </div>
-    </DetailSection>
-  )
-}
-
-function ComplexCard({
-  areaUnit,
-  group,
-  rentalTypeLabel,
-  onOpenComplex,
-}: {
-  areaUnit: AreaUnit
-  group: HousingAnnouncementSupplyComplexGroup
-  rentalTypeLabel: string
-  onOpenComplex?: (complexId: string) => void
-}) {
-  const imageUrl = toHttpUrl(group.overviewImageUrl)
-  const depositRange = moneyRange(group.rows, 'deposit')
-  const monthlyRentRange = moneyRange(group.rows, 'monthlyRent')
-
-  function openComplex() {
-    if (!group.complexId || !onOpenComplex) {
-      return
-    }
-    onOpenComplex(group.complexId)
-  }
-
-  return (
-    <article className={styles.complexCard} aria-label={`${group.name} 단지 비교`}>
-      <header className={styles.complexHeading}>
-        <div>
-          <strong>{group.name}</strong>
-          <span>{rentalTypeLabel}</span>
-        </div>
-      </header>
-      <div className={styles.complexSummary} data-has-image={imageUrl !== null}>
-        {imageUrl && (
-          <div className={styles.complexImage}>
-            <img src={imageUrl} alt={`${group.name} 단지 조감도`} loading="lazy" />
-          </div>
-        )}
-        <div className={styles.complexBody}>
-          <p>{group.address ?? `주소: ${MISSING_DATA_LABEL}`}</p>
-          <div className={styles.complexCounts}>
-            <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
-            <span>공급 <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b></span>
-          </div>
-        </div>
-      </div>
-      <div className={styles.complexRanges}>
-        <DetailFacts>
-          <DetailFact term="전용면적" value={areaRange(group.rows, areaUnit)} wide />
-          <DetailFact
-            term="보증금"
-            value={depositRange}
-            wide={depositRange.includes(' – ')}
-            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.deposit)))}
-          />
-          <DetailFact
-            term="월 임대료"
-            value={monthlyRentRange}
-            wide={monthlyRentRange.includes(' – ')}
-            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.monthlyRent)))}
-          />
-        </DetailFacts>
-      </div>
-      {group.complexId && onOpenComplex && (
-        <button
-          className={styles.complexDetailButton}
-          type="button"
-          data-detail-return-focus={`complex:${group.complexId}`}
-          aria-label={`${group.name} 단지 상세 보기`}
-          onClick={openComplex}
-        >
-          단지 상세 보기 <span aria-hidden="true">→</span>
-        </button>
-      )}
-    </article>
-  )
-}
-
-function HousingTypeComparison({
-  areaUnit,
-  onToggleAreaUnit,
-  groups,
-  onOpenFloorPlan,
-}: {
-  areaUnit: AreaUnit
-  onToggleAreaUnit: () => void
-  groups: readonly HousingAnnouncementSupplyComplexGroup[]
-  onOpenFloorPlan: (selection: FloorPlanSelection) => void
-}) {
-  const id = useId()
-  const [selectedKey, setSelectedKey] = useState(groups[0]?.key)
-  const tabListRef = useRef<HTMLDivElement>(null)
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false })
-  const [dragging, setDragging] = useState(false)
-  const dragRef = useRef<{ pointerId: number; x: number; scrollLeft: number; moved: boolean } | null>(null)
-  const suppressClickRef = useRef(false)
-  const updateScrollEdges = useCallback(() => {
-    const list = tabListRef.current
-    if (!list) return
-    const left = list.scrollLeft > 1
-    const right = list.scrollLeft + list.clientWidth < list.scrollWidth - 1
-    setScrollEdges((previous) => previous.left === left && previous.right === right ? previous : { left, right })
-  }, [])
-
-  useEffect(() => {
-    const list = tabListRef.current
-    if (!list) return
-    updateScrollEdges()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(updateScrollEdges)
-    observer.observe(list)
-    tabRefs.current.forEach((tab) => { if (tab) observer.observe(tab) })
-    return () => observer.disconnect()
-  }, [groups, updateScrollEdges])
-
-  const selectedIndex = Math.max(0, groups.findIndex((group) => group.key === selectedKey))
-  const selectedGroup = groups[selectedIndex]
-
-  useEffect(() => {
-    const list = tabListRef.current
-    const tab = tabRefs.current[selectedIndex]
-    if (!list || !tab) return
-    // Only scroll the horizontal strip; keep the detail panel's vertical position.
-    const listBounds = list.getBoundingClientRect()
-    const tabBounds = tab.getBoundingClientRect()
-    if (tabBounds.left < listBounds.left) list.scrollLeft -= listBounds.left - tabBounds.left
-    else if (tabBounds.right > listBounds.right) list.scrollLeft += tabBounds.right - listBounds.right
-    updateScrollEdges()
-  }, [selectedIndex, updateScrollEdges])
-
-  function startTabDrag(event: PointerEvent<HTMLDivElement>) {
-    suppressClickRef.current = false
-    const list = event.currentTarget
-    if (event.pointerType !== 'mouse' || event.button !== 0 || list.scrollWidth <= list.clientWidth) return
-    dragRef.current = { pointerId: event.pointerId, x: event.clientX, scrollLeft: list.scrollLeft, moved: false }
-  }
-
-  function moveTabDrag(event: PointerEvent<HTMLDivElement>) {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    if ((event.buttons & 1) === 0) {
-      endTabDrag(event, true)
-      return
-    }
-    const distance = event.clientX - drag.x
-    if (!drag.moved && Math.abs(distance) < 6) return
-    if (!drag.moved) {
-      drag.moved = true
-      suppressClickRef.current = true
-      event.currentTarget.setPointerCapture?.(event.pointerId)
-      setDragging(true)
-    }
-    event.preventDefault()
-    event.currentTarget.scrollLeft = drag.scrollLeft - distance
-    updateScrollEdges()
-  }
-
-  function endTabDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
-    if (dragRef.current?.pointerId !== event.pointerId) return
-    dragRef.current = null
-    setDragging(false)
-    if (cancelled) suppressClickRef.current = false
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  function selectGroup(index: number, focus = false) {
-    const group = groups[index]
-    if (!group) return
-    setSelectedKey(group.key)
-    if (focus) tabRefs.current[index]?.focus({ preventScroll: true })
-  }
-
-  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>) {
-    let index: number
-    if (event.key === 'ArrowRight') index = (selectedIndex + 1) % groups.length
-    else if (event.key === 'ArrowLeft') index = (selectedIndex - 1 + groups.length) % groups.length
-    else if (event.key === 'Home') index = 0
-    else if (event.key === 'End') index = groups.length - 1
-    else return
-    event.preventDefault()
-    selectGroup(index, true)
-  }
-
-  if (!selectedGroup) return null
-  return (
-    <DetailSection appearance="block"
-      title="주택형 비교"
-      actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
-    >
-      {groups.length > 1 && (
-        <div className={styles.complexTabsFrame} data-scroll-left={scrollEdges.left} data-scroll-right={scrollEdges.right}>
-          <div className={styles.complexTabs} role="tablist" aria-label="주택형 비교 단지 선택" ref={tabListRef}
-            data-dragging={dragging || undefined} onScroll={updateScrollEdges}
-            onPointerDown={startTabDrag} onPointerMove={moveTabDrag}
-            onPointerUp={(event) => endTabDrag(event)} onPointerCancel={(event) => endTabDrag(event, true)}
-            onLostPointerCapture={(event) => endTabDrag(event)}
-            onClickCapture={(event) => {
-              if (!suppressClickRef.current || event.detail === 0) return
-              suppressClickRef.current = false
-              event.preventDefault()
-              event.stopPropagation()
-            }}>
-            {groups.map((group, index) => (
-              <button key={group.key} type="button" role="tab" id={`${id}-tab-${index}`}
-                className={styles.complexTab} ref={(node) => { tabRefs.current[index] = node }}
-                aria-selected={index === selectedIndex} aria-controls={`${id}-panel-${index}`}
-                tabIndex={index === selectedIndex ? 0 : -1}
-                onClick={() => selectGroup(index)} onKeyDown={handleTabKey}>
-                <strong>{group.name}</strong>
-                <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {groups.map((group, index) => (
-        <section key={group.key} id={`${id}-panel-${index}`} className={styles.housingTypeGroup}
-          role={groups.length > 1 ? 'tabpanel' : 'region'} hidden={index !== selectedIndex}
-          aria-labelledby={groups.length > 1 ? `${id}-tab-${index}` : undefined}
-          aria-label={groups.length === 1 ? `${group.name} 주택형 비교` : undefined}
-          tabIndex={groups.length > 1 ? 0 : undefined}>
-          {groups.length === 1 && (
-            <header className={styles.housingTypeGroupHeading}>
-              <h4>{group.name}</h4>
-              <span>{supplyHouseholdSummary(group.supplyHouseholdCount)}</span>
-            </header>
-          )}
-          {index === selectedIndex && <HousingTypeSelection key={group.key} group={group}
-            areaUnit={areaUnit} onOpenFloorPlan={onOpenFloorPlan} />}
-        </section>
-      ))}
-    </DetailSection>
-  )
-}
-
-function HousingTypeSelection({ group, areaUnit, onOpenFloorPlan }: {
-  group: HousingAnnouncementSupplyComplexGroup
-  areaUnit: AreaUnit
-  onOpenFloorPlan: (selection: FloorPlanSelection) => void
-}) {
-  const [selectedId, setSelectedId] = useState(group.rows[0]?.supplyRowId)
-  const selected = group.rows.find((row) => row.supplyRowId === selectedId) ?? group.rows[0]
-  const id = useId()
-  if (!selected) return null
-  return (
-    <div className={styles.housingTypes}>
-      {group.rows.length > 1 && (
-        <div>
-          <p className={styles.housingTypeHint} id={`${id}-hint`}>
-            주택형 {group.rows.length}개 · 선택하면 아래에 상세가 표시돼요
-          </p>
-          <div className={styles.housingTypeSummaryScroll} role="region"
-            aria-label={`${group.name} 주택형 요약 목록`} tabIndex={group.rows.length > 5 ? 0 : undefined}>
-            <table className={styles.housingTypeSummary} aria-label={`${group.name} 주택형 요약`}
-              aria-describedby={`${id}-hint`}>
-              <thead><tr><th scope="col">주택형</th><th scope="col">전용면적</th><th scope="col">공급세대</th></tr></thead>
-              <tbody>
-                {group.rows.map((row) => (
-                  <tr key={row.supplyRowId} data-selected={row.supplyRowId === selected.supplyRowId}>
-                    <td>
-                      <button type="button" aria-label={`${housingTypeLabel(row)} 주택형 선택`}
-                        aria-pressed={row.supplyRowId === selected.supplyRowId}
-                        aria-controls={`${id}-selected`} onClick={() => setSelectedId(row.supplyRowId)}>
-                        <strong>{housingTypeLabel(row)}</strong>
-                        <span>{row.supplyTypeLabel}</span>
-                      </button>
-                    </td>
-                    <td>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
-                    <td>{row.sharedRecruitment ? '공통 모집' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      <div id={`${id}-selected`}>
-        {group.rows.length > 1 && <h4 className={styles.selectedHousingTypeTitle}>선택 주택형 상세</h4>}
-        <HousingTypeCard areaUnit={areaUnit} complexName={group.name} row={selected}
-          onOpenFloorPlan={onOpenFloorPlan} />
-      </div>
-    </div>
-  )
-}
-
-function HousingTypeCard({
-  areaUnit,
-  complexName,
-  row,
-  onOpenFloorPlan,
-}: {
-  areaUnit: AreaUnit
-  complexName: string
-  row: HousingAnnouncementDetailSupplyRow
-  onOpenFloorPlan: (selection: FloorPlanSelection) => void
-}) {
-  const idPrefix = useId()
-  const housingTypeName = housingTypeLabel(row)
-  const twoDimensionalUrl = toHttpUrl(row.housingType?.floorPlanImageUrl ?? null)
-  const threeDimensionalUrl = toHttpUrl(row.housingType?.floorPlan3dImageUrl ?? null)
-  const hasFloorPlan = twoDimensionalUrl !== null || threeDimensionalUrl !== null
-
-  return (
-    <article className={styles.housingTypeCard} aria-label={`${complexName} ${housingTypeName} 주택형`}>
-      <div className={styles.housingTypeHeading}>
-        <div>
-          <strong>{housingTypeName}</strong>
-          <span>{row.supplyTypeLabel}</span>
-        </div>
-        {hasFloorPlan && (
-          <button
-            type="button"
-            aria-label={`${complexName} ${housingTypeName} 평면도 보기`}
-            onClick={() => onOpenFloorPlan({
-              complexName,
-              housingTypeName,
-              threeDimensionalUrl,
-              twoDimensionalUrl,
-            })}
-          >
-            평면도 보기
-          </button>
-        )}
-      </div>
-      <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
-        <colgroup>
-          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
-            <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
-            <th id={`${idPrefix}-area`} scope="row">전용면적</th>
-            <td headers={`${idPrefix}-area`}>{formatArea(row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea, areaUnit)}</td>
-          </tr>
-          <tr>
-            <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
-            <td headers={`${idPrefix}-count`}>{row.sharedRecruitment ? '공통 합계 · 개별 미확정' : formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-            <th id={`${idPrefix}-occupancy`} scope="row">최초 입주 연월</th>
-            <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
-          </tr>
-          {(row.supplyArea !== undefined || row.housingType?.supplyArea != null) && (
-            <tr>
-              <th id={`${idPrefix}-supply-area`} scope="row">공급면적</th>
-              <td headers={`${idPrefix}-supply-area`} colSpan={3}>
-                {formatArea(row.supplyArea === undefined ? row.housingType?.supplyArea ?? null : row.supplyArea, areaUnit)}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </DetailTable>
-      {row.occupancyExpectedYearMonth && (
-        <p className={styles.occupancyNote}>
-          최초 입주 연월은 원문 기준이며, 이번 모집의 입주 일정과 다를 수 있어요.
-        </p>
-      )}
-      <SupplyTargets targets={row.targets} />
-    </article>
-  )
-}
-
-function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
-  const idPrefix = useId()
-  const visibleTargets = targets.filter((target) => (
-    [target.target, target.priority, target.applicationCondition].some(hasText)
-    || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(Number.isFinite)
-  ))
-  if (visibleTargets.length === 0) return null
-  return (
-    <ul className={styles.targetList} aria-label="대상별 공급 조건">
-      {visibleTargets.map((target, index) => (
-        <li key={target.supplyTargetId}>
-          <header className={styles.targetHeading}>
-            <strong>{target.target ?? MISSING_DATA_LABEL}</strong>
-            {hasText(target.priority) && <span>{target.priority}</span>}
-          </header>
-          <DetailTable caption={`${target.target ?? MISSING_DATA_LABEL} 공급 조건`}>
-            <colgroup>
-              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-            </colgroup>
-            <tbody>
-              <tr>
-                <th id={`${idPrefix}-${index}-count`} scope="row">공급 세대수</th>
-                <td headers={`${idPrefix}-${index}-count`} data-numeric="true">
-                  {formatNullableCount(target.supplyHouseholdCount, '세대')}
-                </td>
-                <th id={`${idPrefix}-${index}-waitlist`} scope="row">모집 예비자 수</th>
-                <td headers={`${idPrefix}-${index}-waitlist`} data-numeric="true">
-                  {formatNullableCount(target.waitlistCount, '명')}
-                </td>
-              </tr>
-              <tr>
-                <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
-                <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
-                  {formatHousingMoneyReadable(target.deposit)}
-                </td>
-                <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
-                <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
-                  {formatHousingMoneyReadable(target.monthlyRent)}
-                </td>
-              </tr>
-              {hasText(target.applicationCondition) && (
-                <tr>
-                  <th id={`${idPrefix}-${index}-condition`} scope="row">신청 조건</th>
-                  <td headers={`${idPrefix}-${index}-condition`} colSpan={3}>{target.applicationCondition}</td>
-                </tr>
-              )}
-            </tbody>
-          </DetailTable>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function housingTypeLabel(row: HousingAnnouncementDetailSupplyRow) {
-  // 공고 표시명 → 단지 주택형명 → 원천 순서는 서버가 정한다.
-  return row.displayHousingTypeName ?? row.housingType?.name ?? row.sourceHousingTypeName ?? MISSING_DATA_LABEL
-}
-
 function DocumentActions({ detail, hasAnnouncementFile, onOpenAttachments }: {
   detail: HousingAnnouncementDetailData
   hasAnnouncementFile: boolean
@@ -1228,58 +748,11 @@ function formatDate(value: string | null) {
   return `${match[1]}.${match[2]}.${match[3]}`
 }
 
-function formatYearMonth(value: string | null) {
-  if (!value) {
-    return MISSING_DATA_LABEL
-  }
-  const match = /^(\d{4})-?(\d{2})/.exec(value)
-  if (!match) {
-    return MISSING_DATA_LABEL
-  }
-  return `${match[1]}.${match[2]}`
-}
-
 function formatNullableCount(value: number | null, unit: string) {
   if (value === null) {
     return MISSING_DATA_LABEL
   }
   return `${value.toLocaleString('ko-KR')}${unit}`
-}
-
-function supplyHouseholdSummary(value: number | null) {
-  return value === null ? `공급 세대수: ${MISSING_DATA_LABEL}` : formatNullableCount(value, '세대')
-}
-
-function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[], unit: AreaUnit) {
-  const values = rows
-    .map((row) => row.exclusiveArea === undefined ? row.housingType?.exclusiveArea ?? null : row.exclusiveArea)
-    .filter((value): value is number => value !== null && Number.isFinite(value))
-  return numericRange(values, (value) => formatArea(value, unit))
-}
-
-function moneyRange(
-  rows: readonly HousingAnnouncementDetailSupplyRow[],
-  key: 'deposit' | 'monthlyRent',
-) {
-  const values = rows.flatMap((row) => row.targets)
-    .map((target) => target[key])
-    .filter((value): value is number => value !== null)
-  return numericRange(values, formatHousingMoneyReadable)
-}
-
-function numericRange(
-  values: readonly number[],
-  format: (value: number) => string,
-) {
-  if (values.length === 0) {
-    return MISSING_DATA_LABEL
-  }
-  const minimum = Math.min(...values)
-  const maximum = Math.max(...values)
-  if (minimum === maximum) {
-    return format(minimum)
-  }
-  return `${format(minimum)} – ${format(maximum)}`
 }
 
 function handleDialogKeyDown(
