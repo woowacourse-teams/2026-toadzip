@@ -9,6 +9,10 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const backdropPressed = useRef(false)
+  function openHistory() {
+    setHistoryOpen(true)
+    dialog.current?.showModal()
+  }
   function closeHistory() {
     dialog.current?.close()
     setHistoryOpen(false)
@@ -20,11 +24,9 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
   return <section className={`admin-registration-page ${styles.page}`}>
     <header className={`admin-registration-heading ${domain === 'complex' ? complexStyles.pageHeading : ''}`}>
       <h1>{domain === 'complex' ? '단지 수집' : '공고 수집'}</h1>
-      {domain === 'complex' ? <button type="button" className={complexStyles.historyButton} onClick={() => {
-        setHistoryOpen(true); dialog.current?.showModal()
-      }}>실행 이력</button> : null}
+      {domain === 'complex' ? <button type="button" className={complexStyles.historyButton} onClick={openHistory}>실행 이력</button> : null}
     </header>
-    <DataPipelineControl key={`control-${domain}`} domain={domain} compact
+    <DataPipelineControl key={`control-${domain}`} domain={domain} compact onShowHistory={domain === 'complex' ? openHistory : undefined}
       history={domain === 'announcement' ? <PipelineHistory domain="announcement" compact /> : undefined} />
     {domain === 'complex' ? <dialog ref={dialog} className={complexStyles.historyDialog} aria-labelledby="complex-history-title"
       onClose={() => { setHistoryOpen(false); backdropPressed.current = false }}

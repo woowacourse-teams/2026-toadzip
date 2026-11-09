@@ -67,6 +67,20 @@ class IngestExecutionLockInterceptorTest {
         verify(executionLock, never()).tryAcquire();
     }
 
+    @Test
+    void 비동기_등록_접수는_서비스가_잠금을_소유하고_다른_등록_변경은_요청_잠금을_유지한다() {
+        var registration = request("POST", "/api/admin/ingest/myhome/initial-registration/register");
+        assertThat(interceptor.preHandle(registration, response(), new Object())).isTrue();
+        interceptor.afterCompletion(registration, response(), new Object(), null);
+        verify(executionLock, never()).tryAcquire();
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        var refresh = request("POST", "/api/admin/ingest/myhome/initial-registration/refresh");
+        assertThat(interceptor.preHandle(refresh, response(), new Object())).isTrue();
+        interceptor.afterCompletion(refresh, response(), new Object(), null);
+        verify(executionLock).tryAcquire();
+        verify(lease).close();
+    }
+
     private MockHttpServletRequest request(String method, String path) {
         return new MockHttpServletRequest(method, path);
     }

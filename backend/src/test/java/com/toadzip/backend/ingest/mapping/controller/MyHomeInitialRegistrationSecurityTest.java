@@ -16,6 +16,8 @@ import com.toadzip.backend.global.security.JsonAuthenticationEntryPoint;
 import com.toadzip.backend.global.security.SecurityConfiguration;
 import com.toadzip.backend.global.security.SecurityErrorResponseWriter;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import com.toadzip.backend.user.repository.UserRepository;
 import com.toadzip.backend.user.service.SocialLoginFailureHandler;
@@ -36,10 +38,24 @@ class MyHomeInitialRegistrationSecurityTest {
     private static final String PATH = "/api/admin/ingest/myhome/initial-registration";
     @Autowired private MockMvc mvc;
     @MockitoBean private MyHomeInitialRegistrationService service;
+    @MockitoBean private DataPipelineExecutionService execution;
     @MockitoBean private UserRepository users;
     @MockitoBean private SocialLoginSuccessHandler socialLoginSuccessHandler;
     @MockitoBean private SocialLoginFailureHandler socialLoginFailureHandler;
     @MockitoBean private PrivacyNoticeCatalog notices;
+
+    @Test
+    void 등록은_관리자와_CSRF가_필요하다() throws Exception {
+        mvc.perform(post(PATH + "/register").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        when(users.existsById(1L)).thenReturn(true);
+        mvc.perform(post(PATH + "/register").with(user("1").roles("USER")).with(csrf()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(execution);
+        mvc.perform(post(PATH + "/register").with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isAccepted());
+        verify(execution).start(DataPipelineType.COMPLEX_REGISTRATION, "admin");
+    }
 
     @Test
     void 비로그인_사용자는_진행_상태를_읽을_수_없다() throws Exception {

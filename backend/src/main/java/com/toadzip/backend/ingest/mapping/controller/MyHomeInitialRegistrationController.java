@@ -5,6 +5,9 @@ import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationRequest
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationsResponse;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationResponse;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -25,6 +28,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class MyHomeInitialRegistrationController {
 
     private final MyHomeInitialRegistrationService service;
+    private final DataPipelineExecutionService execution;
+
+    @PostMapping("/register")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DataPipelineExecutionResponse register(Principal actor) {
+        return execution.start(DataPipelineType.COMPLEX_REGISTRATION, actor.getName());
+    }
 
     @GetMapping
     public InitialRegistrationResponse find(@RequestParam(required = false) InitialRegistrationStatus status,

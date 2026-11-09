@@ -76,7 +76,7 @@ export function ComplexExecutionSummary({ execution, pending = false, stopping =
 
 
 export function ComplexExecutionStop({ execution, stopping = false, label, onStop }: {
-  execution: DataPipelineExecution; stopping?: boolean; label: '수집 중지' | '정제 중지'; onStop: () => void
+  execution: DataPipelineExecution; stopping?: boolean; label: '수집 중지' | '정제 중지' | '등록 중지'; onStop: () => void
 }) {
   if (execution.status !== 'RUNNING') return null
   return <>

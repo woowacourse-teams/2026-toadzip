@@ -47,6 +47,7 @@ public class IngestExecutionLockInterceptor implements HandlerInterceptor {
         if (!HttpMethod.POST.matches(request.getMethod())) {
             return true;
         }
-        return request.getRequestURI().startsWith(PIPELINE_PATH);
+        return request.getRequestURI().startsWith(PIPELINE_PATH)
+                || request.getRequestURI().equals("/api/admin/ingest/myhome/initial-registration/register");
     }
 }

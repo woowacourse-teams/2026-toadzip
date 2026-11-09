@@ -3,6 +3,7 @@ import type { DataPipelineExecution, DataPipelineType } from './api'
 const definitions = {
   COLLECT_MYHOME_COMPLEXES: '마이홈 단지 수집',
   COLLECT_LH_LEASE_CATALOG: 'LH 임대 카탈로그 수집',
+  REGISTER_MYHOME_COMPLEXES: '준비된 신규 단지 등록',
   MAP_MYHOME_COMPLEXES: '마이홈 단지 정제',
   ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS: 'LH 주택형 세대수 보강',
   COLLECT_REFINE_SH_ANNOUNCEMENTS: 'SH 공고 수집·정제',
@@ -29,6 +30,7 @@ const announcementCollection: Step[] = ['COLLECT_LH_ANNOUNCEMENT_CATALOG',
   'COLLECT_LH_ANNOUNCEMENT_SUPPLIES', 'COLLECT_LH_ANNOUNCEMENT_DETAILS']
 const announcementRefinement: Step[] = ['MAP_LH_ANNOUNCEMENTS']
 const sequences: Record<DataPipelineType, Step[]> = {
+  COMPLEX_REGISTRATION: ['REGISTER_MYHOME_COMPLEXES'],
   COMPLEX_COLLECTION: complexCollection, COMPLEX_REFINEMENT: complexRefinement,
   COMPLEX_SYNC: [...complexCollection, ...complexRefinement],
   ANNOUNCEMENT_COLLECTION: announcementCollection, ANNOUNCEMENT_REFINEMENT: announcementRefinement,

@@ -75,6 +75,10 @@ public class DataPipelineExecutionService {
 
     /** 공공데이터포털을 호출하는 실행은 서버의 수집 키가 없으면 실행 기록을 만들기 전에 거절한다. */
     public DataPipelineExecutionResponse start(DataPipelineType type) {
+        return start(type, "SYSTEM");
+    }
+
+    public DataPipelineExecutionResponse start(DataPipelineType type, String actor) {
         type.rejectIfRetired();
         if (type.requiresServiceKey() && !ingestProperties.hasServiceKey()) {
             throw new IngestServiceKeyMissingException();
@@ -104,7 +108,7 @@ public class DataPipelineExecutionService {
         }
         try {
             String traceId = MDC.get("traceId");
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId));
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, actor));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -124,7 +128,8 @@ public class DataPipelineExecutionService {
             DataPipelineType type,
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask,
-            String traceId
+            String traceId,
+            String actor
     ) {
         String previousTraceId = MDC.get("traceId");
         String previousExecutionId = MDC.get("executionId");
@@ -133,7 +138,7 @@ public class DataPipelineExecutionService {
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
         try (lease; var ignored = IngestExecutionScope.open(executionId, lease, monitor)) {
             lease.verifyHeld();
-            runAndRecordOutcome(executionId, type);
+            runAndRecordOutcome(executionId, type, actor);
         }
         catch (IngestOwnershipLostException exception) {
             failures.recordAtCurrentStep(executionId, type, exception.getMessage());
@@ -170,9 +175,14 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private void runAndRecordOutcome(UUID executionId, DataPipelineType type) {
+    private void runAndRecordOutcome(UUID executionId, DataPipelineType type, String actor) {
         try {
-            runner.run(type, executionId);
+            if (type == DataPipelineType.COMPLEX_REGISTRATION) {
+                runner.registerComplexes(executionId, actor);
+            }
+            if (type != DataPipelineType.COMPLEX_REGISTRATION) {
+                runner.run(type, executionId);
+            }
         }
         catch (DataPipelineStoppedException exception) {
             executionStateService.stop(executionId, Instant.now(clock));

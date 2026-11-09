@@ -79,6 +79,8 @@ class GhAnnouncementMigrationTest {
                         "db/migration/V20261104_06__board_announcement_refinement_steps.sql"));
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(
                         "db/migration/V20261107_01__board_announcement_collect_refine_steps.sql"));
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
+                        "db/migration/V20261109_01__async_initial_complex_registration.sql"));
                 // 후속 정제 단계까지 적용한 CHECK가 현재 코드와 지난 이력을 모두 허용해야 한다.
                 for (DataPipelineType type : DataPipelineType.values()) {
                     statement.execute("INSERT INTO data_pipeline_executions(type) VALUES ('" + type.name() + "')");
