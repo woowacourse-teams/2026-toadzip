@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.search.domain.SearchMatch;
@@ -24,6 +25,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import java.util.List;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -73,6 +75,27 @@ class InternalSearchRepositoryTest {
             assertThat(result.latitude()).isEqualByComparingTo("37.5");
             assertThat(result.longitude()).isEqualByComparingTo("126.9");
         });
+    }
+
+    @Test
+    void 미확정_공고는_검색하지_않고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
+        HousingComplex complex = persistComplex("서울 대기 단지", "37.5", "126.9");
+        Announcement original = persistAnnouncement(null, "ORIGINAL", "서울 대기 원공고", "original");
+        persistSupplyRow(original, complex, "original-row");
+        Announcement correction = persistAnnouncement(original, "CORRECTION", "서울 대기 정정공고", "correction");
+        persistSupplyRow(correction, complex, "correction-row");
+        Announcement unconfirmed = Announcement.createUnconfirmed("SH:1", "서울 대기 SH 공고", AgencyCode.SH,
+                LocalDate.of(2026, 8, 1), "https://example.com/sh/1");
+        entityManager.persist(unconfirmed);
+        persistSupplyRow(unconfirmed, complex, "unconfirmed-row");
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", correction.getId()).executeUpdate();
+
+        var results = repository.findAnnouncements(condition("서울 대기", Set.of()), 20);
+
+        assertThat(results).extracting(SearchSourceItem::id).containsExactly(original.getId().toString());
+        assertThat(repository.countAnnouncements(condition("서울 대기", Set.of()))).isEqualTo(1);
     }
 
     @Test
@@ -216,7 +239,7 @@ class InternalSearchRepositoryTest {
                 "https://example.com/" + suffix,
                 null,
                 0,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, null, null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, null, null))
         );
         entityManager.persist(announcement);
         return announcement;

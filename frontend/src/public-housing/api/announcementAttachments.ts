@@ -22,13 +22,16 @@ export async function loadAnnouncementAttachment(
   attachmentId: string,
   download: boolean,
   signal: AbortSignal,
+  /** 관리자 화면은 공개 전인 미확정 공고의 첨부도 미리 봐야 해서 로그인한 관리자 경로로 받는다. */
+  admin = false,
 ): Promise<Blob> {
   if (![announcementId, attachmentId].every((id) => /^[1-9]\d*$/.test(id))) {
     throw new AttachmentError('ATTACHMENT_NOT_FOUND')
   }
+  const scope = admin ? 'admin' : 'v1'
   const response = await fetch(
-    `${getApiBaseUrl()}/api/v1/announcements/${announcementId}/attachments/${attachmentId}/content?download=${download}`,
-    { signal: AbortSignal.any([signal, AbortSignal.timeout(150_000)]) },
+    `${getApiBaseUrl()}/api/${scope}/announcements/${announcementId}/attachments/${attachmentId}/content?download=${download}`,
+    { signal: AbortSignal.any([signal, AbortSignal.timeout(150_000)]), credentials: admin ? 'include' : 'same-origin' },
   )
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null)

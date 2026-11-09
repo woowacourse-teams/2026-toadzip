@@ -94,7 +94,7 @@ class IngestFailureStoreQueryScopeTest {
         MyHomeComplexMappingFailureRepository repository = mock(
                 MyHomeComplexMappingFailureRepository.class
         );
-        when(repository.findAllByStatusOrderBySourceKeyAsc(PENDING)).thenReturn(List.of());
+        when(repository.findAllByStatus(PENDING)).thenReturn(List.of());
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new MyHomeComplexMappingFailureStore(repository, CLOCK);
 
@@ -102,7 +102,7 @@ class IngestFailureStoreQueryScopeTest {
                 "source-key", "complex-id", INVALID_VALUE, "실패", OCCURRED_AT
         )), null);
 
-        verify(repository).findAllByStatusOrderBySourceKeyAsc(PENDING);
+        verify(repository).findAllByStatus(PENDING);
         verify(repository).findAllBySourceKeyIn(List.of("source-key"));
         verify(repository, never()).findAll();
     }

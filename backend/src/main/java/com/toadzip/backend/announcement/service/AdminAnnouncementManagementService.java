@@ -1,9 +1,9 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
-import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
@@ -11,20 +11,21 @@ import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
-import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.dto.response.SupplyRowResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -32,16 +33,25 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 @Transactional(readOnly = true)
 public class AdminAnnouncementManagementService {
+    private final AnnouncementSearchRepository adminQueries;
+    private final Clock clock;
     private final AnnouncementRepository announcements;
     private final SupplyRowRepository rows;
     private final HousingComplexRepository complexes;
@@ -55,10 +65,13 @@ public class AdminAnnouncementManagementService {
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
-            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments) {
+            SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments,
+            AnnouncementSearchRepository adminQueries, Clock clock) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
+        this.adminQueries = adminQueries;
+        this.clock = clock;
         this.types = types;
         this.changes = changes;
         this.json = json;
@@ -68,11 +81,22 @@ public class AdminAnnouncementManagementService {
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
-        var page = announcements.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
-                search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
-                complexId, PageRequest.of(search.page(), search.pageSize()));
-        return new AdminPage<>(page.stream().map(this::summary).toList(), search.page(), page.hasNext(),
-                page.getTotalElements(), page.getTotalPages());
+        return search(search, complexId, "", "");
+    }
+
+    public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId, String applicationStatus,
+            String attention) {
+        if (!List.of("", "BEFORE_APPLICATION", "APPLYING", "CLOSED", "CONDITIONAL", "CANCELLED", "UNKNOWN")
+                .contains(applicationStatus)
+                || !List.of("", "ANY", "SCHEDULE_MISSING", "SUPPLY_MISSING", "UNCONFIRMED").contains(attention)) {
+            throw new IllegalArgumentException("조회 조건이 올바르지 않습니다.");
+        }
+        LocalDate today = clock.instant().atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
+        var page = adminQueries.searchAdmin(search, complexId, applicationStatus, attention, today);
+        var statuses = adminQueries.adminStatuses(page.stream().map(Announcement::getId).toList(), today).stream()
+                .collect(Collectors.toMap(AnnouncementSearchRepository.AdminStatus::id, value -> value));
+        return new AdminPage<>(page.stream().map(value -> summary(value, statuses.get(value.getId()))).toList(),
+                search.page(), page.hasNext(), page.getTotalElements(), page.getTotalPages());
     }
 
     public AdminAnnouncementDetail detail(long id) {
@@ -144,15 +168,10 @@ public class AdminAnnouncementManagementService {
         var announcement = find(id);
         checkVersion(announcement, request.version());
         String before = json.writeValueAsString(data(announcement));
-        ReceptionPlace reception = null;
-        if (request.receptionPlace() != null) {
-            var place = request.receptionPlace();
-            reception = ReceptionPlace.create(place.name(), place.method(), place.address(), place.contact(), place.url());
-        }
         var incoming = Announcement.create(announcement.getSourceAnnouncementIdentifier(), null, null,
                 request.name(), AnnouncementPublicationType.ORIGINAL, request.rentalType(), request.recruitmentType(),
                 request.agencyCode(), request.postedDate(), request.applicationStartDate(), request.applicationEndDate(),
-                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
+                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, request.places());
         announcement.reviseByAdmin(incoming);
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE", actor, before,
@@ -167,7 +186,7 @@ public class AdminAnnouncementManagementService {
         if (announcement.isAdminDeleted()) { throw new AdminDataConflictException("공고를 복구한 뒤 수정해 주세요."); }
         var row = rows.findById(rowId).filter(value -> value.getAnnouncement().getId().equals(id))
                 .orElseThrow(AnnouncementNotFoundException::new);
-        String before = json.writeValueAsString(rowData(row));
+        String before = json.writeValueAsString(auditedRow(row));
         HousingComplex complex = null;
         HousingType type = null;
         if (request.housingComplexId() != null) {
@@ -187,7 +206,7 @@ public class AdminAnnouncementManagementService {
         validateCounts(announcement);
         var linkedComplexIds = rows.findAllByAnnouncement(announcement).stream()
                 .filter(value -> !value.isAdminExcluded() && value.getHousingComplex() != null)
-                .map(value -> value.getHousingComplex().getId()).collect(java.util.stream.Collectors.toSet());
+                .map(value -> value.getHousingComplex().getId()).collect(Collectors.toSet());
         if (schedules.findAllByAnnouncementIdIn(List.of(id)).stream().anyMatch(schedule ->
                 schedule.getHousingComplex() != null && !linkedComplexIds.contains(schedule.getHousingComplex().getId()))) {
             throw new AdminDataConflictException("이 단지에 지정된 접수 일정이 있습니다. 일정의 적용 단지를 먼저 변경해 주세요.");
@@ -195,7 +214,7 @@ public class AdminAnnouncementManagementService {
         announcement.recordAdminSupplyChange();
         announcements.flush();
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY", actor, before,
-                auditedData(rowData(row), request.documentEvidence())));
+                auditedData(auditedRow(row), request.documentEvidence())));
         return detail(id);
     }
 
@@ -231,7 +250,7 @@ public class AdminAnnouncementManagementService {
 
     private void validateCounts(Announcement announcement) {
         long total = 0;
-        var groups = new java.util.HashSet<Long>();
+        var groups = new HashSet<Long>();
         for (var row : rows.findAllByAnnouncement(announcement)) {
             if (row.isAdminExcluded()) { continue; }
             Integer count = row.getTotalSupplyHouseholdCount();
@@ -242,7 +261,7 @@ public class AdminAnnouncementManagementService {
             if (count != null) { total += count; }
             if (!row.isTargetCountsComparable() || row.getTotalSupplyHouseholdCount() == null) { continue; }
             long targetCount = targets.findAllBySupplyRow(row).stream().filter(target -> !target.isAdminExcluded())
-                    .map(SupplyTarget::getSupplyHouseholdCount).filter(java.util.Objects::nonNull)
+                    .map(SupplyTarget::getSupplyHouseholdCount).filter(Objects::nonNull)
                     .mapToLong(Integer::longValue).sum();
             if (targetCount > row.getTotalSupplyHouseholdCount()) {
                 throw new IllegalArgumentException("같은 범위로 확인한 대상별 모집수 합계가 행 모집수를 초과합니다.");
@@ -257,7 +276,7 @@ public class AdminAnnouncementManagementService {
     }
 
     private String auditedData(Object data, AdminDocumentEvidence evidence) {
-        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        var result = (ObjectNode) json.valueToTree(data);
         if (evidence != null) {
             result.set("documentEvidence", json.valueToTree(evidence));
         }
@@ -275,28 +294,46 @@ public class AdminAnnouncementManagementService {
     }
 
     private AdminDataSummary summary(Announcement announcement) {
+        return summary(announcement, null);
+    }
+
+    private AdminDataSummary summary(Announcement announcement, AnnouncementSearchRepository.AdminStatus status) {
+        LocalDate start = announcement.getApplicationStartDate();
+        LocalDate end = announcement.getApplicationEndDate();
+        String applicationStatus = null;
+        List<String> reasons = null;
+        if (status != null) {
+            start = status.startDate();
+            end = status.endDate();
+            applicationStatus = status.applicationStatus();
+            reasons = status.attentionReasons();
+        }
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
-                announcement.getSupplyType().name(), announcement.isAdminDeleted(), announcement.isAdminModified(),
+                enumName(announcement.getSupplyType()), announcement.isAdminDeleted(), announcement.isAdminModified(),
                 announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt(), null,
                 new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
-                        announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
-                        announcement.getPostedDate(), announcement.getApplicationStartDate(),
-                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate(),
-                        announcement.getStatus().name()));
+                        announcement.getOriginalUrl(), enumName(announcement.getRecruitmentType()),
+                        announcement.getPostedDate(), start, end, announcement.getWinnerAnnouncementDate(),
+                        announcement.getStatus().name(), announcement.origin().name(),
+                        announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name(),
+                        applicationStatus, reasons));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {
-        ReceptionPlaceUpdateRequest reception = null;
-        if (announcement.getReceptionPlace() != null) {
-            var place = announcement.getReceptionPlace();
-            reception = new ReceptionPlaceUpdateRequest(place.getName(), place.getMethod(), place.getAddress(),
-                    place.getContact(), place.getUrl());
-        }
+        var reception = announcement.getReceptionPlaces().stream().map(ReceptionPlaceUpdateRequest::of).toList();
         return new AdminAnnouncementUpdateRequest(announcement.getVersion(), announcement.getName(),
                 announcement.getSupplyType(), announcement.getRecruitmentType(), announcement.getProvider(),
                 announcement.getPostedDate(), announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
                 announcement.getWinnerAnnouncementDate(), announcement.getOriginalUrl(), reception);
+    }
+
+    /** 대표를 바꾸면 함께 모집하던 주택형이 빠지므로, 이력에는 그 연결(대표 포함)도 남긴다. */
+    private ObjectNode auditedRow(SupplyRow row) {
+        var result = (ObjectNode) json.valueToTree(rowData(row));
+        var ids = result.putArray("housingTypeIds");
+        row.getHousingTypes().stream().map(HousingType::getId).sorted().forEach(ids::add);
+        return result;
     }
 
     private AdminAnnouncementDetail.SupplyRowItem rowData(SupplyRow row) {
@@ -307,9 +344,9 @@ public class AdminAnnouncementManagementService {
             complexId = row.getHousingComplex().getId(); complexName = row.getHousingComplex().getName();
         }
         if (row.getHousingType() != null) { typeId = row.getHousingType().getId(); }
-        com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment shared = null;
+        SupplyRowResponse.SharedRecruitment shared = null;
         if (row.getSupplyGroup() != null) {
-            shared = new com.toadzip.backend.announcement.dto.response.SupplyRowResponse.SharedRecruitment(
+            shared = new SupplyRowResponse.SharedRecruitment(
                     row.getSupplyGroup().getId(), row.getSupplyGroup().getSharedHouseholdCount());
         }
         return new AdminAnnouncementDetail.SupplyRowItem(row.getId(), complexId, complexName, typeId,
@@ -317,5 +354,9 @@ public class AdminAnnouncementManagementService {
                 new AdminSupplyRowUpdateRequest.SupplyData(row.displayHousingTypeName(),
                         row.getSupplyPnu(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
                         row.getTotalSupplyHouseholdCount()), shared);
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

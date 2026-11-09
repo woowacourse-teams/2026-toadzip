@@ -25,7 +25,6 @@ public record AdminHousingComplexCreateRequest(
         @NotNull(message = "필수 값입니다.")
         @Valid
         AddressRequest address,
-        @NotNull(message = "필수 값입니다.")
         @PositiveOrZero(message = "0 이상이어야 합니다.")
         Integer totalHouseholdCount,
         // 입주 전 신규 단지는 준공일·난방·주택·복도유형·승강기를 아직 모를 수 있어 비워 둘 수 있다.
@@ -68,8 +67,9 @@ public record AdminHousingComplexCreateRequest(
             @NotBlank(message = "필수 값입니다.")
             @Size(max = 255, message = "255자 이하여야 합니다.")
             String roadAddress,
-            @NotBlank(message = "필수 값입니다.")
+            /** 지번을 모르는 단지는 비운다(null). 값이 있으면 공백만으로 둘 수 없다. */
             @Size(max = 255, message = "255자 이하여야 합니다.")
+            @Pattern(regexp = "(?s).*\\S.*", message = "비워 두거나 값을 입력해야 합니다.")
             String pnu,
             @NotBlank(message = "필수 값입니다.")
             @Size(max = 255, message = "255자 이하여야 합니다.")

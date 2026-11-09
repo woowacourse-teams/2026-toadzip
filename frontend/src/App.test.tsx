@@ -1,6 +1,18 @@
+vi.mock('./admin/operations/api', () => ({
+  loadComplexOverview: vi.fn(async () => ({ total: 0, recruiting: 0, missingCoordinates: 0, reviewRequired: 0, agencies: { LH: 0, SH: 0, GH: 0 }, asOf: '2026-11-06T00:00:00Z' })),
+  loadAnnouncementOverview: vi.fn(async () => ({ statuses: {}, attention: 0, reasons: {}, asOf: '2026-11-06T00:00:00Z' })),
+  loadUserOverview: vi.fn(async () => ({ total: 0, newUsers: 0, previousNewUsers: 0, trend: [], asOf: '2026-11-06T00:00:00Z' })),
+  loadCollectionOverview: vi.fn(async () => ({ sources: [], asOf: '2026-11-06T00:00:00Z' })),
+}))
 vi.mock('./admin/notifications/deliveryApi', async original => ({ ...await original<typeof import('./admin/notifications/deliveryApi')>(), listDeliveries: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
 vi.mock('./admin/feedback/api', async original => ({ ...await original<typeof import('./admin/feedback/api')>(), listFeedback: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
 vi.mock('./admin/ingest/failureReviewApi', async original => ({ ...await original<typeof import('./admin/ingest/failureReviewApi')>(), getFailureReviews: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })) }))
+vi.mock('./admin/notifications/api', async original => ({
+  ...await original<typeof import('./admin/notifications/api')>(),
+  loadNotificationSubscriptions: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0,
+    summary: { activeMembers: 0, activeSubscriptions: 0, asOf: '2026-11-06T00:00:00Z' } })),
+  loadNotificationTrend: vi.fn(async () => ({ days: [], collectionStartedAt: null, asOf: '2026-11-06T00:00:00Z' })),
+}))
 vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
@@ -194,13 +206,21 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: '공고 수집·검토' })).not.toBeInTheDocument()
   })
 
-  it('공고 관리에서 마이홈 단건 등록으로 진입한다', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+  it('공고 관리의 마이홈 가져오기는 입력 폼 없이 단건 등록 지원 종료만 안내한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' }))
+    vi.stubGlobal('fetch', fetchMock)
     render(<MemoryRouter initialEntries={['/admin/announcements/new']}><App /></MemoryRouter>)
     fireEvent.click(await screen.findByRole('button', { name: '마이홈에서 가져오기' }))
-    expect(screen.getByRole('heading', { name: '마이홈에서 공고 가져오기' })).toBeVisible()
-    expect(screen.getByLabelText('마이홈 공고 URL')).toBeVisible()
-    expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다.')
+    expect(screen.queryByLabelText('마이홈 공고 URL')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '등록 실행' })).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.map(([url]) => String(url)).filter(url => url.includes('announcement-registration'))).toEqual([])
+  })
+
+  it('지원 종료한 LH 행 연결 주소는 화면을 열지 않는다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/failures/lh-links/21391']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: /찾을 수 없/ })).toBeVisible()
   })
 
   it('공고 입력 URL로 직접 들어와도 지정한 방식만 연다', async () => {

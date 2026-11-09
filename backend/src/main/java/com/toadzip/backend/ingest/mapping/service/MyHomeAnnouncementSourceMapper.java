@@ -7,14 +7,18 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper.MyHomeAnnouncementCommonValues;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -29,9 +33,9 @@ public class MyHomeAnnouncementSourceMapper {
         this.commonValuesMapper = commonValuesMapper;
     }
 
-    public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSource> sources) {
-        java.util.Map<String, Object> identities = new java.util.HashMap<>();
-        for (MyHomeAnnouncementSource source : sources) {
+    public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSourceView> sources) {
+        Map<String, Object> identities = new HashMap<>();
+        for (MyHomeAnnouncementSourceView source : sources) {
             Object previous = identities.putIfAbsent(source.getSourceKey(), source.snapshot());
             if (previous != null && !previous.equals(source.snapshot())) {
                 throw new MyHomeAnnouncementMappingRejectedException(
@@ -63,7 +67,7 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     private MyHomeSupplyRowMappingData supplyRowOf(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String announcementName,
             String sourceSupplyType
     ) {
@@ -87,12 +91,29 @@ public class MyHomeAnnouncementSourceMapper {
         );
     }
 
-    private List<MyHomeAnnouncementSource> ordered(List<MyHomeAnnouncementSource> sources) {
-        List<MyHomeAnnouncementSource> ordered = new ArrayList<>(sources);
+    /** 마이홈 공고 원천행 하나의 정제 실패다. */
+    static MyHomeAnnouncementMappingFailure failureOf(
+            MyHomeAnnouncementSourceView source,
+            MyHomeAnnouncementMappingFailureReason reason,
+            String detail,
+            Instant occurredAt
+    ) {
+        return MyHomeAnnouncementMappingFailure.create(
+                source.getSourceKey(),
+                source.getPblancId(),
+                source.getHouseSn(),
+                reason,
+                detail,
+                occurredAt
+        );
+    }
+
+    private List<MyHomeAnnouncementSourceView> ordered(List<MyHomeAnnouncementSourceView> sources) {
+        List<MyHomeAnnouncementSourceView> ordered = new ArrayList<>(sources);
         ordered.sort(Comparator.comparing(
-                MyHomeAnnouncementSource::getSourceOrder,
+                MyHomeAnnouncementSourceView::getSourceOrder,
                 Comparator.nullsLast(Comparator.naturalOrder())
-        ).thenComparing(MyHomeAnnouncementSource::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        ).thenComparing(MyHomeAnnouncementSourceView::getId, Comparator.nullsLast(Comparator.naturalOrder())));
         return ordered;
     }
 
@@ -134,7 +155,7 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     record MyHomeSupplyRowMappingData(
-            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementSourceView source,
             String sourceSupplyRowIdentifier,
             String sourceComplexName,
             String sourceHousingTypeName,
@@ -150,23 +171,6 @@ public class MyHomeAnnouncementSourceMapper {
         String matchingIdentity() {
             return source.snapshot() + ":" + sourceSupplyRowIdentifier + ":" + sourceHousingTypeName
                     + ":" + exclusiveArea + ":" + supplyArea + ":" + resolvedLhSourceIdentifier;
-        }
-    }
-
-    static class MyHomeAnnouncementMappingRejectedException extends RuntimeException {
-
-        private final MyHomeAnnouncementMappingFailureReason reason;
-
-        MyHomeAnnouncementMappingRejectedException(
-                MyHomeAnnouncementMappingFailureReason reason,
-                String detail
-        ) {
-            super(detail);
-            this.reason = reason;
-        }
-
-        MyHomeAnnouncementMappingFailureReason reason() {
-            return reason;
         }
     }
 }

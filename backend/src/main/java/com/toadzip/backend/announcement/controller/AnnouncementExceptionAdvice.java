@@ -1,18 +1,20 @@
 package com.toadzip.backend.announcement.controller;
 
+import com.toadzip.backend.announcement.dto.response.CorrectionDraftConflictResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
+import com.toadzip.backend.announcement.exception.CorrectionDraftConflictException;
+import com.toadzip.backend.announcement.exception.CorrectionDraftTooLargeException;
 import com.toadzip.backend.announcement.exception.AnnouncementImportDuplicatedException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementImportException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementPdfException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
-import com.toadzip.backend.announcement.exception.PdfExtractionFailedException;
-import com.toadzip.backend.announcement.exception.PdfExtractionUnavailableException;
+import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
+import com.toadzip.backend.announcement.exception.PdfExtractionJobNotFoundException;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -20,7 +22,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class AnnouncementExceptionAdvice {
@@ -36,8 +37,38 @@ public class AnnouncementExceptionAdvice {
     private static final String ANNOUNCEMENT_IMPORT_INVALID = "ANNOUNCEMENT_IMPORT_INVALID";
     private static final String ANNOUNCEMENT_IMPORT_DUPLICATED = "ANNOUNCEMENT_IMPORT_DUPLICATED";
     private static final String ANNOUNCEMENT_PDF_INVALID = "ANNOUNCEMENT_PDF_INVALID";
-    private static final String PDF_EXTRACTION_UNAVAILABLE = "ANNOUNCEMENT_PDF_EXTRACTION_UNAVAILABLE";
-    private static final String PDF_EXTRACTION_FAILED = "ANNOUNCEMENT_PDF_EXTRACTION_FAILED";
+    private static final String PDF_EXTRACTION_IN_PROGRESS = "ANNOUNCEMENT_PDF_EXTRACTION_IN_PROGRESS";
+    private static final String PDF_EXTRACTION_JOB_NOT_FOUND = "ANNOUNCEMENT_PDF_EXTRACTION_JOB_NOT_FOUND";
+    private static final String CORRECTION_DRAFT_CONFLICT = "ANNOUNCEMENT_CORRECTION_DRAFT_CONFLICT";
+    private static final String CORRECTION_DRAFT_TOO_LARGE = "ANNOUNCEMENT_CORRECTION_DRAFT_TOO_LARGE";
+
+    @ExceptionHandler(CorrectionDraftConflictException.class)
+    public ResponseEntity<CorrectionDraftConflictResponse> handleCorrectionDraftConflict(
+            CorrectionDraftConflictException exception,
+            HttpServletRequest request
+    ) {
+        CorrectionDraftConflictResponse response = new CorrectionDraftConflictResponse(
+                CORRECTION_DRAFT_CONFLICT,
+                exception.getMessage(),
+                traceIdOf(request),
+                exception.currentRevision(),
+                exception.currentUpdatedAt()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(CorrectionDraftTooLargeException.class)
+    public ResponseEntity<ErrorResponse> handleCorrectionDraftTooLarge(
+            CorrectionDraftTooLargeException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                CORRECTION_DRAFT_TOO_LARGE,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(response);
+    }
 
     @ExceptionHandler(InvalidAnnouncementPdfException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAnnouncementPdf(
@@ -47,32 +78,30 @@ public class AnnouncementExceptionAdvice {
         return badRequest(ANNOUNCEMENT_PDF_INVALID, exception.getMessage(), request);
     }
 
-    @ExceptionHandler(PdfExtractionUnavailableException.class)
-    public ResponseEntity<ErrorResponse> handlePdfExtractionUnavailable(
-            PdfExtractionUnavailableException exception,
+    @ExceptionHandler(PdfExtractionInProgressException.class)
+    public ResponseEntity<ErrorResponse> handlePdfExtractionInProgress(
+            PdfExtractionInProgressException exception,
             HttpServletRequest request
     ) {
         ErrorResponse response = new ErrorResponse(
-                PDF_EXTRACTION_UNAVAILABLE,
+                PDF_EXTRACTION_IN_PROGRESS,
                 exception.getMessage(),
                 traceIdOf(request)
         );
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
-    @ExceptionHandler(PdfExtractionFailedException.class)
-    public ResponseEntity<ErrorResponse> handlePdfExtractionFailed(
-            PdfExtractionFailedException exception,
+    @ExceptionHandler(PdfExtractionJobNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePdfExtractionJobNotFound(
+            PdfExtractionJobNotFoundException exception,
             HttpServletRequest request
     ) {
-        // 공급자 오류 문구에는 요청 정보가 섞일 수 있어 응답에는 고정 문구만 쓰고 원인은 로그에 남긴다.
-        log.warn("event=announcement.pdf_extraction.failed reason={}", exception.getMessage(), exception);
         ErrorResponse response = new ErrorResponse(
-                PDF_EXTRACTION_FAILED,
+                PDF_EXTRACTION_JOB_NOT_FOUND,
                 exception.getMessage(),
                 traceIdOf(request)
         );
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     @ExceptionHandler(InvalidAnnouncementRequestException.class)

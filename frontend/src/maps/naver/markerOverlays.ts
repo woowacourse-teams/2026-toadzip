@@ -198,6 +198,23 @@ export interface MarkerInteractionGroup {
   deactivate: (() => void) | null
 }
 
+/** Mouse hover waits briefly so markers the cursor only passes over stay collapsed. */
+export const MARKER_HOVER_DELAY_MS = 150
+
+// Focus restored by code (e.g. after a detail closes) expands a marker only when the
+// last input was the keyboard, like :focus-visible, which jsdom cannot evaluate.
+let lastInputWasKeyboard = true
+let inputModalityTracked = false
+
+function trackInputModality() {
+  if (inputModalityTracked) return
+  inputModalityTracked = true
+  document.addEventListener('keydown', (event) => {
+    if (!event.metaKey && !event.ctrlKey && !event.altKey) lastInputWasKeyboard = true
+  }, true)
+  document.addEventListener('pointerdown', () => { lastInputWasKeyboard = false }, true)
+}
+
 function bindMarkerHighlight(
   button: HTMLButtonElement,
   complexId: string,
@@ -206,8 +223,12 @@ function bindMarkerHighlight(
   previewScopeId: (() => string) | undefined,
   interactionGroup?: MarkerInteractionGroup,
 ) {
+  trackInputModality()
   let focused = false
+  let keyboardFocused = false
   let pointerInside = false
+  let pointerShown = false
+  let hoverTimer: number | null = null
   let directFocus = false
   let keyboardAt = -Infinity
   let previewTimer: number | null = null
@@ -215,7 +236,9 @@ function bindMarkerHighlight(
   const fallbackScope = createAnalyticsId()
   document.addEventListener('keydown', event => { if (event.key === 'Tab') keyboardAt = performance.now() }, { capture: true, signal })
   const clearPreview = () => { if (previewTimer !== null) window.clearTimeout(previewTimer); previewTimer = null }
+  const clearHoverTimer = () => { if (hoverTimer !== null) window.clearTimeout(hoverTimer); hoverTimer = null }
   signal.addEventListener('abort', clearPreview, { once: true })
+  signal.addEventListener('abort', clearHoverTimer, { once: true })
   function updatePreview() {
     if (!pointerInside && !directFocus) { clearPreview(); return }
     if (previewTimer !== null) return
@@ -227,7 +250,7 @@ function bindMarkerHighlight(
     }, 500)
   }
   const updateHighlight = () => {
-    const next = focused || pointerInside
+    const next = (focused && keyboardFocused) || pointerShown
     if (next !== highlighted) {
       highlighted = next
       button.classList.toggle('is-previewing', next)
@@ -236,8 +259,11 @@ function bindMarkerHighlight(
     updatePreview()
   }
   const deactivate = () => {
+    clearHoverTimer()
     focused = false
+    keyboardFocused = false
     pointerInside = false
+    pointerShown = false
     directFocus = false
     updateHighlight()
   }
@@ -249,24 +275,49 @@ function bindMarkerHighlight(
   signal.addEventListener('abort', () => {
     if (interactionGroup?.deactivate === deactivate) interactionGroup.deactivate = null
   }, { once: true })
+  // Touch and pen expand a marker only while pressed; they have no leave event to collapse it later.
+  const isPress = (event: PointerEvent) => event.pointerType === 'touch' || event.pointerType === 'pen'
   button.addEventListener('pointerdown', (event) => {
-    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+    if (!isPress(event)) return
     claim()
+    clearHoverTimer()
     pointerInside = true
+    pointerShown = true
     updateHighlight()
   }, { signal })
-  button.addEventListener('mouseenter', () => {
-    claim()
-    pointerInside = true
-    updateHighlight()
-  }, { signal })
-  button.addEventListener('mouseleave', () => {
+  const releasePress = (event: PointerEvent) => {
+    if (!isPress(event)) return
     pointerInside = false
+    pointerShown = false
+    updateHighlight()
+  }
+  button.addEventListener('pointerup', releasePress, { signal })
+  button.addEventListener('pointercancel', releasePress, { signal })
+  // Pointer events tell a real mouse apart from the mouse events a touch tap emulates.
+  button.addEventListener('pointerenter', (event) => {
+    if (event.pointerType !== 'mouse') return
+    claim()
+    pointerInside = true
+    if (!pointerShown && hoverTimer === null) {
+      hoverTimer = window.setTimeout(() => {
+        hoverTimer = null
+        pointerShown = pointerInside
+        updateHighlight()
+      }, MARKER_HOVER_DELAY_MS)
+    }
+    updateHighlight()
+  }, { signal })
+  button.addEventListener('pointerleave', (event) => {
+    if (event.pointerType !== 'mouse') return
+    clearHoverTimer()
+    pointerInside = false
+    pointerShown = false
     updateHighlight()
   }, { signal })
   button.addEventListener('focus', () => {
     claim()
     focused = true
+    keyboardFocused = lastInputWasKeyboard
     directFocus = performance.now() - keyboardAt < 100
     updateHighlight()
   }, { signal })

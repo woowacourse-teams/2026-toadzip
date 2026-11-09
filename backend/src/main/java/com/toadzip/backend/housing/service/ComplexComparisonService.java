@@ -21,6 +21,7 @@ import com.toadzip.backend.housing.repository.ComplexComparisonLinkRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceCode;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
@@ -33,6 +34,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -192,14 +194,12 @@ public class ComplexComparisonService {
             return;
         }
         String rentalCode = identifier.substring(identifier.indexOf(':') + 1);
-        RentalType rental;
-        try {
-            rental = RentalType.valueOf(rentalCode);
-        } catch (IllegalArgumentException unsupported) {
+        if (!MyHomeComplexSourceCode.known(rentalCode)) {
             return;
         }
         var rows = myHome.findAllByHsmpSnIn(List.of(Long.parseLong(identifier.substring(0, identifier.indexOf(':')))))
-                .stream().filter(row -> matchesRental(row.getSuplyTyNm(), rental)).toList();
+                .stream().filter(row -> MyHomeComplexSourceCode.of(row.getSuplyTyNm()).filter(rentalCode::equals).isPresent())
+                .toList();
         rows.forEach(row -> sources.findById(IngestSourceCategory.MYHOME_COMPLEX, row.getId()).ifPresent(item ->
                 result.add(new Source(ComplexComparisonSourceType.MYHOME_COMPLEX, item.sourceKey(), true,
                         "자동 정제 원천 " + identifier, null, null, item))));
@@ -207,13 +207,6 @@ public class ComplexComparisonService {
             result.add(new Source(ComplexComparisonSourceType.MYHOME_COMPLEX, identifier, true,
                     "자동 정제 원천을 현재 DB에서 찾지 못했습니다.", null, null, null));
         }
-    }
-
-    private boolean matchesRental(String value, RentalType rental) {
-        if (rental == RentalType.PUBLIC_RENTAL_50Y) {
-            return "50년임대".equals(value);
-        }
-        return rental.legacyStoredValue().equals(value);
     }
 
     private IngestSourceCategory category(ComplexComparisonSourceType type) {
@@ -243,7 +236,7 @@ public class ComplexComparisonService {
     }
 
     private boolean sameAddress(AddressRequest before, AddressRequest after) {
-        return before.roadAddress().equals(after.roadAddress()) && before.pnu().equals(after.pnu())
+        return before.roadAddress().equals(after.roadAddress()) && Objects.equals(before.pnu(), after.pnu())
                 && before.legalDongCode().equals(after.legalDongCode())
                 && before.provinceCode().equals(after.provinceCode())
                 && before.cityCountyDistrictCode().equals(after.cityCountyDistrictCode())

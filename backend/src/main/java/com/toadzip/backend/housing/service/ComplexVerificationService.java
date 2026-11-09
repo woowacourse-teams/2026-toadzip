@@ -5,7 +5,6 @@ import com.toadzip.backend.housing.domain.ComplexVerificationField;
 import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingComplexReview;
-import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.ComplexReviewRequest;
 import com.toadzip.backend.housing.dto.response.ComplexVerificationResponse;
 import com.toadzip.backend.housing.dto.response.ComplexVerificationResponse.Review;
@@ -15,6 +14,7 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingComplexReviewRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceCode;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -111,26 +111,16 @@ public class ComplexVerificationService {
             return;
         }
         String rentalCode = identifier.substring(identifier.indexOf(':') + 1);
-        RentalType rental;
-        try {
-            rental = RentalType.valueOf(rentalCode);
-        } catch (IllegalArgumentException invalidCode) {
+        if (!MyHomeComplexSourceCode.known(rentalCode)) {
             return;
         }
         long sourceId = Long.parseLong(identifier.substring(0, identifier.indexOf(':')));
         sources.findAllByHsmpSnIn(List.of(sourceId)).stream()
-                .filter(row -> sameRentalType(row.getSuplyTyNm(), rental))
+                .filter(row -> MyHomeComplexSourceCode.of(row.getSuplyTyNm()).filter(rentalCode::equals).isPresent())
                 .sorted(java.util.Comparator.comparing(row -> row.getId()))
                 .forEach(row -> result.add(new Source(identifier, row.getHsmpNm(), row.getRnAdres(),
                         row.getPnu(), row.getInsttNm(), row.getSuplyTyNm(), row.getHshldCo(), row.getStyleNm(),
                         row.getSuplyPrvuseAr(), row.getCollectedAt())));
-    }
-
-    private boolean sameRentalType(String raw, RentalType rental) {
-        if (rental == RentalType.PUBLIC_RENTAL_50Y) {
-            return "50년임대".equals(raw);
-        }
-        return rental.legacyStoredValue().equals(raw);
     }
 
     private Review reviewResponse(HousingComplexReview review) {

@@ -1,5 +1,6 @@
 package com.toadzip.backend.interest.service;
 
+import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.interest.domain.NotificationEventType;
@@ -123,7 +124,7 @@ public class NotificationSettingsService {
             if (type == NotificationTargetType.COMPLEX) {
                 return complexes.existsById(numericId);
             }
-            return announcements.existsById(numericId);
+            return announcements.existsByIdAndReleaseStatus(numericId, AnnouncementReleaseStatus.PUBLISHED);
         } catch (NumberFormatException exception) {
             throw new InvalidNotificationInterestException();
         }

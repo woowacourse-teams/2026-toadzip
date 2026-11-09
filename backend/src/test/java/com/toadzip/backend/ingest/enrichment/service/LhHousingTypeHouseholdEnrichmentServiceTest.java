@@ -7,20 +7,25 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhLeaseCatalogSourceView;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+@ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest
 @ActiveProfiles("test")
 class LhHousingTypeHouseholdEnrichmentServiceTest {
@@ -77,7 +82,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
 
     @Test
     void 일반_공공임대도_CSV_없이_마이홈의_세부_공급유형을_유지하며_보강한다() {
-        HousingComplex complex = saveComplex("공공임대단지", "PUBLIC_RENTAL_10Y", 100);
+        HousingComplex complex = saveComplex("공공임대단지", "PUBLIC_RENTAL", 100);
         HousingType type = saveType(complex, "46A", "46.8000");
         saveCatalog(0, "공공임대", "46.8", 100, 100, "공공임대단지");
 
@@ -87,7 +92,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
         assertThat(housingTypeRepository.findById(type.getId()).orElseThrow().getTotalHouseholdCount())
                 .isEqualTo(100);
         assertThat(complexRepository.findById(complex.getId()).orElseThrow().getSupplyType())
-                .isEqualTo("PUBLIC_RENTAL_10Y");
+                .isEqualTo("PUBLIC_RENTAL");
     }
 
     @Test
@@ -114,13 +119,29 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
         var report = service.enrichAll();
 
         assertThat(report.failedSourceComplexCount()).isOne();
-        assertThat(housingTypeRepository.findAllById(java.util.List.of(firstType.getId(), secondType.getId())))
+        assertThat(housingTypeRepository.findAllById(List.of(firstType.getId(), secondType.getId())))
                 .allSatisfy(type -> assertThat(type.getTotalHouseholdCount()).isNull());
         assertThat(failureRepository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getReason())
                     .isEqualTo(LhHouseholdEnrichmentFailureReason.AMBIGUOUS_COMPLEX);
             assertThat(failure.getOccurrenceCount()).isOne();
         });
+    }
+
+    @Test
+    void 해결한_세대수_보강_실패는_실패_목록에서_빠지고_이력에만_남는다() {
+        saveComplex("동삼2", "NATIONAL_RENTAL", 120);
+        saveComplex("동삼2", "NATIONAL_RENTAL", 120);
+        saveCatalog(0, "국민임대", "46.8", 120, 120);
+        service.enrichAll();
+        assertThat(service.findFailures(0, 10)).hasSize(1);
+
+        var failure = failureRepository.findAll().getFirst();
+        failure.resolve(Instant.parse("2026-11-01T00:00:00Z"), null);
+        failureRepository.save(failure);
+
+        assertThat(service.findFailures(0, 10)).isEmpty();
+        assertThat(service.findFailureHistory(0, 10)).hasSize(1);
     }
 
     @Test
@@ -266,11 +287,10 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
             int typeCount,
             String complexName
     ) {
-        LhCatalogSource source = new LhCatalogSource(order, new LhCatalogSourceSnapshot(
-                "서울", supplyType, complexName, String.valueOf(complexCount), area,
-                String.valueOf(typeCount), null, null
-        ));
-        source.markCollectedAt(Instant.parse("2026-09-01T00:00:00Z"));
+        LhLeaseCatalogSourceView source = LhSourceViews.catalog(order, Instant.parse("2026-09-01T00:00:00Z"),
+                new LhCatalogSourceSnapshot(
+                "서울", supplyType, complexName, String.valueOf(complexCount), area, String.valueOf(typeCount), null,
+                null));
         sourceRepository.save(source);
     }
 

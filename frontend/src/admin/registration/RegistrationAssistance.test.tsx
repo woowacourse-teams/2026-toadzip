@@ -79,11 +79,11 @@ it('현재 입력 방식과 새 단지 등록 열기는 공고 입력을 버리�
 })
 
 it('기본 등록 옵션 밖의 선택 단지 유형도 자동 입력으로 보존한다', async () => {
-  api.getManagementDetail.mockResolvedValue({ summary: { ...summary, rental: 'PUBLIC_RENTAL_5Y' }, data: { address: { pnu: '1114010100100010000' } } })
+  api.getManagementDetail.mockResolvedValue({ summary: { ...summary, rental: 'LONG_TERM_JEONSE' }, data: { address: { pnu: '1114010100100010000' } } })
   render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct&complexId=42']}><AnnouncementRegistrationPage /></MemoryRouter>)
   await screen.findByText(/선택 단지:/)
-  expect(screen.getByLabelText('공급 유형')).toHaveValue('PUBLIC_RENTAL_5Y')
-  expect(screen.getByRole('option', { name: '5년 공공임대' })).toBeInTheDocument()
+  expect(screen.getByLabelText('공급 유형')).toHaveValue('LONG_TERM_JEONSE')
+  expect(screen.getByRole('option', { name: '장기전세' })).toBeInTheDocument()
 })
 
 it('단지와 공고에 모두 미저장 입력이 있어도 이동 확인은 한 번만 표시한다', () => {
@@ -94,5 +94,5 @@ it('단지와 공고에 모두 미저장 입력이 있어도 이동 확인은 �
   fireEvent.change(screen.getByLabelText('공고명'), { target: { value: '미저장 공고' } })
   fireEvent.click(screen.getByRole('button', { name: '마이홈에서 가져오기' }))
   expect(confirm).toHaveBeenCalledOnce()
-  expect(screen.getByLabelText('마이홈 공고 URL')).toBeVisible()
+  expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다.')
 })

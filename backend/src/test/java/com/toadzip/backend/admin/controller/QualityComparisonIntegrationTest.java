@@ -3,19 +3,38 @@ package com.toadzip.backend.admin.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.admin.quality.domain.QualityResource;
+import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,13 +42,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -41,14 +65,14 @@ class QualityComparisonIntegrationTest {
     @Autowired private ObjectMapper json;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
-    @Autowired private com.toadzip.backend.announcement.repository.SupplyRowRepository supplyRows;
-    @Autowired private com.toadzip.backend.announcement.repository.SupplyTargetRepository supplyTargets;
+    @Autowired private SupplyRowRepository supplyRows;
+    @Autowired private SupplyTargetRepository supplyTargets;
     @Autowired private EntityManager entities;
-    @Autowired private com.toadzip.backend.admin.quality.repository.QualityComparisonRepository comparisons;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sourceRows;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures catalogRows;
-    @Autowired private com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository rawSources;
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private QualityComparisonRepository comparisons;
+    @Autowired private MyHomeComplexSourceFixtures sourceRows;
+    @Autowired private LhLeaseCatalogSourceFixtures catalogRows;
+    @Autowired private IngestSourceQueryRepository rawSources;
+    @Autowired private JdbcTemplate jdbc;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -137,6 +161,74 @@ class QualityComparisonIntegrationTest {
     }
 
     @Test
+    void 오래된_스냅샷으로는_원천을_연결하거나_해제하지_않는다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        String key = source();
+        var before = detail(id, target);
+        var linked = linkSource(id, target, before, key);
+        String stale = linkBody(target, before, "MYHOME_COMPLEX", key);
+        String message = "등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.";
+
+        mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(stale))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value(message));
+        mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(stale))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value(message));
+
+        assertThat(detail(id, target).get("snapshotToken")).isEqualTo(linked.get("snapshotToken"));
+        assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE");
+    }
+
+    @Test
+    void 오래된_단지_기본_비교로는_원천_확인을_기록하지_않는다() throws Exception {
+        long id = type().getHousingComplex().getId();
+        String basicPath = "/api/admin/housing-complexes/" + id + "/verification/comparison";
+        var before = json.readTree(mvc.perform(get(basicPath).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        mvc.perform(post(basicPath + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                        "snapshotToken", before.get("snapshotToken").asText(), "category", "MYHOME_COMPLEX",
+                        "sourceKey", source(), "evidenceNote", "단지 원천 연결")))).andExpect(status().isOk());
+
+        mvc.perform(post(root(id) + "/checks/legacy").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
+                                "target", "basic", "snapshotToken", before.get("snapshotToken").asText(),
+                                "evidenceNote", "오래된 단지 비교 확인"))))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"))
+                .andExpect(jsonPath("$.message").value("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요."));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_data_changes WHERE resource_type = 'COMPLEX' "
+                + "AND resource_id = ? AND action = 'CHECK_COMPARISON_SOURCES'", Integer.class, id)).isZero();
+    }
+
+    @Test
+    void 직접_연결한_원천만_해제하고_연결과_해제를_기록한다() throws Exception {
+        var type = type();
+        long id = type.getHousingComplex().getId();
+        String target = "type:" + type.getId();
+        String key = source();
+        var linked = linkSource(id, target, detail(id, target), key);
+        var unlinked = json.readTree(mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN"))
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, linked, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+
+        mvc.perform(delete(root(id) + "/sources").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, unlinked, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_CONFLICT"))
+                .andExpect(jsonPath("$.message").value("직접 연결한 원천만 해제할 수 있습니다."));
+
+        assertThat(unlinked.get("sources").findValuesAsString("sourceKey")).doesNotContain(key);
+        assertThat(actions(id)).containsExactly("LINK_COMPARISON_SOURCE", "UNLINK_COMPARISON_SOURCE");
+    }
+
+    @Test
     void LH_카탈로그를_같은_내용으로_재수집하면_단지와_주택형의_연결과_확인_기록이_유지된다() throws Exception {
         var type = type();
         long id = type.getHousingComplex().getId();
@@ -191,12 +283,12 @@ class QualityComparisonIntegrationTest {
         var type = type();
         long id = type.getHousingComplex().getId();
         String target = "type:" + type.getId();
-        var category = com.toadzip.backend.ingest.source.dto.IngestSourceCategory.LH_LEASE_CATALOG;
-        var resource = com.toadzip.backend.admin.quality.domain.QualityResource.COMPLEX;
+        var category = IngestSourceCategory.LH_LEASE_CATALOG;
+        var resource = QualityResource.COMPLEX;
         long first = catalogRow("카탈로그 연결 단지", "10000000");
         long second = catalogRow("카탈로그 연결 단지", "20000000");
-        var expected = new java.util.ArrayList<Map<String, Object>>();
-        for (long rowId : java.util.List.of(first, second)) {
+        var expected = new ArrayList<Map<String, Object>>();
+        for (long rowId : List.of(first, second)) {
             String key = rawSources.findById(category, rowId).orElseThrow().sourceKey();
             assertThat(key).startsWith("lh-lease:");
             entities.createNativeQuery("""
@@ -209,18 +301,18 @@ class QualityComparisonIntegrationTest {
                     "rows", json.readTree(comparisons.fingerprint(category, key))));
         }
         var legacy = json.valueToTree(expected).deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) legacy.get(0)).put("sourceKey", Long.toString(first));
-        ((tools.jackson.databind.node.ObjectNode) legacy.get(1)).put("sourceKey", Long.toString(second));
+        ((ObjectNode) legacy.get(0)).put("sourceKey", Long.toString(first));
+        ((ObjectNode) legacy.get(1)).put("sourceKey", Long.toString(second));
         comparisons.check(resource, id, target, json.writeValueAsString(legacy), "{}", "기존 확인 근거", "original-admin");
         comparisons.link(resource, id, target,
-                com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_COMPLEX,
+                IngestSourceCategory.MYHOME_COMPLEX,
                 Long.toString(first), "다른 분류", "original-admin");
         comparisons.link(resource, id, target, category, "9223372036854775807", "이미 소실된 원천", "original-admin");
 
         for (int run = 0; run < 2; run++) {
-            jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
-                org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,
-                        new org.springframework.core.io.ClassPathResource(
+            jdbc.execute((ConnectionCallback<Void>) connection -> {
+                ScriptUtils.executeSqlScript(connection,
+                        new ClassPathResource(
                                 "db/migration/V20261019_01__stable_lh_lease_comparison_keys.sql"));
                 return null;
             });
@@ -234,7 +326,7 @@ class QualityComparisonIntegrationTest {
         assertThat(links.stream().filter(link -> link.category() == category).map(link -> link.sourceKey()).toList())
                 .containsExactlyInAnyOrder(keys.get(0), keys.get(1), "9223372036854775807");
         assertThat(links.stream().filter(link -> link.category()
-                == com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_COMPLEX).findFirst().orElseThrow()
+                == IngestSourceCategory.MYHOME_COMPLEX).findFirst().orElseThrow()
                 .sourceKey()).isEqualTo(Long.toString(first));
         assertThat(json.readTree(jdbc.queryForObject("SELECT evidence::text FROM admin_comparison_checks "
                 + "WHERE resource_id = ? AND target = ?", String.class, id, target))).isEqualTo(json.valueToTree(expected));
@@ -247,10 +339,8 @@ class QualityComparisonIntegrationTest {
     }
 
     private long catalogRow(String name, String deposit) {
-        var row = new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource(0,
-                new com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot(
-                        "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
-        row.markCollectedAt(java.time.Instant.parse("2026-10-15T00:00:00Z"));
+        var row = LhSourceViews.catalog(0, Instant.parse("2026-10-15T00:00:00Z"), new LhCatalogSourceSnapshot(
+                "서울 중구", "행복주택", name, "120", "26.12", "10", deposit, "100000"));
         return catalogRows.save(row).getId();
     }
 
@@ -265,7 +355,7 @@ class QualityComparisonIntegrationTest {
     void 공고의_수집_실행과_누락_횟수만_바뀌면_원천값_변경으로_보지_않는다() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
-        for (UUID record : java.util.List.of(first, second)) {
+        for (UUID record : List.of(first, second)) {
             entities.createNativeQuery("""
                     INSERT INTO source_collection_records
                     (id, version, source, started_at, finished_at, status, stored_row_count)
@@ -284,11 +374,11 @@ class QualityComparisonIntegrationTest {
                 FROM myhome_announcement_source_bundles WHERE pblanc_id = 'quality-metadata-test'
                 """).setParameter("record", first).executeUpdate();
         String query = "SELECT raw::text FROM ("
-                + com.toadzip.backend.admin.quality.repository.QualityComparisonRepository.SOURCE_ROWS
+                + IngestSourceRows.NORMALIZED_ROWS
                 + ") sources WHERE category = 'MYHOME_ANNOUNCEMENT' AND raw ->> 'pblanc_id' = 'quality-metadata-test'";
         Object before = entities.createNativeQuery(query).getSingleResult();
         String key = "21:quality-metadata-test1:1";
-        var category = com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_ANNOUNCEMENT;
+        var category = IngestSourceCategory.MYHOME_ANNOUNCEMENT;
         var checked = json.readTree(comparisons.fingerprint(category, key));
         assertThat(checked.size()).isEqualTo(1);
         assertThat(checked.get(0)).isEqualTo(json.readTree((String) before));
@@ -313,7 +403,7 @@ class QualityComparisonIntegrationTest {
                 "recruitmentType":"NEW","agencyCode":"LH","postedDate":"2026-09-01",
                 "applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-20",
                 "winnerAnnouncementDate":"2026-10-01","originalUrl":"https://example.com/notice",
-                "receptionPlace":{"name":"LH","method":"ONLINE","contact":"1600-1004"},
+                "receptionPlaces": [{"name":"LH","method":"ONLINE","contact":"1600-1004"}],
                 "supplyRow":{"sourceComplexName":"비교 단지","sourceHousingTypeName":"26A",
                 "supplyPnu":"1114010300100010000","supplyCategory":"NEW_SUPPLY","totalSupplyHouseholdCount":5}}
                 """.formatted(complexId);
@@ -331,7 +421,7 @@ class QualityComparisonIntegrationTest {
                 .andExpect(status().isOk());
         var row = supplyRows.findAll().stream().filter(item -> item.getAnnouncement().getId() == id)
                 .findFirst().orElseThrow();
-        var condition = supplyTargets.saveAndFlush(com.toadzip.backend.announcement.domain.SupplyTarget.create(
+        var condition = supplyTargets.saveAndFlush(SupplyTarget.create(
                 row, "일반", "1순위", 5, null, new BigDecimal("10000000"), new BigDecimal("100000"), null, null, 0));
         String target = "target:" + condition.getId();
         var before = json.readTree(mvc.perform(get(path).param("target", target).with(user("admin").roles("ADMIN")))
@@ -351,18 +441,36 @@ class QualityComparisonIntegrationTest {
     }
 
     private String source() throws Exception {
-        var source = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
-                new com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot(
+        var source = MyHomeSourceViews.complex(
+                new MyHomeComplexSourceSnapshot(
                         991421L, "한국토지주택공사", "11", "서울", "11140", "중구", "검토 원천 421",
                         "서울특별시 중구 세종대로 110", "1114010300100010000", "20200101", 120, "행복주택", "26A",
                         new BigDecimal("26.1234"), null, "아파트", "지역난방", "계단식", "미설치", 0,
                         null, null, null));
-        source.markCollectedAt(java.time.Instant.parse("2026-10-15T00:00:00Z"));
+        source = MyHomeSourceViews.collectedAt(source, Instant.parse("2026-10-15T00:00:00Z"));
         sourceRows.save(source);
         String response = mvc.perform(get("/api/admin/ingest/sources").param("category", "MYHOME_COMPLEX")
                 .param("keyword", "검토 원천 421").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readTree(response).at("/data/items/0/sourceKey").asText();
+    }
+
+    private JsonNode linkSource(long id, String target, JsonNode snapshot, String key) throws Exception {
+        return json.readTree(mvc.perform(post(root(id) + "/sources").with(user("admin").roles("ADMIN"))
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(linkBody(target, snapshot, "MYHOME_COMPLEX", key)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+    }
+
+    private String linkBody(String target, JsonNode snapshot, String category, String key) {
+        return json.writeValueAsString(Map.of("target", target, "snapshotToken",
+                snapshot.get("snapshotToken").asText(), "category", category, "sourceKey", key,
+                "evidenceNote", "원천 연결 검증"));
+    }
+
+    private List<String> actions(long id) {
+        return jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_type = 'COMPLEX' "
+                + "AND resource_id = ? AND action LIKE '%COMPARISON_SOURCE' ORDER BY id", String.class, id);
     }
 
     private JsonNode detail(long id, String target) throws Exception {

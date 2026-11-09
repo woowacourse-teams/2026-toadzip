@@ -21,6 +21,8 @@ type Props = {
   pdf: { url: string; name: string } | null
   extraction: ExtractionState
   onExtract: () => void
+  /** 진행 중인 추출을 끝낸다. 워커가 작업을 가져가지 않을 때 기다림을 멈추는 데 쓴다. */
+  onCancel: () => void
   parsed: ReturnType<typeof readExtraction>
   checks: AnnouncementCheck[]
   saved: SavedExtraction | null
@@ -46,7 +48,7 @@ export function PdfSource({ attachments, attachmentId, onAttachment, localPdf, o
 }
 
 /** PDF 보정 준비 단계의 오른쪽 패널. 왼쪽 PDF를 보며 제목 확인 → 추출 순서로 진행한다. */
-export function RequestPreparation({ announcementName, pdf, extraction, onExtract, parsed, checks, saved, samePdf, onLoadSaved }: Props) {
+export function RequestPreparation({ announcementName, pdf, extraction, onExtract, onCancel, parsed, checks, saved, samePdf, onLoadSaved }: Props) {
   return <div className={styles.preparation}>
     <header><h2 id="pdf-extraction-title">자동 추출</h2><p>PDF 영역에서 PDF를 고르거나 끌어다 놓고 순서대로 진행하세요. 추출한 값은 다음 화면에서 기존 값과 비교하고, 확인한 뒤에만 저장합니다.</p></header>
     <section aria-labelledby="pdf-title-check" className={styles.prepareStep}>
@@ -56,26 +58,36 @@ export function RequestPreparation({ announcementName, pdf, extraction, onExtrac
     </section>
     <section aria-labelledby="pdf-extract-step" className={styles.prepareStep}>
       <h3 id="pdf-extract-step">2. 추출</h3>
-      <ExtractionStatus extraction={extraction} hasPdf={Boolean(pdf)} parsed={parsed} checks={checks} onExtract={onExtract} samePdf={samePdf} />
+      <ExtractionStatus extraction={extraction} hasPdf={Boolean(pdf)} parsed={parsed} checks={checks} onExtract={onExtract} onCancel={onCancel} samePdf={samePdf} />
       {saved && pdf && extraction.status !== 'running' && extraction.status !== 'done' && <SavedResult saved={saved} samePdf={samePdf} onLoad={onLoadSaved} />}
     </section>
   </div>
 }
 
 /** 검토 단계와 같은 자리의 하단 버튼 줄. 추출이 끝나야 검토 버튼을 누를 수 있다. */
-export function PreparationFooter({ ready, onReview }: { ready: boolean; onReview: () => void }) {
+/** 하단 상태는 오른쪽 추출 상태(status)와 같은 기준으로 적는다. 추출 중이나 실패 뒤에 '추출 전'이라고 하지 않는다. */
+export function PreparationFooter({ ready, needsRepair = false, status, onReview }: { ready: boolean; needsRepair?: boolean; status: ExtractionState['status']; onReview: () => void }) {
+  const [title, detail] = ready ? ['추출을 마쳤습니다', '다음 화면에서 기존 값과 비교하고 반영할 값을 고릅니다.']
+    : needsRepair ? ['추출 결과를 수정해야 합니다', '표시된 오류를 확인하고 수정한 묶음을 검증하세요.']
+    : status === 'running' ? ['추출 중입니다', '보통 1~3분 걸립니다. 끝나면 검토할 수 있습니다.']
+    : status === 'failed' ? ['추출하지 못했습니다', '오른쪽 안내를 확인하고 다시 추출하세요.']
+    : ['추출 전입니다', 'PDF 제목을 확인하고 추출하면 검토할 수 있습니다.']
   return <footer className={`${styles.footer} ${styles.prepareFooter}`}>
-    <div><strong>{ready ? '추출을 마쳤습니다' : '추출 전입니다'}</strong><span>{ready ? '다음 화면에서 기존 값과 비교하고 반영할 값을 고릅니다.' : 'PDF 제목을 확인하고 추출하면 검토할 수 있습니다.'}</span></div>
+    <div><strong>{title}</strong><span>{detail}</span></div>
     <Button data-design-system disabled={!ready} onClick={onReview}>추출 결과 검토하기</Button>
   </footer>
 }
 
-function ExtractionStatus({ extraction, hasPdf, parsed, checks, onExtract, samePdf }: { extraction: ExtractionState; hasPdf: boolean; parsed: ReturnType<typeof readExtraction>; checks: AnnouncementCheck[]; onExtract: () => void; samePdf: boolean }) {
+function ExtractionStatus({ extraction, hasPdf, parsed, checks, onExtract, onCancel, samePdf }: { extraction: ExtractionState; hasPdf: boolean; parsed: ReturnType<typeof readExtraction>; checks: AnnouncementCheck[]; onExtract: () => void; onCancel: () => void; samePdf: boolean }) {
   const retry = <Button data-design-system className={styles.secondaryButton} onClick={onExtract}>다시 추출</Button>
   if (extraction.status === 'idle') return hasPdf
-    ? <div className={styles.extractionStart}><p className={styles.hint}>제목을 확인했으면 추출을 시작하세요. 보통 10~40초 걸립니다.</p><Button data-design-system className={samePdf ? styles.secondaryButton : undefined} onClick={onExtract}>PDF에서 값 추출</Button></div>
+    ? <div className={styles.extractionStart}><p className={styles.hint}>제목을 확인했으면 추출을 시작하세요. 보통 1~3분 걸립니다.</p><Button data-design-system className={samePdf ? styles.secondaryButton : undefined} onClick={onExtract}>PDF에서 값 추출</Button></div>
     : <p role="status" className={styles.hint}>PDF를 고르면 추출할 수 있습니다.</p>
-  if (extraction.status === 'running') return <Elapsed startedAt={extraction.startedAt} />
+  if (extraction.status === 'running') return <>
+    <Elapsed startedAt={extraction.startedAt} />
+    {extraction.notice && <p role="status" className={styles.hint}>{extraction.notice}</p>}
+    {extraction.jobId !== undefined && <Button data-design-system className={styles.secondaryButton} onClick={onCancel}>추출 취소</Button>}
+  </>
   if (extraction.status === 'failed') return <div role="alert" className={styles.error}><p>{extraction.message}</p>{retry}</div>
   if (!parsed.ok) return <div role="alert" className={styles.error}><p>{parsed.error}</p>{retry}</div>
   const { result } = extraction
@@ -111,7 +123,7 @@ function Elapsed({ startedAt }: { startedAt: number }) {
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000))
   return <div className={styles.extractionProgress}>
-    <p role="status">PDF에서 값을 추출하는 중… {seconds}초 · 보통 10~40초 걸립니다.</p>
+    <p role="status">PDF에서 값을 추출하는 중… {seconds}초 · 보통 1~3분 걸립니다.</p>
     <div role="progressbar" aria-label="추출 진행" className={styles.loadingBar}><span /></div>
   </div>
 }

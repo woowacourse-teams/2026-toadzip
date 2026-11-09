@@ -2,16 +2,15 @@ package com.toadzip.backend.ingest.mapping.controller;
 
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingFailureResponse;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import java.time.Instant;
 import java.util.List;
@@ -42,30 +41,14 @@ class MyHomeComplexMappingControllerTest {
     }
 
     @Test
-    void 저장된_마이홈_원천의_단지와_주택형_매핑을_실행한다() throws Exception {
-        when(mappingService.mapAll()).thenReturn(new MyHomeComplexMappingReport(
-                1, 0, 0, 2, 0, 0, 0, 0
-        ));
-
+    void 단지_매핑_실행은_지원_종료로_410을_반환하고_매핑하지_않는다() throws Exception {
         mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.createdComplexCount").value(1))
-                .andExpect(jsonPath("$.createdHousingTypeCount").value(2))
-                .andExpect(jsonPath("$.failedSourceRowCount").value(0));
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"))
+                .andExpect(jsonPath("$.message").value(
+                        "단지 정제는 지원을 종료했습니다. 단지·주택형은 공고와 PDF 보정으로만 바뀝니다."));
 
-        verify(mappingService).mapAll();
-    }
-
-    @Test
-    void 매핑이_이미_실행_중이면_409를_반환한다() throws Exception {
-        when(mappingService.mapAll()).thenThrow(new IngestAlreadyRunningException(
-                "마이홈 단지 매핑이 이미 실행 중입니다."
-        ));
-
-        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("INGEST_ALREADY_RUNNING"))
-                .andExpect(jsonPath("$.message").value("마이홈 단지 매핑이 이미 실행 중입니다."));
+        verifyNoInteractions(mappingService);
     }
 
     @Test

@@ -7,7 +7,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Apply;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.AttachmentChange;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Change;
@@ -25,8 +25,11 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
+import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import jakarta.validation.Validator;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,6 +38,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -49,21 +54,26 @@ import tools.jackson.databind.node.ObjectNode;
 @PreAuthorize("hasRole('ADMIN')")
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class AnnouncementJsonCorrectionService {
+    /** 접수처는 목록 전체를 한 항목으로 바꾼다. 화면이 지금 접수처에 고른 PDF 값을 합친 목록을 보낸다. */
+    private static final String RECEPTION_PLACES = "receptionPlaces";
     private static final Set<String> FIELDS = Set.of("name", "rentalType", "recruitmentType", "agencyCode",
             "postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate", "originalUrl",
-            "receptionPlace.name", "receptionPlace.method", "receptionPlace.address", "receptionPlace.contact",
-            "receptionPlace.url");
+            RECEPTION_PLACES);
     private final AnnouncementRepository announcements;
     private final AnnouncementScheduleRepository schedules;
     private final AnnouncementAttachmentRepository attachments;
     private final AdminDataChangeRepository changes;
     private final AdminAnnouncementManagementService management;
     private final SupplyCorrectionService supplies;
+    private final AnnouncementHousingTypeWriter housingTypes;
     private final AdminAnnouncementImportJson importJson;
     private final MyHomeAnnouncementMappingFailureStore mappingFailures;
     private final LhAnnouncementEnrichmentFailureStore enrichmentFailures;
     private final ObjectMapper json;
     private final Validator validator;
+    private final NotificationOutboxRepository notificationOutbox;
+    private final SupplyRowRepository supplyRows;
+    private final HousingComplexRepository complexes;
 
     public Workspace workspace(long id) {
         find(id);
@@ -82,14 +92,20 @@ public class AnnouncementJsonCorrectionService {
     public Workspace apply(long id, Apply apply, String actor) {
         var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
         var request = apply.request();
+        housingTypes.lockComplexes(request.correction().rows(), request.housingTypeValues());
         var plan = prepare(id, request);
         if (!plan.preview().confirmationToken().equals(apply.confirmationToken())) {
             throw new AdminDataConflictException("변경안이나 연결 후보가 달라졌습니다. 다시 미리보기 하세요.");
         }
         SupplyCorrection.Apply supplyApply = plan.preview().supply() == null ? null
                 : new SupplyCorrection.Apply(request.correction(), plan.preview().supply().confirmationToken());
+        Map<String, SupplyRow> written = Map.of();
         if (supplyApply != null) {
-            supplies.writeWithoutHistory(id, supplyApply, plan.preview().supply(), actor);
+            written = supplies.writeWithoutHistory(id, supplyApply, plan.preview().supply(), actor);
+        }
+        // 값이 같은 주택형도 반영한 공고 게시 시각을 남겨야 더 이른 공고가 나중에 값을 되돌리지 않는다.
+        if (!request.housingTypeValues().isEmpty()) {
+            housingTypes.apply(announcement, plan.metadata().postedDate(), plan.planned(), request.housingTypeValues(), written, actor);
         }
         if (!plan.preview().fields().isEmpty()) {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
@@ -97,6 +113,9 @@ public class AnnouncementJsonCorrectionService {
         announcement.recordAdminSupplyChange();
         writeEvents(announcement, plan.preview().schedules());
         writeAttachments(announcement, plan.preview().attachments());
+        if (plan.preview().publishes()) {
+            publish(announcement);
+        }
         announcements.flush();
         var after = workspace(id);
         // PDF 보정 한 번은 공급행·기본정보·일정 변경을 이력 한 건으로 남긴다.
@@ -105,6 +124,7 @@ public class AnnouncementJsonCorrectionService {
         audit.put("events", after.events());
         audit.put("source", request.document().source());
         audit.put("fields", request.fields());
+        if (!plan.preview().housingTypes().isEmpty()) { audit.put("housingTypes", plan.preview().housingTypes()); }
         var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_FROM_PDF", actor,
                 json.writeValueAsString(Map.of("detail", plan.before().detail(), "events", plan.before().events(),
                         "rows", plan.before().supply().rows())), json.writeValueAsString(audit)));
@@ -132,8 +152,7 @@ public class AnnouncementJsonCorrectionService {
         var metadata = metadata(before.detail().data(), request, fieldChanges);
         find(id).validateAdminRevision(incoming(find(id), metadata));
         SupplyCorrection.Preview supply = null;
-        if (!request.correction().newGroups().isEmpty()
-                || !hash(before.supply().rows()).equals(hash(request.correction().rows()))) {
+        if (!hash(before.supply().rows()).equals(hash(withLinks(before.supply().rows(), request.correction().rows())))) {
             supply = supplies.preview(id, before.supply(), request.correction());
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {
@@ -141,11 +160,25 @@ public class AnnouncementJsonCorrectionService {
         }
         var eventChanges = eventChanges(id, request);
         var attachmentChanges = attachmentChanges(id, request);
-        if (fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty() && attachmentChanges.isEmpty()) {
+        var warnings = new ArrayList<String>();
+        var planned = supply == null ? before.supply().rows() : supply.after();
+        var typeWarnings = new ArrayList<String>();
+        // 게시일도 이 저장에서 고칠 수 있으므로 고친 뒤의 게시일로 공고 순서를 판단한다.
+        var postedDate = metadata.postedDate();
+        var typeChanges = housingTypes.plan(postedDate, planned, request.housingTypeValues(), typeWarnings);
+        boolean publishes = request.publish() && !find(id).isPublished();
+        if (publishes) {
+            verifyLinkedToComplex(planned);
+        }
+        if (!publishes && fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty() && attachmentChanges.isEmpty()
+                && typeChanges.isEmpty() && !housingTypes.advancesObservation(postedDate, planned, request.housingTypeValues())) {
             throw new IllegalArgumentException("적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.");
         }
-        var warnings = new ArrayList<String>();
-        warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
+        if (find(id).isPublished()) {
+            warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
+        } else {
+            warnings.add(unconfirmedWarning(publishes));
+        }
         if (before.detail().scheduleReviewed()) {
             warnings.add("단지·순위별로 확인된 접수 일정은 유지합니다. JSON의 일반 일정은 해당 확인 기록을 대신하지 않습니다.");
         }
@@ -154,9 +187,19 @@ public class AnnouncementJsonCorrectionService {
         }
         String supplyToken = "";
         if (supply != null) { supplyToken = supply.confirmationToken(); }
-        String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken));
-        return new Prepared(before, metadata, new Preview(token, fieldChanges, supply,
-                eventChanges, attachmentChanges, warnings));
+        String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken, typeChanges,
+                publishes));
+        return new Prepared(before, metadata, planned, new Preview(token, fieldChanges, supply,
+                eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings, publishes));
+    }
+
+    /**
+     * 함께 모집하는 주택형을 생략하거나 순서만 다르게 준 행은 저장된 연결과 같으므로 공급행을 바꾼 요청으로 보지 않는다.
+     */
+    private static List<SupplyCorrection.Row> withLinks(List<SupplyCorrection.Row> before, List<SupplyCorrection.Row> requested) {
+        var byId = before.stream().collect(Collectors.toMap(SupplyCorrection.Row::id, Function.identity()));
+        return requested.stream().map(row -> row.withLinksFrom(row.id() == null ? null : byId.get(row.id())))
+                .toList();
     }
 
     private void validateDocument(Request request) {
@@ -190,10 +233,11 @@ public class AnnouncementJsonCorrectionService {
                 throw new IllegalArgumentException("지원하지 않거나 중복된 기본정보 항목입니다: " + field);
             }
             String inputPath = "announcement." + field;
-            if (field.startsWith("receptionPlace.")) { inputPath = field; }
+            if (field.equals(RECEPTION_PLACES)) { inputPath = field; }
             if (field.equals("originalUrl")) { inputPath = "source.originalUrl"; }
             var value = at(document, inputPath);
-            if (value.isMissingNode() || value.isNull() || !value.isValueNode() || unresolved(request, inputPath)) {
+            boolean shaped = field.equals(RECEPTION_PLACES) ? value.isArray() : value.isValueNode();
+            if (value.isMissingNode() || value.isNull() || !shaped || unresolved(request, inputPath)) {
                 throw new IllegalArgumentException("미확인 항목은 적용할 수 없습니다: " + inputPath);
             }
             var previous = at(after, field);
@@ -290,15 +334,46 @@ public class AnnouncementJsonCorrectionService {
     }
 
     private Announcement incoming(Announcement stored, AdminAnnouncementUpdateRequest request) {
-        ReceptionPlace reception = null;
-        if (request.receptionPlace() != null) {
-            var place = request.receptionPlace();
-            reception = ReceptionPlace.create(place.name(), place.method(), place.address(), place.contact(), place.url());
-        }
         return Announcement.create(stored.getSourceAnnouncementIdentifier(), null, null, request.name(),
                 AnnouncementPublicationType.ORIGINAL, request.rentalType(), request.recruitmentType(), request.agencyCode(),
                 request.postedDate(), request.applicationStartDate(), request.applicationEndDate(),
-                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, reception);
+                request.winnerAnnouncementDate(), request.originalUrl(), null, 0, request.places());
+    }
+
+    private String unconfirmedWarning(boolean publishes) {
+        String kept = "JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. ";
+        if (publishes) {
+            return kept + "미확정 공고를 공개합니다. 적용하면 사용자에게 보이고 신규 공고 알림이 나갑니다.";
+        }
+        return kept + "미확정 공고입니다. 공개를 요청하지 않았으므로 적용해도 사용자에게 보이지 않습니다.";
+    }
+
+    /**
+     * 공개는 관리자가 단지를 확인했다는 뜻이므로, 남는 공급행 중 삭제되지 않은 단지에 연결된 행이 있어야 한다.
+     * 저장한 뒤의 같은 판단은 {@link #linkedToComplex}가 하므로 규칙을 바꾸면 둘을 함께 고친다.
+     */
+    private void verifyLinkedToComplex(List<SupplyCorrection.Row> planned) {
+        var complexIds = planned.stream().filter(row -> !row.excluded() && row.housingComplexId() != null)
+                .map(SupplyCorrection.Row::housingComplexId).collect(Collectors.toSet());
+        boolean linked = complexes.findAllById(complexIds).stream().anyMatch(complex -> !complex.isAdminDeleted());
+        if (!linked) {
+            throw new IllegalArgumentException("공개하려면 제외하지 않은 공급행을 삭제되지 않은 단지에 연결해야 합니다.");
+        }
+    }
+
+    /** 공개와 새 공고 알림 적재는 여기서만 함께 일어난다. 적용한 결과로 다시 확인해 미리보기와 어긋나면 저장하지 않는다. */
+    private void publish(Announcement announcement) {
+        if (!linkedToComplex(announcement)) {
+            throw new AdminDataConflictException("단지 연결이 미리보기와 달라졌습니다. 다시 미리보기 하세요.");
+        }
+        announcement.publish();
+        notificationOutbox.appendNewAnnouncement(announcement);
+    }
+
+    /** 저장된 공급행으로 하는 {@link #verifyLinkedToComplex}와 같은 판단이다. */
+    private boolean linkedToComplex(Announcement announcement) {
+        return supplyRows.findAllByAnnouncement(announcement).stream().anyMatch(row -> !row.isAdminExcluded()
+                && row.getHousingComplex() != null && !row.getHousingComplex().isAdminDeleted());
     }
 
     private void writeEvents(Announcement announcement, List<EventChange> planned) {
@@ -352,5 +427,6 @@ public class AnnouncementJsonCorrectionService {
     }
 
     private String hash(Object value) { return importJson.hash(json.writeValueAsString(value)); }
-    private record Prepared(Workspace before, AdminAnnouncementUpdateRequest metadata, Preview preview) { }
+    private record Prepared(Workspace before, AdminAnnouncementUpdateRequest metadata,
+            List<SupplyCorrection.Row> planned, Preview preview) { }
 }

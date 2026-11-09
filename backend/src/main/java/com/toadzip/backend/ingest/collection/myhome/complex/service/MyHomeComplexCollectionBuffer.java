@@ -4,11 +4,13 @@ import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplex
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.paging.domain.PageBuffer;
 import com.toadzip.backend.ingest.collection.paging.domain.PagedCollectionBuffer;
 import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import java.time.Instant;
 
-public final class MyHomeComplexCollectionBuffer {
+public final class MyHomeComplexCollectionBuffer
+        implements PageBuffer<SourcePage<MyHomeComplexSourceSnapshot>, MyHomeComplexCollectedResponse> {
 
     private final MyHomeComplexCollectionRequest request;
     private final MyHomeComplexRowValidator validator;
@@ -20,14 +22,22 @@ public final class MyHomeComplexCollectionBuffer {
         validator = new MyHomeComplexRowValidator(request.provinceCode(), request.districtCode());
     }
 
+    @Override
     public void add(SourcePage<MyHomeComplexSourceSnapshot> page) {
         pages.add(page, validator::validate);
     }
 
+    @Override
+    public int totalCount() {
+        return pages.totalCount();
+    }
+
+    @Override
     public boolean isComplete() {
         return pages.isComplete();
     }
 
+    @Override
     public MyHomeComplexCollectedResponse finish(Instant collectedAt) {
         SourcePage<MyHomeComplexSourceSnapshot> page = pages.finish();
         var response = new MyHomeComplexCollectedResponse(page.totalCount(), collectedAt, page.rows());

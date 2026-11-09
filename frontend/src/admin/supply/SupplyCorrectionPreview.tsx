@@ -1,9 +1,9 @@
 import { display } from '../management/fields'
-import type { CorrectionRow, CorrectionTarget, SupplyPreview } from './supplyCorrectionApi'
+import type { CorrectionRow, CorrectionTarget, LinkedHousingType, NewHousingType, SupplyPreview } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
 
 const rowLabels: Partial<Record<keyof CorrectionRow, string>> = {
-  housingComplexId: '연결 단지 ID', housingComplexName: '연결 단지', housingTypeId: '공통 주택형 ID', newHousingType: '새 공통 주택형',
+  housingComplexId: '연결 단지 ID', housingComplexName: '연결 단지', housingTypeId: '공통 주택형 ID', newHousingType: '새 공통 주택형', linkedHousingTypes: '함께 모집하는 주택형',
   excluded: '공개 제외', displayOrder: '표시 순서', complexName: '원천 단지명', typeName: '이 공고의 주택형 표기',
   pnu: 'PNU', moveInMonth: '입주 예정 연월', category: '공급 구분', householdCount: '금회 모집수 (세대)',
   areaOverride: '공고별 면적 보호', exclusiveArea: '전용면적 (㎡)', supplyArea: '공급면적 (㎡)',
@@ -13,17 +13,18 @@ const targetLabels: Partial<Record<keyof CorrectionTarget, string>> = {
   excluded: '공개 제외', target: '공급대상', supplyRank: '공급순위', householdCount: '모집수 (세대)',
   reserveCount: '예비자수 (명)', deposit: '보증금 (원)', rent: '월 임대료 (원)', convertedDeposit: '전환 보증금 (원)', condition: '신청조건',
 }
+function newTypeText(type: NewHousingType) {
+  return `${type.name} · 전용 ${type.exclusiveArea}㎡ · 공급 ${type.supplyArea ?? '미확인'}㎡`
+}
 function text(value: unknown) {
   if (typeof value === 'boolean') return value ? '예' : '아니오'
-  if (value && typeof value === 'object' && 'name' in value) {
-    const type = value as { name: string; exclusiveArea: number; supplyArea: number | null }
-    return `${type.name} · 전용 ${type.exclusiveArea}㎡ · 공급 ${type.supplyArea ?? '미확인'}㎡`
-  }
+  if (Array.isArray(value)) return value.length ? (value as LinkedHousingType[]).map(link => link.newHousingType ? `새 주택형 ${newTypeText(link.newHousingType)}` : `주택형 #${link.housingTypeId}`).join(', ') : '대표만'
+  if (value && typeof value === 'object' && 'name' in value) return newTypeText(value as NewHousingType)
   return display(value as string | number | null | undefined)
 }
 // 새로 추가한 행·조건은 실제로 입력한 값만 보여 준다. 기본값(미확인·아니오)과 대상 이름에 이미 나온 항목은 변경으로 세지 않는다.
 function newValueWorthShowing(key: string, value: unknown, shownInScope: string[]) {
-  return !shownInScope.includes(key) && value !== null && value !== undefined && value !== '' && value !== false
+  return !shownInScope.includes(key) && value !== null && value !== undefined && value !== '' && value !== false && !(Array.isArray(value) && !value.length)
 }
 function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labels = rowLabels) {
   const changes: { scope: string; field: string; before: string; after: string }[] = []
@@ -36,7 +37,10 @@ function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labe
     if (!previous) changes.push({ scope, field: '공급행', before: '없음', after: '새 행 추가' })
     for (const key of Object.keys(labels) as (keyof CorrectionRow)[]) {
       if (!previous && !newValueWorthShowing(key, next[key], ['complexName', 'typeName', 'displayOrder'])) continue
-      if (JSON.stringify(previous?.[key]) !== JSON.stringify(next[key])) changes.push({ scope, field: labels[key]!, before: previous ? text(previous[key]) : '없음', after: text(next[key]) })
+      // 함께 모집하는 주택형은 생략과 빈 목록이 모두 대표만 연결한 상태다.
+      const was = key === 'linkedHousingTypes' ? previous && (previous[key] ?? []) : previous?.[key]
+      const now = key === 'linkedHousingTypes' ? next[key] ?? [] : next[key]
+      if (JSON.stringify(was) !== JSON.stringify(now)) changes.push({ scope, field: labels[key]!, before: previous ? text(was) : '없음', after: text(now) })
     }
     for (const target of next.targets) {
       const old = previous?.targets.find(item => item.id !== null && item.id === target.id)

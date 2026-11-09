@@ -20,7 +20,7 @@ public class Address {
     @Column(nullable = false)
     private String roadAddress;
 
-    @Column(nullable = false)
+    @Column
     private String pnu;
 
     @Column(nullable = false)
@@ -48,7 +48,7 @@ public class Address {
             BigDecimal longitude
     ) {
         validateNotBlank(roadAddress, "도로명주소");
-        validateNotBlank(pnu, "PNU");
+        validateNotBlankIfPresent(pnu, "PNU");
         validateNotBlank(legalDongCode, "법정동코드");
         validateNotBlank(provinceCode, "시·도 코드");
         validateNotBlank(cityCountyDistrictCode, "시·군·구 코드");
@@ -88,7 +88,7 @@ public class Address {
             return false;
         }
         return roadAddress.equals(other.roadAddress)
-                && pnu.equals(other.pnu)
+                && Objects.equals(pnu, other.pnu)
                 && legalDongCode.equals(other.legalDongCode)
                 && provinceCode.equals(other.provinceCode)
                 && cityCountyDistrictCode.equals(other.cityCountyDistrictCode)
@@ -99,6 +99,13 @@ public class Address {
     private void validateNotBlank(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + "은 필수다.");
+        }
+    }
+
+    /** PNU는 공고문으로 새로 만든 단지처럼 지번을 모르면 비어 있을 수 있다. 값이 있으면 빈 문자열은 받지 않는다. */
+    private void validateNotBlankIfPresent(String value, String fieldName) {
+        if (value != null && value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + "은 비어 있을 수 없다.");
         }
     }
 

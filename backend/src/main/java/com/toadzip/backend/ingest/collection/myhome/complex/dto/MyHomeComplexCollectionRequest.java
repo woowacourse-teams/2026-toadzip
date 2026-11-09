@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.dto;
 
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
-import com.toadzip.backend.ingest.collection.history.dto.SourceCollectionRequest;
+import com.toadzip.backend.ingest.collection.paging.dto.PagedSourceRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -15,7 +15,7 @@ public record MyHomeComplexCollectionRequest(
         int pageSize,
         int maxPages,
         Instant startedAt
-) implements SourceCollectionRequest {
+) implements PagedSourceRequest {
     public MyHomeComplexCollectionRequest {
         if (provinceCode == null || !provinceCode.matches("[0-9]{2}")
                 || districtCode == null || !districtCode.matches("[0-9]{3}")) {
@@ -40,5 +40,15 @@ public record MyHomeComplexCollectionRequest(
                 "numOfRows", Integer.toString(pageSize),
                 "maxPages", Integer.toString(maxPages)
         );
+    }
+
+    @Override
+    public String pageDescription(int page) {
+        return resolvedFailurePrefix() + page + "&numOfRows=" + pageSize;
+    }
+
+    @Override
+    public String resolvedFailurePrefix() {
+        return "brtcCode=" + provinceCode + "&signguCode=" + districtCode + "&pageNo=";
     }
 }

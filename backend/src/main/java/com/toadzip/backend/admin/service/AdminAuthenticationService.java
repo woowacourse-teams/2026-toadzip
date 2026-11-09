@@ -23,8 +23,13 @@ public class AdminAuthenticationService {
     private final PasswordEncoder passwordEncoder;
 
     public Authentication authenticate(String loginIdentifier, String password) {
-        Authentication authentication = authenticateCredentials(loginIdentifier, password);
-        return authentication;
+        try {
+            return authenticationManager.authenticate(
+                    UsernamePasswordAuthenticationToken.unauthenticated(loginIdentifier, password)
+            );
+        } catch (BadCredentialsException | UsernameNotFoundException exception) {
+            throw new InvalidAdminCredentialsException();
+        }
     }
 
     @Transactional
@@ -42,16 +47,6 @@ public class AdminAuthenticationService {
                 LocalDateTime.now()
         );
         adminAccountRepository.save(adminAccount);
-    }
-
-    private Authentication authenticateCredentials(String loginIdentifier, String password) {
-        try {
-            return authenticationManager.authenticate(
-                    UsernamePasswordAuthenticationToken.unauthenticated(loginIdentifier, password)
-            );
-        } catch (BadCredentialsException | UsernameNotFoundException exception) {
-            throw new InvalidAdminCredentialsException();
-        }
     }
 
     private void validateBootstrapProperties(AdminBootstrapProperties properties) {

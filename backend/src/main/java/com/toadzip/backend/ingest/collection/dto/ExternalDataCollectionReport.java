@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.collection.dto;
 
+import com.toadzip.backend.ingest.domain.IngestStepReport;
+
 public record ExternalDataCollectionReport(
         String operation,
         int storedRowCount,
@@ -9,7 +11,7 @@ public record ExternalDataCollectionReport(
         int rateLimitedRequestCount,
         int successfulRequestCount,
         int selectionFailedRequestCount
-) {
+) implements IngestStepReport {
 
     public ExternalDataCollectionReport(String operation, int storedRowCount, int failedRequestCount,
             int externalApiCallCount, int skippedRequestCount, int rateLimitedRequestCount,
@@ -74,5 +76,15 @@ public record ExternalDataCollectionReport(
                 successfulRequestCount + other.successfulRequestCount,
                 selectionFailedRequestCount + other.selectionFailedRequestCount
         );
+    }
+
+    @Override
+    public int stepFailureCount() {
+        return failedRequestCount;
+    }
+
+    @Override
+    public int stepRateLimitedFailureCount() {
+        return rateLimitedRequestCount;
     }
 }

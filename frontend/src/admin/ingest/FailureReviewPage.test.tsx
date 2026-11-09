@@ -63,34 +63,42 @@ it('정확한 대상 연결이 없는 오류를 미등록이나 미노출로 단
   expect(screen.queryByRole('link',{name:'단지 확인·수정'})).not.toBeInTheDocument()
 })
 
+it('단지 문제에는 종료된 재정제 버튼과 안내를 표시하지 않는다', async () => {
+  render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
+  await screen.findByText('총 41건')
+  expect(screen.queryByRole('button', { name: '단지 정제 다시 실행' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/지원 종료:/)).not.toBeInTheDocument()
+  expect(startDataPipeline).not.toHaveBeenCalled()
+})
+
 it('재처리가 끝나면 오류 목록을 다시 조회하고 해결 기록을 별도로 볼 수 있다', async () => {
-  const running={status:'RUNNING',executionId:'run-7',type:'COMPLEX_REFINEMENT'} as Awaited<ReturnType<typeof startDataPipeline>>
+  const running={status:'RUNNING',executionId:'run-7',type:'ANNOUNCEMENT_REFINEMENT'} as Awaited<ReturnType<typeof startDataPipeline>>
   vi.mocked(startDataPipeline).mockResolvedValue(running)
   vi.mocked(getDataPipelineStatus).mockResolvedValueOnce({status:'IDLE'} as Awaited<ReturnType<typeof getDataPipelineStatus>>)
     .mockResolvedValue({...running,status:'COMPLETED'})
-  render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button',{name:'단지 정제 다시 실행'}))
+  render(<MemoryRouter initialEntries={['/?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'공고 정제 다시 실행'}))
   expect(startDataPipeline).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button',{name:'전체 단지 정제 실행'}))
-  await waitFor(() => expect(startDataPipeline).toHaveBeenCalledWith('COMPLEX_REFINEMENT'))
+  fireEvent.click(screen.getByRole('button',{name:'전체 공고 정제 실행'}))
+  await waitFor(() => expect(startDataPipeline).toHaveBeenCalledWith('ANNOUNCEMENT_REFINEMENT'))
   await waitFor(() => expect(reviews.mock.calls.length).toBeGreaterThan(1),{timeout:3000})
   fireEvent.change(screen.getByRole('combobox',{name:'처리 상태'}),{target:{value:'RESOLVED'}})
   await waitFor(() => expect(reviews.mock.lastCall?.[2]).toBe('RESOLVED'))
 })
 
 it('새 실행으로 상태가 바뀌면 이전 실행의 완료로 표시하지 않고 최신 실행임을 알린다', async () => {
-  const running={status:'RUNNING',executionId:'run-7',type:'COMPLEX_REFINEMENT'} as Awaited<ReturnType<typeof startDataPipeline>>
+  const running={status:'RUNNING',executionId:'run-7',type:'ANNOUNCEMENT_REFINEMENT'} as Awaited<ReturnType<typeof startDataPipeline>>
   vi.mocked(startDataPipeline).mockResolvedValue(running)
   vi.mocked(getDataPipelineStatus).mockResolvedValueOnce({status:'IDLE'} as Awaited<ReturnType<typeof getDataPipelineStatus>>)
     .mockResolvedValue({...running,executionId:'run-8'})
-  render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button',{name:'단지 정제 다시 실행'}))
+  render(<MemoryRouter initialEntries={['/?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'공고 정제 다시 실행'}))
   expect(startDataPipeline).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button',{name:'전체 단지 정제 실행'}))
+  fireEvent.click(screen.getByRole('button',{name:'전체 공고 정제 실행'}))
   expect(await screen.findByText('실행 기록이 바뀌어 최신 정제 상태를 표시합니다.', {}, {timeout:3000})).toBeVisible()
-  expect(screen.queryByText(/단지 정제: 선택된 작업 완료/)).not.toBeInTheDocument()
-  expect(getDataPipelineStatus).toHaveBeenLastCalledWith('COMPLEX_REFINEMENT')
-  expect(screen.getByRole('button',{name:'단지 정제 다시 실행'})).toBeDisabled()
+  expect(screen.queryByText(/공고 정제: 선택된 작업 완료/)).not.toBeInTheDocument()
+  expect(getDataPipelineStatus).toHaveBeenLastCalledWith('ANNOUNCEMENT_REFINEMENT')
+  expect(screen.getByRole('button',{name:'공고 정제 다시 실행'})).toBeDisabled()
 })
 
 it.each([['COMPLETED','완료'],['FAILED','실패']] as const)(
@@ -99,18 +107,18 @@ it.each([['COMPLETED','완료'],['FAILED','실패']] as const)(
     const started = deferred<Awaited<ReturnType<typeof startDataPipeline>>>()
     vi.mocked(getDataPipelineStatus).mockReturnValueOnce(initial.promise)
     vi.mocked(startDataPipeline).mockReturnValueOnce(started.promise)
-    render(<MemoryRouter><FailureReviewPage /></MemoryRouter>)
-    await waitFor(() => expect(getDataPipelineStatus).toHaveBeenCalledWith('COMPLEX_REFINEMENT'))
-    fireEvent.click(screen.getByRole('button',{name:'단지 정제 다시 실행'}))
-    fireEvent.click(screen.getByRole('button',{name:'전체 단지 정제 실행'}))
-    expect(startDataPipeline).toHaveBeenCalledWith('COMPLEX_REFINEMENT')
-    expect(screen.getByRole('button',{name:'단지 정제 다시 실행'})).toBeDisabled()
-    await act(() => started.resolve({ status, executionId:'new-run', type:'COMPLEX_REFINEMENT' } as Awaited<ReturnType<typeof startDataPipeline>>))
-    const message = `단지 정제: ${label} · 처리 결과에 따라 오류 목록을 갱신합니다.`
+    render(<MemoryRouter initialEntries={['/?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    await waitFor(() => expect(getDataPipelineStatus).toHaveBeenCalledWith('ANNOUNCEMENT_REFINEMENT'))
+    fireEvent.click(screen.getByRole('button',{name:'공고 정제 다시 실행'}))
+    fireEvent.click(screen.getByRole('button',{name:'전체 공고 정제 실행'}))
+    expect(startDataPipeline).toHaveBeenCalledWith('ANNOUNCEMENT_REFINEMENT')
+    expect(screen.getByRole('button',{name:'공고 정제 다시 실행'})).toBeDisabled()
+    await act(() => started.resolve({ status, executionId:'new-run', type:'ANNOUNCEMENT_REFINEMENT' } as Awaited<ReturnType<typeof startDataPipeline>>))
+    const message = `공고 정제: ${label} · 처리 결과에 따라 오류 목록을 갱신합니다.`
     expect(screen.getByText(message)).toBeVisible()
     await act(() => initial.resolve({status:'IDLE'} as Awaited<ReturnType<typeof getDataPipelineStatus>>))
     expect(screen.getByText(message)).toBeVisible()
-    expect(screen.getByRole('button',{name:'단지 정제 다시 실행'})).toBeEnabled()
+    expect(screen.getByRole('button',{name:'공고 정제 다시 실행'})).toBeEnabled()
   },
 )
 

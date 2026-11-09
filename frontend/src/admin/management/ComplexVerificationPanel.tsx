@@ -164,7 +164,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
         <p className={styles.hint}>직접 확인한 항목만 선택하세요. 원천과의 일치 여부는 참고용입니다.</p>
         {!reviewOnly ? <details className={styles.references}><summary>참고 자료 <span>원천 {sourceIds.length}개 · 공고 {announcements.length}개</span></summary>
           <p className={styles.hint}>세대수는 단지 전체·공급유형·모집 범위를 구분해 확인하세요. 여러 원천의 세대수는 합산하지 않습니다.</p>
-          <p className={styles.hint}>현재 주소 식별정보 (PNU) {value.currentValues.ADDRESS.pnu}</p>
+          <p className={styles.hint}>현재 주소 식별정보 (PNU) {value.currentValues.ADDRESS.pnu ?? '미확인'}</p>
           <ul>{sourceIds.map(identifier => {
             const rows = value.sources.filter(row => row.sourceIdentifier === identifier)
             const times = [...new Set(rows.map(row => row.collectedAt).filter((time): time is string => time !== null))]

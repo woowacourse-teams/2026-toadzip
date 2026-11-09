@@ -8,9 +8,10 @@ import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
 import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
-import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type NewSupplyGroup, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { applySupply, blankRow, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import { mergeInto, possibleLhDuplicates, unattachedLhNotice, unattachedLhRows } from './lhSupplyOwnership'
 import { SupplyMergePanel } from './SupplyMergePanel'
+import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
 import styles from './SupplyCorrection.module.css'
 
 // 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
@@ -29,14 +30,13 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [uncertain, setUncertain] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [newGroups, setNewGroups] = useState<NewSupplyGroup[]>([])
   const [deleted, setDeleted] = useState<string[]>([])
   // 합친 직접 추가 행 → 합치기 전 펼침 행. 합치기를 취소하면 펼침 행을 되돌린다.
   const [merges, setMerges] = useState<Record<string, CorrectionRow>>({})
   const [reviewDirty, setReviewDirty] = useState(false)
   const [appliedWarnings, setAppliedWarnings] = useState<string[]>([])
   const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence; changed: string[] } | null>(null)
-  const rowsDirty = workspace !== null && (JSON.stringify(rows) !== JSON.stringify(workspace.rows) || newGroups.length > 0 || conflicts.length > 0 || deleted.length > 0)
+  const rowsDirty = workspace !== null && (JSON.stringify(rows) !== JSON.stringify(workspace.rows) || conflicts.length > 0 || deleted.length > 0)
   const blockerId = useId()
   const previewBlocker = stale ? '저장하는 사이 등록값이나 원천이 바뀌어 저장하지 않았습니다. 내 입력은 그대로 있으니 ‘입력을 유지하고 최신값 비교’로 맞춘 뒤 다시 저장하세요.'
     : conflicts.length > 0 ? `겹치는 변경 ${conflicts.length}개에서 사용할 값을 먼저 고르세요.`
@@ -53,7 +53,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
         const pending = pendingApply(id)
         if (pending) {
           setPreview(pending); setRows(pending.input.rows); setReason(pending.input.reason); setUrl(pending.input.sourceUrl)
-          setPage(pending.input.sourcePage ?? ''); setNewGroups(pending.input.newGroups ?? []); setDeleted(pending.input.deletedRowKeys ?? []); setUncertain(true)
+          setPage(pending.input.sourcePage ?? ''); setDeleted(pending.input.deletedRowKeys ?? []); setUncertain(true)
           setNotice('응답을 확인하지 못한 적용 작업이 있습니다. 같은 작업으로 결과를 먼저 확인하세요.')
         }
       }
@@ -66,10 +66,9 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     setBusy(true); setError(''); setNotice('')
     // 삭제 예정 행은 요청 행에서 빼고 deletedRowKeys로 보낸다. 서버는 관리자가 추가한 행만 지운다.
     const input: SupplyCorrectionInput = { operationId: crypto.randomUUID(), snapshotToken: workspace.snapshotToken, reason: reason.trim(), sourceUrl: url.trim(), sourcePage: page.trim() || null,
-      rows: rows.filter(row => !deleted.includes(row.key)), newGroups, ...(deleted.length ? { deletedRowKeys: deleted } : {}) }
+      rows: rows.filter(row => !deleted.includes(row.key)), ...(deleted.length ? { deletedRowKeys: deleted } : {}) }
     try {
       const result = await previewSupply(id, input)
-      if (newGroups.length && JSON.stringify(result.newGroups) !== JSON.stringify(newGroups)) throw new Error('서버가 공통 모집 묶음을 확인하지 못했습니다. 지원하는 서버로 갱신한 뒤 다시 저장하세요.')
       const checked = { input, result }; setPreview(checked); setStale(false)
       await apply(checked)
     }
@@ -87,7 +86,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
       forgetApply(id)
       const changed = changedReviewTargets(preview.result.before, result.workspace.rows)
       setWorkspace(result.workspace); setRows(result.workspace.rows); setAppliedWarnings(preview.result.warnings); setPreview(null)
-      setApplied({ changeId: result.changeId, changed, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } }); setNewGroups([]); setDeleted([]); setMerges({})
+      setApplied({ changeId: result.changeId, changed, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } }); setDeleted([]); setMerges({})
       setReason(''); setPage(''); setStale(false); setUncertain(false); onChanged()
       setNotice(result.alreadyApplied ? '이미 적용한 작업입니다. 현재 저장값을 불러왔습니다.' : '공급정보를 저장했습니다.')
     } catch (cause) {
@@ -113,10 +112,11 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   }
   if (!workspace) return <div>{error ? <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></p> : <p role="status">공급정보와 원천을 불러오는 중…</p>}</div>
   if (pdfOpen) return <PdfCorrectionWorkspace id={id} supplyDraft={{ rows, onCancel: () => setPdfOpen(false), onFill: input => {
-    edit(() => input.rows); setNewGroups(input.newGroups ?? []); setReason(input.reason); setUrl(input.sourceUrl); setPage(input.sourcePage ?? '')
+    // PDF 보정이 같은 주택형의 옛 공급행을 지우기로 한 행은 삭제 예정으로 둔다.
+    edit(() => [...input.rows, ...rows.filter(row => input.deletedRowKeys?.includes(row.key))]); setDeleted(current => [...new Set([...current, ...input.deletedRowKeys ?? []])]); setReason(input.reason); setUrl(input.sourceUrl); setPage(input.sourcePage ?? '')
     setExpanded(null); setPdfOpen(false); setNotice('PDF에서 확인한 값을 편집표에 채웠습니다. 필요한 항목을 수정하고 저장하세요.')
   } }} />
-  const lhLocked = unattachedLhRows(workspace).length > 0, duplicateKeys = new Set(possibleLhDuplicates(workspace).map(row => row.key))
+  const unattached = unattachedLhRows(workspace).length > 0, duplicateKeys = new Set(possibleLhDuplicates(workspace).map(row => row.key))
   function merge(duplicate: CorrectionRow, target: CorrectionRow) {
     edit(current => current.map(item => item.key === target.key ? mergeInto(item, duplicate) : item))
     setMerges(current => ({ ...current, [duplicate.key]: target }))
@@ -130,17 +130,18 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   }
   return <section className={styles.workspace} aria-label="공급정보 편집">
     <div className={styles.toolbar}><p>단지·주택형별 모집수와 임대조건을 확인하고 채우세요.</p><div className={styles.actions}>
-      <button type="button" disabled={busy || uncertain || newGroups.length > 0} onClick={() => setPdfOpen(true)}>PDF로 채우기</button>
-      <button type="button" disabled={busy || uncertain || lhLocked} onClick={addRow}>직접 추가</button>
+      <button type="button" disabled={busy || uncertain} onClick={() => setPdfOpen(true)}>PDF로 채우기</button>
+      <button type="button" disabled={busy || uncertain} onClick={addRow}>직접 추가</button>
     </div></div>
     {notice && <p role="status">{notice}</p>}
-    {lhLocked && <p role="note">{unattachedLhNotice(workspace)}</p>}
+    {unattached && <p role="note">{unattachedLhNotice(workspace)}</p>}
+    <AnnouncementComplexLinks id={id} workspace={workspace} disabled={rowsDirty || busy || uncertain} onBusyChange={setBusy}
+      onLinked={(next, message) => { setWorkspace(next); setRows(next.rows); setPreview(null); setNotice(message); onChanged() }} />
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>
       <fieldset disabled={busy || uncertain} className={styles.editor}><legend className={styles.srOnly}>공고별 공급정보 편집</legend>
         <div className={styles.tableScroll}><table aria-label="공급정보 표"><thead><tr><th scope="col">단지</th><th scope="col">주택형</th><th scope="col">모집수</th><th scope="col">임대조건</th><th scope="col">확인할 항목</th><th scope="col">편집</th></tr></thead><tbody>
           {!rows.length && <tr><td colSpan={6}><div className={styles.empty}><strong>등록된 공급정보가 없습니다.</strong><p>PDF로 채우거나 직접 추가해 첫 공급행을 만드세요.</p></div></td></tr>}
           {rows.map((row, index) => {
-            const group = newGroups.find(group => group.rowKeys.includes(row.key))
             const targets = row.targets.filter(target => !target.excluded)
             const deletable = workspace.deletableRowKeys?.includes(row.key) ?? false
             const toggleDelete = () => {
@@ -155,7 +156,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
             const gaps = deleted.includes(row.key) ? [merges[row.key] ? '합쳐서 삭제 예정' : '삭제 예정'] : row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음', duplicateKeys.has(row.key) && 'LH 원본과 중복 가능'].filter(Boolean)
             return <Fragment key={row.key}><tr data-excluded={row.excluded || deleted.includes(row.key) || undefined}>
               <th scope="row" title={row.housingComplexName && row.complexName && row.housingComplexName !== row.complexName ? `공고 표기: ${row.complexName}` : undefined}>{row.housingComplexName || row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
-              <td>{group || row.groupId ? `공통 ${group?.sharedHouseholdCount ?? row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>
+              <td>{row.groupId ? `공통 ${row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>
               <td>{targets.length ? `${targets.length}개` : '없음'}</td><td>{gaps.join(' · ') || '—'}</td>
               <td><div className={styles.rowActions}><button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 편집`} aria-expanded={expanded === row.key} onClick={() => setExpanded(expanded === row.key ? null : row.key)}>{expanded === row.key ? '닫기' : '편집'}</button>
                 {/* 관리자가 추가한 저장 행은 삭제, 원천행은 기록을 남기는 제외, 저장 전 추가 행은 바로 지운다. */}
@@ -164,14 +165,13 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
                     onClick={() => edit(current => current.map(item => item.key === row.key ? { ...item, excluded: !item.excluded } : item))}>{row.excluded ? '제외 취소' : '제외'}</button>
                   : <button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 지우기`}
                     onClick={() => { edit(current => current.filter(item => item.key !== row.key)); if (expanded === row.key) setExpanded(null) }}>지우기</button>}</div></td>
-            </tr>{expanded === row.key && <tr><td colSpan={6} className={styles.expandedCell}>{duplicateKeys.has(row.key) && !deleted.includes(row.key) && <SupplyMergePanel workspace={workspace} rows={rows} duplicate={row} onMerge={target => merge(row, target)} />}<SupplyRowDraft value={row} inline sharedCount={group?.sharedHouseholdCount} first={index === 0} last={index === rows.length - 1}
+            </tr>{expanded === row.key && <tr><td colSpan={6} className={styles.expandedCell}>{duplicateKeys.has(row.key) && !deleted.includes(row.key) && <SupplyMergePanel workspace={workspace} rows={rows} duplicate={row} onMerge={target => merge(row, target)} />}<SupplyRowDraft value={row} inline first={index === 0} last={index === rows.length - 1}
               onChange={next => edit(current => current.map(item => item.key === next.key ? next : item))}
               onRemove={() => { edit(current => current.filter(item => item.key !== row.key)); setExpanded(null) }}
               deleted={deleted.includes(row.key)} onDelete={deletable ? toggleDelete : undefined}
               onMove={delta => edit(current => { const next = [...current]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; return next.map((item, order) => ({ ...item, displayOrder: order })) })} /></td></tr>}</Fragment>
           })}
         </tbody></table></div>
-        {newGroups.length > 0 && <p className={styles.hint}>공통 모집 묶음은 모집수를 한 번만 저장합니다. PDF를 다시 가져오려면 먼저 현재 변경을 저장하거나 취소하세요.</p>}
         {rowsDirty && <>
         <fieldset className={styles.evidence}><legend>공식 근거와 변경 이유</legend>
           <label>보정 이유<textarea required maxLength={2000} rows={3} value={reason} onChange={event => { setReason(event.target.value); setPreview(null) }} /></label>
@@ -186,7 +186,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
         </div>)}</section>}
         </>}
         <div className={styles.actions}><button className="admin-primary" type="submit" disabled={!!previewBlocker} aria-describedby={previewBlocker ? blockerId : undefined}>{busy ? '저장 중…' : '공급정보 저장'}</button>
-          {rowsDirty && <button type="button" onClick={() => { if (window.confirm('저장하지 않은 공급정보 변경을 취소할까요?')) { setRows(workspace.rows); setNewGroups([]); setDeleted([]); setMerges({}); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
+          {rowsDirty && <button type="button" onClick={() => { if (window.confirm('저장하지 않은 공급정보 변경을 취소할까요?')) { setRows(workspace.rows); setDeleted([]); setMerges({}); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
           {stale && <button type="button" onClick={() => void refreshKeepingDraft()}>입력을 유지하고 최신값 비교</button>}</div>
         {previewBlocker && <p id={blockerId} role={stale ? 'alert' : undefined} className={stale ? styles.stale : styles.hint}>{previewBlocker}</p>}
       </fieldset>

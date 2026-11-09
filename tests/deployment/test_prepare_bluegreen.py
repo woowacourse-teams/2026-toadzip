@@ -49,7 +49,7 @@ class PrepareTests(unittest.TestCase):
 
     def test_explicit_configuration_source_is_copied_without_moving_or_deleting_it(self):
         original = self.folder / 'current.conf'
-        original.write_text(self.source.read_text().replace('server backend:8080;', 'server backend-blue:8080;'))
+        original.write_text(self.source.read_text().replace('server backend:', 'server backend-blue:'))
         destination = module.prepare(self.runtime, original)
         self.assertEqual(destination.read_bytes(), original.read_bytes())
         self.assertTrue(original.is_file())
@@ -60,6 +60,31 @@ class PrepareTests(unittest.TestCase):
         with self.assertRaises(bluegreen.DeploymentError):
             module.prepare(self.runtime, original)
         self.assertFalse(self.runtime.exists())
+
+    def test_upgrade_adds_only_metrics_with_active_colors_backup_and_idempotency(self):
+        legacy = self.source.read_text().split('# 백엔드 메트릭 설정 시작')[0]
+        legacy = legacy.replace('server backend:8080;', 'server backend-green:8080;')
+        source = self.folder / 'legacy.conf'
+        source.write_text(legacy + '\n# 유지할 사용자 설정\n')
+        destination = module.prepare(self.runtime, source)
+        module.prepare(self.runtime, source, upgrade=True)
+        changed = destination.read_text()
+        self.assertTrue(changed.startswith(source.read_text().rstrip()))
+        self.assertEqual(bluegreen.metrics_service(changed), 'backend-green')
+        backups = list(self.runtime.glob('before-metrics-*.conf.bak'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), source.read_text())
+        module.prepare(self.runtime, source, upgrade=True)
+        self.assertEqual(destination.read_text(), changed)
+        self.assertEqual(list(self.runtime.glob('before-metrics-*.conf.bak')), backups)
+
+    def test_upgrade_rejects_existing_management_listener_without_modifying_runtime(self):
+        source = self.folder / 'conflict.conf'
+        source.write_text(self.source.read_text().split('# 백엔드 메트릭 설정 시작')[0] + '\nserver { listen 8081; }\n')
+        destination = module.prepare(self.runtime, source)
+        with self.assertRaisesRegex(bluegreen.DeploymentError, 'management listener'):
+            module.prepare(self.runtime, source, upgrade=True)
+        self.assertEqual(destination.read_text(), source.read_text())
 
     def test_busy_deployment_blocks_preparation(self):
         module.prepare(self.runtime, self.source)

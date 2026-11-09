@@ -38,6 +38,10 @@ public final class PagedCollectionBuffer<T> {
         rows.addAll(page.rows());
     }
 
+    public int totalCount() {
+        return totalCount;
+    }
+
     public boolean isComplete() {
         return totalCount >= 0 && rows.size() == totalCount;
     }

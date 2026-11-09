@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -76,8 +77,25 @@ public class HousingType {
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminDeleted;
 
+    /** 관리자가 직접 바꾼 이름. 공고가 덮지 않는다. */
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean nameAdminModified;
+
+    /** 관리자가 직접 바꾼 세대수. 공고가 덮지 않는다. */
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean householdCountAdminModified;
+
+    /** 마지막으로 값을 반영한 공고의 게시 시각. 이보다 이른 공고는 값을 되돌리지 않는다. */
+    private Instant announcementObservedAt;
+
     @Embedded
     private MyHomeRentalCondition basicRentalCondition;
+
+    /** 기본 임대조건을 채운 곳. 마이홈 단지 정제면 MYHOME, PDF 보정이 공고 값으로 바꿨으면 ANNOUNCEMENT다. */
+    @Column(length = 20)
+    private String rentalConditionSource;
 
     private HousingType(
             HousingComplex housingComplex,
@@ -156,6 +174,44 @@ public class HousingType {
         );
     }
 
+    /**
+     * 관리자가 단지 상세에서 직접 만든 주택형. 수집 원천이 없으므로 원천 식별자를 새로 만들고, 입력한 이름과 세대수는
+     * 관리자 수정으로 보호해 공고가 덮지 않게 한다.
+     */
+    public static HousingType createByAdmin(
+            HousingComplex housingComplex,
+            String sourceHousingTypeIdentifier,
+            String name,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea,
+            Integer householdCount
+    ) {
+        var type = createFromMyHome(housingComplex, sourceHousingTypeIdentifier, name, exclusiveArea, supplyArea);
+        type.reviseByAdmin(name, exclusiveArea, householdCount);
+        type.nameAdminModified = true;
+        type.householdCountAdminModified = householdCount != null;
+        return type;
+    }
+
+    /**
+     * 관리자가 PDF 보정에서 공고문 값으로 만든 주택형. 공고 값이라 보호하지 않아 다음 공고가 이름·공급면적·세대수를 갱신한다.
+     */
+    public static HousingType createFromAnnouncement(
+            HousingComplex housingComplex,
+            String sourceHousingTypeIdentifier,
+            String name,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea,
+            Integer householdCount
+    ) {
+        var type = createFromMyHome(housingComplex, sourceHousingTypeIdentifier, name, exclusiveArea, supplyArea);
+        if (householdCount != null) {
+            type.validateNonNegative(householdCount, "전체 세대수");
+        }
+        type.totalHouseholdCount = householdCount;
+        return type;
+    }
+
     /** 관리자가 단지 상세나 PDF 보정에서 직접 만든 주택형의 원천 식별자 접두어 */
     public static final String ADMIN_SOURCE_PREFIX = "ADMIN_ENTRY-HOUSING-TYPE-";
 
@@ -207,7 +263,7 @@ public class HousingType {
         if (adminModified) {
             return false;
         }
-        if (java.util.Objects.equals(this.totalHouseholdCount, totalHouseholdCount)) {
+        if (Objects.equals(this.totalHouseholdCount, totalHouseholdCount)) {
             return false;
         }
         this.totalHouseholdCount = totalHouseholdCount;
@@ -238,17 +294,87 @@ public class HousingType {
         if (householdCount != null) {
             validateNonNegative(householdCount, "전체 세대수");
         }
+        // 공고가 쓰는 필드는 관리자가 실제로 바꾼 것만 보호한다. 다른 필드를 고쳤다고 공고 갱신이 멈추지 않게 한다.
+        if (!this.name.equals(name)) { nameAdminModified = true; }
+        if (!Objects.equals(this.totalHouseholdCount, householdCount)) { householdCountAdminModified = true; }
         this.name = name;
         this.exclusiveArea = area(exclusiveArea);
         this.totalHouseholdCount = householdCount;
         this.adminModified = true;
     }
 
+    /** 공고가 주택형에 쓰는 값. 공고에 없는 값은 null이다. 기본 보증금·월 임대료는 PDF 보정이 고른 공급대상의 금액이다. */
+    public record AnnouncementValues(String name, BigDecimal supplyArea, Integer householdCount, Long basicDeposit,
+            Long basicMonthlyRent) {
+        public AnnouncementValues(String name, BigDecimal supplyArea, Integer householdCount) {
+            this(name, supplyArea, householdCount, null, null);
+        }
+    }
+
+    public AnnouncementValues announcementValues() {
+        return new AnnouncementValues(name, supplyArea, totalHouseholdCount,
+                basicRentalCondition == null ? null : basicRentalCondition.deposit(),
+                basicRentalCondition == null ? null : basicRentalCondition.monthlyRent());
+    }
+
+    /**
+     * 게시 시각 postedAt인 공고 값을 반영한 뒤의 값. 공고에 없는 값과 관리자가 직접 바꾼 이름·세대수는 지금 값을 둔다.
+     * 공급면적과 기본 임대조건은 관리자가 고치는 값이 아니라 보호하지 않는다(PDF 보정 검토 화면에서 관리자가 고른다).
+     * 마지막으로 반영한 공고보다 이른 공고면 지금 값 그대로다.
+     */
+    public AnnouncementValues afterAnnouncement(AnnouncementValues incoming, Instant postedAt) {
+        var current = announcementValues();
+        if (announcementObservedAt != null && postedAt.isBefore(announcementObservedAt)) {
+            return current;
+        }
+        String nextName = current.name();
+        if (!nameAdminModified && incoming.name() != null && !incoming.name().isBlank()) { nextName = incoming.name().strip(); }
+        BigDecimal nextSupplyArea = current.supplyArea();
+        if (incoming.supplyArea() != null) { nextSupplyArea = area(incoming.supplyArea()); }
+        Integer nextCount = current.householdCount();
+        if (!householdCountAdminModified && incoming.householdCount() != null) { nextCount = incoming.householdCount(); }
+        Long nextDeposit = incoming.basicDeposit() != null ? incoming.basicDeposit() : current.basicDeposit();
+        Long nextRent = incoming.basicMonthlyRent() != null ? incoming.basicMonthlyRent() : current.basicMonthlyRent();
+        return new AnnouncementValues(nextName, nextSupplyArea, nextCount, nextDeposit, nextRent);
+    }
+
+    /** 공고 값을 반영하고 반영한 공고 게시 시각을 남긴다. 값이 바뀌었으면 true다. */
+    public boolean observeAnnouncement(AnnouncementValues incoming, Instant postedAt) {
+        validateNonNegativeIfPresent(incoming.supplyArea(), "공급면적");
+        if (incoming.householdCount() != null) { validateNonNegative(incoming.householdCount(), "전체 세대수"); }
+        if (incoming.basicDeposit() != null && incoming.basicDeposit() < 0
+                || incoming.basicMonthlyRent() != null && incoming.basicMonthlyRent() < 0) {
+            throw new IllegalArgumentException("기본 임대금액은 음수일 수 없습니다.");
+        }
+        var current = announcementValues();
+        var next = afterAnnouncement(incoming, postedAt);
+        if (announcementObservedAt == null || postedAt.isAfter(announcementObservedAt)) { announcementObservedAt = postedAt; }
+        if (next.equals(current)) { return false; }
+        name = next.name();
+        supplyArea = next.supplyArea();
+        totalHouseholdCount = next.householdCount();
+        if (!Objects.equals(next.basicDeposit(), current.basicDeposit())
+                || !Objects.equals(next.basicMonthlyRent(), current.basicMonthlyRent())) {
+            // 공고 값으로 바꾼 기본 임대조건의 날짜는 그 공고의 게시 시각이다.
+            basicRentalCondition = new MyHomeRentalCondition(next.basicDeposit(), next.basicMonthlyRent(), postedAt);
+            rentalConditionSource = "ANNOUNCEMENT";
+        }
+        return true;
+    }
+
+    /**
+     * 마이홈 단지 정제가 기본 임대조건을 채운다. PDF 보정이 공고 값으로 바꾼 조건은 덮지 않는다.
+     * 최초 수집 뒤 주택형 정보는 공고로만 바꾸기로 했고, 덮으면 정제와 PDF 보정이 값을 번갈아 뒤집는다.
+     */
     public boolean updateBasicRentalCondition(MyHomeRentalCondition condition) {
+        if ("ANNOUNCEMENT".equals(rentalConditionSource)) {
+            return false;
+        }
         if (Objects.equals(basicRentalCondition, condition)) {
             return false;
         }
         basicRentalCondition = condition;
+        rentalConditionSource = condition == null ? null : "MYHOME";
         return true;
     }
 

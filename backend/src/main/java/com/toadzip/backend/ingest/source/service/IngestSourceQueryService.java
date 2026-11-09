@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.source.service;
 
-import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementBoard;
+import com.toadzip.backend.ingest.sh.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.dto.IngestSourcePageResponse;
 import com.toadzip.backend.ingest.source.repository.IngestSourceQueryRepository;
@@ -37,6 +38,7 @@ public class IngestSourceQueryService {
     private String sourceUrl(IngestSourceCategory category) {
         return switch (category) {
             case SH_ANNOUNCEMENT -> ShAnnouncementExternalRepository.LIST_URL;
+            case GH_ANNOUNCEMENT -> GhAnnouncementBoard.SITE_URL;
             case MYHOME_COMPLEX -> endpoint(myHomeComplexBaseUrl, "rentalHouseGwList");
             case LH_LEASE_CATALOG -> endpoint(lhBaseUrl, "lhLeaseInfo1/lhLeaseInfo1");
             case MYHOME_ANNOUNCEMENT -> endpoint(myHomeAnnouncementBaseUrl, "rsdtRcritNtcList");

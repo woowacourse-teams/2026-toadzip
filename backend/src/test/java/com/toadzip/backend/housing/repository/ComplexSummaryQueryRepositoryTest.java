@@ -8,8 +8,8 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
-import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
@@ -19,10 +19,12 @@ import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MapBounds;
-import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
 import com.toadzip.backend.housing.domain.RentalPriceRange;
+import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -99,8 +101,8 @@ class ComplexSummaryQueryRepositoryTest {
         HousingComplex complex = persistComplex("금액 기준 단지", "37.500000", "126.900000");
         complex.updateRentalPriceRange(new RentalPriceRange(1L, 1L, 1L, 1L));
         HousingType type = persistHousingType(complex, "36", "36.00");
-        type.updateBasicRentalCondition(new com.toadzip.backend.housing.domain.MyHomeRentalCondition(
-                30_000_000L, 250_000L, java.time.Instant.parse("2026-10-07T00:00:00Z")));
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(
+                30_000_000L, 250_000L, Instant.parse("2026-10-07T00:00:00Z")));
         entityManager.flush();
 
         ComplexSummaryRow row = repository.findAll(noFilters(SEOUL_BOUNDS)).getFirst();
@@ -117,10 +119,10 @@ class ComplexSummaryQueryRepositoryTest {
         complex.updateRentalPriceRange(new RentalPriceRange(10_000_000L, 50_000_000L, 100_000L, 500_000L));
         HousingType first = persistHousingType(complex, "36", "36.00");
         HousingType second = persistHousingType(complex, "49", "49.00");
-        first.updateBasicRentalCondition(new com.toadzip.backend.housing.domain.MyHomeRentalCondition(
-                10_000_000L, 500_000L, java.time.Instant.parse("2026-10-07T00:00:00Z")));
-        second.updateBasicRentalCondition(new com.toadzip.backend.housing.domain.MyHomeRentalCondition(
-                50_000_000L, 100_000L, java.time.Instant.parse("2026-10-07T00:00:00Z")));
+        first.updateBasicRentalCondition(new MyHomeRentalCondition(
+                10_000_000L, 500_000L, Instant.parse("2026-10-07T00:00:00Z")));
+        second.updateBasicRentalCondition(new MyHomeRentalCondition(
+                50_000_000L, 100_000L, Instant.parse("2026-10-07T00:00:00Z")));
         entityManager.flush();
 
         assertBothQueryPaths(priceAreaFilters(null, new BigDecimal("20000000"),
@@ -359,6 +361,39 @@ class ComplexSummaryQueryRepositoryTest {
                 () -> assertBigDecimalEquals("100000", row.monthlyRentMin()),
                 () -> assertBigDecimalEquals("100000", row.monthlyRentMax())
         );
+    }
+
+    @Test
+    void 미확정_공고는_단지_대표가_되지_않고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
+        HousingComplex corrected = persistComplex("정정 대기 단지", "37.500000", "126.900000");
+        Announcement original = persistAnnouncement(null, "ORIGINAL", LocalDate.of(2026, 7, 1), "published");
+        Announcement correction = persistAnnouncement(original, "CORRECTION", LocalDate.of(2026, 7, 2), "pending");
+        persistSupplyRow(original, corrected, null, "published-row", 1);
+        persistSupplyRow(correction, corrected, null, "pending-row", 1);
+        HousingComplex onlyUnconfirmed = persistComplex("미확정 단지", "37.510000", "126.910000");
+        Announcement unconfirmed = Announcement.createUnconfirmed("SH:1", "미확정 공고", AgencyCode.SH,
+                LocalDate.of(2026, 7, 3), "https://example.com/sh/1");
+        entityManager.persist(unconfirmed);
+        persistSupplyRow(unconfirmed, onlyUnconfirmed, null, "unconfirmed-row", 1);
+        entityManager.flush();
+        markUnconfirmed(correction);
+
+        var rows = repository.findAll(noFilters(SEOUL_BOUNDS));
+
+        assertAll(
+                () -> assertEquals(original.getId(), rowOf(rows, corrected).announcementId()),
+                () -> assertNull(rowOf(rows, onlyUnconfirmed).announcementId())
+        );
+    }
+
+    private void markUnconfirmed(Announcement announcement) {
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", announcement.getId()).executeUpdate();
+        entityManager.clear();
+    }
+
+    private ComplexSummaryRow rowOf(List<ComplexSummaryRow> rows, HousingComplex complex) {
+        return rows.stream().filter(row -> row.complexId() == complex.getId()).findFirst().orElseThrow();
     }
 
     @Test
@@ -1747,8 +1782,8 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     private void setBasicPrice(HousingType type, Long deposit, Long rent) {
-        type.updateBasicRentalCondition(new com.toadzip.backend.housing.domain.MyHomeRentalCondition(
-                deposit, rent, java.time.Instant.parse("2026-10-07T00:00:00Z")));
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(
+                deposit, rent, Instant.parse("2026-10-07T00:00:00Z")));
     }
 
     private HousingType persistHousingType(
@@ -1796,7 +1831,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "https://example.com/announcements/" + suffix,
                 null,
                 0,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null))
         );
         entityManager.persist(announcement);
         return announcement;
@@ -1863,7 +1898,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "https://example.com/announcements/" + suffix,
                 null,
                 0,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null))
         );
         entityManager.persist(announcement);
         return announcement;

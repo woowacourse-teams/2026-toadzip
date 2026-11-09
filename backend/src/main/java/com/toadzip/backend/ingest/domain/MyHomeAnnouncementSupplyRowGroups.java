@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 
 public final class MyHomeAnnouncementSupplyRowGroups {
 
@@ -17,7 +18,6 @@ public final class MyHomeAnnouncementSupplyRowGroups {
             String announcementIdentifier,
             Collection<SupplyRow> rows
     ) {
-        String generatedIdentifierPrefix = announcementIdentifier + ":LH:";
         List<SupplyRow> orderedRows = rows.stream()
                 .filter(row -> row.getSupplyGroup() == null)
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
@@ -26,7 +26,7 @@ public final class MyHomeAnnouncementSupplyRowGroups {
         for (SupplyRow row : orderedRows) {
             String owner = row.getMyhomeSourceRowIdentifier();
             String identifier = row.getSourceSupplyRowIdentifier();
-            if (owner == null && !identifier.startsWith(generatedIdentifierPrefix)
+            if (owner == null && !LhSourceIdentifier.isSupplyRowOf(announcementIdentifier, identifier)
                     && !identifier.startsWith("MANUAL:") && !identifier.startsWith("ADMIN:")) {
                 owner = identifier;
             }

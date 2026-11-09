@@ -46,9 +46,10 @@ public class NotificationAudienceRepository {
         }
         return jdbc.query("""
                 SELECT a.name FROM announcements a
-                WHERE a.id=? AND NOT a.admin_deleted AND a.status IN %s
+                WHERE a.id=? AND NOT a.admin_deleted AND a.release_status='PUBLISHED' AND a.status IN %s
                     AND NOT EXISTS (SELECT 1 FROM announcements successor
-                        WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted)
+                        WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted
+                            AND successor.release_status='PUBLISHED')
                 """.formatted(types), (row, number) -> row.getString(1), announcementId).stream().findFirst();
     }
 

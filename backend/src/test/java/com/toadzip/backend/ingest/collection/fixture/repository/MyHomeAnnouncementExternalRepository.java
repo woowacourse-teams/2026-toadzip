@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
-import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionCommand;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
@@ -26,7 +26,7 @@ public class MyHomeAnnouncementExternalRepository {
 
     public JsonNode fetch(
             MyHomeAnnouncementSupplyType supplyType,
-            MyHomeAnnouncementCollectionRequest request,
+            MyHomeAnnouncementCollectionCommand request,
             int page
     ) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();

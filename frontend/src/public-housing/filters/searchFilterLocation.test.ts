@@ -258,6 +258,15 @@ describe('검색 필터 URL namespace', () => {
     expect(parseAnnouncementSearchFilters(search)).toEqual({})
   })
 
+  it('합치기 전 공공임대 5·10년 링크는 분양전환 공공임대 하나로 연다', () => {
+    const search = new URLSearchParams(
+      'complexRentalTypes=PUBLIC_RENTAL_5Y&complexRentalTypes=PUBLIC_RENTAL_10Y&announcementRentalTypes=PUBLIC_RENTAL_10Y',
+    )
+
+    expect(parseComplexSearchFilters(search)).toEqual({ rentalTypes: ['PUBLIC_RENTAL'] })
+    expect(parseAnnouncementSearchFilters(search)).toEqual({ rentalTypes: ['PUBLIC_RENTAL'] })
+  })
+
   it('최솟값이 최댓값보다 큰 범위는 양쪽 모두 복원하지 않는다', () => {
     const search = new URLSearchParams(
       [

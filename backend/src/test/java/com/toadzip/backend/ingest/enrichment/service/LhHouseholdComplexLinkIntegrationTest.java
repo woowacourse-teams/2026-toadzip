@@ -1,25 +1,31 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension.owned;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.LhSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.leasecatalog.domain.LhLeaseCatalogSourceView;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.ReleaseRequest;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.SaveRequest;
 import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdComplexComparison.View;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +47,8 @@ class LhHouseholdComplexLinkIntegrationTest {
     private static final String ADDRESS = "대전광역시 서구 구봉산북로 212";
     private static final String PNU = "3017011600115990000";
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
+    @Autowired private LhHouseholdComplexLinkService links;
+    @Autowired private IngestExecutionOwnershipService ownership;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
@@ -63,7 +71,7 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 이름만_달라_실패하면_공급유형_세대수_지역이_맞는_유일한_후보를_비교로_보여준다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         var view = view();
 
@@ -81,10 +89,10 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 관리자가_확인해_연결하면_다음_세대수_보강에서_주택형_세대수를_채운다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
-        save(view(), "도로명 주소와 영구임대 240세대, 전용 21.97·26.9 대조").andExpect(status().isOk());
-        enrichment.enrichAll();
+        save(view(), "도로명 주소와 영구임대 240세대, 전용 21.97·26.9 대조");
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(types.findAllByHousingComplex(complex)).extracting(HousingType::getTotalHouseholdCount)
                 .containsExactlyInAnyOrder(60, 180);
@@ -95,11 +103,11 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 연결한_뒤_단지_세대수가_바뀌면_연결을_쓰지_않고_재확인을_요구한다() throws Exception {
-        enrichment.enrichAll();
-        save(view(), "대조 완료").andExpect(status().isOk());
+        owned(ownership, enrichment::enrichAll);
+        save(view(), "대조 완료");
         jdbc.sql("UPDATE housing_complexes SET total_household_count = 241").update();
 
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(pendingReasons()).containsExactly("MANUAL_LINK_REVIEW_REQUIRED");
         assertThat(view().savedLink().reviewRequired()).isTrue();
@@ -110,10 +118,10 @@ class LhHouseholdComplexLinkIntegrationTest {
     @Test
     void 후보가_둘_이상이면_연결을_저장하지_않는다() throws Exception {
         complex("대전관저5 다른단지", "complex-999");
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         var view = view();
 
-        save(view, "대조").andExpect(status().isConflict());
+        assertThatThrownBy(() -> save(view, "대조")).isInstanceOf(AdminDataConflictException.class);
 
         assertThat(view.linkable()).isFalse();
         assertThat(view.candidates()).hasSize(2);
@@ -122,13 +130,11 @@ class LhHouseholdComplexLinkIntegrationTest {
 
     @Test
     void 연결을_이유와_함께_해제하면_다음_보강부터_다시_이름으로_매칭한다() throws Exception {
-        enrichment.enrichAll();
-        var saved = read(save(view(), "대조 완료").andExpect(status().isOk()));
+        owned(ownership, enrichment::enrichAll);
+        var saved = save(view(), "대조 완료");
 
-        mvc.perform(post(PATH + failureId() + "/complex-link/release").with(user("operator").roles("ADMIN"))
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                        "token", saved.token(), "reason", "다른 단지로 잘못 연결함")))).andExpect(status().isOk());
-        enrichment.enrichAll();
+        links.release(failureId(), new ReleaseRequest(saved.token(), "다른 단지로 잘못 연결함"), "operator");
+        owned(ownership, enrichment::enrichAll);
 
         assertThat(jdbc.sql("SELECT count(*) FROM lh_household_complex_links").query(Long.class).single()).isZero();
         assertThat(jdbc.sql("SELECT after_value FROM admin_data_changes WHERE action = 'RELEASE_LH_HOUSEHOLD_LINK'")
@@ -137,22 +143,21 @@ class LhHouseholdComplexLinkIntegrationTest {
     }
 
     @Test
-    void 조회_후_후보나_원천이_바뀌면_저장을_거절하고_근거_이유는_필수다() throws Exception {
-        enrichment.enrichAll();
+    void 조회_후_후보나_원천이_바뀌면_저장을_거절한다() throws Exception {
+        owned(ownership, enrichment::enrichAll);
         var view = view();
-        save(view, " ").andExpect(status().isBadRequest());
         jdbc.sql("UPDATE housing_complexes SET road_address = '대전광역시 서구 구봉산북로 213'").update();
 
-        save(view, "대조").andExpect(status().isConflict());
+        assertThatThrownBy(() -> save(view, "대조")).isInstanceOf(AdminDataConflictException.class);
     }
 
     @Test
     void 비교와_저장은_관리자와_CSRF를_요구한다() throws Exception {
-        enrichment.enrichAll();
+        owned(ownership, enrichment::enrichAll);
         String memberId = jdbc.sql("""
                         INSERT INTO users(login_identifier,created_at) VALUES (:identifier,CURRENT_TIMESTAMP)
                         RETURNING id
-                        """).param("identifier", "google:household-" + java.util.UUID.randomUUID())
+                        """).param("identifier", "google:household-" + UUID.randomUUID())
                 .query(Long.class).single().toString();
 
         mvc.perform(get(PATH + failureId() + "/complex-link")).andExpect(status().isUnauthorized());
@@ -162,10 +167,9 @@ class LhHouseholdComplexLinkIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
     }
 
-    private ResultActions save(View view, String reason) throws Exception {
-        return mvc.perform(post(PATH + view.failureId() + "/complex-link").with(user("operator").roles("ADMIN"))
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                        "complexId", complex.getId(), "token", view.token(), "reason", reason))));
+    // 저장 API는 지원을 종료했다. 서비스는 S5에서 지울 때까지 직접 호출해 동작을 지킨다.
+    private View save(View view, String reason) {
+        return links.save(view.failureId(), new SaveRequest(complex.getId(), view.token(), null, reason), "operator");
     }
 
     private View view() throws Exception {
@@ -194,10 +198,9 @@ class LhHouseholdComplexLinkIntegrationTest {
                 240, "LH", null, "INDIVIDUAL", "APARTMENT", "CORRIDOR", true, 100));
     }
 
-    private LhCatalogSource lh(int order, String area, String count) {
-        var source = new LhCatalogSource(order, new LhCatalogSourceSnapshot("대전광역시 서구", "영구임대",
-                "대전관저5 천년나무 1단지", "240", area, count, null, null));
-        source.markCollectedAt(Instant.parse("2026-10-24T00:00:00Z"));
+    private LhLeaseCatalogSourceView lh(int order, String area, String count) {
+        var source = LhSourceViews.catalog(order, Instant.parse("2026-10-24T00:00:00Z"), new LhCatalogSourceSnapshot(
+                "대전광역시 서구", "영구임대", "대전관저5 천년나무 1단지", "240", area, count, null, null));
         return source;
     }
 }

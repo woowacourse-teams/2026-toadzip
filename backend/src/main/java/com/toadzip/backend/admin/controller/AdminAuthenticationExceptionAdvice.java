@@ -17,23 +17,19 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class AdminAuthenticationExceptionAdvice {
 
     @ExceptionHandler(InvalidAdminCredentialsException.class)
-    public ResponseEntity<ErrorResponse> handleInvalidAdminCredentials(HttpServletRequest request) {
-        return response(
-                HttpStatus.UNAUTHORIZED,
-                "INVALID_ADMIN_CREDENTIALS",
-                "관리자 로그인 정보가 올바르지 않습니다.",
-                request
-        );
+    public ResponseEntity<ErrorResponse> handleInvalidAdminCredentials(
+            InvalidAdminCredentialsException exception,
+            HttpServletRequest request
+    ) {
+        return response(HttpStatus.UNAUTHORIZED, "INVALID_ADMIN_CREDENTIALS", exception.getMessage(), request);
     }
 
     @ExceptionHandler(AdminLoginAttemptLimitExceededException.class)
-    public ResponseEntity<ErrorResponse> handleLoginAttemptLimitExceeded(HttpServletRequest request) {
-        return response(
-                HttpStatus.TOO_MANY_REQUESTS,
-                "LOGIN_ATTEMPTS_EXCEEDED",
-                "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
-                request
-        );
+    public ResponseEntity<ErrorResponse> handleLoginAttemptLimitExceeded(
+            AdminLoginAttemptLimitExceededException exception,
+            HttpServletRequest request
+    ) {
+        return response(HttpStatus.TOO_MANY_REQUESTS, "LOGIN_ATTEMPTS_EXCEEDED", exception.getMessage(), request);
     }
 
     private ResponseEntity<ErrorResponse> response(

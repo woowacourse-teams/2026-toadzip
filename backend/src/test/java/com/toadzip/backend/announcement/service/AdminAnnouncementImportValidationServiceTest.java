@@ -130,7 +130,23 @@ class AdminAnnouncementImportValidationServiceTest {
         );
     }
 
+    @Test
+    void 신규_등록은_PNU_없는_공급행의_단지를_찾지_않고_등록을_막는다() {
+        AdminAnnouncementImportValidationResponse response = service.validate(validRequest(List.of(), null));
+
+        assertThat(response.registerable()).isFalse();
+        assertThat(response.supplyRows()).singleElement().satisfies(match -> {
+            assertThat(match.candidates()).isEmpty();
+            assertThat(match.suggestedHousingComplexId()).isNull();
+        });
+        org.mockito.Mockito.verifyNoInteractions(housingComplexRepository);
+    }
+
     private AdminAnnouncementImportRequest validRequest(List<UnresolvedFieldRequest> unresolvedFields) {
+        return validRequest(unresolvedFields, "1114010100100010000");
+    }
+
+    private AdminAnnouncementImportRequest validRequest(List<UnresolvedFieldRequest> unresolvedFields, String pnu) {
         return new AdminAnnouncementImportRequest(
                 "admin-announcement-import/v1",
                 new SourceRequest(
@@ -148,15 +164,17 @@ class AdminAnnouncementImportValidationServiceTest {
                         LocalDate.of(2026, 9, 12),
                         LocalDate.of(2026, 10, 1)
                 ),
-                new ReceptionPlaceRequest(
+                List.of(new ReceptionPlaceRequest(
                         "LH 청약플러스",
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
-                        "https://apply.lh.or.kr"
-                ),
+                        "https://apply.lh.or.kr",
+                        null
+                )),
+                null,
                 List.of(new SupplyRowRequest(
-                        new ComplexReferenceRequest("두꺼비 행복주택", "1114010100100010000"),
+                        new ComplexReferenceRequest("두꺼비 행복주택", pnu),
                         "36A",
                         null,
                         SupplyCategory.NEW_SUPPLY,

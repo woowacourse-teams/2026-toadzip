@@ -1,5 +1,8 @@
 package com.toadzip.backend.announcement.service;
 
+import com.toadzip.backend.admin.domain.AdminDataChange;
+import com.toadzip.backend.admin.exception.AdminDataConflictException;
+import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
@@ -17,6 +20,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class VerifiedApplicationScheduleService {
@@ -24,13 +28,13 @@ public class VerifiedApplicationScheduleService {
     private final AnnouncementRepository announcementRepository;
     private final AnnouncementApplicationScheduleRepository scheduleRepository;
     private final SupplyRowRepository supplyRowRepository;
-    private final com.toadzip.backend.admin.repository.AdminDataChangeRepository changes;
-    private final tools.jackson.databind.ObjectMapper json;
+    private final AdminDataChangeRepository changes;
+    private final ObjectMapper json;
 
     public VerifiedApplicationScheduleService(AnnouncementRepository announcementRepository,
             AnnouncementApplicationScheduleRepository scheduleRepository, SupplyRowRepository supplyRowRepository,
-            com.toadzip.backend.admin.repository.AdminDataChangeRepository changes,
-            tools.jackson.databind.ObjectMapper json) {
+            AdminDataChangeRepository changes,
+            ObjectMapper json) {
         this.announcementRepository = announcementRepository;
         this.scheduleRepository = scheduleRepository;
         this.supplyRowRepository = supplyRowRepository;
@@ -49,7 +53,7 @@ public class VerifiedApplicationScheduleService {
                 .orElseThrow(AnnouncementNotFoundException::new);
         if (announcement.isAdminDeleted()) { throw new InvalidAnnouncementRequestException(); }
         if (version != null && version != announcement.getVersion()) {
-            throw new com.toadzip.backend.admin.exception.AdminDataConflictException("공고가 변경되었습니다. 새로 조회해 주세요.");
+            throw new AdminDataConflictException("공고가 변경되었습니다. 새로 조회해 주세요.");
         }
         var previous = scheduleRepository.findAllByAnnouncementIdIn(List.of(announcementId)).stream()
                 .map(value -> new VerifiedApplicationSchedulesRequest.Schedule(complexId(value), value.getSupplyRank(),
@@ -76,8 +80,8 @@ public class VerifiedApplicationScheduleService {
         scheduleRepository.deleteAll(scheduleRepository.findAllByAnnouncementIdIn(List.of(announcementId)));
         scheduleRepository.saveAll(schedules);
         announcement.confirmApplicationPeriod(start, end);
-        announcement.recordAdminSupplyChange();
-        changes.save(new com.toadzip.backend.admin.domain.AdminDataChange("ANNOUNCEMENT", announcementId,
+        announcement.recordAdminScheduleChange();
+        changes.save(new AdminDataChange("ANNOUNCEMENT", announcementId,
                 "UPDATE_SCHEDULE", actor, json.writeValueAsString(previous), json.writeValueAsString(request.schedules())));
     }
 

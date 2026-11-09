@@ -9,8 +9,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
+import com.toadzip.backend.ingest.exception.exception.IngestServiceKeyMissingException;
+import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineReadinessResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import java.util.List;
 import java.util.UUID;
@@ -20,65 +24,18 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.http.MediaType;
 
 @WebMvcTest(DataPipelineController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class DataPipelineControllerTest {
 
     @Test
-    void URL_등록도_기존_실행_서비스로_비동기_접수한다() throws Exception {
-        String url = "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026";
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + url + "\"}"))
-                .andExpect(status().isAccepted());
-        verify(executionService).startAnnouncementRegistrationUrl(url);
-    }
-
-    @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"url\":null}", "{\"url\":\" \"}"})
-    void 빈_URL은_실행을_접수하지_않는다(String body) throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(executionService);
-    }
-
-    @Test
-    void URL_검증_실패는_접수가_아닌_400과_사유로_응답한다() throws Exception {
-        when(executionService.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
-                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
-                        "잘못된 공고 URL입니다."));
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"https://apply.lh.or.kr\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("잘못된 공고 URL입니다."));
-    }
-
-    @Test
-    void 단건_등록은_공고_ID만_받아_비동기로_접수한다() throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\" 21026 \"}"))
-                .andExpect(status().isAccepted());
-        verify(executionService).startAnnouncementRegistration("21026");
-    }
-
-    @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"pblancId\":null}",
-            "{\"pblancId\":\" \"}", "{\"pblancId\":\"\"}"})
-    void 단건_등록은_빈_ID를_거부한다(String body) throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(executionService);
-    }
-
-    @Test
     void 없는_실행_ID의_상태_조회는_404를_반환한다() throws Exception {
         UUID executionId = UUID.randomUUID();
-        when(executionService.find(executionId))
+        when(executionQuery.find(executionId))
                 .thenThrow(new DataPipelineExecutionNotFoundException("실행을 찾을 수 없습니다."));
         mockMvc.perform(get("/api/admin/ingest/pipelines/executions/{executionId}", executionId))
                 .andExpect(status().isNotFound());
@@ -89,7 +46,7 @@ class DataPipelineControllerTest {
         UUID executionId = UUID.randomUUID();
         mockMvc.perform(get("/api/admin/ingest/pipelines/executions/{executionId}", executionId))
                 .andExpect(status().isOk());
-        verify(executionService).find(executionId);
+        verify(executionQuery).find(executionId);
     }
 
     @Autowired
@@ -98,60 +55,53 @@ class DataPipelineControllerTest {
     @MockitoBean
     private DataPipelineExecutionService executionService;
 
-    @ParameterizedTest
-    @CsvSource({
-            "complex-collection, COMPLEX_COLLECTION", "announcement-collection, ANNOUNCEMENT_COLLECTION",
-            "complex-sync, COMPLEX_SYNC", "announcement-sync, ANNOUNCEMENT_SYNC"
-    })
-    void 수집_실행은_입력키를_양끝_공백_제거해_전달하고_응답에_노출하지_않는다(
-            String pathValue, DataPipelineType type
-    ) throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\" transient-test-key \"}"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.serviceKey").doesNotExist());
-        verify(executionService).start(type, "transient-test-key");
-    }
+    @MockitoBean
+    private DataPipelineExecutionQueryService executionQuery;
 
     @ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"serviceKey\":null}",
-            "{\"serviceKey\":\" \"}", "{\"serviceKey\":\"\"}"})
-    void 입력_본문에_키가_없거나_비어_있으면_값을_노출하지_않고_거부한다(String body) throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-collection")
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "{\"serviceKey\":\"stale-client-test-key\"}", "{}", "{\"serviceKey\":null}"
+    })
+    void 수집_실행_본문은_키를_쓰거나_되돌리지_않고_거절한다(String body) throws Exception {
+        var result = mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-sync")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"))
+                .andExpect(jsonPath("$.message").value(
+                        "수집 실행은 요청 본문을 받지 않습니다. 공공데이터포털 수집 키는 서버 설정으로만 사용합니다."))
+                .andReturn();
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("stale-client-test-key");
         verifyNoInteractions(executionService);
     }
 
     @Test
-    void 최대_길이를_넘은_서비스키는_거부한다() throws Exception {
-        String key = "x".repeat(4097);
-        var result = mockMvc.perform(post("/api/admin/ingest/pipelines/complex-collection")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"" + key + "\"}"))
-                .andExpect(status().isBadRequest()).andReturn();
-        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString()).doesNotContain(key);
-        verifyNoInteractions(executionService);
+    void 서버_수집_키가_없으면_503으로_키_설정을_안내한다() throws Exception {
+        when(executionService.start(DataPipelineType.ANNOUNCEMENT_SYNC))
+                .thenThrow(new IngestServiceKeyMissingException());
+
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-sync"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("INGEST_SERVICE_KEY_MISSING"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("DATA_GO_KR_SERVICE_KEY")));
     }
 
-    @Test
-    void 정제_실행은_서비스키_입력을_거부한다() throws Exception {
-        when(executionService.start(DataPipelineType.COMPLEX_REFINEMENT, "test-key"))
-                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
-                        "수집 작업에만 서비스키를 입력할 수 있습니다."));
-        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-refinement")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"test-key\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"));
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void 준비_상태는_서버_수집_키_설정_여부만_돌려준다(boolean configured) throws Exception {
+        when(executionService.readiness()).thenReturn(new DataPipelineReadinessResponse(configured));
+
+        mockMvc.perform(get("/api/admin/ingest/pipelines/readiness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.serviceKeyConfigured").value(configured))
+                .andExpect(jsonPath("$.serviceKey").doesNotExist());
     }
 
     @ParameterizedTest
     @CsvSource({
             "complex-collection, COMPLEX_COLLECTION",
-            "complex-refinement, COMPLEX_REFINEMENT",
             "announcement-collection, ANNOUNCEMENT_COLLECTION",
             "announcement-refinement, ANNOUNCEMENT_REFINEMENT",
-            "complex-sync, COMPLEX_SYNC",
             "announcement-sync, ANNOUNCEMENT_SYNC"
     })
     void 독립_및_통합_실행을_접수하고_진행_상태를_조회한다(
@@ -160,7 +110,7 @@ class DataPipelineControllerTest {
     ) throws Exception {
         DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(type);
         when(executionService.start(type)).thenReturn(response);
-        when(executionService.findLatest(type)).thenReturn(response);
+        when(executionQuery.findLatest(type)).thenReturn(response);
 
         mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isAccepted())
@@ -169,6 +119,36 @@ class DataPipelineControllerTest {
         mockMvc.perform(get("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("IDLE"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"complex-refinement, COMPLEX_REFINEMENT", "complex-sync, COMPLEX_SYNC"})
+    void 지원을_종료한_단지_정제는_410을_반환하고_지난_상태는_조회한다(
+            String pathValue,
+            DataPipelineType type
+    ) throws Exception {
+        when(executionService.start(type)).thenThrow(RetiredIngestOperationException.complexRefinement());
+        when(executionQuery.findLatest(type)).thenReturn(DataPipelineExecutionResponse.idle(type));
+
+        mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"))
+                .andExpect(jsonPath("$.message").value(
+                        "단지 정제는 지원을 종료했습니다. 단지·주택형은 공고와 PDF 보정으로만 바뀝니다."));
+
+        mockMvc.perform(get("/api/admin/ingest/pipelines/{type}", pathValue))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value(type.name()));
+    }
+
+    @Test
+    void 지원을_종료한_단건_등록도_일반_실행_경로에서_410을_반환한다() throws Exception {
+        DataPipelineType type = DataPipelineType.ANNOUNCEMENT_REGISTRATION;
+        when(executionService.start(type)).thenThrow(RetiredIngestOperationException.myHomeAnnouncementRefinement());
+
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("INGEST_OPERATION_RETIRED"));
     }
 
     @Test
@@ -183,7 +163,7 @@ class DataPipelineControllerTest {
         DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(
                 DataPipelineType.ANNOUNCEMENT_COLLECTION
         );
-        when(executionService.history(2, 20)).thenReturn(List.of(response));
+        when(executionQuery.history(2, 20)).thenReturn(List.of(response));
 
         mockMvc.perform(get("/api/admin/ingest/pipelines/history")
                         .param("page", "2")
@@ -191,7 +171,7 @@ class DataPipelineControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("ANNOUNCEMENT_COLLECTION"));
 
-        verify(executionService).history(2, 20);
+        verify(executionQuery).history(2, 20);
     }
 
     @Test

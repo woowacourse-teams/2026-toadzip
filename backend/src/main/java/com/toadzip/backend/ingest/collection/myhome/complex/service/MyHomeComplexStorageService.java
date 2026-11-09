@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCol
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexCollectionRepository;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexRegionSourceRepository;
+import com.toadzip.backend.ingest.collection.paging.service.CollectedSourceConflictException;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.time.Clock;
 import java.util.LinkedHashMap;
@@ -72,7 +73,7 @@ public class MyHomeComplexStorageService {
 
     private void verifyRegion(MyHomeComplexSource source, MyHomeComplexRegionSource region) {
         if (!source.getRegion().matches(region.getProvinceCode(), region.getDistrictCode())) {
-            throw new IllegalArgumentException("기존 단지 식별자의 지역과 충돌하여 해당 지역 반영을 보류합니다.");
+            throw new CollectedSourceConflictException("기존 단지 식별자의 지역과 충돌하여 해당 지역 반영을 보류합니다.");
         }
     }
 }

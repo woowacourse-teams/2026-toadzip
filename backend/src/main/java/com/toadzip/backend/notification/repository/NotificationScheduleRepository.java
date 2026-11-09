@@ -59,8 +59,8 @@ public class NotificationScheduleRepository {
                     NULLIF(s.end_at::time,TIME '00:00') AS end_time,
                     s.complex_name AS scope,NULL AS application_condition,NULL::integer AS source_page
                 FROM announcement_schedules s JOIN announcements a ON a.id=s.announcement_id
-                WHERE NOT a.admin_deleted AND a.status IN ('ORIGINAL','원공고','CORRECTION','정정공고')
-                    AND NOT EXISTS(SELECT 1 FROM announcements successor WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted)
+                WHERE NOT a.admin_deleted AND a.release_status='PUBLISHED' AND a.status IN ('ORIGINAL','원공고','CORRECTION','정정공고')
+                    AND NOT EXISTS(SELECT 1 FROM announcements successor WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted AND successor.release_status='PUBLISHED')
                     AND s.schedule_type IN ('DOCUMENT_SUBMISSION','서류제출','WINNER_ANNOUNCEMENT','당첨자발표','CONTRACT','계약')
                     AND ((s.start_at>=? AND s.start_at<?) OR (s.end_at>=? AND s.end_at<?))
                 """ + owner, this::row, tomorrow.atStartOfDay(), tomorrow.plusDays(1).atStartOfDay(),
@@ -71,10 +71,10 @@ public class NotificationScheduleRepository {
                     concat_ws(' · ',c.name,s.supply_rank) AS scope,s.application_condition,s.source_page
                 FROM announcement_application_schedules s JOIN announcements a ON a.id=s.announcement_id
                     LEFT JOIN housing_complexes c ON c.id=s.housing_complex_id
-                WHERE NOT a.admin_deleted AND a.application_schedule_reviewed AND s.state='CONFIRMED'
+                WHERE NOT a.admin_deleted AND a.release_status='PUBLISHED' AND a.application_schedule_reviewed AND s.state='CONFIRMED'
                     AND (c.id IS NULL OR NOT c.admin_deleted)
                     AND a.status IN ('ORIGINAL','원공고','CORRECTION','정정공고')
-                    AND NOT EXISTS(SELECT 1 FROM announcements successor WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted)
+                    AND NOT EXISTS(SELECT 1 FROM announcements successor WHERE successor.previous_announcement_id=a.id AND NOT successor.admin_deleted AND successor.release_status='PUBLISHED')
                     AND (s.start_date=? OR s.end_date=?)
                 """ + owner, this::row, tomorrow, tomorrow));
         List<ScheduleReminder> result = new ArrayList<>();

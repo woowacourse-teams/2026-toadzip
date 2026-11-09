@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -142,6 +143,7 @@ class AnnouncementValidationTest {
             long viewCount,
             ReceptionPlace receptionPlace
     ) {
+        List<ReceptionPlace> receptionPlaces = receptionPlace == null ? null : List.of(receptionPlace);
         return Announcement.create(
                 fields[0],
                 null,
@@ -158,7 +160,7 @@ class AnnouncementValidationTest {
                 fields[6],
                 null,
                 viewCount,
-                receptionPlace
+                receptionPlaces
         );
     }
 

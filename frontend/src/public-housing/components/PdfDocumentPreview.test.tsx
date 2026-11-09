@@ -311,3 +311,11 @@ it('근거의 지정 쪽만 강조하고 숫자가 다른 쪽에 있어도 이�
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: '170' } })
   expect(controller.match('170', '170', 4)).toEqual([{ index: 0, length: 3 }])
 })
+
+it('근거 금액의 여러 표기는 낱말 단위로, 글자 검색어는 부분 일치로 찾는다', async () => {
+  const { rerender } = render(<PdfDocumentPreview url="blob:notice" name="공고문.pdf" focus={{ page: 4, query: ['8,100,000', '8,100'], nonce: 1 }} />)
+  await ready()
+  await waitFor(() => expect(sdk.dispatch).toHaveBeenLastCalledWith('find', expect.objectContaining({ query: ['8,100,000', '8,100'], entireWord: true })))
+  rerender(<PdfDocumentPreview url="blob:notice" name="공고문.pdf" focus={{ page: 4, query: '임대조건', nonce: 2 }} />)
+  expect(sdk.dispatch).toHaveBeenLastCalledWith('find', expect.objectContaining({ query: '임대조건', entireWord: false }))
+})

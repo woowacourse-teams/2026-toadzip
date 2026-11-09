@@ -1,31 +1,19 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
-import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
-import java.util.Map;
+import com.toadzip.backend.ingest.lh.collection.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.util.Set;
 
 class MyHomeComplexClassificationPolicy {
 
-    private static final Map<String, String> SUPPLY_TYPE_CODES = Map.of(
-            "행복주택", "HAPPY_HOUSING",
-            "국민임대", "NATIONAL_RENTAL",
-            "영구임대", "PERMANENT_RENTAL",
-            "5년임대", "PUBLIC_RENTAL_5Y",
-            "10년임대", "PUBLIC_RENTAL_10Y",
-            "50년임대", "PUBLIC_RENTAL_50Y",
-            "장기전세", "LONG_TERM_JEONSE",
-            "통합공공임대", "INTEGRATED_PUBLIC_RENTAL",
-            "재개발임대", "REDEVELOPMENT_RENTAL",
-            "기타", "ETC"
-    );
+    /** 원천 식별자에 쓰는 공급유형 코드. */
+    String sourceCode(String value) {
+        return MyHomeComplexSourceCode.of(value)
+                .orElseThrow(() -> invalid("지원하지 않는 건설임대 공급유형입니다: " + value));
+    }
 
     String supplyType(String value) {
-        String code = SUPPLY_TYPE_CODES.get(value);
-        if (code == null) {
-            throw invalid("지원하지 않는 건설임대 공급유형입니다: " + value);
-        }
-        return code;
+        return MyHomeComplexSourceCode.productType(sourceCode(value));
     }
 
     String provider(String value) {
@@ -96,7 +84,7 @@ class MyHomeComplexClassificationPolicy {
 
     private MyHomeComplexMappingRejectedException invalid(String detail) {
         return new MyHomeComplexMappingRejectedException(
-                com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.INVALID_VALUE,
+                MyHomeComplexMappingFailureReason.INVALID_VALUE,
                 detail
         );
     }

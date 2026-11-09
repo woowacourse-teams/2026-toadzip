@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.fixture.repository.external.LhAnnouncementResponseIdentityValidator;
-import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
@@ -47,7 +47,9 @@ public class LhAnnouncementExternalRepository {
     }
 
     private JsonNode fetch(String path, LhAnnouncementRequest request) {
-        JsonNode response = circuitBreaker.execute(() -> client.get(path, request.toParams()));
+        var params = new LinkedMultiValueMap<String, String>();
+        request.query().parameters().forEach(params::add);
+        JsonNode response = circuitBreaker.execute(() -> client.get(path, params));
         identityValidator.validate(request, response);
         return response;
     }

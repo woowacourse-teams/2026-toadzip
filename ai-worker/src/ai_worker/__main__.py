@@ -1,0 +1,91 @@
+"""`python -m ai_worker`로 워커를 띄운다. SIGTERM·SIGINT를 받으면 처리 중인 작업을 끝내고 멈춘다.
+`python -m ai_worker --check`는 DB 접속과 ai_jobs 권한만 확인하고 끝난다. 릴리스가 실행 중인 워커를 바꾸기 전에 새 이미지로 부른다.
+
+환경변수
+- PGHOST·PGPORT·PGDATABASE·PGUSER·PGPASSWORD: toadzip_ai_worker 역할의 Postgres 접속 정보(libpq 표준).
+  주소 문자열 대신 쓰는 것은 비밀번호에 특수문자가 있어도 깨지지 않게 하려는 것이다.
+- OPENAI_API_KEY: OpenAI Luna API 키
+- TYPESAFE_API_KEY(선택): Jev API 키. 코드가 읽은 공급표 수량 열의 뜻을 Jev로 확인한 공고만 공급 단계 모델 호출을 생략한다.
+  없으면 공급표는 늘 모델 단계로 처리한다(느리지만 동작은 같다).
+"""
+
+import argparse
+import logging
+import os
+import signal
+import sys
+import threading
+
+import psycopg
+
+from ai_worker import jobs
+from ai_worker.announcement import AnnouncementPdfExtractor
+from ai_worker.jev import Jev
+from ai_worker.openai import OpenAI
+from ai_worker.worker import run
+
+log = logging.getLogger("ai_worker")
+
+
+REQUIRED = ("PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD", "OPENAI_API_KEY")
+
+
+def connect() -> psycopg.Connection:
+    """접속 정보는 PG* 환경변수에서 읽는다. 연결이 조용히 끊겨도 알아채도록 keepalive를 켜고, 한 문장이 30초를 넘으면 끊는다."""
+    return psycopg.connect("", autocommit=True, connect_timeout=10, keepalives=1, keepalives_idle=30,
+                           keepalives_interval=10, keepalives_count=3, options="-c statement_timeout=30000")
+
+
+def check() -> None:
+    """실패하면 이유를 남기고 0이 아닌 코드로 끝난다. psycopg 오류 문구에는 비밀번호가 들어가지 않는다."""
+    try:
+        with connect() as conn:
+            missing = jobs.missing_privileges(conn)
+    except psycopg.Error as error:
+        sys.exit(f"DB 접속 또는 ai_jobs 확인에 실패했습니다: {str(error).strip().splitlines()[0]}")
+    if missing:
+        sys.exit(f"{os.environ['PGUSER']} 역할에 없는 ai_jobs 권한: {', '.join(missing)}")
+    log.info("DB 접속과 ai_jobs 권한을 확인했습니다.")
+
+
+def main(argv: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog="python -m ai_worker")
+    parser.add_argument("--check", action="store_true", help="DB 접속과 ai_jobs 권한만 확인하고 끝낸다")
+    options = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    missing = [name for name in REQUIRED if not os.environ.get(name)]
+    if missing:
+        sys.exit(f"환경변수가 없습니다: {', '.join(missing)}")
+    if options.check:
+        check()
+        return
+    typesafe_key = os.environ.get("TYPESAFE_API_KEY")
+    if not typesafe_key:
+        log.warning("TYPESAFE_API_KEY가 없어 공급표를 늘 모델 단계로 처리합니다.")
+    extractor = AnnouncementPdfExtractor(OpenAI(os.environ["OPENAI_API_KEY"]),
+                                         Jev(typesafe_key) if typesafe_key else None)
+
+    stop = threading.Event()
+
+    def request_stop(signum, _frame):
+        log.info("종료 신호(%s)를 받았습니다. 처리 중인 작업을 끝내고 멈춥니다.", signal.Signals(signum).name)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    log.info("AI 워커를 시작합니다.")
+    # 신호 처리기는 메인 스레드에서 돈다. 루프가 메인 스레드에서 stop.wait 중이면 처리기의 stop.set이
+    # 같은 잠금을 기다려 멈출 수 있어, 루프는 다른 스레드에서 돌리고 메인 스레드는 기다리기만 한다.
+    loop = threading.Thread(target=run, args=(connect, extractor, stop), name="worker")
+    loop.start()
+    while loop.is_alive():
+        loop.join(1)
+    if not stop.is_set():
+        # 신호 없이 루프가 끝났다면 예상하지 못한 오류로 죽은 것이다. 재시작·감시가 알아채도록 실패로 끝낸다.
+        log.error("워커 루프가 오류로 끝났습니다.")
+        sys.exit(1)
+    log.info("AI 워커를 멈췄습니다.")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

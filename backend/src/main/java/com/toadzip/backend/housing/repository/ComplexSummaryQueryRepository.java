@@ -1,23 +1,71 @@
 package com.toadzip.backend.housing.repository;
 
+import com.toadzip.backend.admin.dto.AdminSearch;
+import com.toadzip.backend.housing.domain.ComplexSort;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-
-import com.toadzip.backend.housing.domain.ComplexSort;
 
 @Repository
 public class ComplexSummaryQueryRepository {
 
+    private static final String ADMIN_COUNTS_SQL = """
+            SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE %s) AS recruiting,
+                COUNT(*) FILTER (WHERE h.latitude IS NULL OR h.longitude IS NULL) AS missing_coordinates,
+                COUNT(*) FILTER (WHERE h.source_review_required) AS review_required,
+                COUNT(*) FILTER (WHERE h.provider IN ('LH', '한국토지주택공사')) AS lh,
+                COUNT(*) FILTER (WHERE h.provider IN ('SH', '서울주택도시공사')) AS sh,
+                COUNT(*) FILTER (WHERE h.provider IN ('GH', '경기주택도시공사')) AS gh
+            FROM housing_complexes h WHERE h.admin_deleted = false
+            """.formatted(ComplexRecruitingSql.predicate("h"));
+
+    private final EntityManager entities;
     private final JdbcClient jdbcClient;
 
     private final ComplexSummarySqlBuilder sqlBuilder;
 
-    public ComplexSummaryQueryRepository(JdbcClient jdbcClient, ComplexSummarySqlBuilder sqlBuilder) {
+    public ComplexSummaryQueryRepository(JdbcClient jdbcClient, ComplexSummarySqlBuilder sqlBuilder,
+            EntityManager entities) {
+        this.entities = entities;
         this.jdbcClient = jdbcClient;
         this.sqlBuilder = sqlBuilder;
+    }
+
+    public Page<HousingComplex> searchAdmin(AdminSearch search, String verification, boolean recruiting,
+            boolean missingCoordinates, LocalDate today) {
+        String where = HousingComplexRepository.ADMIN_SEARCH_FROM
+                + " AND (:recruiting = false OR " + ComplexRecruitingSql.predicate("c") + ")"
+                + " AND (:missingCoordinates = false OR c.latitude IS NULL OR c.longitude IS NULL)";
+        Query count = bindAdmin(entities.createNativeQuery("SELECT count(*)" + where), search, verification,
+                recruiting, missingCoordinates, today);
+        Query query = bindAdmin(entities.createNativeQuery("SELECT c.*" + where
+                + " ORDER BY c.created_at DESC NULLS LAST, c.id DESC", HousingComplex.class), search, verification,
+                recruiting, missingCoordinates, today);
+        query.setFirstResult(search.page() * search.pageSize()).setMaxResults(search.pageSize());
+        @SuppressWarnings("unchecked")
+        List<HousingComplex> items = query.getResultList();
+        return new PageImpl<>(items, PageRequest.of(search.page(), search.pageSize()),
+                ((Number) count.getSingleResult()).longValue());
+    }
+
+    private Query bindAdmin(Query query, AdminSearch search, String verification, boolean recruiting,
+            boolean missingCoordinates, LocalDate today) {
+        return query.setParameter("keyword", search.pattern()).setParameter("identifier", search.identifier())
+                .setParameter("provider", search.providerCode()).setParameter("providerLegacy", search.providerLegacy())
+                .setParameter("rental", search.rentalCode()).setParameter("rentalLegacy", search.rentalLegacy())
+                .setParameter("region", search.regionCode()).setParameter("deleted", search.deleted())
+                .setParameter("review", search.review()).setParameter("verification", verification)
+                .setParameter("recruiting", recruiting).setParameter("missingCoordinates", missingCoordinates)
+                .setParameter("today", today);
     }
 
     public List<ComplexSummaryRow> findAll(HousingComplexSearchCondition condition) {
@@ -38,6 +86,12 @@ public class ComplexSummaryQueryRepository {
     public long count(HousingComplexSearchCondition condition) {
         ComplexSummarySqlQuery query = sqlBuilder.buildCountQuery(condition);
         return jdbcClient.sql(query.sql()).params(query.parameters()).query(Long.class).single();
+    }
+
+    public AdminCounts countForAdmin(LocalDate today) {
+        return jdbcClient.sql(ADMIN_COUNTS_SQL).param("today", today).query((row, index) -> new AdminCounts(
+                row.getLong("total"), row.getLong("recruiting"), row.getLong("missing_coordinates"),
+                row.getLong("review_required"), row.getLong("lh"), row.getLong("sh"), row.getLong("gh"))).single();
     }
 
     private ComplexSummaryRow mapRow(ResultSet resultSet, int rowNumber) throws SQLException {
@@ -73,5 +127,9 @@ public class ComplexSummaryQueryRepository {
                 .params(query.parameters())
                 .query(this::mapRow)
                 .list();
+    }
+
+    public record AdminCounts(long total, long recruiting, long missingCoordinates, long reviewRequired,
+            long lh, long sh, long gh) {
     }
 }

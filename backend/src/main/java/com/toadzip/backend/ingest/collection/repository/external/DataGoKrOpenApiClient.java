@@ -4,6 +4,9 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -17,6 +20,12 @@ import tools.jackson.databind.cfg.JsonNodeFeature;
 public class DataGoKrOpenApiClient {
 
     private static final String DAILY_RATE_LIMIT_CODE = "22";
+
+    /** 공공데이터포털 게이트웨이가 키를 받지 않을 때의 사유 코드(접근 거부·미등록 키·기간 만료·미등록 IP). */
+    private static final Set<String> SERVICE_KEY_REJECTED_CODES = Set.of("20", "30", "31", "32");
+
+    private static final Pattern XML_REASON_CODE =
+            Pattern.compile("<returnReasonCode>\\s*(\\d+)\\s*</returnReasonCode>");
 
     private final RestClient restClient;
 
@@ -52,7 +61,7 @@ public class DataGoKrOpenApiClient {
             URI requestUri = buildUri(path, params);
             String rawPayload = requestRawPayload(requestUri);
             JsonNode body = parsePayload(rawPayload);
-            validateGatewayRateLimit(body);
+            validateGatewayHeader(body);
             responseStatusValidator.validate(body);
             return body;
         }
@@ -70,7 +79,7 @@ public class DataGoKrOpenApiClient {
                 .build()
                 .encode(StandardCharsets.UTF_8)
                 .getQuery();
-        String uri = "%s/%s?serviceKey=%s".formatted(baseUrl, path, encodeServiceKey(effectiveServiceKey()));
+        String uri = "%s/%s?serviceKey=%s".formatted(baseUrl, path, encodeServiceKey(serviceKey));
         if (query == null || query.isBlank()) {
             return URI.create(uri);
         }
@@ -98,8 +107,12 @@ public class DataGoKrOpenApiClient {
             throw ExternalDataRequestException.retryable(sourceName + " 외부 API 연결에 실패했습니다.", exception);
         }
         catch (HttpClientErrorException exception) {
-            if (exception.getStatusCode().value() == 429) {
+            int statusCode = exception.getStatusCode().value();
+            if (statusCode == 429) {
                 throw tooManyRequests(exception);
+            }
+            if (statusCode == 401 || statusCode == 403) {
+                throw new ExternalDataRequestException(serviceKeyRejectedMessage("HTTP " + statusCode));
             }
             throw new ExternalDataRequestException(
                     httpFailureMessage(exception.getStatusCode().value()),
@@ -119,6 +132,10 @@ public class DataGoKrOpenApiClient {
                     .readTree(rawPayload);
         }
         catch (RuntimeException exception) {
+            Matcher reason = XML_REASON_CODE.matcher(rawPayload);
+            if (reason.find() && SERVICE_KEY_REJECTED_CODES.contains(reason.group(1))) {
+                throw new ExternalDataRequestException(serviceKeyRejectedMessage("resultCode=" + reason.group(1)));
+            }
             throw new ExternalDataRequestException(sourceName + " 응답 형식이 올바르지 않습니다.", exception);
         }
     }
@@ -127,15 +144,18 @@ public class DataGoKrOpenApiClient {
         if (baseUrl == null || baseUrl.isBlank()) {
             throw new ExternalDataRequestException(sourceName + " API 주소가 비어 있습니다.");
         }
-        String requestKey = effectiveServiceKey();
-        if (requestKey == null || requestKey.isBlank()) {
-            throw new ExternalDataRequestException("공공데이터 서비스키가 비어 있습니다.");
+        if (serviceKey == null || serviceKey.isBlank()) {
+            throw new ExternalDataRequestException(
+                    "서버 수집 키가 설정되지 않았습니다. 서버 환경변수 DATA_GO_KR_SERVICE_KEY를 확인해 주세요.");
         }
     }
 
-    private void validateGatewayRateLimit(JsonNode body) {
+    private void validateGatewayHeader(JsonNode body) {
         JsonNode header = body.path("OpenAPI_ServiceResponse").path("cmmMsgHeader");
         String code = header.path("returnReasonCode").asString("");
+        if (SERVICE_KEY_REJECTED_CODES.contains(code)) {
+            throw new ExternalDataRequestException(serviceKeyRejectedMessage("resultCode=" + code));
+        }
         if (DAILY_RATE_LIMIT_CODE.equals(code) || "23".equals(code)) {
             throw ExternalDataRequestException.rateLimited(
                     sourceName + " 외부 API 호출 제한: resultCode=" + code,
@@ -145,20 +165,20 @@ public class DataGoKrOpenApiClient {
         }
     }
 
+    private String serviceKeyRejectedMessage(String reason) {
+        return sourceName + " 외부 API가 서버 수집 키를 거부했습니다(" + reason + "). "
+                + "서버 환경변수 DATA_GO_KR_SERVICE_KEY 값과 공공데이터포털 활용 신청 상태를 확인해 주세요.";
+    }
+
     private String httpFailureMessage(int statusCode) {
         return sourceName + " 외부 API 호출에 실패했습니다: HTTP " + statusCode;
     }
 
-    private String effectiveServiceKey() {
-        return IngestServiceKeyContext.current().orElse(serviceKey);
-    }
-
     private ExternalDataRequestException safeFailure(ExternalDataRequestException failure) {
         String message = failure.getMessage();
-        String key = effectiveServiceKey();
-        if (key != null && !key.isBlank()) {
-            message = message.replace(key, "[REDACTED]").replace(encodeServiceKey(key), "[REDACTED]");
-            message = message.replace(decodedServiceKey(key), "[REDACTED]");
+        if (serviceKey != null && !serviceKey.isBlank()) {
+            message = message.replace(serviceKey, "[REDACTED]").replace(encodeServiceKey(serviceKey), "[REDACTED]");
+            message = message.replace(decodedServiceKey(serviceKey), "[REDACTED]");
         }
         if (failure.isRateLimited()) {
             return ExternalDataRequestException.rateLimited(message, null, failure.isRetryable());

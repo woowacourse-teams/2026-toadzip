@@ -5,6 +5,8 @@ import { SourceUrl } from '../shared/SourceUrl'
 import { storedDataRows, storedDataValue } from '../shared/storedDataPresentation'
 import { getSourceData, isSourceCategory, sourceCategories, type SourceCategory, type SourcePage } from './sourceApi'
 import { sourceFieldLabel, sourcePresentation } from './sourcePresentation'
+import { GhSupplyTable } from './GhSupplyTable'
+import { isGhSupplyTablePath } from './ghSupplyColumns'
 import styles from './SourceDataPage.module.css'
 import { failureReturnUrl } from './failureNavigation'
 
@@ -54,15 +56,17 @@ export function SourceDataPage() {
   }
 
   const rows = result?.items.map(row => ({ row, fields: new Map(storedDataRows(row.raw).map(field => [field.path, field.value])) })) ?? []
-  const paths = new Set(rows.flatMap(row => [...row.fields.keys()]).filter(path => path !== 'source_key' && path !== 'collected_at'))
+  // GH의 지구·주택형 값은 주택형별 공급 표에서 보므로 공고 목록의 열로 펼치지 않는다.
+  const paths = new Set(rows.flatMap(row => [...row.fields.keys()]).filter(path => path !== 'source_key'
+    && path !== 'collected_at' && !(category === 'GH_ANNOUNCEMENT' && isGhSupplyTablePath(path))))
   const firstFields = category ? sourcePresentation[category].firstFields.filter(key => paths.has(key)) : []
   const columns = [...firstFields, ...[...paths].filter(path => !firstFields.includes(path)).sort()]
   const metadata = category ? sourcePresentation[category] : null
+  // SH·GH 공고는 공식 게시판을 API 키 없이 수집한다.
+  const board = category === 'SH_ANNOUNCEMENT' || category === 'GH_ANNOUNCEMENT' ? category : null
 
   return <section className={`management-page ${styles.page}`}>
-    <header className="management-heading"><div><h1>원천 데이터</h1>
-      <p>원천별 저장 데이터를 한 행씩 비교합니다. 열 제목에 항목 뜻과 원천 키를 함께 표시합니다.</p>
-    </div><button type="button" disabled={pending} onClick={() => setAttempt(value => value + 1)}>목록 새로고침</button></header>
+    <header className="management-heading"><div><h1>원천 데이터</h1></div><button type="button" disabled={pending} onClick={() => setAttempt(value => value + 1)}>목록 새로고침</button></header>
     <div className={`${styles.tabs} admin-folder-tabs`} role="tablist" aria-label="원천 분류">
       {Object.entries(sourceCategories).map(([value, label], index, entries) => <button key={value} type="button"
         role="tab" id={`source-tab-${value}`} aria-selected={category === value} aria-controls="source-panel"
@@ -81,9 +85,9 @@ export function SourceDataPage() {
     </div>
     <div id="source-panel" role="tabpanel" aria-labelledby={category ? `source-tab-${category}` : undefined}>
     {metadata ? <div className={styles.sourceInfo}>
-      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{category === 'SH_ANNOUNCEMENT' ? '공식 게시판' : 'API 설명·키 발급'}</a>
-        <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{category === 'SH_ANNOUNCEMENT' ? '키 없이 SH 공고 수집' : 'API 키 입력하고 수집'}</Link></p>
-      {result?.items[0] ? <p><span>{category === 'SH_ANNOUNCEMENT' ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
+      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{board ? '공식 게시판' : 'API 설명·키 발급'}</a>
+        <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{board ? `키 없이 ${sourceCategories[board]} 수집` : 'API 키 입력하고 수집'}</Link></p>
+      {result?.items[0] ? <p><span>{board ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
     </div> : null}
     <form key={search} className="management-filters" onSubmit={event => {
       event.preventDefault()
@@ -114,7 +118,7 @@ export function SourceDataPage() {
         : <div className={`admin-table-scroll ${styles.scroll}`} tabIndex={0} role="region" aria-label="원천 데이터 목록 가로 스크롤">
           <table className={styles.table}>
             <caption className="sr-only">{sourceCategories[category]} 원천 목록 · {result.page + 1}페이지</caption>
-            <thead><tr>{columns.map(path => <th key={path} scope="col" data-field={path}>{sourceFieldLabel(category, path)} <span>({path})</span></th>)}
+            <thead><tr>{columns.map(path => <th key={path} scope="col" data-field={path} title={`${sourceFieldLabel(category, path)} (${path})`}>{sourceFieldLabel(category, path)} <span>({path})</span></th>)}
               <th scope="col">수집 시각 <span>(collected_at)</span></th>
               {category === 'LH_ANNOUNCEMENT_CATALOG' ? <th scope="col">원천 변경 감지 <span>(changed_at)</span></th> : null}
               <th scope="col">원천 식별자 <span>(source_key)</span></th><th scope="col">공식 공고 URL <span>(originalUrl)</span></th>
@@ -132,6 +136,7 @@ export function SourceDataPage() {
               <td title={row.sourceKey}>{row.sourceKey}</td><td className={styles.url}><SourceUrl url={row.originalUrl} /></td>
             </tr>)}</tbody>
           </table></div>}
+      {category === 'GH_ANNOUNCEMENT' && result.items.length > 0 ? <GhSupplyTable items={result.items} /> : null}
       <ListPagination page={result.page} totalPages={result.totalPages} onMove={move} disabled={pending} />
     </> : null}
     </div>

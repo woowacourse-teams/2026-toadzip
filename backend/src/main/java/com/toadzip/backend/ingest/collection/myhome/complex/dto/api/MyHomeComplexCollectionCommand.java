@@ -1,0 +1,36 @@
+package com.toadzip.backend.ingest.collection.myhome.complex.dto.api;
+
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+
+public record MyHomeComplexCollectionCommand(
+        String provinceCode,
+        String districtCode,
+        int pageSize,
+        int maxPages
+) {
+
+    public MyHomeComplexCollectionCommand {
+        validateRegionCodes(provinceCode, districtCode);
+        validatePaging(pageSize, maxPages);
+    }
+
+    public static MyHomeComplexCollectionCommand allRegions(int pageSize, int maxPages) {
+        return new MyHomeComplexCollectionCommand(null, null, pageSize, maxPages);
+    }
+
+    public boolean requestsAllRegions() {
+        return provinceCode == null;
+    }
+
+    private static void validateRegionCodes(String provinceCode, String districtCode) {
+        if ((provinceCode == null) != (districtCode == null)) {
+            throw new InvalidIngestRequestException("시·도 코드와 시·군·구 코드는 함께 입력해야 합니다.");
+        }
+    }
+
+    private static void validatePaging(int pageSize, int maxPages) {
+        if (pageSize < 1 || pageSize > 1_000 || maxPages < 1 || maxPages > 1_000) {
+            throw new InvalidIngestRequestException("페이지 크기와 최대 페이지 수는 1~1000이어야 합니다.");
+        }
+    }
+}

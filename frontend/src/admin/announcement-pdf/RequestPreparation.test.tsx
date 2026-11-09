@@ -9,7 +9,7 @@ const attachments = [{ attachmentId: 1, fileName: '공고문.pdf', fileType: 'AN
 const json = JSON.stringify(fixtures.hansville.extraction)
 const done: ExtractionState = { status: 'done', result: { json, pages: [1, 2, 10], totalPages: 35, warnings: ['supplyRows[0].targets[0].target: 표기 규칙 위반(「가」군)'], usage: { promptTokens: 7291, outputTokens: 1766, thinkingTokens: null } } }
 function props(extraction: ExtractionState = done) {
-  return { announcementName: '익산한스빌 예비입주자 모집', pdf: { url: 'blob:notice', name: '공고문.pdf' }, extraction, onExtract: vi.fn(),
+  return { announcementName: '익산한스빌 예비입주자 모집', pdf: { url: 'blob:notice', name: '공고문.pdf' }, extraction, onExtract: vi.fn(), onCancel: vi.fn(),
     parsed: readExtraction(extraction.status === 'done' ? json : ''), checks: [], saved: null, samePdf: false, onLoadSaved: vi.fn() }
 }
 function sourceProps() {
@@ -58,11 +58,26 @@ it('추출에 실패하면 이유를 알리고 다시 추출할 수 있다', () 
 
 it('하단 검토 버튼은 추출을 마쳐야 누를 수 있다', () => {
   const onReview = vi.fn()
-  const { rerender } = render(<PreparationFooter ready={false} onReview={onReview} />)
+  const { rerender } = render(<PreparationFooter ready={false} status="idle" onReview={onReview} />)
   expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
-  rerender(<PreparationFooter ready onReview={onReview} />)
+  rerender(<PreparationFooter ready={false} needsRepair status="done" onReview={onReview} />)
+  expect(screen.getByText('추출 결과를 수정해야 합니다')).toBeInTheDocument()
+  expect(screen.queryByText('추출 전입니다')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '추출 결과 검토하기' })).toBeDisabled()
+  rerender(<PreparationFooter ready status="done" onReview={onReview} />)
   fireEvent.click(screen.getByRole('button', { name: '추출 결과 검토하기' }))
   expect(onReview).toHaveBeenCalledOnce()
+})
+
+it('하단 상태는 오른쪽 추출 상태와 같은 기준으로 추출 중·실패를 알린다', () => {
+  const { rerender } = render(<PreparationFooter ready={false} status="running" onReview={() => {}} />)
+  expect(screen.getByText('추출 중입니다')).toBeInTheDocument()
+  expect(screen.queryByText('추출 전입니다')).not.toBeInTheDocument()
+  rerender(<PreparationFooter ready={false} status="failed" onReview={() => {}} />)
+  expect(screen.getByText('추출하지 못했습니다')).toBeInTheDocument()
+  expect(screen.queryByText('추출 전입니다')).not.toBeInTheDocument()
+  rerender(<PreparationFooter ready={false} status="idle" onReview={() => {}} />)
+  expect(screen.getByText('추출 전입니다')).toBeInTheDocument()
 })
 
 it('등록된 PDF가 있어도 내 PC의 PDF를 고를 수 있다', () => {
@@ -99,4 +114,14 @@ it('파일 목록은 키보드로 선택하고 Escape나 바깥 클릭으로 닫
   fireEvent.click(picker)
   fireEvent.mouseDown(screen.getByText('바깥'))
   expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+})
+
+it('추출을 기다리는 동안 서버가 작업을 받았으면 추출 취소를 누를 수 있다', () => {
+  const waiting = props({ status: 'running', startedAt: Date.now() })
+  const { rerender } = render(<RequestPreparation {...waiting} />)
+  expect(screen.queryByRole('button', { name: '추출 취소' })).not.toBeInTheDocument()
+  const accepted = props({ status: 'running', startedAt: Date.now(), jobId: 31 })
+  rerender(<RequestPreparation {...accepted} />)
+  fireEvent.click(screen.getByRole('button', { name: '추출 취소' }))
+  expect(accepted.onCancel).toHaveBeenCalledOnce()
 })

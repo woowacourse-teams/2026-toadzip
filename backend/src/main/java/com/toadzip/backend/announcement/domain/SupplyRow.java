@@ -15,12 +15,19 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.YearMonth;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -63,7 +70,7 @@ public class SupplyRow {
         boolean keepsDefault = announcementHousingTypeName == null && displayTypeName != null
                 && displayTypeName.strip().equals(defaultHousingTypeName());
         housingComplex = incoming.housingComplex;
-        housingType = incoming.housingType;
+        represent(incoming.housingType);
         announcementHousingTypeName = keepsDefault ? null : labelDifferentFromDefault(displayTypeName);
         supplyPnu = incoming.supplyPnu;
         expectedMoveInMonth = incoming.expectedMoveInMonth;
@@ -87,9 +94,54 @@ public class SupplyRow {
             return false;
         }
         housingComplex = complex;
-        housingType = type;
+        represent(type);
         matchingFailureReason = null;
         return true;
+    }
+
+    public Set<HousingType> getHousingTypes() {
+        return Set.copyOf(housingTypes);
+    }
+
+    /** 관리자가 정한 함께 모집하는 주택형으로 연결을 맞춘다. 대표 주택형은 항상 포함하고, 나머지는 같은 단지의 주택형이어야 한다. */
+    public void linkHousingTypesByAdmin(Collection<HousingType> others) {
+        if (!others.isEmpty() && (housingType == null || others.stream()
+                .anyMatch(type -> !Objects.equals(idOf(type.getHousingComplex()), idOf(housingComplex))))) {
+            throw new IllegalArgumentException("함께 모집하는 주택형은 대표 주택형과 같은 단지의 주택형이어야 합니다.");
+        }
+        var next = new ArrayList<HousingType>(others);
+        if (housingType != null) {
+            next.add(housingType);
+        }
+        housingTypes.removeIf(linked -> next.stream().noneMatch(type -> sameType(linked, type)));
+        for (var type : next) {
+            if (housingTypes.stream().noneMatch(linked -> sameType(linked, type))) {
+                housingTypes.add(type);
+            }
+        }
+    }
+
+    /**
+     * 대표 주택형을 바꾸면 함께 모집하는 주택형도 대표 하나로 맞춘다. 대표가 그대로면 함께 모집하는 주택형을 지우지 않는다.
+     * PDF·공급 보정이 LH 한 행에 묶인 주택형 여럿 중 대표만 다시 저장해도 나머지 연결이 남게 하려는 것이다.
+     */
+    private void represent(HousingType type) {
+        boolean sameRepresentative = type != null && housingType != null && sameType(housingType, type)
+                && housingTypes.stream().anyMatch(linked -> sameType(linked, type));
+        housingType = type;
+        boolean unchanged = type == null ? housingTypes.isEmpty() : sameRepresentative
+                || housingTypes.size() == 1 && sameType(housingTypes.iterator().next(), type);
+        if (unchanged) {
+            return;
+        }
+        housingTypes.clear();
+        if (type != null) {
+            housingTypes.add(type);
+        }
+    }
+
+    private static boolean sameType(HousingType linked, HousingType type) {
+        return linked == type || linked.getId() != null && linked.getId().equals(type.getId());
     }
 
     private static Long idOf(HousingComplex complex) {
@@ -123,15 +175,6 @@ public class SupplyRow {
         targetCountsComparable = comparable;
     }
 
-    /** 등록 단지에 없는 원천 공급행을 공개에서 빼거나 되돌린다. 정제는 제외된 행의 매칭 실패를 오류로 남기지 않는다. */
-    public boolean excludeByAdmin(boolean excluded) {
-        if (adminExcluded == excluded) {
-            return false;
-        }
-        adminExcluded = excluded;
-        return true;
-    }
-
     public void correctPresentation(boolean excluded, int order, boolean overrideArea,
             BigDecimal exclusiveArea, BigDecimal supplyArea) {
         validateNonNegative(order, "표시 순서");
@@ -145,6 +188,28 @@ public class SupplyRow {
         announcementExclusiveArea = exclusiveArea;
         announcementSupplyArea = supplyArea;
         adminModified = true;
+    }
+
+    /**
+     * 기관 원천(GH 공급행 틀)이 준 주택형 전용면적을 공고 면적 칸에 적어 둔다. PDF 추출이 틀 행과 PDF 행을 맞출 때 읽는다.
+     * 면적 보정(areaOverride)은 켜지 않아 화면·공개 면적(effective*Area)은 그대로 연결 주택형을 따른다. 관리자 수정으로 보지 않는다.
+     */
+    public void recordSourceArea(BigDecimal exclusiveArea) {
+        if (exclusiveArea != null && exclusiveArea.signum() < 0) {
+            throw new IllegalArgumentException("면적은 음수일 수 없습니다.");
+        }
+        announcementExclusiveArea = exclusiveArea;
+    }
+
+    /** GH 공고 정제가 만든 공급행 틀이면 true다. 틀의 행 키는 `{공고 식별자}:{지구명}:{주택형 코드}`이고, 관리자가 추가한 행은 MANUAL: 키다. */
+    public boolean ghFrameRow() {
+        return announcement.origin() == AnnouncementOrigin.GH_SOURCE
+                && sourceSupplyRowIdentifier.startsWith(announcement.getSourceAnnouncementIdentifier() + ":");
+    }
+
+    public void reorder(int order) {
+        validateNonNegative(order, "표시 순서");
+        displayOrder = order;
     }
 
     public BigDecimal effectiveExclusiveArea() {
@@ -198,6 +263,14 @@ public class SupplyRow {
     @JoinColumn(name = "housing_type_id")
     private HousingType housingType;
 
+    /** 함께 모집하는 주택형. 대표 주택형도 포함한다. 대표 외 주택형은 관리자 보정만 연결한다. */
+    @Getter(AccessLevel.NONE)
+    @ManyToMany(fetch = LAZY)
+    @JoinTable(name = "supply_row_housing_types",
+            joinColumns = @JoinColumn(name = "supply_row_id"),
+            inverseJoinColumns = @JoinColumn(name = "housing_type_id"))
+    private Set<HousingType> housingTypes = new HashSet<>();
+
     @Column(nullable = false)
     private String sourceSupplyRowIdentifier;
 
@@ -210,8 +283,21 @@ public class SupplyRow {
     @Column(nullable = false)
     private String sourceHousingTypeName;
 
-    @Column(nullable = false)
+    /** LH 원천으로 만든 공급행은 공급 PNU가 없을 수 있다. */
     private String supplyPnu;
+
+    /** 이 공급행이 속한 공고 단지. LH 원천으로 만든 공급행만 채워지고, 공고 단지를 모르는 행은 비어 있다. */
+    @ManyToOne(fetch = LAZY)
+    @JoinColumn(name = "announcement_complex_id")
+    private AnnouncementComplex announcementComplex;
+
+    /** LH가 준 대표 전용면적. 함께 모집하는 면적 중 하나이고 어느 면적을 고르는지는 일정하지 않다. */
+    @Column(precision = 10, scale = 4)
+    private BigDecimal lhExclusiveArea;
+
+    @Enumerated(STRING)
+    @Column(length = 30)
+    private LhSupplyMatchStatus lhMatchStatus;
 
     @Convert(converter = YearMonthAttributeConverter.class)
     private YearMonth expectedMoveInMonth;
@@ -241,11 +327,26 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    /**
+     * 옛 공통 모집 묶음에서 빠진다. 공급행이 주택형마다 하나가 된 뒤 다시 보정하면 묶음 대신 이 행 하나가 모집수와 대상을 갖는다.
+     * 묶음의 다른 행이 함께 빠지거나 제외되는지는 보정 서비스가 확인한다.
+     */
+    public void leaveGroupByAdmin() {
+        supplyGroup = null;
+        confirmedTargetFingerprint = null;
+        adminModified = true;
+    }
+
     /** 원천 분할 단지를 합쳐 같은 주택형의 소속 단지만 바뀐 경우 확인한 대상 지문을 다시 계산한다. */
     public void reconfirmTargetAfterComplexMove(String targetFingerprint) {
         confirmedTargetFingerprint = targetFingerprint;
     }
 
+    /**
+     * 이 공급행을 만든 첫 LH 공급 원천 행 식별자. LH 행이 붙는 공급행은 저장하지 않고 면적으로 계산하며(LhRowAttachments),
+     * 이 값은 면적이 없는 LH 줄의 공급행과 단지 연결 이행이 읽는다. 옛 분리 기능의 컬럼(lh_split_source_identifier)은 이전 배포와
+     * 함께 쓸 수 있게 DB에 남겨 두고 읽지 않는다.
+     */
     private String lhSourceSupplyRowIdentifier;
 
     @Column(nullable = false)
@@ -273,13 +374,13 @@ public class SupplyRow {
         validateNonNegative(displayOrder, "표시순서");
         validateNotBlank(sourceComplexName, "원천 단지명");
         validateNotBlank(sourceHousingTypeName, "원천 주택형명");
-        validateNotBlank(supplyPnu, "공급 PNU");
+        validateNotBlankIfPresent(supplyPnu, "공급 PNU");
         validateRequired(supplyCategory, "공급구분");
         validateNotBlankIfPresent(matchingFailureReason, "매칭 실패 사유");
         validateNonNegativeIfPresent(totalSupplyHouseholdCount, "전체 공급세대수");
         this.announcement = announcement;
         this.housingComplex = housingComplex;
-        this.housingType = housingType;
+        represent(housingType);
         this.sourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
         this.displayOrder = displayOrder;
         this.sourceComplexName = sourceComplexName;
@@ -319,6 +420,72 @@ public class SupplyRow {
                 matchingFailureReason,
                 totalSupplyHouseholdCount
         );
+    }
+
+    /**
+     * LH 공급의 (공고 단지, 전용면적) 묶음으로 공급행을 만든다. 단지는 공고 단지의 연결 단지, 대표 주택형은 그 단지에서 LH 전용면적과
+     * 같은 면적의 주택형이다. lhSourceSupplyRowIdentifier는 묶음의 첫 LH 줄이다. LH 원천 소유 공고에서만 쓴다.
+     */
+    public static SupplyRow createFromLh(Announcement announcement, AnnouncementComplex complex, HousingType type,
+            String sourceSupplyRowIdentifier, String lhSourceSupplyRowIdentifier, int displayOrder, String typeName,
+            BigDecimal lhExclusiveArea, YearMonth expectedMoveInMonth, SupplyCategory supplyCategory,
+            Integer supplyHouseholdCount, LhSupplyMatchStatus status) {
+        SupplyRow row = new SupplyRow(announcement, complex.linkedComplex(), type, sourceSupplyRowIdentifier,
+                displayOrder, complex.getSourceComplexName(), typeName, null, expectedMoveInMonth, supplyCategory, null,
+                supplyHouseholdCount);
+        row.announcementComplex = complex;
+        row.lhExclusiveArea = lhExclusiveArea;
+        row.lhMatchStatus = status;
+        row.lhSourceSupplyRowIdentifier = lhSourceSupplyRowIdentifier;
+        row.lhTotalSupplyHouseholdCountOwned = supplyHouseholdCount != null;
+        row.lhTotalSupplyHouseholdCountEnriched = supplyHouseholdCount != null;
+        return row;
+    }
+
+    /**
+     * LH 원천 소유 공고의 공급행을 이번 LH 묶음으로 맞춘다. 관리자가 고친 행은 값을 두고 첫 LH 줄 식별자만 옮긴다.
+     * 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
+     */
+    public boolean updateFromLh(SupplyRow incoming) {
+        if (announcement.isAdminDeleted()) {
+            return false;
+        }
+        if (adminModified) {
+            if (Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)) {
+                return false;
+            }
+            lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
+            return true;
+        }
+        if (hasSameSourceValues(incoming) && Objects.equals(idOf(announcementComplex), idOf(incoming.announcementComplex))
+                && Objects.equals(lhExclusiveArea, incoming.lhExclusiveArea) && lhMatchStatus == incoming.lhMatchStatus
+                && Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)
+                && lhTotalSupplyHouseholdCountOwned == incoming.lhTotalSupplyHouseholdCountOwned) {
+            return false;
+        }
+        applySourceValues(incoming);
+        announcementComplex = incoming.announcementComplex;
+        lhExclusiveArea = incoming.lhExclusiveArea;
+        lhMatchStatus = incoming.lhMatchStatus;
+        lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
+        lhTotalSupplyHouseholdCountOwned = incoming.lhTotalSupplyHouseholdCountOwned;
+        lhTotalSupplyHouseholdCountEnriched = incoming.lhTotalSupplyHouseholdCountEnriched;
+        return true;
+    }
+
+    /**
+     * 공고문 소유 공급행은 정제가 값·단지·주택형을 바꾸지 않고 비어 있는 공고 단지 참조만 채운다. PDF가 정한 연결을 덮지 않기 위해서다.
+     */
+    public boolean fillAnnouncementComplex(AnnouncementComplex complex) {
+        if (announcementComplex != null || complex == null) {
+            return false;
+        }
+        announcementComplex = complex;
+        return true;
+    }
+
+    private static Long idOf(AnnouncementComplex complex) {
+        return complex == null ? null : complex.getId();
     }
 
     public boolean updateFromMyHome(
@@ -384,63 +551,13 @@ public class SupplyRow {
         sourceHousingTypeName = typeName;
     }
 
-    public boolean updateDisplayOrder(int displayOrder) {
-        if (adminModified) {
-            return false;
-        }
-        validateNonNegative(displayOrder, "표시 순서");
-        if (this.displayOrder == displayOrder) {
-            return false;
-        }
-        this.displayOrder = displayOrder;
-        return true;
-    }
-
-    public boolean resolveFromLhSupply(
-            String sourceSupplyRowIdentifier,
-            Integer resolvedTotalSupplyHouseholdCount,
-            Integer lhSuppliedHouseholdCount
-    ) {
-        if (announcement.isAdminDeleted()) {
-            return false;
-        }
-        if (adminModified) {
-            // 관리자 보정 행도 LH 원본과의 연결은 정제가 기록해야 보강이 단지명을 다시 비교하지 않는다.
-            // 관리자가 정한 모집수는 유지하고, 연결 기록만으로는 정제 중 LH 재보강을 일으키지 않는다.
-            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-            return false;
-        }
-        boolean sourceChanged = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier);
-        if (sourceChanged) {
-            boolean changed = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
-                    || !Objects.equals(totalSupplyHouseholdCount, resolvedTotalSupplyHouseholdCount)
-                    || lhTotalSupplyHouseholdCountOwned != (lhSuppliedHouseholdCount != null)
-                    || lhTotalSupplyHouseholdCountEnriched;
-            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-            totalSupplyHouseholdCount = resolvedTotalSupplyHouseholdCount;
-            lhTotalSupplyHouseholdCountOwned = lhSuppliedHouseholdCount != null;
-            lhTotalSupplyHouseholdCountEnriched = false;
-            return changed;
-        }
-        if (lhSuppliedHouseholdCount == null || lhTotalSupplyHouseholdCountEnriched) {
-            return false;
-        }
-        if (Objects.equals(totalSupplyHouseholdCount, lhSuppliedHouseholdCount)
-                && lhTotalSupplyHouseholdCountOwned) {
-            return false;
-        }
-        totalSupplyHouseholdCount = lhSuppliedHouseholdCount;
-        lhTotalSupplyHouseholdCountOwned = true;
-        return true;
-    }
-
     private boolean hasSameSourceValues(SupplyRow incoming) {
         return Objects.equals(housingComplex, incoming.housingComplex)
                 && Objects.equals(housingType, incoming.housingType)
                 && displayOrder == incoming.displayOrder
                 && sourceComplexName.equals(incoming.sourceComplexName)
                 && sourceHousingTypeName.equals(incoming.sourceHousingTypeName)
-                && supplyPnu.equals(incoming.supplyPnu)
+                && Objects.equals(supplyPnu, incoming.supplyPnu)
                 && Objects.equals(expectedMoveInMonth, incoming.expectedMoveInMonth)
                 && supplyCategory == incoming.supplyCategory
                 && Objects.equals(matchingFailureReason, incoming.matchingFailureReason)
@@ -449,7 +566,7 @@ public class SupplyRow {
 
     private void applySourceValues(SupplyRow incoming) {
         housingComplex = incoming.housingComplex;
-        housingType = incoming.housingType;
+        represent(incoming.housingType);
         displayOrder = incoming.displayOrder;
         sourceComplexName = incoming.sourceComplexName;
         sourceHousingTypeName = incoming.sourceHousingTypeName;
@@ -458,39 +575,6 @@ public class SupplyRow {
         supplyCategory = incoming.supplyCategory;
         matchingFailureReason = incoming.matchingFailureReason;
         totalSupplyHouseholdCount = incoming.totalSupplyHouseholdCount;
-    }
-
-    public boolean enrichFromLh(
-            String sourceSupplyRowIdentifier,
-            YearMonth expectedMoveInMonth,
-            Integer totalSupplyHouseholdCount
-    ) {
-        if (adminModified || announcement.isAdminDeleted()) {
-            return false;
-        }
-        YearMonth ownedExpectedMoveInMonth = expectedMoveInMonth == null
-                ? this.expectedMoveInMonth
-                : expectedMoveInMonth;
-        Integer ownedTotalSupplyHouseholdCount = totalSupplyHouseholdCount == null
-                ? this.totalSupplyHouseholdCount
-                : totalSupplyHouseholdCount;
-        boolean ownsTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
-                || lhTotalSupplyHouseholdCountOwned;
-        boolean enrichesTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
-                || lhTotalSupplyHouseholdCountEnriched;
-        if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
-                && Objects.equals(this.expectedMoveInMonth, ownedExpectedMoveInMonth)
-                && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)
-                && lhTotalSupplyHouseholdCountOwned == ownsTotalSupplyHouseholdCount
-                && lhTotalSupplyHouseholdCountEnriched == enrichesTotalSupplyHouseholdCount) {
-            return false;
-        }
-        lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-        this.expectedMoveInMonth = ownedExpectedMoveInMonth;
-        this.totalSupplyHouseholdCount = ownedTotalSupplyHouseholdCount;
-        lhTotalSupplyHouseholdCountOwned = ownsTotalSupplyHouseholdCount;
-        lhTotalSupplyHouseholdCountEnriched = enrichesTotalSupplyHouseholdCount;
-        return true;
     }
 
     private void validateRequired(Object value, String fieldName) {

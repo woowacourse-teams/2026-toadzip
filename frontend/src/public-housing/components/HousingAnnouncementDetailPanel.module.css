@@ -363,6 +363,13 @@
   overflow-wrap: anywhere;
 }
 
+.receptionGuidance {
+  margin: 0 0 var(--ds-space-3);
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}
+
 .receptionIdentity span,
 .attachmentList li > span {
   color: var(--ds-color-label);

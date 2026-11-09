@@ -18,12 +18,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/announcements/{announcementId}/attachments/{attachmentId}/content")
 public class AnnouncementAttachmentController {
     private final AnnouncementAttachmentService service;
 
@@ -31,14 +29,27 @@ public class AnnouncementAttachmentController {
         this.service = service;
     }
 
-    @GetMapping
+    @GetMapping("/api/v1/announcements/{announcementId}/attachments/{attachmentId}/content")
     public void read(
             @PathVariable long announcementId,
             @PathVariable long attachmentId,
             @RequestParam(defaultValue = "false") boolean download,
             HttpServletResponse response
     ) throws IOException {
-        AttachmentContent content = service.read(announcementId, attachmentId, download);
+        write(service.read(announcementId, attachmentId, download), download, response);
+    }
+
+    /** PDF 보정 화면이 공개 전인 미확정 공고의 첨부 PDF도 미리 보게 한다. */
+    @GetMapping("/api/admin/announcements/{announcementId}/attachments/{attachmentId}/content")
+    public void readForAdmin(
+            @PathVariable long announcementId,
+            @PathVariable long attachmentId,
+            HttpServletResponse response
+    ) throws IOException {
+        write(service.readForAdmin(announcementId, attachmentId), false, response);
+    }
+
+    private void write(AttachmentContent content, boolean download, HttpServletResponse response) throws IOException {
         try (var file = content.file()) {
             ContentDisposition.Builder disposition = ContentDisposition.inline();
             MediaType type = MediaType.APPLICATION_PDF;
@@ -62,6 +73,11 @@ public class AnnouncementAttachmentController {
             AttachmentUnavailableException exception,
             HttpServletRequest request
     ) {
+        return response(exception, request);
+    }
+
+    /** 첨부를 받다 실패했을 때의 응답. PDF 추출 작업이 첨부를 받을 때도 같은 응답을 쓴다. */
+    static ResponseEntity<ErrorResponse> response(AttachmentUnavailableException exception, HttpServletRequest request) {
         HttpStatus status = switch (exception.reason()) {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case UNSUPPORTED_SOURCE, NOT_PDF -> HttpStatus.UNPROCESSABLE_CONTENT;

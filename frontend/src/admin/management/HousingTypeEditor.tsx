@@ -22,6 +22,7 @@ export function HousingTypeEditor({ type, complexId, version, onSaved, onClose, 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<{ impact: HousingTypeImpact; body: Record<string, unknown> } | null>(null)
   useUnsavedChanges(dirty)
+  const areaLocked = preview !== null && preview.impact.rows.length > 0 && Number(preview.body.exclusiveArea) !== type.exclusiveArea
   async function inspect(form: HTMLFormElement) {
     const body = { ...formValues(form, fields, {}), version }
     setBusy(true); onBusyChange(true); setError('')
@@ -50,9 +51,11 @@ export function HousingTypeEditor({ type, complexId, version, onSaved, onClose, 
       <p>이름: {type.name} → {String(preview.body.name)} · 전용면적: {type.exclusiveArea} → {String(preview.body.exclusiveArea)}㎡ · 전체 세대수: {type.householdCount ?? '미확인'} → {preview.body.householdCount === null ? '미확인' : String(preview.body.householdCount)}</p>
       {preview.impact.rows.length === 0 ? <p>연결된 공고가 없습니다.</p> : <ul>{preview.impact.rows.map(row => <li key={row.supplyRowId}>
         <Link to={`/admin/announcements/${row.announcementId}?section=relations`} target="_blank" rel="noreferrer">{row.announcementName} · 공급행 #{row.supplyRowId} ↗</Link>
-        {' · '}{row.areaProtected ? '공고별 면적 보호' : row.reviewedAreas ? '검토한 면적을 공고에서 먼저 보호해야 함' : '공통 면적 변경이 반영됨'}{row.excluded ? ' · 공개 제외 중' : ''}
+        {row.excluded ? ' · 공개 제외 중' : ''}
       </li>)}</ul>}
-      <button type="button" className="admin-primary" disabled={busy} onClick={() => void save()}>영향을 확인한 주택형 저장</button>
+      {areaLocked
+        ? <p role="alert">공고 공급행이 연결된 주택형은 전용면적을 바꿀 수 없습니다. 올바른 면적의 주택형을 새로 만들고 공급행을 옮긴 뒤 이 주택형을 휴지통에 넣으세요.</p>
+        : <button type="button" className="admin-primary" disabled={busy} onClick={() => void save()}>영향을 확인한 주택형 저장</button>}
     </section>}
     <div className="admin-inline"><button className="admin-primary" disabled={busy}>{busy ? '확인 중…' : '수정 영향 확인'}</button>
       <button type="button" disabled={busy} onClick={() => {

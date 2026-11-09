@@ -95,7 +95,6 @@ export function LandingPage() {
         <nav aria-label="랜딩페이지 메뉴" className={styles.navigation}>
           <a href="#about">서비스 소개</a>
           <a href="#how-it-works">사용법</a>
-          <a href="#technology">기술 소개</a>
           <StartLink compact />
         </nav>
       </header>
@@ -179,8 +178,6 @@ export function LandingPage() {
           <p className={styles.screenNote}>실제 서비스 화면의 일부를 확대했어요. 모집 정보는 조회 시점에 따라 달라질 수 있어요.</p>
         </section>
 
-        <TechnologySection />
-
         <section className={styles.closing} aria-labelledby="start-title">
           <div data-reveal>
             <img src="/logo-bok-search.svg" alt="" width="76" height="76" />
@@ -189,6 +186,8 @@ export function LandingPage() {
             <StartLink />
           </div>
         </section>
+
+        <TechnologySection />
       </main>
       <footer className={styles.footer}>
         <BrandLink showName className={styles.brand} />

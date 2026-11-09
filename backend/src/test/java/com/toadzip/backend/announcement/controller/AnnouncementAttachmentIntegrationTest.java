@@ -2,6 +2,7 @@ package com.toadzip.backend.announcement.controller;
 
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -94,6 +95,21 @@ class AnnouncementAttachmentIntegrationTest {
         entityManager.flush();
         mockMvc.perform(request().param("download", "true")).andExpect(status().isNotFound());
         verifyNoInteractions(client);
+    }
+
+    @Test
+    void 미확정_공고의_첨부는_공개_경로로_볼_수_없고_관리자만_PDF로_미리본다() throws Exception {
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", announcement.getId()).executeUpdate();
+        entityManager.clear();
+        String adminPath = "/api/admin/announcements/{id}/attachments/{attachmentId}/content";
+
+        mockMvc.perform(request()).andExpect(status().isNotFound());
+        mockMvc.perform(get(adminPath, announcement.getId(), attachment.getId())).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(adminPath, announcement.getId(), attachment.getId()).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(content().contentType("application/pdf"))
+                .andExpect(content().bytes(PDF));
     }
 
     @Test

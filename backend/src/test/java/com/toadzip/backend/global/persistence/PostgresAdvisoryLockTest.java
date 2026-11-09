@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,22 @@ class PostgresAdvisoryLockTest {
     @Test
     void 잠금_해제_결과가_false면_물리_연결을_폐기한다() throws Exception {
         when(resultSet.getBoolean(1)).thenReturn(true, false);
+        PostgresAdvisoryLock.Lease lease = advisoryLock.tryAcquire(123L, "테스트 실행")
+                .orElseThrow();
+
+        lease.close();
+
+        InOrder releaseOrder = inOrder(connection);
+        releaseOrder.verify(connection).abort(any());
+        releaseOrder.verify(connection).close();
+    }
+
+    @Test
+    void 잠금_해제_쿼리가_실패하면_물리_연결을_폐기한다() throws Exception {
+        when(resultSet.getBoolean(1)).thenReturn(true);
+        when(statement.executeQuery())
+                .thenReturn(resultSet)
+                .thenThrow(new SQLException("unlock query failed"));
         PostgresAdvisoryLock.Lease lease = advisoryLock.tryAcquire(123L, "테스트 실행")
                 .orElseThrow();
 

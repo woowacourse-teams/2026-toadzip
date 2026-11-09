@@ -108,7 +108,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await act(async () => pending.resolve())
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.queryByText('서울 단지 알림 설정을 저장했어요.')).not.toBeInTheDocument()
+    expect(screen.queryByText('서울 단지의 새 공고를 알림 보관함으로 알려드려요.')).not.toBeInTheDocument()
   })
 })
 

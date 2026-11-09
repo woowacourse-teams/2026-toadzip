@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.repository;
 
 import com.toadzip.backend.global.persistence.PostgresAdvisoryLock;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import java.sql.SQLException;
 import java.util.Objects;
 import java.util.Optional;

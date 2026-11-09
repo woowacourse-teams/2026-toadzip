@@ -1,0 +1,71 @@
+package com.toadzip.backend.ingest.lh.collection.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+
+import com.toadzip.backend.global.config.ClockConfig;
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.pending.PendingCollectionTargets;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionProgressManager;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+@DataJpaTest(showSql = false)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({LhAnnouncementCollectionProgressManager.class, LhAnnouncementCollectionProgressStore.class, ClockConfig.class})
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@ActiveProfiles("test")
+class LhAnnouncementCollectionProgressTransactionTest {
+
+    @Autowired
+    private LhAnnouncementCollectionProgressManager progressManager;
+
+
+    @Autowired
+    private LhAnnouncementCollectionLinkRepository linkRepository;
+
+    @MockitoBean
+    private ExternalDataFailureRecorder failureRecorder;
+
+    @MockitoBean
+    private PendingCollectionTargets pending;
+
+    @AfterEach
+    void cleanUp() {
+        linkRepository.deleteAll();
+    }
+
+    @Test
+    void 실패_기록_갱신이_실패하면_공고_연결을_롤백한다() {
+        Candidate candidate = new Candidate(
+                "announcement-1",
+                "myhomeAnnouncementSourceId=1",
+                new LhAnnouncementRequest("PAN-1", "03", "06", "48", "063")
+        );
+        doThrow(new IllegalStateException("실패 기록 갱신 실패"))
+                .when(failureRecorder)
+                .resolve(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate.requestDescription());
+
+        assertThatThrownBy(() -> progressManager.recordLinked(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("실패 기록 갱신 실패");
+
+        assertThat(linkRepository.count()).isZero();
+    }
+}

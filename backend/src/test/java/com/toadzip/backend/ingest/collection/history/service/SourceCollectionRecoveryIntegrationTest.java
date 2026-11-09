@@ -4,33 +4,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.global.persistence.PostgresAdvisoryLock;
+import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestProperties;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
 import com.toadzip.backend.ingest.collection.history.repository.SourceCollectionRecordRepository;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuerySource;
-import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuerySource;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementQuerySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMapper;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQueryService;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionRecovery;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineHeartbeat;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
 import jakarta.persistence.EntityManager;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
@@ -38,17 +40,15 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.function.Function;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -229,7 +229,7 @@ class SourceCollectionRecoveryIntegrationTest {
         Long sourceId = source.getId();
         entityManager.clear();
 
-        assertThat(states.recoverInterrupted(executionId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isTrue();
+        assertThat(states.recoverInterruptedBefore(cutoff(), RECOVERED_AT, RECOVERY_REASON)).isPositive();
         entityManager.clear();
 
         assertThat(records.findById(running.getId()).orElseThrow()).satisfies(found -> {
@@ -267,7 +267,6 @@ class SourceCollectionRecoveryIntegrationTest {
         assertThat(records.findById(first.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
         assertThat(records.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
         assertThat(records.findById(fresh.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
-        assertThat(states.recoverInterrupted(freshId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isFalse();
     }
 
     @Test
@@ -276,7 +275,7 @@ class SourceCollectionRecoveryIntegrationTest {
         UUID executionId = execution(STARTED_AT);
         var stale = record(executionId, STARTED_AT);
         try {
-            assertThat(states.recoverInterrupted(executionId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isTrue();
+            assertThat(states.recoverInterruptedBefore(cutoff(), RECOVERED_AT, RECOVERY_REASON)).isPositive();
             stale.complete(RECOVERED_AT.plusSeconds(1), 1);
 
             assertThatThrownBy(() -> records.saveAndFlush(stale))
@@ -294,8 +293,8 @@ class SourceCollectionRecoveryIntegrationTest {
         UUID executionId = execution(STARTED_AT);
         var running = record(executionId, RECOVERED_AT.plusSeconds(1));
         try {
-            assertThatThrownBy(() -> states.recoverInterrupted(
-                    executionId, cutoff(), RECOVERED_AT, RECOVERY_REASON)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> states.recoverInterruptedBefore(
+                    cutoff(), RECOVERED_AT, RECOVERY_REASON)).isInstanceOf(IllegalArgumentException.class);
             assertThat(executions.findByExecutionId(executionId).orElseThrow().getStatus())
                     .isEqualTo(DataPipelineExecutionStatus.RUNNING);
             assertThat(records.findById(running.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
@@ -323,48 +322,6 @@ class SourceCollectionRecoveryIntegrationTest {
         } finally {
             records.deleteById(withoutId.getId());
             records.deleteById(withoutExecution.getId());
-        }
-    }
-
-    @ParameterizedTest
-    @CsvSource({
-            "MYHOME_COMPLEX_COLLECTION, MYHOME_COMPLEX",
-            "MYHOME_ANNOUNCEMENT_COLLECTION, MYHOME_ANNOUNCEMENT",
-            "LH_LEASE_CATALOG_COLLECTION, LH_LEASE_CATALOG",
-            "LH_ANNOUNCEMENT_COLLECTION, LH_ANNOUNCEMENT_CATALOG",
-            "LH_ANNOUNCEMENT_COLLECTION, LH_ANNOUNCEMENT_SUPPLY",
-            "LH_ANNOUNCEMENT_COLLECTION, LH_ANNOUNCEMENT_DETAIL"
-    })
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 작업별_잠금이_유지되는_동안_정상_수집은_보존하고_다른_작업만_복구한다(
-            IngestOperationLock.Operation operation, CollectionSource source
-    ) {
-        var active = records.saveAndFlush(SourceCollectionRecord.start(UUID.randomUUID(), null,
-                source, Map.of(), STARTED_AT));
-        CollectionSource other = CollectionSource.MYHOME_COMPLEX;
-        if (source == CollectionSource.MYHOME_COMPLEX) {
-            other = CollectionSource.LH_ANNOUNCEMENT_DETAIL;
-        }
-        var interrupted = records.saveAndFlush(SourceCollectionRecord.start(UUID.randomUUID(), null,
-                other, Map.of(), STARTED_AT));
-        var operationLock = new IngestOperationLock(dataSource);
-        var globalLock = new DataPipelineExecutionLock(dataSource);
-        var service = queryService(globalLock);
-        try {
-            assertThat(operationLock.tryRun(operation, () -> {
-                service.history(0, 100);
-                assertThat(records.findById(active.getId()).orElseThrow().getStatus())
-                        .isEqualTo(CollectionStatus.RUNNING);
-                assertThat(records.findById(interrupted.getId()).orElseThrow().getStatus())
-                        .isEqualTo(CollectionStatus.FAILED);
-                return true;
-            })).contains(true);
-
-            service.history(0, 100);
-            assertThat(records.findById(active.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
-        } finally {
-            records.deleteById(active.getId());
-            records.deleteById(interrupted.getId());
         }
     }
 
@@ -465,8 +422,8 @@ class SourceCollectionRecoveryIntegrationTest {
         var orphan = record(null, STARTED_AT);
         UUID id = null;
         try {
-            var result = queryService(new DataPipelineExecutionLock(dataSource))
-                    .start(DataPipelineType.COMPLEX_REFINEMENT);
+            var result = pipelineService(new DataPipelineExecutionLock(dataSource))
+                    .start(DataPipelineType.COMPLEX_COLLECTION);
             id = result.executionId();
 
             assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
@@ -507,20 +464,15 @@ class SourceCollectionRecoveryIntegrationTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 커밋_직전에_작업별_잠금_소유권을_잃으면_개별_수집_복구를_롤백한다() throws Exception {
+    void 커밋_직전에_실행_잠금_소유권을_잃으면_개별_수집_복구를_롤백한다() {
         var orphan = records.saveAndFlush(SourceCollectionRecord.start(UUID.randomUUID(), null,
                 CollectionSource.MYHOME_COMPLEX, Map.of(), STARTED_AT));
-        var operationLock = mock(IngestOperationLock.class);
-        var lease = mock(PostgresAdvisoryLock.Lease.class);
-        doNothing().doThrow(new SQLException("잠금 세션 종료")).when(lease).verifyHeld();
-        doAnswer(invocation -> {
-            Function<PostgresAdvisoryLock.Lease, Integer> action = invocation.getArgument(1);
-            return java.util.Optional.of(action.apply(lease));
-        }).when(operationLock).tryRunWithLease(eq(IngestOperationLock.Operation.MYHOME_COMPLEX_COLLECTION), any());
-        var recovery = new SourceCollectionRecoveryService(operationLock, records,
+        var lease = mock(DataPipelineExecutionLock.Lease.class);
+        doNothing().doThrow(new IngestOwnershipLostException()).when(lease).verifyHeld();
+        var recovery = new SourceCollectionRecoveryService(records,
                 transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC));
         try {
-            recovery.recoverUnlinkedCollections();
+            recovery.recoverUnlinkedCollections(lease);
 
             assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
         } finally {
@@ -530,34 +482,11 @@ class SourceCollectionRecoveryIntegrationTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 실행_중인_파이프라인의_상태_조회는_정상_수집의_작업_잠금을_선점하지_않는다() throws Exception {
-        var globalLock = new DataPipelineExecutionLock(dataSource);
-        var operationLock = new IngestOperationLock(dataSource);
-        var recoveryStarted = new CompletableFuture<Void>();
-        var releaseRecovery = new CountDownLatch(1);
-        var recovery = blockingRecovery(operationLock, recoveryStarted, releaseRecovery);
-        var service = queryService(globalLock, recovery);
-        try (var executor = Executors.newSingleThreadExecutor(); var ignored = globalLock.tryAcquire().orElseThrow()) {
-            var history = CompletableFuture.supplyAsync(() -> service.history(0, 100), executor);
-            try {
-                CompletableFuture.anyOf(history, recoveryStarted).get(5, TimeUnit.SECONDS);
-
-                assertThat(operationLock.tryRun(IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION,
-                        () -> "collected")).contains("collected");
-            } finally {
-                releaseRecovery.countDown();
-                history.get(5, TimeUnit.SECONDS);
-            }
-        }
-    }
-
-    @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void 조회_복구_중에는_다른_인스턴스의_새_파이프라인이_실행_잠금을_얻지_못한다() throws Exception {
         var globalLock = new DataPipelineExecutionLock(dataSource);
         var recoveryStarted = new CompletableFuture<Void>();
         var releaseRecovery = new CountDownLatch(1);
-        var recovery = blockingRecovery(new IngestOperationLock(dataSource), recoveryStarted, releaseRecovery);
+        var recovery = blockingRecovery(recoveryStarted, releaseRecovery);
         var service = queryService(globalLock, recovery);
         Optional<DataPipelineExecutionLock.Lease> competingLease = Optional.empty();
         try (var executor = Executors.newSingleThreadExecutor()) {
@@ -578,25 +507,15 @@ class SourceCollectionRecoveryIntegrationTest {
         }
     }
 
-    private SourceCollectionRecoveryService blockingRecovery(
-            IngestOperationLock operationLock, CompletableFuture<Void> started, CountDownLatch release
-    ) {
+    private SourceCollectionRecoveryService blockingRecovery(CompletableFuture<Void> started, CountDownLatch release) {
         var recovery = mock(SourceCollectionRecoveryService.class);
         doAnswer(invocation -> {
-            operationLock.tryRun(IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION, () -> {
-                started.complete(null);
-                try {
-                    if (!release.await(5, TimeUnit.SECONDS)) {
-                        throw new IllegalStateException("복구 종료 신호가 도착하지 않았습니다.");
-                    }
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(interrupted);
-                }
-                return true;
-            });
+            started.complete(null);
+            if (!release.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("복구 종료 신호가 도착하지 않았습니다.");
+            }
             return null;
-        }).when(recovery).recoverUnlinkedCollections();
+        }).when(recovery).recoverUnlinkedCollections(any());
         return recovery;
     }
 
@@ -621,19 +540,30 @@ class SourceCollectionRecoveryIntegrationTest {
         return lock;
     }
 
-    private DataPipelineExecutionService queryService(DataPipelineExecutionLock lock) {
-        return queryService(lock, new SourceCollectionRecoveryService(new IngestOperationLock(dataSource), records,
+    private DataPipelineExecutionQueryService queryService(DataPipelineExecutionLock lock) {
+        return queryService(lock, new SourceCollectionRecoveryService(records,
                 transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)));
     }
 
-    private DataPipelineExecutionService queryService(
+    private DataPipelineExecutionQueryService queryService(
             DataPipelineExecutionLock lock, SourceCollectionRecoveryService recovery
     ) {
+        return new DataPipelineExecutionQueryService(executions,
+                new DataPipelineExecutionMapper(JsonMapper.builder().build()),
+                new DataPipelineExecutionRecovery(lock, states, recovery, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)));
+    }
+
+    private DataPipelineExecutionService pipelineService(DataPipelineExecutionLock lock) {
         var heartbeatExecutor = mock(ScheduledExecutorService.class);
         when(heartbeatExecutor.scheduleWithFixedDelay(any(), anyLong(), anyLong(), any()))
                 .thenReturn(mock(ScheduledFuture.class));
-        return new DataPipelineExecutionService(mock(DataPipelineRunner.class), lock, executions, states,
-                recovery, Runnable::run, heartbeatExecutor, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC),
-                new DataPipelineExecutionMapper(JsonMapper.builder().build()));
+        Clock clock = Clock.fixed(RECOVERED_AT, ZoneOffset.UTC);
+        var failures = new DataPipelineFailureRecorder(states, clock);
+        return new DataPipelineExecutionService(mock(DataPipelineRunner.class), lock, states,
+                new DataPipelineExecutionRecovery(lock, states,
+                        new SourceCollectionRecoveryService(records, transactionManager, clock), clock),
+                new DataPipelineHeartbeat(heartbeatExecutor, states, failures, clock), failures,
+                Runnable::run, clock, new DataPipelineExecutionMapper(JsonMapper.builder().build()),
+                new ExternalDataIngestProperties("test-service-key", null));
     }
 }

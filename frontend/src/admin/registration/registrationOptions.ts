@@ -4,6 +4,7 @@ export const rentalTypeOptions = toRegistrationOptions([
   'HAPPY_HOUSING',
   'NATIONAL_RENTAL',
   'PERMANENT_RENTAL',
+  'PUBLIC_RENTAL',
   'PUBLIC_RENTAL_50Y',
   'INTEGRATED_PUBLIC_RENTAL',
   'REDEVELOPMENT_RENTAL',

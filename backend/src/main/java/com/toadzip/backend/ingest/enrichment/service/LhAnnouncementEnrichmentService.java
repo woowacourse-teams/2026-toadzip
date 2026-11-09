@@ -1,279 +1,30 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
-import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_ENRICHMENT;
-
-import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
-import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver.LinkedSource;
-import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
-import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
-import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
-import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
-import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
-import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
-import com.toadzip.backend.ingest.mapping.service.LhSupplyRowLinks;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
-import java.time.Clock;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Slf4j
+/** 지원을 종료한 LH 공고 보강이 남긴 실패 목록을 조회한다. */
 @Service
 @RequiredArgsConstructor
 public class LhAnnouncementEnrichmentService {
 
-    private final MyHomeAnnouncementSourceReader myHomeSourceRepository;
-    private final AnnouncementRepository announcementRepository;
-    private final LhAnnouncementDetailSourceReader detailSourceRepository;
-    private final LhAnnouncementSupplySourceReader supplySourceRepository;
-    private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
-    private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
-    private final IngestOperationLock executionLock;
-    private final LhAnnouncementEnrichmentMapper mapper;
-    private final LhAnnouncementEnrichmentWriter writer;
-    private final LhAnnouncementLinkResolver linkResolver;
-    private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
-    private final LhSupplyRowLinks supplyLinks;
-    private final Clock clock;
-
-    public LhAnnouncementEnrichmentReport enrichAll() {
-        return executionLock.tryRun(LH_ANNOUNCEMENT_ENRICHMENT, this::enrichAllUnlocked)
-                .orElseThrow(this::alreadyRunning);
-    }
-
-    private LhAnnouncementEnrichmentReport enrichAllUnlocked() {
-        Instant occurredAt = clock.instant();
-        List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
-        Set<String> incompleteMappingIds = mappingFailureRepository.findAllByStatus(PENDING)
-                .stream()
-                .map(failure -> failure.getSourceAnnouncementIdentifier())
-                .filter(identifier -> !blank(identifier))
-                .collect(Collectors.toSet());
-        LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
-        for (Map.Entry<String, List<MyHomeAnnouncementSource>> group
-                : sourcesByAnnouncementWithLh().entrySet()) {
-            report = report.plus(enrich(
-                    group.getValue(), failures, occurredAt,
-                    incompleteMappingIds.contains(group.getKey())
-            ));
-        }
-        failureStore.reconcileAfterRun(
-                failures,
-                IngestExecutionContext.currentExecutionId().orElse(null)
-        );
-        return report;
-    }
-
-    private Map<String, List<MyHomeAnnouncementSource>> sourcesByAnnouncementWithLh() {
-        Map<String, List<MyHomeAnnouncementSource>> sources = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAllByOrderByIdAsc()) {
-            if (blank(source.getPblancId())) {
-                continue;
-            }
-            sources.computeIfAbsent(source.getPblancId().strip(), ignored -> new ArrayList<>())
-                    .add(source);
-        }
-        sources.values().removeIf(group -> group.stream().noneMatch(this::isLh));
-        return sources;
-    }
-
-    private LhAnnouncementEnrichmentReport enrich(
-            List<MyHomeAnnouncementSource> sources,
-            List<LhAnnouncementEnrichmentFailure> failures,
-            Instant occurredAt,
-            boolean mappingIncomplete
-    ) {
-        List<MyHomeAnnouncementSource> lhSources = MyHomeAnnouncementCurrentSources.select(sources)
-                .stream().filter(this::isLh).toList();
-        if (lhSources.isEmpty()) {
-            return LhAnnouncementEnrichmentReport.empty();
-        }
-        MyHomeAnnouncementSource source = lhSources.getFirst();
-        Announcement announcement = announcementRepository
-                .findBySourceAnnouncementIdentifier(source.getPblancId())
-                .orElse(null);
-        if (announcement == null) {
-            return reject(source, null, LhAnnouncementEnrichmentFailureReason.ANNOUNCEMENT_NOT_FOUND,
-                    "마이홈 기준으로 생성된 LH 공고를 찾을 수 없습니다.", failures, occurredAt);
-        }
-        if (announcement.getProvider() != AgencyCode.LH) {
-            return LhAnnouncementEnrichmentReport.empty();
-        }
-        String rejectionDetail = commonValuesMapper.rejectionDetail(sources);
-        if (rejectionDetail != null) {
-            return reject(source, null, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
-                    rejectionDetail, failures, occurredAt);
-        }
-        if (announcement.getSupplyType() == RentalType.ETC) {
-            return reject(source, null, LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
-                    "지원하지 않는 공급유형의 LH 공고입니다.", failures, occurredAt);
-        }
-        LinkedSource linked;
-        try {
-            linked = linkResolver.resolveFirstLinked(lhSources);
-        } catch (LhAnnouncementLinkResolutionException exception) {
-            return reject(source, null, linkFailureReason(exception), exception.getMessage(), failures, occurredAt);
-        }
-        return enrichLinkedAnnouncement(
-                announcement, linked, sources, lhSources, failures, occurredAt, mappingIncomplete
-        );
-    }
-
-    private LhAnnouncementEnrichmentFailureReason linkFailureReason(LhAnnouncementLinkResolutionException exception) {
-        return switch (exception.reason()) {
-            case REQUEST_UNSUPPORTED -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_REQUEST_UNSUPPORTED;
-            case LINK_NOT_FOUND -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_NOT_FOUND;
-            case LINK_MISMATCH -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH;
-        };
-    }
-
-    private LhAnnouncementEnrichmentReport enrichLinkedAnnouncement(
-            Announcement announcement,
-            LinkedSource linked,
-            List<MyHomeAnnouncementSource> sources,
-            List<MyHomeAnnouncementSource> currentLhSources,
-            List<LhAnnouncementEnrichmentFailure> failures,
-            Instant occurredAt,
-            boolean mappingIncomplete
-    ) {
-        MyHomeAnnouncementSource source = linked.source();
-        String panId = linked.request().panId();
-        String requestHash = LhAnnouncementQuery.requestHashOf(linked.request().requestDescription());
-        List<LhAnnouncementDetailSource> details = detailSourceRepository
-                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
-        if (details.isEmpty()) {
-            return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
-        }
-        List<LhAnnouncementSupplySource> supplies = supplySourceRepository
-                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
-        try {
-            LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies).withSupplyLinks(supplyLinks
-                    .states(source.getPblancId(), MyHomeAnnouncementCurrentSources.select(sources), supplies));
-            if (mappingIncomplete && announcement.getLhPanId() != null) {
-                return reject(source, panId, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
-                        "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
-            }
-            LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, Set.of(), sourceKeysExcludedFromLhEnrichment(sources, currentLhSources),
-                    supplies.isEmpty() && supplySourceRepository.hasVerifiedEmptySupplies(
-                            panId, linked.request().requestDescription()
-                    )
-            );
-            addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
-            return result.report();
-        } catch (LhAnnouncementEnrichmentRejectedException exception) {
-            return reject(source, panId, exception.reason(), exception.getMessage(), failures, occurredAt);
-        }
-    }
-
-    private Set<String> sourceKeysExcludedFromLhEnrichment(
-            List<MyHomeAnnouncementSource> sources,
-            List<MyHomeAnnouncementSource> currentLhSources
-    ) {
-        Set<String> currentLhSourceKeys = currentLhSources.stream()
-                .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
-        return sources.stream().map(MyHomeAnnouncementSource::getSourceKey)
-                .filter(key -> !currentLhSourceKeys.contains(key))
-                .collect(Collectors.toSet());
-    }
-
-    private void addSupplyFailures(
-            MyHomeAnnouncementSource source,
-            String panId,
-            List<LhSupplyMatchingFailureData> supplyFailures,
-            List<LhAnnouncementEnrichmentFailure> failures,
-            Instant occurredAt
-    ) {
-        for (LhSupplyMatchingFailureData failure : supplyFailures) {
-            failures.add(LhAnnouncementEnrichmentFailure.create(
-                    failure.source().sourceIdentifier(), source.getPblancId(), panId,
-                    failure.reason(), failure.detail(), occurredAt
-            ));
-        }
-    }
-
-    private LhAnnouncementEnrichmentReport reject(
-            MyHomeAnnouncementSource source,
-            String panId,
-            LhAnnouncementEnrichmentFailureReason reason,
-            String detail,
-            List<LhAnnouncementEnrichmentFailure> failures,
-            Instant occurredAt
-    ) {
-        failures.add(LhAnnouncementEnrichmentFailure.create(
-                source.getSourceKey(), source.getPblancId(), panId, reason, detail, occurredAt
-        ));
-        return LhAnnouncementEnrichmentReport.failed();
-    }
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailures(int page, int size) {
-        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
-                        PENDING,
-                        PageRequest.of(page, size)
-                ).stream()
-                .map(LhAnnouncementEnrichmentFailureResponse::from)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<LhAnnouncementEnrichmentFailureResponse> findFailures() {
-        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING).stream()
+        return failureStore.pending(page, size).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailureHistory(int page, int size) {
-        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size)).stream()
+        return failureStore.history(page, size).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
-    }
-
-    private boolean isLh(MyHomeAnnouncementSource source) {
-        return LhProviderPolicy.isLh(source.getSuplyInsttNm());
-    }
-
-    private boolean blank(String value) {
-        return value == null || value.isBlank();
-    }
-
-    private IngestAlreadyRunningException alreadyRunning() {
-        log.warn("LH 공고 보강이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
-        return new IngestAlreadyRunningException("LH 공고 보강이 이미 실행 중입니다.");
     }
 }

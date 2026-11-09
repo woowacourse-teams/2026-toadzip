@@ -1,16 +1,38 @@
 package com.toadzip.backend.ingest.source.repository;
 
+import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /** 관리자 원천 조회는 현행 수집 행만 조회한다. */
 public final class IngestSourceRows {
+
+    /** 원천 행 JSON(raw_payload)에 함께 담기는 수집 관리 열. 원천 값 비교와 확인 항목에서는 뺀다. */
+    public static final List<String> METADATA_KEYS = List.of("id", "source_id", "collected_at", "source_order",
+            "collection_record_id", "consecutive_miss_count", "last_seen_run_id", "last_seen_at");
 
     // Character.isWhitespace와 같은 문자 집합으로 기존 projection의 String.strip() 키를 재현한다.
     private static final String KEY_WHITESPACE = "U&'\\0009\\000A\\000B\\000C\\000D\\001C\\001D\\001E\\001F\\0020"
             + "\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2008\\2009\\200A"
             + "\\2028\\2029\\205F\\3000'";
 
+    /** 원천 행 JSON에서 수집 관리 열을 뺀 jsonb 식. 원천 값이 같으면 다시 수집해도 같다. */
+    public static final String NORMALIZED_PAYLOAD = withoutMetadata("raw_payload::jsonb");
+
+    /** 모든 원천 분류의 현행 행을 category, source_key, raw(NORMALIZED_PAYLOAD)로 합친 SQL */
+    public static final String NORMALIZED_ROWS = Arrays.stream(IngestSourceCategory.values())
+            .map(category -> "SELECT '" + category.name() + "'::text category, source_key, "
+                    + NORMALIZED_PAYLOAD + " raw FROM ("
+                    + query(category) + ") rows")
+            .collect(Collectors.joining(" UNION ALL "));
+
     private IngestSourceRows() {
+    }
+
+    private static String withoutMetadata(String payload) {
+        return payload + METADATA_KEYS.stream().map(key -> " - '" + key + "'").collect(Collectors.joining());
     }
 
     public static String query(IngestSourceCategory category) {
@@ -21,6 +43,14 @@ public final class IngestSourceRows {
                            (to_jsonb(source) || jsonb_build_object('attachments', source.attachments::jsonb))::text
                                AS raw_payload
                     FROM sh_announcement_source source
+                    """;
+            case GH_ANNOUNCEMENT -> """
+                    SELECT source.id, source.source_key, source.title AS name, source.original_url,
+                           source.collected_at, NULL::timestamptz AS updated_at,
+                           (to_jsonb(source) || jsonb_build_object('attachments', source.attachments::jsonb,
+                               'districts', source.districts::jsonb, 'reception', source.reception::jsonb))::text
+                               AS raw_payload
+                    FROM gh_announcement_source source
                     """;
             case MYHOME_COMPLEX -> myHomeComplex();
             case MYHOME_ANNOUNCEMENT -> myHomeAnnouncement();
@@ -56,8 +86,8 @@ public final class IngestSourceRows {
     private static String myHomeComplex() {
         String key = keyPart("r.hsmp_sn") + " || " + keyPart("r.pnu") + " || "
                 + keyPart("r.suply_ty_nm") + " || " + keyPart("r.style_nm") + " || "
-                + keyPart("trim_scale(round(r.suply_prvuse_ar, 4))") + " || "
-                + keyPart("trim_scale(round(r.suply_cmnuse_ar, 4))");
+                + keyPart("trim_scale(round(r.suply_prvuse_ar, " + SourceArea.SCALE + "))") + " || "
+                + keyPart("trim_scale(round(r.suply_cmnuse_ar, " + SourceArea.SCALE + "))");
         return """
                 SELECT r.id, %s AS source_key, r.hsmp_nm AS name, NULL::text AS original_url,
                        r.collected_at, NULL::timestamptz AS updated_at,

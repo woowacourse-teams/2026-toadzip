@@ -12,9 +12,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,9 +32,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -39,8 +47,8 @@ class ComplexComparisonIntegrationTest {
     @Autowired private ObjectMapper json;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private EntityManager entityManager;
-    @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sources;
-    @Autowired private com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository mappingLinks;
+    @Autowired private MyHomeComplexSourceFixtures sources;
+    @Autowired private MyHomeComplexLinkRepository mappingLinks;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
     @BeforeEach
@@ -55,7 +63,7 @@ class ComplexComparisonIntegrationTest {
         JsonNode before = comparison(id);
         assertThat(before.get("sources").isEmpty()).isTrue();
         var data = before.get("current").deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) data).put("totalHouseholdCount", 120);
+        ((ObjectNode) data).put("totalHouseholdCount", 120);
         save(id, before, data).andExpect(status().isOk());
         entityManager.clear();
         assertThat(complexes.findById(id).orElseThrow().getTotalHouseholdCount()).isEqualTo(120);
@@ -145,7 +153,7 @@ class ComplexComparisonIntegrationTest {
     void 자동_마이홈_원천의_시설_항목도_파일없이_가져온다() throws Exception {
         long id = complex();
         sourceKey(99103);
-        mappingLinks.saveAndFlush(com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink
+        mappingLinks.saveAndFlush(MyHomeComplexLink
                 .connect("99103:HAPPY_HOUSING", complexes.findById(id).orElseThrow()));
         var before = comparison(id);
         assertThat(before.at("/sources/0/automatic").asBoolean()).isTrue();
@@ -180,7 +188,7 @@ class ComplexComparisonIntegrationTest {
                 .andReturn().getResponse().getContentAsString()).get("data");
         entityManager.clear();
         assertThat(comparison(id).get("snapshotToken").asText()).isEqualTo(connected.get("snapshotToken").asText());
-        var current = (tools.jackson.databind.node.ObjectNode) connected.get("current").deepCopy();
+        var current = (ObjectNode) connected.get("current").deepCopy();
         current.put("totalHouseholdCount", 120);
         save(id, connected, current).andExpect(status().isOk());
     }
@@ -189,8 +197,8 @@ class ComplexComparisonIntegrationTest {
     void 주소_변경은_전체_주소정보_확인없이_저장할_수_없다() throws Exception {
         long id = complex();
         var before = comparison(id);
-        var current = (tools.jackson.databind.node.ObjectNode) before.get("current").deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) current.get("address")).put("roadAddress", "주소 변경");
+        var current = (ObjectNode) before.get("current").deepCopy();
+        ((ObjectNode) current.get("address")).put("roadAddress", "주소 변경");
         save(id, before, current).andExpect(status().isBadRequest());
         assertThat(comparison(id).at("/current/address/roadAddress").asText()).contains("세종대로");
     }
@@ -199,7 +207,7 @@ class ComplexComparisonIntegrationTest {
     void 저장_응답의_좌표_정밀도와_다음_조회_토큰이_일치한다() throws Exception {
         long id = complex();
         var before = comparison(id);
-        var current = (tools.jackson.databind.node.ObjectNode) before.get("current").deepCopy();
+        var current = (ObjectNode) before.get("current").deepCopy();
         current.put("name", "새 이름");
         JsonNode saved = json.readTree(save(id, before, current).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString()).get("data");
@@ -208,13 +216,13 @@ class ComplexComparisonIntegrationTest {
     }
 
     private String sourceKey(long identifier) throws Exception {
-        var row = com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource.from(
-                new com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot(
+        var row = MyHomeSourceViews.complex(
+                new MyHomeComplexSourceSnapshot(
                         identifier, "한국토지주택공사", "11", "서울", "11140", "중구", "비교 원천 " + identifier,
                         "서울특별시 중구 세종대로 110", "1114010100100010000", "20200101", 120, "행복주택", "26A",
                         new BigDecimal("26"), null, "아파트", "지역난방", "계단식", "미설치", 0,
                         null, null, null));
-        row.markCollectedAt(java.time.Instant.parse("2026-10-08T00:00:00Z"));
+        row = MyHomeSourceViews.collectedAt(row, Instant.parse("2026-10-08T00:00:00Z"));
         sources.save(row);
         return json.readTree(mvc.perform(get("/api/admin/ingest/sources").param("category", "MYHOME_COMPLEX")
                         .param("keyword", "비교 원천 " + identifier).with(user("admin").roles("ADMIN")))
@@ -227,7 +235,7 @@ class ComplexComparisonIntegrationTest {
                 "sourceKey", key, "evidenceNote", "주소와 공급 범위 확인");
     }
 
-    private org.springframework.test.web.servlet.ResultActions link(long id, JsonNode before, String key)
+    private ResultActions link(long id, JsonNode before, String key)
             throws Exception {
         return mvc.perform(post(root(id) + "/verification/comparison/sources")
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
@@ -247,7 +255,7 @@ class ComplexComparisonIntegrationTest {
                 .andReturn().getResponse().getContentAsString()).get("data");
     }
 
-    private org.springframework.test.web.servlet.ResultActions save(long id, JsonNode snapshot, JsonNode data)
+    private ResultActions save(long id, JsonNode snapshot, JsonNode data)
             throws Exception {
         return mvc.perform(put(root(id) + "/verification/comparison").with(user("admin").roles("ADMIN"))
                 .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(

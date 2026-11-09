@@ -1,9 +1,9 @@
 package com.toadzip.backend.housing.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
-import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
@@ -11,30 +11,41 @@ import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
+import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
+import com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
+import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingComplexReviewRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 @Transactional(readOnly = true)
 public class AdminHousingComplexManagementService {
+    private final ComplexSummaryQueryRepository adminQueries;
+    private final Clock clock;
     private final HousingComplexRepository complexes;
     private final HousingTypeRepository types;
     private final SupplyRowRepository rows;
@@ -48,8 +59,11 @@ public class AdminHousingComplexManagementService {
     public AdminHousingComplexManagementService(HousingComplexRepository complexes, HousingTypeRepository types,
             SupplyRowRepository rows, AdminDataChangeRepository changes, RegionCodeResolver regions,
             ObjectMapper json, HousingComplexReviewRepository reviews, HousingTypeImpactService typeImpacts,
-            AnnouncementSupplyMatchDecisionRepository matchDecisions) {
+            AnnouncementSupplyMatchDecisionRepository matchDecisions,
+            ComplexSummaryQueryRepository adminQueries, Clock clock) {
         this.complexes = complexes;
+        this.adminQueries = adminQueries;
+        this.clock = clock;
         this.types = types;
         this.rows = rows;
         this.changes = changes;
@@ -65,14 +79,18 @@ public class AdminHousingComplexManagementService {
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, ComplexVerificationStatus verification) {
+        return search(search, verification, false, false);
+    }
+
+    public AdminPage<AdminDataSummary> search(AdminSearch search, ComplexVerificationStatus verification,
+            boolean recruiting, boolean missingCoordinates) {
         String verificationFilter = "";
         if (verification != null) {
             verificationFilter = verification.name();
         }
-        var page = complexes.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
-                search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
-                verificationFilter, PageRequest.of(search.page(), search.pageSize()));
-        var statuses = new java.util.HashMap<Long, HousingComplexReviewRepository.ReviewStatus>();
+        var page = adminQueries.searchAdmin(search, verificationFilter, recruiting, missingCoordinates,
+                clock.instant().atZone(ZoneId.of("Asia/Seoul")).toLocalDate());
+        var statuses = new HashMap<Long, HousingComplexReviewRepository.ReviewStatus>();
         if (!page.isEmpty()) {
             reviews.currentStatuses(page.stream().map(HousingComplex::getId).toList())
                     .forEach(status -> statuses.put(status.getId(), status));
@@ -89,13 +107,14 @@ public class AdminHousingComplexManagementService {
         var announcements = rows.findAllByHousingComplexId(id).stream().map(row -> row.getAnnouncement())
                 .distinct().map(announcement -> new AdminDataSummary(announcement.getId(), announcement.getName(),
                         announcement.getPostedDate().toString(), announcement.getProvider().name(),
-                        announcement.getSupplyType().name(), announcement.isAdminDeleted(),
+                        enumName(announcement.getSupplyType()), announcement.isAdminDeleted(),
                         announcement.isAdminModified(), announcement.isSourceReviewRequired(),
                         announcement.getAdminUpdatedAt(), null, new AdminDataSummary.AnnouncementSummary(
                                 announcement.getSourceAnnouncementIdentifier(), announcement.getOriginalUrl(),
-                                announcement.getRecruitmentType().name(), announcement.getPostedDate(),
+                                enumName(announcement.getRecruitmentType()), announcement.getPostedDate(),
                                 announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
-                                announcement.getWinnerAnnouncementDate(), announcement.getStatus().name()))).toList();
+                                announcement.getWinnerAnnouncementDate(), announcement.getStatus().name(),
+                                announcement.origin().name(), announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }
@@ -156,8 +175,13 @@ public class AdminHousingComplexManagementService {
         if (type.isAdminDeleted()) {
             throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 수정해 주세요.");
         }
-        typeImpacts.check(id, typeId, request.impactToken(),
-                type.getExclusiveArea() == null || type.getExclusiveArea().compareTo(request.exclusiveArea()) != 0);
+        boolean areaChanged = type.getExclusiveArea() == null || type.getExclusiveArea().compareTo(request.exclusiveArea()) != 0;
+        // 이름을 바꾸지 않는 수정은 이미 같은 이름 주택형이 둘인 기존 단지에서도 막지 않는다.
+        // 면적만 바꿔도 숫자 형명(059.9300A)이 다른 주택형(59A)과 같은 집이 될 수 있어 함께 본다.
+        if (areaChanged || !HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), request.name(), request.exclusiveArea())) {
+            requireUniqueName(id, typeId, request.name(), request.exclusiveArea());
+        }
+        typeImpacts.check(id, typeId, request.impactToken(), areaChanged);
         String before = json.writeValueAsString(housingTypeData(type));
         type.reviseByAdmin(request.name(), request.exclusiveArea(), request.householdCount());
         complex.noteHousingTypeRevisionByAdmin();
@@ -169,20 +193,20 @@ public class AdminHousingComplexManagementService {
 
     @Transactional
     public AdminHousingComplexDetail createHousingType(
-            long id, com.toadzip.backend.housing.dto.request.AdminHousingTypeCreateRequest request, String actor) {
+            long id, AdminHousingTypeCreateRequest request, String actor) {
         var complex = complexes.findByIdForUpdate(id).orElseThrow(AdminHousingComplexNotFoundException::new);
         checkVersion(complex, request.version());
         if (complex.isAdminDeleted()) {
             throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 추가해 주세요.");
         }
         String name = request.name().strip();
-        if (types.findAllByHousingComplex(complex).stream().anyMatch(type -> type.getName().equals(name))) {
-            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
-        }
-        // 관리자가 만든 주택형은 수집 원천이 없으므로 원천 식별자를 새로 만들고 관리자 수정으로 표시해 재수집이 덮어쓰지 않게 한다.
-        var type = HousingType.createFromMyHome(complex, HousingType.ADMIN_SOURCE_PREFIX + java.util.UUID.randomUUID(),
-                name, request.exclusiveArea(), request.supplyArea());
-        type.reviseByAdmin(name, request.exclusiveArea(), request.householdCount());
+        requireUniqueName(id, null, name, request.exclusiveArea());
+        String identifier = HousingType.ADMIN_SOURCE_PREFIX + UUID.randomUUID();
+        var type = request.createdFromAnnouncement()
+                ? HousingType.createFromAnnouncement(complex, identifier, name, request.exclusiveArea(),
+                        request.supplyArea(), request.householdCount())
+                : HousingType.createByAdmin(complex, identifier, name, request.exclusiveArea(), request.supplyArea(),
+                        request.householdCount());
         types.save(type);
         complex.noteHousingTypeRevisionByAdmin();
         complexes.flush();
@@ -202,6 +226,10 @@ public class AdminHousingComplexManagementService {
         if (!restore && (rows.existsByHousingType(type) || matchDecisions.existsByHousingTypeId(typeId))) {
             throw new AdminDataConflictException("이 주택형에 연결된 공급정보가 있습니다. 공고의 공급정보에서 연결을 바꾼 뒤 삭제해 주세요.");
         }
+        if (restore && types.findAllIncludingTrashByHousingComplexId(id).stream().anyMatch(other -> !other.isAdminDeleted()
+                && !other.getId().equals(typeId) && HousingTypeNames.sameType(other.getName(), other.getExclusiveArea(), type.getName(), type.getExclusiveArea()))) {
+            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있어 복구할 수 없습니다. 그 주택형을 수정해 주세요.");
+        }
         String before = json.writeValueAsString(housingTypeData(type));
         if (restore) { type.restore(); }
         if (!restore) { type.moveToTrash(); }
@@ -211,6 +239,22 @@ public class AdminHousingComplexManagementService {
         if (restore) { action = "RESTORE_HOUSING_TYPE"; }
         changes.save(new AdminDataChange("COMPLEX", id, action, actor, before, json.writeValueAsString(housingTypeData(type))));
         return detail(id);
+    }
+
+    /**
+     * 단지 주택타입은 공고문 표기 이름으로 나누므로(59B-1과 59D-1은 면적이 같아도 다르다), 같은 이름({@link HousingTypeNames#sameType})
+     * 주택형은 단지에 하나만 둔다. 휴지통 주택형도 복구하면 겹치므로 함께 본다. exceptTypeId는 수정 중인 주택형 자신이다.
+     */
+    private void requireUniqueName(long complexId, Long exceptTypeId, String name, BigDecimal exclusiveArea) {
+        var sameName = types.findAllIncludingTrashByHousingComplexId(complexId).stream()
+                .filter(type -> !type.getId().equals(exceptTypeId) && HousingTypeNames.sameType(type.getName(), type.getExclusiveArea(), name, exclusiveArea))
+                .toList();
+        if (sameName.stream().anyMatch(type -> !type.isAdminDeleted())) {
+            throw new AdminDataConflictException("이 단지에 같은 이름의 주택형이 있습니다.");
+        }
+        if (!sameName.isEmpty()) {
+            throw new AdminDataConflictException("휴지통에 같은 이름의 주택형이 있습니다. 복구한 뒤 수정해 주세요.");
+        }
     }
 
     private AdminHousingComplexDetail.HousingTypeItem housingTypeData(HousingType type) {
@@ -235,7 +279,7 @@ public class AdminHousingComplexManagementService {
     }
 
     private String auditedData(Object data, AdminDocumentEvidence evidence) {
-        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        var result = (ObjectNode) json.valueToTree(data);
         if (evidence != null) {
             result.set("documentEvidence", json.valueToTree(evidence));
         }
@@ -267,5 +311,9 @@ public class AdminHousingComplexManagementService {
                 complex.getHeatingType(), complex.getHousingType(), complex.getCorridorType(),
                 complex.getElevatorInstalled(), complex.getParkingSpaceCount(), complex.getImageUrl(),
                 complex.getRecentOneYearMoveOutCount());
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

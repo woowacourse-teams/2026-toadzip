@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import jakarta.persistence.EntityManager;
@@ -86,7 +87,7 @@ class ComplexDetailQueryRepositoryTest {
                         "https://example.com/36a.png",
                         false,
                         null,
-                        50, null, null, null, null
+                        50, null, null, null, null, null
                 ),
                 new HousingTypeDetailRow(
                         second.getId(),
@@ -96,7 +97,7 @@ class ComplexDetailQueryRepositoryTest {
                         "https://example.com/44b.png",
                         true,
                         new BigDecimal("123456.00"),
-                        50, null, null, null, null
+                        50, null, null, null, null, null
                 )
         ), rows);
     }
@@ -166,6 +167,31 @@ class ComplexDetailQueryRepositoryTest {
                 () -> assertEquals(new BigDecimal("2.5000"), rows.getFirst().actualCompetitionRate()),
                 () -> assertNull(rows.get(1).actualCompetitionRate())
         );
+    }
+
+    @Test
+    void 미확정_공고는_현재공고가_아니고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
+        HousingComplex complex = persistComplex("미확정 단지", null);
+        HousingType housingType = persistHousingType(complex, "36A", "36.12", null, "floor", false, null);
+        Announcement original = persistAnnouncement(
+                null, "ORIGINAL", "published", TODAY.minusDays(3), TODAY.minusDays(2), TODAY.plusDays(2)
+        );
+        persistSupplyRow(original, complex, housingType, "published-row", 1);
+        Announcement correction = persistAnnouncement(
+                original, "CORRECTION", "pending", TODAY, TODAY, TODAY.plusDays(3), null
+        );
+        persistSupplyRow(correction, complex, housingType, "pending-row", 1);
+        Announcement unconfirmed = Announcement.createUnconfirmed("SH:1", "미확정 공고", AgencyCode.SH,
+                TODAY, "https://example.com/sh/1");
+        entityManager.persist(unconfirmed);
+        persistSupplyRow(unconfirmed, complex, housingType, "unconfirmed-row", 1);
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
+                .setParameter("id", correction.getId()).executeUpdate();
+
+        List<CurrentAnnouncementRow> rows = repository.findCurrentAnnouncements(complex.getId(), TODAY);
+
+        assertEquals(List.of(original.getId()), announcementIds(rows));
     }
 
     @Test
@@ -242,6 +268,33 @@ class ComplexDetailQueryRepositoryTest {
                 condition(active, firstRow, firstType, firstTarget, "10", "100", "1000"),
                 condition(active, firstRow, firstType, secondTarget, "20", "200", null),
                 condition(active, laterRow, secondType, laterTarget, "30", "300", "3000")
+        ), rows);
+    }
+
+    @Test
+    void 현재공급조건은_공급행이_함께_모집하는_주택형마다_한_번씩_보인다() {
+        HousingComplex complex = persistComplex("세부 타입 단지", null);
+        HousingType typeA = persistHousingType(complex, "26A", "26.46", null, "floor-a", false, null);
+        HousingType typeB = persistHousingType(complex, "26B", "26.70", null, "floor-b", false, null);
+        HousingType typeC = persistHousingType(complex, "26C", "26.90", null, "floor-c", false, null);
+        HousingType other = persistHousingType(complex, "44", "44.87", null, "floor-d", false, null);
+        Announcement active = persistAnnouncement(
+                null, "ORIGINAL", "subtypes", TODAY, TODAY, TODAY.plusDays(2)
+        );
+        SupplyRow jointRow = persistSupplyRow(active, complex, typeA, "joint-row", 1);
+        jointRow.linkHousingTypesByAdmin(List.of(typeB, typeC));
+        SupplyTarget jointTarget = persistSupplyTarget(jointRow, "청년", "10", "100", null, 1);
+        SupplyRow otherRow = persistSupplyRow(active, complex, other, "other-row", 2);
+        SupplyTarget otherTarget = persistSupplyTarget(otherRow, "신혼부부", "20", "200", null, 1);
+        entityManager.flush();
+
+        List<CurrentSupplyConditionRow> rows = repository.findCurrentSupplyConditions(complex.getId(), TODAY);
+
+        assertEquals(List.of(
+                condition(active, jointRow, typeA, jointTarget, "10", "100", null),
+                condition(active, jointRow, typeB, jointTarget, "10", "100", null),
+                condition(active, jointRow, typeC, jointTarget, "10", "100", null),
+                condition(active, otherRow, other, otherTarget, "20", "200", null)
         ), rows);
     }
 
@@ -404,7 +457,7 @@ class ComplexDetailQueryRepositoryTest {
                 0,
                 actualCompetitionRate,
                 null,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null))
         );
         entityManager.persist(announcement);
         return announcement;

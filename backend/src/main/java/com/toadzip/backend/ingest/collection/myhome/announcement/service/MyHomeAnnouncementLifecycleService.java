@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.collection.history.repository.SourceCollection
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementRowRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementRunRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceRow;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
 import java.time.Instant;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import java.util.List;
@@ -22,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class MyHomeAnnouncementLifecycleService {
 
-    private static final Set<String> SUPPLY_TYPES = Set.of("01", "02", "03", "05", "06", "10", "12");
+    private static final Set<String> SUPPLY_TYPES = MyHomeAnnouncementSupplyType.requestCodes();
 
     private final SourceCollectionRecordRepository records;
 

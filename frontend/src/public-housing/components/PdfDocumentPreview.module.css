@@ -57,3 +57,5 @@
   .search input { flex-basis: calc(100% - 140px); }
   .searchActions { margin-left: 0; }
 }
+.focusMissing { margin: 0; padding: var(--ds-space-2) var(--ds-space-3); border-bottom: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); color: var(--ds-color-label); font-size: var(--ds-text-caption); overflow-wrap: anywhere; }
+.focusMissing q { display: block; margin-top: var(--ds-space-1); color: var(--ds-color-muted); }

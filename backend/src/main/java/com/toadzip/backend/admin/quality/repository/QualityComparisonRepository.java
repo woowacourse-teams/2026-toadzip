@@ -3,22 +3,12 @@ package com.toadzip.backend.admin.quality.repository;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
 import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class QualityComparisonRepository {
-    private static final String NORMALIZED_PAYLOAD =
-            "raw_payload::jsonb - 'id' - 'source_id' - 'collected_at' - 'source_order' "
-                    + "- 'collection_record_id' - 'consecutive_miss_count' - 'last_seen_run_id' - 'last_seen_at'";
-    public static final String SOURCE_ROWS = Arrays.stream(IngestSourceCategory.values())
-            .map(category -> "SELECT '" + category.name() + "'::text category, source_key, "
-                    + NORMALIZED_PAYLOAD + " raw FROM ("
-                    + IngestSourceRows.query(category) + ") rows")
-            .collect(Collectors.joining(" UNION ALL "));
     private final JdbcClient jdbc;
 
     public QualityComparisonRepository(JdbcClient jdbc) {
@@ -59,7 +49,7 @@ public class QualityComparisonRepository {
 
     public String fingerprint(IngestSourceCategory category, String key) {
         return jdbc.sql("SELECT COALESCE(jsonb_agg(raw ORDER BY raw::text), '[]'::jsonb)::text FROM (SELECT "
-                + NORMALIZED_PAYLOAD + " raw FROM (" + IngestSourceRows.query(category)
+                + IngestSourceRows.NORMALIZED_PAYLOAD + " raw FROM (" + IngestSourceRows.query(category)
                 + ") sources WHERE source_key = :key) current_rows")
                 .param("key", key).query(String.class).single();
     }

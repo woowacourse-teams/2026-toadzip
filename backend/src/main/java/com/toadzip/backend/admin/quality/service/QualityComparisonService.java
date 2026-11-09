@@ -2,13 +2,16 @@ package com.toadzip.backend.admin.quality.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
+import com.toadzip.backend.admin.exception.AdminDataStaleException;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
-import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.admin.quality.dto.QualityComparison.Source;
+import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.admin.quality.dto.QualityComparisonRequest;
 import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.service.ComplexComparisonService;
 import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
@@ -82,43 +85,39 @@ public class QualityComparisonService {
 
     @Transactional
     public QualityComparison link(QualityResource resource, long id, QualityComparisonRequest.Link request,
-            String actor, boolean remove) {
-        lock(resource, id);
-        var before = checked(resource, id, request.target(), request.snapshotToken());
-        allowed(resource, request.category());
-        if (remove) {
-            if (comparisons.unlink(resource, id, request.target(), request.category(), request.sourceKey()) != 1) {
-                throw new AdminDataConflictException("직접 연결한 원천만 해제할 수 있습니다.");
-            }
+            String actor) {
+        var before = linkable(resource, id, request);
+        if (comparisons.links(resource, id, request.target()).size() >= 20
+                || before.sources().stream().anyMatch(source ->
+                source.category() == request.category() && source.sourceKey().equals(request.sourceKey()))) {
+            throw new AdminDataConflictException("이미 연결되었거나 연결 한도(20개)에 도달했습니다.");
         }
-        if (!remove) {
-            if (comparisons.links(resource, id, request.target()).size() >= 20
-                    || before.sources().stream().anyMatch(source ->
-                    source.category() == request.category() && source.sourceKey().equals(request.sourceKey()))) {
-                throw new AdminDataConflictException("이미 연결되었거나 연결 한도(20개)에 도달했습니다.");
-            }
-            if (sources.findAllByKey(request.category(), request.sourceKey()).isEmpty()) {
-                throw new AdminDataConflictException("선택한 원천이 사라졌습니다. 다시 검색해 주세요.");
-            }
-            comparisons.link(resource, id, request.target(), request.category(), request.sourceKey(),
-                    request.evidenceNote(), actor);
+        if (sources.findAllByKey(request.category(), request.sourceKey()).isEmpty()) {
+            throw new AdminDataConflictException("선택한 원천이 사라졌습니다. 다시 검색해 주세요.");
         }
-        var after = detail(resource, id, request.target());
-        String action = "LINK_COMPARISON_SOURCE";
-        if (remove) {
-            action = "UNLINK_COMPARISON_SOURCE";
+        comparisons.link(resource, id, request.target(), request.category(), request.sourceKey(),
+                request.evidenceNote(), actor);
+        return recordLinks(resource, id, request, actor, before, "LINK_COMPARISON_SOURCE");
+    }
+
+    @Transactional
+    public QualityComparison unlink(QualityResource resource, long id, QualityComparisonRequest.Link request,
+            String actor) {
+        var before = linkable(resource, id, request);
+        if (comparisons.unlink(resource, id, request.target(), request.category(), request.sourceKey()) != 1) {
+            throw new AdminDataConflictException("직접 연결한 원천만 해제할 수 있습니다.");
         }
-        record(resource, id, action, actor, before.sources(),
-                Map.of("target", request.target(), "sources", after.sources(), "note", request.evidenceNote()));
-        return after;
+        return recordLinks(resource, id, request, actor, before, "UNLINK_COMPARISON_SOURCE");
     }
 
     @Transactional
     public QualityComparison checkComplex(long id, QualityComparisonRequest.Check request, String actor) {
         lock(QualityResource.COMPLEX, id);
-        if (!request.target().equals("basic")
-                || !complexComparison.detail(id).snapshotToken().equals(request.snapshotToken())) {
+        if (!request.target().equals("basic")) {
             throw new AdminDataConflictException("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요.");
+        }
+        if (!complexComparison.detail(id).snapshotToken().equals(request.snapshotToken())) {
+            throw new AdminDataStaleException("단지 등록값 또는 원천이 변경되었습니다. 다시 비교해 주세요.");
         }
         var current = detail(QualityResource.COMPLEX, id, "basic");
         return check(QualityResource.COMPLEX, id, new QualityComparisonRequest.Check("basic",
@@ -170,6 +169,21 @@ public class QualityComparisonService {
         return result;
     }
 
+    private QualityComparison linkable(QualityResource resource, long id, QualityComparisonRequest.Link request) {
+        lock(resource, id);
+        var before = checked(resource, id, request.target(), request.snapshotToken());
+        allowed(resource, request.category());
+        return before;
+    }
+
+    private QualityComparison recordLinks(QualityResource resource, long id, QualityComparisonRequest.Link request,
+            String actor, QualityComparison before, String action) {
+        var after = detail(resource, id, request.target());
+        record(resource, id, action, actor, before.sources(),
+                Map.of("target", request.target(), "sources", after.sources(), "note", request.evidenceNote()));
+        return after;
+    }
+
     private void allowed(QualityResource resource, IngestSourceCategory category) {
         boolean complexCategory = category == IngestSourceCategory.MYHOME_COMPLEX
                 || category == IngestSourceCategory.LH_LEASE_CATALOG;
@@ -181,7 +195,7 @@ public class QualityComparisonService {
     private QualityComparison checked(QualityResource resource, long id, String target, String expected) {
         var current = detail(resource, id, target);
         if (!current.snapshotToken().equals(expected)) {
-            throw new AdminDataConflictException("등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.");
+            throw new AdminDataStaleException("등록값 또는 DB 원천이 변경되었습니다. 입력을 보관하고 다시 조회하세요.");
         }
         return current;
     }
@@ -189,11 +203,11 @@ public class QualityComparisonService {
     private void lock(QualityResource resource, long id) {
         if (resource == QualityResource.COMPLEX) {
             complexes.findByIdForUpdate(id).orElseThrow(
-                    com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException::new);
+                    AdminHousingComplexNotFoundException::new);
             return;
         }
         announcements.findByIdForUpdate(id).orElseThrow(
-                com.toadzip.backend.announcement.exception.AnnouncementNotFoundException::new);
+                AnnouncementNotFoundException::new);
     }
 
     private String token(Object detail, List<Source> evidence) {

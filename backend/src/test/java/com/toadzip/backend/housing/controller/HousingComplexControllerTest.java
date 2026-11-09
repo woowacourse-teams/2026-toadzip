@@ -134,6 +134,26 @@ class HousingComplexControllerTest {
         );
     }
 
+    @Test
+    void 합치기_전_공공임대_5년_10년_코드는_공공임대로_받는다() throws Exception {
+        when(queryService.getComplexes(any(HousingComplexSearchRequest.class), eq(ComplexSort.LATEST_ANNOUNCEMENT),
+                eq(null), eq(20))).thenReturn(listResponse(20L));
+
+        mockMvc.perform(get("/api/v1/complexes")
+                        .param("rentalTypes", "PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_10Y", "PUBLIC_RENTAL_50Y")
+                        .param("southWestLat", "37.4")
+                        .param("southWestLng", "126.8")
+                        .param("northEastLat", "37.6")
+                        .param("northEastLng", "127.1"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<HousingComplexSearchRequest> requestCaptor =
+                ArgumentCaptor.forClass(HousingComplexSearchRequest.class);
+        verify(queryService).getComplexes(requestCaptor.capture(), eq(ComplexSort.LATEST_ANNOUNCEMENT), eq(null), eq(20));
+        assertThat(requestCaptor.getValue().rentalTypes())
+                .containsExactly(RentalType.PUBLIC_RENTAL, RentalType.PUBLIC_RENTAL, RentalType.PUBLIC_RENTAL_50Y);
+    }
+
     @ParameterizedTest
     @MethodSource("malformedSearchParameters")
     void 변환할_수_없는_검색값은_VALIDATION_FAILED와_field를_반환한다(

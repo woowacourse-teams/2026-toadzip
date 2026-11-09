@@ -5,7 +5,7 @@ export type VerificationStatus = typeof verificationStatuses[number]
 export type ReviewOutcome = 'VERIFIED' | 'ON_HOLD'
 export type VerificationValues = {
   NAME: string
-  ADDRESS: { roadAddress: string; pnu: string; legalDongCode: string; provinceCode: string; cityCountyDistrictCode: string }
+  ADDRESS: { roadAddress: string; pnu: string | null; legalDongCode: string; provinceCode: string; cityCountyDistrictCode: string }
   LOCATION: [number, number]
   AGENCY: string
   RENTAL_TYPE: string
@@ -88,8 +88,9 @@ function isValues(value: unknown): value is VerificationValues {
 }
 function isFieldValue(key: VerificationField, value: unknown): boolean {
   if (key === 'ADDRESS') {
-    return isRecord(value) && ['roadAddress', 'pnu', 'legalDongCode', 'provinceCode', 'cityCountyDistrictCode']
-      .every(name => typeof value[name] === 'string')
+    // 지번을 모르는 단지는 PNU가 없다.
+    return isRecord(value) && (value.pnu === null || typeof value.pnu === 'string')
+      && ['roadAddress', 'legalDongCode', 'provinceCode', 'cityCountyDistrictCode'].every(name => typeof value[name] === 'string')
   }
   if (key === 'LOCATION') {
     return Array.isArray(value) && value.length === 2 && value.every(item => typeof item === 'number' && Number.isFinite(item))

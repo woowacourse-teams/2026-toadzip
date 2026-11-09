@@ -10,7 +10,7 @@ Flyway 검사 도구, 배포 설정과 모니터링 구성의 회귀 테스트�
 | [`deployment/test_notification_environment.py`](deployment/test_notification_environment.py) | 알림 기능의 기본 비활성화, 빌드·런타임 환경값과 선택적 인증정보 마운트를 검증합니다. 프론트엔드 CI에서 실행합니다. |
 | [`deployment/test_bluegreen.py`](deployment/test_bluegreen.py) | POSIX 프론트·백엔드 도구의 후보 준비·전환·복구·공통 잠금·요청 대기·정지한 컨테이너 재시작·정적 파일 보관을 Docker 없이 검증합니다. `python3 -B tests/deployment/test_bluegreen.py`로 실행합니다. |
 | [`deployment/test_backend_bluegreen.py`](deployment/test_backend_bluegreen.py) | `--image`로 지정한 실제 백엔드와 격리 PostgreSQL을 사용해 후보 실패·Nginx 오류·Blue/Green 전환·원복·DB 보존을 검증합니다. |
-| [`deployment/test_bluegreen_drain.py`](deployment/test_bluegreen_drain.py) | 실제 Linux 도구·Nginx로 긴 프론트/API 요청, 정지·원복, 세 버전 정적 파일, 대기 초과·전환 실패·후보 실패를 검증합니다. |
+| [`deployment/test_bluegreen_drain.py`](deployment/test_bluegreen_drain.py) | 실제 Linux 도구·Nginx·Prometheus로 긴 요청, 전환·원복·실패 복구, 활성 메트릭 수집과 정적 파일 보존을 검증합니다. |
 | [`deployment/test_release_bluegreen.py`](deployment/test_release_bluegreen.py) | CI SHA·빌드 선행·전체 잠금·실패 중단·부분 배포 보고와 워크플로 셸을 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_rollback_bluegreen.py`](deployment/test_rollback_bluegreen.py) | 지정 롤백 커밋·공통 잠금·사전 검사·전환 복구·정리 실패·시작 및 완료 기록과 수동 워크플로 셸을 검증합니다. 프론트 CI에서 실행합니다. |
 | [`deployment/test_release_bluegreen_linux.py`](deployment/test_release_bluegreen_linux.py) | 격리 Git 체크아웃과 실제 Linux/Compose에서 커밋 라벨 빌드·순차 배포와 실제 이전 이미지 복구·시각·Step Summary를 검증합니다. 수동 실행 검사입니다. |
@@ -68,6 +68,7 @@ Linux CLI에 저장소는 읽기 전용, 해당 시험 디렉터리만 쓰기 �
 저장소 루트에서 `python3 -B tests/deployment/test_bluegreen_drain.py`로 실행합니다.
 Docker·Python 3과 최초 이미지·`apk` 패키지 다운로드 네트워크가 필요합니다.
 실제 Spring/DB 대신 제어 가능한 HTTP 서버와 세 버전의 정적 프론트 이미지를 격리 환경에 만듭니다.
+같은 프로젝트의 Prometheus가 Edge 관리 포트를 고정 대상으로 수집합니다. 외부 조회 포트는 임의의 loopback 포트입니다.
 위의 실제 백엔드 검증과 함께 실행하며 Spring 동작·운영 부하를 대신하는 시험은 아닙니다.
 
 - Edge를 거치는 긴 화면·API 요청의 시작과 완료를 파일 신호로 제어합니다. 새 버전으로 전환된 뒤에도
@@ -75,6 +76,8 @@ Docker·Python 3과 최초 이미지·`apk` 패키지 다운로드 네트워크�
 - 요청 완료 후 정지, 같은 이미지의 재시작·원복, 세 버전에 걸친 과거 JS 모듈의 내용·MIME·없는 파일의 404를 확인합니다.
 - 대기 초과는 요청을 끊지 않고 이전 경로로 복구하며, 미종료 worker가 남았을 때 다음 후보 재생성을 막는지 확인합니다.
 - 건강하지 않은 후보와 전환 후 잘못된 응답은 기존 화면을 유지·복구하는지 확인합니다.
+- 메트릭 대상 주소·라벨을 유지하며 Blue/Green 전환·원복을 수집합니다. 후보 메트릭 실패 시 두 경로 복구와,
+  정상 대기 컨테이너가 있어도 활성 앱 장애는 수집 실패로 드러나는지 확인합니다.
 
 컨테이너는 해당 고유 프로젝트만 정리합니다. 이미지·시험 구성·신호 파일·로그는 로컬 검증 자료로 남깁니다.
 실제 서비스의 로그인·지도 SDK·UI 조작이나 여러 릴리스 사이 API 호환성을 검증한 결과로 해석하지 않습니다.

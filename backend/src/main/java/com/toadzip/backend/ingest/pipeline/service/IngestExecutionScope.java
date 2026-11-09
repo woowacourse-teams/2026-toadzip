@@ -1,118 +1,142 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
-import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.Callable;
+import org.slf4j.MDC;
 
+/** 수집·정제 실행의 ID, 소유권, 진행 모니터를 스레드 범위로 보관한다. MDC는 로그 출력에만 쓴다. */
 public final class IngestExecutionScope implements AutoCloseable {
 
-    private static final ThreadLocal<Lease> CURRENT = new ThreadLocal<>();
+    private static final ThreadLocal<State> CURRENT = new ThreadLocal<>();
 
-    private static final ThreadLocal<DataPipelineExecutionMonitor> MONITOR = new ThreadLocal<>();
+    private final State previous;
 
-    private final Lease previous;
-    private final DataPipelineExecutionMonitor previousMonitor;
-    private final String previousServiceKey;
-
-    private IngestExecutionScope(Lease lease, DataPipelineExecutionMonitor monitor, String serviceKey) {
+    private IngestExecutionScope(State state) {
         previous = CURRENT.get();
-        previousMonitor = MONITOR.get();
-        previousServiceKey = IngestServiceKeyContext.current().orElse(null);
-        IngestServiceKeyContext.set(serviceKey);
-        setMonitor(monitor);
-        if (lease == null) {
-            CURRENT.remove();
-            return;
-        }
-        CURRENT.set(lease);
+        set(state);
     }
 
     public static IngestExecutionScope open(Lease lease) {
-        return new IngestExecutionScope(lease, MONITOR.get(), IngestServiceKeyContext.current().orElse(null));
+        State current = currentState();
+        return new IngestExecutionScope(new State(current.executionId(), lease, current.monitor()));
     }
 
     public static IngestExecutionScope open(Lease lease, DataPipelineExecutionMonitor monitor) {
-        return new IngestExecutionScope(lease, monitor, IngestServiceKeyContext.current().orElse(null));
+        State current = currentState();
+        return new IngestExecutionScope(new State(current.executionId(), lease, monitor));
     }
 
-    public static IngestExecutionScope open(Lease lease, DataPipelineExecutionMonitor monitor, String serviceKey) {
-        return new IngestExecutionScope(lease, monitor, serviceKey);
+    public static IngestExecutionScope open(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor) {
+        return new IngestExecutionScope(new State(executionId, lease, monitor));
+    }
+
+    public static Optional<UUID> currentExecutionId() {
+        return Optional.ofNullable(currentState().executionId());
     }
 
     public static void checkStopRequested() {
-        if (MONITOR.get() != null) {
-            MONITOR.get().checkStopRequested();
-        }
+        monitor().ifPresent(DataPipelineExecutionMonitor::checkStopRequested);
     }
 
     public static void beginWork(String label, String unit, long total) {
-        if (MONITOR.get() != null) {
-            MONITOR.get().beginWork(label, unit, total);
-        }
+        monitor().ifPresent(monitor -> monitor.beginWork(label, unit, total));
     }
 
     public static void workCompleted() {
-        if (MONITOR.get() != null) {
-            MONITOR.get().workCompleted();
-        }
+        monitor().ifPresent(DataPipelineExecutionMonitor::workCompleted);
     }
 
     public static void pageCompleted(int page, int totalRows, int pageSize) {
-        if (MONITOR.get() != null) {
-            MONITOR.get().pageCompleted(page, totalRows, pageSize);
-        }
+        monitor().ifPresent(monitor -> monitor.pageCompleted(page, totalRows, pageSize));
     }
 
     public static void requestStarted(String description) {
-        if (MONITOR.get() != null) {
-            MONITOR.get().requestStarted(description);
-        }
+        monitor().ifPresent(monitor -> monitor.requestStarted(description));
     }
 
     public static void requestFinished() {
-        if (MONITOR.get() != null) {
-            MONITOR.get().requestFinished();
-        }
+        monitor().ifPresent(DataPipelineExecutionMonitor::requestFinished);
     }
 
     public static Optional<Lease> current() {
-        return Optional.ofNullable(CURRENT.get());
+        return Optional.ofNullable(currentState().lease());
     }
 
+    /** 실행 소유권을 잡았으면 아직 잡고 있는지 확인한다. 소유권 밖의 호출은 확인하지 않는다. */
     public static void verifyHeld() {
         current().ifPresent(Lease::verifyHeld);
     }
 
+    /**
+     * 수집·정제 진입점은 실행 소유권 안에서만 돈다. 관리자 요청은 웹 인터셉터가, 파이프라인은 실행 서비스가 소유권을 잡는다.
+     * 소유권 없이 부르면 다른 실행과 겹쳐 쓸 수 있으므로 거절한다.
+     */
+    public static void requireHeld() {
+        current().orElseThrow(() -> new IllegalStateException("수집·정제는 실행 소유권 안에서만 실행할 수 있습니다."))
+                .verifyHeld();
+    }
+
+    /** 다음 외부 요청이나 쓰기 전에 실행 소유권과 중지 요청을 확인한다. */
+    public static void verifyCanContinue() {
+        verifyHeld();
+        checkStopRequested();
+    }
+
+    /** 실행 맥락과 로그 MDC를 작업 스레드에 전달하고 작업 뒤 이전 상태로 복원한다. */
     public static <T> Callable<T> propagate(Callable<T> task) {
-        Lease captured = CURRENT.get();
-        DataPipelineExecutionMonitor capturedMonitor = MONITOR.get();
-        String capturedServiceKey = IngestServiceKeyContext.current().orElse(null);
+        State captured = CURRENT.get();
+        Map<String, String> capturedLog = MDC.getCopyOfContextMap();
         return () -> {
-            try (var ignored = open(captured, capturedMonitor, capturedServiceKey)) {
-                verifyHeld();
-                checkStopRequested();
+            Map<String, String> previousLog = MDC.getCopyOfContextMap();
+            replaceLog(capturedLog);
+            try (var ignored = new IngestExecutionScope(captured)) {
+                verifyCanContinue();
                 return task.call();
+            }
+            finally {
+                replaceLog(previousLog);
             }
         };
     }
 
-    private static void setMonitor(DataPipelineExecutionMonitor monitor) {
-        if (monitor == null) {
-            MONITOR.remove();
+    private static State currentState() {
+        State current = CURRENT.get();
+        if (current == null) {
+            return State.EMPTY;
+        }
+        return current;
+    }
+
+    private static Optional<DataPipelineExecutionMonitor> monitor() {
+        return Optional.ofNullable(currentState().monitor());
+    }
+
+    private static void set(State state) {
+        if (state == null || state.equals(State.EMPTY)) {
+            CURRENT.remove();
             return;
         }
-        MONITOR.set(monitor);
+        CURRENT.set(state);
+    }
+
+    private static void replaceLog(Map<String, String> log) {
+        if (log == null) {
+            MDC.clear();
+            return;
+        }
+        MDC.setContextMap(log);
     }
 
     @Override
     public void close() {
-        IngestServiceKeyContext.set(previousServiceKey);
-        setMonitor(previousMonitor);
-        if (previous == null) {
-            CURRENT.remove();
-            return;
-        }
-        CURRENT.set(previous);
+        set(previous);
+    }
+
+    private record State(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor) {
+
+        private static final State EMPTY = new State(null, null, null);
     }
 }

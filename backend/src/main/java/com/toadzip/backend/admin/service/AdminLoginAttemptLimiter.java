@@ -72,7 +72,7 @@ public class AdminLoginAttemptLimiter {
 
     private static class LoginAttemptState {
 
-        private final List<Instant> failedAttempts = new ArrayList<>();
+        private final List<Instant> attempts = new ArrayList<>();
 
         private Instant blockedUntil;
 
@@ -81,11 +81,11 @@ public class AdminLoginAttemptLimiter {
                 throw new AdminLoginAttemptLimitExceededException();
             }
             removeAttemptsOutsideWindow(now);
-            if (failedAttempts.size() >= MAXIMUM_FAILURE_COUNT) {
+            if (attempts.size() >= MAXIMUM_FAILURE_COUNT) {
                 blockedUntil = now.plus(BLOCK_DURATION);
                 throw new AdminLoginAttemptLimitExceededException();
             }
-            failedAttempts.add(now);
+            attempts.add(now);
         }
 
         private boolean isExpired(Instant now) {
@@ -93,7 +93,7 @@ public class AdminLoginAttemptLimiter {
                 return !now.isBefore(blockedUntil);
             }
             removeAttemptsOutsideWindow(now);
-            return failedAttempts.isEmpty();
+            return attempts.isEmpty();
         }
 
         private boolean isBlocked(Instant now) {
@@ -102,7 +102,7 @@ public class AdminLoginAttemptLimiter {
 
         private void removeAttemptsOutsideWindow(Instant now) {
             Instant windowStart = now.minus(FAILURE_WINDOW);
-            failedAttempts.removeIf(attempt -> !attempt.isAfter(windowStart));
+            attempts.removeIf(attempt -> !attempt.isAfter(windowStart));
         }
     }
 }

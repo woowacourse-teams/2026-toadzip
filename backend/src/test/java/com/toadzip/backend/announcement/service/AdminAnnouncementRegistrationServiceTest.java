@@ -16,9 +16,9 @@ import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.ReceptionPlaceRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementCreateResponse;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -28,8 +28,10 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,7 +54,7 @@ class AdminAnnouncementRegistrationServiceTest {
             supplyRowRepository,
             housingComplexRepository,
             identifierGenerator,
-            mock(com.toadzip.backend.notification.repository.NotificationOutboxRepository.class)
+            mock(NotificationOutboxRepository.class)
     );
 
     @BeforeEach
@@ -153,7 +155,8 @@ class AdminAnnouncementRegistrationServiceTest {
                 ReceptionMethod.ONLINE,
                 "서울특별시 중구 세종대로 110",
                 "1600-1004",
-                "https://apply.lh.or.kr"
+                "https://apply.lh.or.kr",
+                null
         );
         SupplyRowRequest supplyRow = new SupplyRowRequest(
                 "원문 두꺼비 행복주택",
@@ -174,7 +177,7 @@ class AdminAnnouncementRegistrationServiceTest {
                 endDate,
                 LocalDate.of(2026, 9, 1),
                 "https://example.com/announcements/1",
-                receptionPlace,
+                List.of(receptionPlace),
                 supplyRow
         );
     }

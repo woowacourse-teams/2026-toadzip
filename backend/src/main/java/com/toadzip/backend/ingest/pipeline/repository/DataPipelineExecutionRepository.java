@@ -1,12 +1,16 @@
 package com.toadzip.backend.ingest.pipeline.repository;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -17,12 +21,17 @@ import org.springframework.transaction.annotation.Transactional;
 public interface DataPipelineExecutionRepository
         extends JpaRepository<DataPipelineExecution, Long> {
 
-    org.springframework.data.domain.Page<DataPipelineExecution> findByTypeIn(
-            java.util.Collection<DataPipelineType> types, org.springframework.data.domain.Pageable pageable);
+    Page<DataPipelineExecution> findByTypeIn(
+            Collection<DataPipelineType> types, Pageable pageable);
 
     Optional<DataPipelineExecution> findFirstByTypeOrderByIdDesc(
             DataPipelineType type
     );
+
+    Optional<ExecutionSummary> findFirstByTypeInOrderByStartedAtDescIdDesc(Collection<DataPipelineType> types);
+
+    Optional<ExecutionSummary> findFirstByTypeInAndStatusAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+            Collection<DataPipelineType> types, DataPipelineExecutionStatus status);
 
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
 
@@ -84,18 +93,6 @@ public interface DataPipelineExecutionRepository
             """)
     List<DataPipelineExecution> findTerminalWithRunningCollectionsForUpdate();
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select execution from DataPipelineExecution execution
-            where execution.executionId = :executionId
-              and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
-              and execution.heartbeatAt < :cutoff
-            """)
-    Optional<DataPipelineExecution> findInterruptedForUpdate(
-            @Param("executionId") UUID executionId,
-            @Param("cutoff") Instant cutoff
-    );
-
     @Modifying
     @Transactional
     @Query("""
@@ -108,4 +105,13 @@ public interface DataPipelineExecutionRepository
             @Param("executionId") Long executionId,
             @Param("heartbeatAt") Instant heartbeatAt
     );
+
+    /** 단계별 결과 본문과 컬렉션 없이 실행 시각·상태만 조회한다. */
+    interface ExecutionSummary {
+        Instant getStartedAt();
+
+        Instant getFinishedAt();
+
+        DataPipelineExecutionStatus getStatus();
+    }
 }

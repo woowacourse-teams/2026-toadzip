@@ -449,7 +449,8 @@ class AnnouncementControllerTest {
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
-                        "https://apply.lh.or.kr"
+                        "https://apply.lh.or.kr",
+                        null
                 )),
                 List.of(new AnnouncementScheduleResponse(
                         501L,
@@ -533,7 +534,8 @@ class AnnouncementControllerTest {
                       "method": "ONLINE",
                       "address": null,
                       "phoneNumber": "1600-1004",
-                      "url": "https://apply.lh.or.kr"
+                      "url": "https://apply.lh.or.kr",
+                      "guidance": null
                     }],
                     "schedules": [{
                       "scheduleId": 501,

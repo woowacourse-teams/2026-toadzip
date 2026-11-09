@@ -1,0 +1,259 @@
+package com.toadzip.backend.ingest.lh.collection.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
+import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementCatalogSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
+import com.toadzip.backend.ingest.lh.collection.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.lh.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementQueryApiRepository;
+import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+@ExtendWith(IngestExecutionExtension.class)
+@SpringBootTest(properties = "spring.main.web-application-type=servlet")
+@ActiveProfiles("test")
+class LhAnnouncementCatalogRefreshIntegrationTest {
+
+    private static final Instant FIRST = Instant.parse("2026-09-25T00:00:00Z");
+    private static final ExternalDataSource DETAIL = ExternalDataSource.LH_ANNOUNCEMENT_DETAIL;
+
+    @Autowired
+    private LhAnnouncementExternalCollectionService service;
+    @Autowired
+    private MyHomeAnnouncementSourceFixtures sources;
+    @Autowired
+    private LhCatalogStorageFixtures catalogStore;
+    @Autowired
+    private LhAnnouncementCollectionCandidateResolver candidateResolver;
+    @Autowired
+    private LhAnnouncementCatalogSourceFixtures catalog;
+    @Autowired
+    private LhAnnouncementCollectionLinkRepository links;
+    @Autowired
+    private LhAnnouncementDetailSourceFixtures details;
+
+    @Autowired
+    private LhAnnouncementQuerySourceRepository querySources;
+
+    @Autowired
+    private LhAnnouncementDetailSourceReader detailReader;
+
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ExternalDataCollectionFailureRepository failures;
+    @MockitoBean
+    private LhAnnouncementQueryApiRepository external;
+    @MockitoBean
+    private Clock clock;
+
+    @BeforeEach
+    void setUp() {
+        jdbc.sql("DELETE FROM pending_collection_targets").update();
+        jdbc.sql("DELETE FROM lh_announcement_supply_rows").update();
+        jdbc.sql("DELETE FROM lh_announcement_detail_rows").update();
+        jdbc.sql("DELETE FROM lh_announcement_query_parameters").update();
+        jdbc.sql("DELETE FROM lh_announcement_query_sources").update();
+        jdbc.sql("DELETE FROM source_collection_record_parameters WHERE record_id IN "
+                + "(SELECT id FROM source_collection_records WHERE source IN "
+                + "('LH_ANNOUNCEMENT_SUPPLY', 'LH_ANNOUNCEMENT_DETAIL'))").update();
+        jdbc.sql("DELETE FROM source_collection_records WHERE source IN "
+                + "('LH_ANNOUNCEMENT_SUPPLY', 'LH_ANNOUNCEMENT_DETAIL')").update();
+        links.deleteAllInBatch();
+        details.deleteAllInBatch();
+        failures.deleteAllInBatch();
+        catalog.deleteAllInBatch();
+        sources.deleteAllInBatch();
+        when(clock.getZone()).thenReturn(ZoneId.of("Asia/Seoul"));
+        when(clock.instant()).thenReturn(FIRST);
+        when(external.detail(any())).thenReturn(response());
+    }
+
+    @Test
+    void 목록이_같고_방금_성공했어도_다음_수집에서_공급상세를_실제_조회한다() {
+        catalogStore.store(List.of(entry("100", "공고중"), entry("200", "공고중")));
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isEqualTo(2);
+
+        Instant nextCollection = FIRST.plusSeconds(1);
+        observeAgain(nextCollection, "공고중", "100", "200");
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isEqualTo(2);
+        assertThat(querySources.findAll().stream().filter(row -> row.getPanId().equals("100")).toList())
+                .singleElement().satisfies(row -> assertThat(row.getCollectedAt()).isEqualTo(nextCollection));
+        assertThat(links.count()).isEqualTo(2);
+        assertThat(querySources.findAll()).filteredOn(source -> source.getPanId().equals("100"))
+                .singleElement().extracting(source -> source.getCollectedAt()).isEqualTo(nextCollection);
+
+        observeAgain(FIRST.plus(Duration.ofHours(24)).plusSeconds(1), "공고중", "100", "200");
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 목록_변경은_즉시_조회하고_실패하면_기존_원천과_성공시각을_보존하여_다시_시도한다() {
+        catalogStore.store(List.of(entry("100", "공고중")));
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
+        Long originalId = currentDetails().getFirst().getId();
+        Instant changedAt = FIRST.plusSeconds(60);
+        observeAgain(changedAt, "정정공고중", "100");
+        when(external.detail(any())).thenThrow(new ExternalDataRequestException("불완전 응답"));
+
+        assertThat(service.collect(DETAIL).failedRequestCount()).isOne();
+        assertThat(currentDetails()).singleElement().satisfies(row ->
+                assertThat(row.getId()).isEqualTo(originalId));
+        assertThat(querySources.findAll()).singleElement().satisfies(row ->
+                assertThat(row.getCollectedAt()).isEqualTo(FIRST));
+
+        doReturn(response()).when(external).detail(any());
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
+        assertThat(querySources.findAll()).singleElement().satisfies(row ->
+                assertThat(row.getCollectedAt()).isEqualTo(changedAt));
+    }
+
+    @Test
+    void 조회_유형이_바뀐_경우_이전_목록_행은_후보_연결에_사용하지_않는다() {
+        MyHomeAnnouncementSourceView source = sources.save(source("100", 1, "20261030"));
+        catalogStore.store(List.of(entry("100", "공고중")));
+        assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate ->
+                assertThat(candidate.catalogCollectedAt()).isEqualTo(FIRST)
+        );
+
+        when(clock.instant()).thenReturn(FIRST.plusSeconds(60));
+        catalogStore.store(List.of(new Entry(new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "07", "062", "공고", "공고중", "", "", "20261030", "", ""
+        ), "{}")));
+
+        assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.catalogCollectedAt()).isNull();
+            assertThat(candidate.request().announcementTypeCode()).isEqualTo("06");
+        });
+        assertThat(catalog.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .singleElement().satisfies(row -> assertThat(row.getAnnouncementTypeCode()).isEqualTo("07"));
+        assertThat(catalog.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 공고목록의_조회코드는_실제_호출과_체크포인트와_원천_연결에_동일하게_사용된다() {
+        catalogStore.store(List.of(new Entry(new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "06", "062", "공고", "공고중", "", "", "2026.10.30", "", ""
+        ), "{}")));
+        var expectedRequest = new LhAnnouncementRequest("100", "03", "06", "06", "062");
+        String description = expectedRequest.requestDescription();
+        String requestHash = LhAnnouncementQuery.requestHashOf(description);
+
+        var report = service.collect(DETAIL);
+
+        assertThat(report.externalApiCallCount()).isOne();
+        assertThat(report.failedRequestCount()).isZero();
+        verify(external).detail(new LhAnnouncementQuery(
+                expectedRequest.panId(), expectedRequest.connectionSystemDivisionCode(),
+                expectedRequest.upperAnnouncementTypeCode(), expectedRequest.announcementTypeCode(),
+                expectedRequest.supplyInfoTypeCode()));
+        assertThat(querySources.findAll()).singleElement().satisfies(checkpoint -> {
+            assertThat(checkpoint.getRequestDescription()).isEqualTo(description);
+            assertThat(checkpoint.getRequestHash()).isEqualTo(requestHash);
+        });
+        assertThat(links.findAll()).singleElement().satisfies(link -> {
+            assertThat(link.getRequestDescription()).isEqualTo(description);
+            assertThat(link.getRequestHash()).isEqualTo(requestHash);
+        });
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void 실패한_요청은_최신_목록에서_사라져도_다시_수집한다(boolean hasNew) {
+        catalogStore.store(List.of(entry("100", "공고중")));
+        when(external.detail(any())).thenThrow(new ExternalDataRequestException("불완전 응답"));
+        assertThat(service.collect(DETAIL).failedRequestCount()).isOne();
+        assertThat(jdbc.sql("SELECT count(*) FROM pending_collection_targets").query(Long.class).single()).isOne();
+
+        catalogStore.store(List.of(entry("200", "공고중")));
+        int expected = 2;
+        if (!hasNew) {
+            // 현재 목록 후보가 없어도 과거에 발견한 미완료 요청은 남는다.
+            jdbc.sql("UPDATE lh_announcement_catalog_entries SET present_in_latest_catalog = false").update();
+            expected = 1;
+        }
+        doReturn(response()).when(external).detail(any());
+        assertThat(service.collect(DETAIL).successfulRequestCount()).isEqualTo(expected);
+        assertThat(querySources.findAll()).extracting(row -> row.getPanId()).contains("100");
+        assertThat(querySources.count()).isEqualTo(expected);
+        assertThat(jdbc.sql("SELECT count(*) FROM pending_collection_targets").query(Long.class).single()).isZero();
+        assertThat(failures.findAll()).allSatisfy(failure -> assertThat(failure.getStatus().name()).isEqualTo("RESOLVED"));
+    }
+
+    private List<LhAnnouncementDetailSourceView> currentDetails() {
+        return querySources.findAll().stream()
+                .filter(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_DETAIL)
+                .flatMap(source -> detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                        source.getPanId(), source.getRequestHash()).stream()).toList();
+    }
+
+    private void observeAgain(Instant now, String status, String... panIds) {
+        when(clock.instant()).thenReturn(now);
+        catalogStore.store(java.util.Arrays.stream(panIds).map(panId -> entry(panId, status)).toList());
+    }
+
+    private Entry entry(String panId, String status) {
+        return new Entry(new LhAnnouncementCatalogSnapshot(panId, "03", "06", "06", "063",
+                "공고", status, "", "", "2026.10.30", "", ""), "{}");
+    }
+
+    private MyHomeAnnouncementSourceView source(String panId, int houseSn, String endDate) {
+        String payload = """
+                {"pblancId":"%s","houseSn":%d,"suplyInsttNm":"한국토지주택공사","suplyTyNm":"행복주택",
+                 "endDe":"%s",
+                 "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
+                """.formatted(panId, houseSn, endDate, panId);
+        var source = MyHomeSourceViews.announcement(0,
+                JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
+        source = MyHomeSourceViews.collectedAt(source, FIRST);
+        return source;
+    }
+
+    private JsonNode response() {
+        String payload = """
+                [{"resHeader":[{"SS_CODE":"Y","RS_DTTM":"20260925120000"}],
+                  "dsSbd":[{"LCC_NT_NM":"테스트 단지"}]}]
+                """;
+        return JsonMapper.builder().build().readTree(payload);
+    }
+}

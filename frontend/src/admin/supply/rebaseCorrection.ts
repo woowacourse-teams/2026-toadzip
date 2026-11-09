@@ -1,7 +1,7 @@
 import type { CorrectionRow, CorrectionTarget } from './supplyCorrectionApi'
 
 export type CorrectionConflict = { rowKey: string; targetKey?: string; field: string; mine: unknown; current: unknown }
-const rowFields = ['housingComplexId', 'housingTypeId', 'newHousingType', 'excluded', 'displayOrder', 'complexName', 'typeName', 'pnu', 'moveInMonth', 'category', 'householdCount', 'areaOverride', 'exclusiveArea', 'supplyArea', 'targetCountsComparable'] as const
+const rowFields = ['housingComplexId', 'housingTypeId', 'newHousingType', 'linkedHousingTypes', 'excluded', 'displayOrder', 'complexName', 'typeName', 'pnu', 'moveInMonth', 'category', 'householdCount', 'areaOverride', 'exclusiveArea', 'supplyArea', 'targetCountsComparable'] as const
 const targetFields = ['excluded', 'displayOrder', 'target', 'supplyRank', 'householdCount', 'reserveCount', 'deposit', 'rent', 'convertedDeposit', 'condition'] as const
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export function rebaseCorrection(base: CorrectionRow[], draft: CorrectionRow[], latest: CorrectionRow[]) {

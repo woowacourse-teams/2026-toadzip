@@ -2,7 +2,6 @@ package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.ReceptionPlaceRequest;
@@ -85,17 +84,7 @@ public class AdminAnnouncementRegistrationService {
                 request.originalUrl(),
                 null,
                 0L,
-                createReceptionPlace(request.receptionPlace())
-        );
-    }
-
-    private ReceptionPlace createReceptionPlace(ReceptionPlaceRequest request) {
-        return ReceptionPlace.create(
-                request.name(),
-                request.method(),
-                request.address(),
-                request.contact(),
-                request.url()
+                request.receptionPlaces().stream().map(ReceptionPlaceRequest::toPlace).toList()
         );
     }
 

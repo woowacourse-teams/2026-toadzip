@@ -178,15 +178,6 @@ public class DataPipelineExecution {
         );
     }
 
-    public static DataPipelineExecution startRegistration(UUID executionId, String identifier, Instant startedAt) {
-        if (identifier == null || identifier.isBlank() || identifier.length() > 100) {
-            throw new IllegalArgumentException("공고 식별자는 1자 이상 100자 이하입니다.");
-        }
-        DataPipelineExecution execution = start(executionId, DataPipelineType.ANNOUNCEMENT_REGISTRATION, startedAt);
-        execution.targetAnnouncementIdentifier = identifier.strip();
-        return execution;
-    }
-
     public static DataPipelineExecution start(
             UUID executionId,
             DataPipelineType type,

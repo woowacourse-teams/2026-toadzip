@@ -6,9 +6,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuery;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,11 +39,11 @@ import org.springframework.transaction.annotation.Transactional;
 class IngestSourceControllerIntegrationTest {
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+    private UserRepository privacyPermissionUsers;
 
     private String privacyPermissionMemberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return privacyPermissionUsers.saveAndFlush(member).getId().toString();
     }
 
@@ -52,7 +56,8 @@ class IngestSourceControllerIntegrationTest {
     @BeforeEach
     void storeSources() {
         storeShSource();
-        for (String category : java.util.List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
+        storeGhSource();
+        for (String category : List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
                 "LH_ANNOUNCEMENT_CATALOG", "LH_ANNOUNCEMENT_DETAIL", "LH_ANNOUNCEMENT_SUPPLY")) {
             storeCurrentSource(category);
         }
@@ -65,7 +70,7 @@ class IngestSourceControllerIntegrationTest {
         jdbc.sql("UPDATE lh_announcement_supply_rows SET complex_label = '두꺼비 공급'").update();
         jdbc.sql("UPDATE lh_announcement_catalog_entries SET changed_at = '2026-10-01T01:00:00Z', raw_payload = "
                 + "'{\"PAN_NM\":\"두꺼비 LH 공고\",\"DTL_URL\":\"https://official.test/lh\",\"EXTRA_FIELD\":\"보존값\"}'").update();
-        for (String table : java.util.List.of("myhome_complex_source_rows", "myhome_announcement_source_rows",
+        for (String table : List.of("myhome_complex_source_rows", "myhome_announcement_source_rows",
                 "lh_lease_catalog_source_rows", "lh_announcement_catalog_entries", "lh_announcement_detail_rows",
                 "lh_announcement_supply_rows")) {
             jdbc.sql("UPDATE " + table + " SET collected_at = '2026-10-02T01:00:00Z'").update();
@@ -97,6 +102,15 @@ class IngestSourceControllerIntegrationTest {
             result.andExpect(jsonPath("$.data.items[0].raw.pan_id").value("LH-123"))
                     .andExpect(jsonPath("$.data.items[0].raw.request_hash").isString());
         }
+    }
+
+    @Test
+    void 마이홈_단지_원천키의_면적은_원천_면적_자리수로_맞추고_뒤쪽_0을_지운다() throws Exception {
+        jdbc.sql("UPDATE myhome_complex_source_rows SET suply_prvuse_ar = 26.1234, suply_cmnuse_ar = 10.5").update();
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("category", "MYHOME_COMPLEX"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("3:123-1:-1:-1:7:26.12344:10.5"));
     }
 
     @Test
@@ -164,6 +178,19 @@ class IngestSourceControllerIntegrationTest {
                 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/view.do?seq=100&multi_itm_seq=2',
                 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
                 :collectedAt)
+                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
+    }
+
+    private void storeGhSource() {
+        jdbc.sql("""
+                INSERT INTO gh_announcement_source (source_key,pbanc_no,board,kind_code,title,supply_type,region,
+                posted_date,original_url,list_url,districts,reception,notice,attachments,collected_at)
+                VALUES ('GH:801','801','RENTAL_HOUSE','01','두꺼비 GH 공고','국민임대','남양주시','2026-10-02',
+                'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=01&previewYn=N',
+                'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do?pageIndex=1',
+                '[{"name":"다산 센트럴파크6단지","housingTypes":[{"name":"33A","supplyCount":"120"}]}]',
+                '{"phone":"031-510-7100"}','안내',
+                '[{"fileName":"모집공고문.pdf","atchFileDtlSn":"13"}]', :collectedAt)
                 """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
     }
 
@@ -256,7 +283,8 @@ class IngestSourceControllerIntegrationTest {
             "LH_ANNOUNCEMENT_SUPPLY, 두꺼비 공급, complex_label, "
                     + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1",
             "SH_ANNOUNCEMENT, 두꺼비 SH 공고, title, "
-                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024'"
+                    + "'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2'",
+            "GH_ANNOUNCEMENT, 두꺼비 GH 공고, title, https://apply.gh.or.kr"
     })
     void 관리자는_저장된_원천을_출처_URL과_함께_조회한다(
             String category, String name, String rawField, String sourceUrl
@@ -304,6 +332,19 @@ class IngestSourceControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileSeq").value("7"))
                 .andExpect(jsonPath("$.data.items[0].raw.detail_fragment_html").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].raw.raw_detail_html").doesNotExist());
+    }
+
+    @Test
+    void GH_원천은_지구_접수처_첨부를_구조로_반환하고_공고_원문_URL을_보존한다() throws Exception {
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "GH_ANNOUNCEMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("GH:801"))
+                .andExpect(jsonPath("$.data.items[0].originalUrl").value(
+                        "https://apply.gh.or.kr/sb/sr/sr7150/selectPbancDetailView.do?pbancNo=801&pbancKndCd=01&previewYn=N"))
+                .andExpect(jsonPath("$.data.items[0].raw.board").value("RENTAL_HOUSE"))
+                .andExpect(jsonPath("$.data.items[0].raw.districts[0].housingTypes[0].supplyCount").value("120"))
+                .andExpect(jsonPath("$.data.items[0].raw.reception.phone").value("031-510-7100"))
+                .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileName").value("모집공고문.pdf"));
     }
 
     @Test

@@ -1,9 +1,18 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
-import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceSnapshot;
+import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,34 +22,36 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class LhAnnouncementDetailSourceFixtures {
+    private static final DataClassRowMapper<LhAnnouncementDetailSourceSnapshot> SNAPSHOTS = new DataClassRowMapper<>(LhAnnouncementDetailSourceSnapshot.class);
+
     private final CollectedSourceRows rows;
     private final JdbcClient jdbc;
 
-    public LhAnnouncementDetailSource save(LhAnnouncementDetailSource row) {
+    public LhAnnouncementDetailSourceView save(LhAnnouncementDetailSourceView row) {
         return rows.save("lh_announcement_detail_rows", row);
     }
 
-    public LhAnnouncementDetailSource saveAndFlush(LhAnnouncementDetailSource row) {
+    public LhAnnouncementDetailSourceView saveAndFlush(LhAnnouncementDetailSourceView row) {
         return save(row);
     }
 
-    public List<LhAnnouncementDetailSource> saveAll(Iterable<LhAnnouncementDetailSource> sources) {
-        List<LhAnnouncementDetailSource> result = new java.util.ArrayList<>();
+    public List<LhAnnouncementDetailSourceView> saveAll(Iterable<LhAnnouncementDetailSourceView> sources) {
+        List<LhAnnouncementDetailSourceView> result = new ArrayList<>();
         sources.forEach(row -> result.add(save(row)));
         return result;
     }
 
     @Transactional(readOnly = true)
-    public List<LhAnnouncementDetailSource> findAll() {
+    public List<LhAnnouncementDetailSourceView> findAll() {
         return jdbc.sql("""
                 SELECT r.*, q.pan_id, q.request_hash
                 FROM lh_announcement_detail_rows r JOIN lh_announcement_query_sources q ON q.id = r.source_id
                 ORDER BY r.id
-                """).query(LhAnnouncementDetailSource.class).list();
+                """).query(this::read).list();
     }
 
     @Transactional(readOnly = true)
-    public java.util.Optional<LhAnnouncementDetailSource> findById(Long id) {
+    public Optional<LhAnnouncementDetailSourceView> findById(Long id) {
         return findAll().stream().filter(row -> id.equals(row.getId())).findFirst();
     }
 
@@ -49,7 +60,7 @@ public class LhAnnouncementDetailSourceFixtures {
         return jdbc.sql("SELECT COUNT(*) FROM lh_announcement_detail_rows").query(Long.class).single();
     }
 
-    public void delete(LhAnnouncementDetailSource row) {
+    public void delete(LhAnnouncementDetailSourceView row) {
         jdbc.sql("DELETE FROM lh_announcement_detail_rows WHERE id = ?").param(row.getId()).update();
     }
 
@@ -61,7 +72,7 @@ public class LhAnnouncementDetailSourceFixtures {
         deleteAll();
     }
 
-    public void deleteAll(Iterable<LhAnnouncementDetailSource> sources) {
+    public void deleteAll(Iterable<LhAnnouncementDetailSourceView> sources) {
         sources.forEach(this::delete);
     }
 
@@ -69,13 +80,23 @@ public class LhAnnouncementDetailSourceFixtures {
     public void flush() {}
 
     @Transactional(readOnly = true)
-    public List<LhAnnouncementDetailSource> findAllByPanIdAndRequestHashOrderBySourceOrderAsc(String pan, String hash) {
+    public List<LhAnnouncementDetailSourceView> findAllByPanIdAndRequestHashOrderBySourceOrderAsc(String pan, String hash) {
         return findAll().stream().filter(row -> pan.equals(row.getPanId())
-                && java.util.Objects.equals(hash, row.getRequestHash())).toList();
+                && Objects.equals(hash, row.getRequestHash())).toList();
     }
 
     public void deleteByPanIdAndRequestHash(String pan, String hash) {
         deleteAll(findAllByPanIdAndRequestHashOrderBySourceOrderAsc(pan, hash));
     }
 
+    private LhAnnouncementDetailSourceView read(ResultSet row, int number) throws SQLException {
+        return LhAnnouncementDetailSourceView.read(row.getLong("id"), row.getInt("source_order"), row.getString("pan_id"),
+                row.getString("request_hash"), collectedAt(row),
+                SNAPSHOTS.mapRow(row, number));
+    }
+
+    private static Instant collectedAt(ResultSet row) throws SQLException {
+        OffsetDateTime collectedAt = row.getObject("collected_at", OffsetDateTime.class);
+        return collectedAt == null ? null : collectedAt.toInstant();
+    }
 }

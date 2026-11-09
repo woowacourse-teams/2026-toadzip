@@ -2,16 +2,14 @@ package com.toadzip.backend.ingest.collection.myhome.complex.service;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -22,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -36,15 +33,10 @@ public class MyHomeComplexCollectionService {
 
     private final MyHomeComplexRegionCollectionService regionCollector;
 
-    private final IngestOperationLock executionLock;
+    private final MyHomeInitialRegistrationService registration;
 
-    public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
-        return executionLock.tryRun(IngestOperationLock.Operation.MYHOME_COMPLEX_COLLECTION,
-                () -> collectUnlocked(request)).orElseThrow(
-                () -> new IngestAlreadyRunningException("마이홈 단지 수집이 이미 실행 중입니다."));
-    }
-
-    private MyHomeComplexCollectionReport collectUnlocked(MyHomeComplexCollectionRequest request) {
+    public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionCommand request) {
+        IngestExecutionScope.requireHeld();
         log.info(
                 "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}, maxConcurrentRegions={}",
                 request.pageSize(),
@@ -55,6 +47,7 @@ public class MyHomeComplexCollectionService {
         List<MyHomeRegion> regions = regionsFor(request);
         IngestExecutionScope.beginWork("마이홈 단지 · 전체 지역", "지역", regions.size());
         MyHomeComplexCollectionReport report = collectRegions(regions, request);
+        registration.refresh();
         log.info(
                 "마이홈 단지 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, externalApiCallCount={}",
                 report.storedRowCount(),
@@ -66,7 +59,7 @@ public class MyHomeComplexCollectionService {
 
     private MyHomeComplexCollectionReport collectRegions(
             List<MyHomeRegion> regions,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionCommand request
     ) {
         if (regions.size() == 1) {
             MyHomeComplexCollectionReport report = regionCollector.collect(regions.getFirst(), request);
@@ -78,7 +71,7 @@ public class MyHomeComplexCollectionService {
 
     private MyHomeComplexCollectionReport collectRegionsConcurrently(
             List<MyHomeRegion> regions,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionCommand request
     ) {
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
         AtomicBoolean rateLimitReached = new AtomicBoolean();
@@ -86,9 +79,8 @@ public class MyHomeComplexCollectionService {
                 new ExecutorCompletionService<>(executor);
         List<Future<MyHomeComplexCollectionReport>> pendingTasks = new ArrayList<>();
         Iterator<MyHomeRegion> remainingRegions = regions.iterator();
-        Map<String, String> context = MDC.getCopyOfContextMap();
         while (remainingRegions.hasNext() && pendingTasks.size() < MAX_CONCURRENT_REGIONS) {
-            pendingTasks.add(submit(completedTasks, remainingRegions.next(), request, rateLimitReached, context));
+            pendingTasks.add(submit(completedTasks, remainingRegions.next(), request, rateLimitReached));
         }
         MyHomeComplexCollectionReport result = MyHomeComplexCollectionReport.empty();
         RuntimeException failure = null;
@@ -112,9 +104,7 @@ public class MyHomeComplexCollectionService {
                     break;
                 }
                 if (remainingRegions.hasNext()) {
-                    pendingTasks.add(submit(
-                            completedTasks, remainingRegions.next(), request, rateLimitReached, context
-                    ));
+                    pendingTasks.add(submit(completedTasks, remainingRegions.next(), request, rateLimitReached));
                 }
             }
         }
@@ -165,32 +155,22 @@ public class MyHomeComplexCollectionService {
     private Future<MyHomeComplexCollectionReport> submit(
             CompletionService<MyHomeComplexCollectionReport> completedTasks,
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
-            AtomicBoolean rateLimitReached,
-            Map<String, String> context
+            MyHomeComplexCollectionCommand request,
+            AtomicBoolean rateLimitReached
     ) {
         return completedTasks.submit(
-                IngestExecutionScope.propagate(() -> collectRegion(region, request, rateLimitReached, context))
+                IngestExecutionScope.propagate(() -> collectRegion(region, request, rateLimitReached))
         );
     }
 
     private MyHomeComplexCollectionReport collectRegion(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
-            AtomicBoolean rateLimitReached,
-            Map<String, String> context
+            MyHomeComplexCollectionCommand request,
+            AtomicBoolean rateLimitReached
     ) {
-        try {
-            if (context != null) {
-                MDC.setContextMap(context);
-            }
-            MyHomeComplexCollectionReport report = regionCollector.collect(region, request, rateLimitReached);
-            IngestExecutionScope.workCompleted();
-            return report;
-        }
-        finally {
-            MDC.clear();
-        }
+        MyHomeComplexCollectionReport report = regionCollector.collect(region, request, rateLimitReached);
+        IngestExecutionScope.workCompleted();
+        return report;
     }
 
     private InterruptedException awaitTermination(ExecutorService executor) {
@@ -211,7 +191,7 @@ public class MyHomeComplexCollectionService {
         return interruption;
     }
 
-    private List<MyHomeRegion> regionsFor(MyHomeComplexCollectionRequest request) {
+    private List<MyHomeRegion> regionsFor(MyHomeComplexCollectionCommand request) {
         if (request.requestsAllRegions()) {
             return regionCatalog.findAll();
         }

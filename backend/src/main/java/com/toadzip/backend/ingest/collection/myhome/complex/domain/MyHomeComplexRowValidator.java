@@ -1,7 +1,9 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.domain;
 
+import static com.toadzip.backend.ingest.domain.SourceText.strippedOrNull;
+
+import com.toadzip.backend.ingest.domain.SourceArea;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,20 +37,16 @@ public final class MyHomeComplexRowValidator {
     // 기존 행 식별·충돌 판정만 정규화한다. 저장에는 원래 응답을 그대로 사용한다.
     private static MyHomeComplexSourceSnapshot normalized(MyHomeComplexSourceSnapshot row) {
         return new MyHomeComplexSourceSnapshot(
-                row.hsmpSn(), trim(row.insttNm()), trim(row.brtcCode()), trim(row.brtcNm()),
-                trim(row.signguCode()), trim(row.signguNm()), trim(row.hsmpNm()), trim(row.rnAdres()),
-                trim(row.pnu()), trim(row.competDe()), row.hshldCo(), trim(row.suplyTyNm()), trim(row.styleNm()),
-                area(row.suplyPrvuseAr()), area(row.suplyCmnuseAr()), trim(row.houseTyNm()),
-                trim(row.heatMthdDetailNm()), trim(row.buldStleNm()), trim(row.elvtrInstlAtNm()), row.parkngCo(),
+                row.hsmpSn(), strippedOrNull(row.insttNm()), strippedOrNull(row.brtcCode()),
+                strippedOrNull(row.brtcNm()), strippedOrNull(row.signguCode()), strippedOrNull(row.signguNm()),
+                strippedOrNull(row.hsmpNm()), strippedOrNull(row.rnAdres()), strippedOrNull(row.pnu()),
+                strippedOrNull(row.competDe()), row.hshldCo(), strippedOrNull(row.suplyTyNm()),
+                strippedOrNull(row.styleNm()), SourceArea.normalized(row.suplyPrvuseAr()),
+                SourceArea.normalized(row.suplyCmnuseAr()), strippedOrNull(row.houseTyNm()),
+                strippedOrNull(row.heatMthdDetailNm()), strippedOrNull(row.buldStleNm()),
+                strippedOrNull(row.elvtrInstlAtNm()), row.parkngCo(),
                 row.bassRentGtn(), row.bassMtRntchrg(), row.bassCnvrsGtnLmt()
         );
-    }
-
-    private static String trim(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.strip();
     }
 
     private static String keyString(String value) {
@@ -56,13 +54,6 @@ public final class MyHomeComplexRowValidator {
             return null;
         }
         return value.strip();
-    }
-
-    private static BigDecimal area(BigDecimal value) {
-        if (value == null) {
-            return null;
-        }
-        return value.setScale(4, RoundingMode.HALF_UP);
     }
 
     private record RowKey(

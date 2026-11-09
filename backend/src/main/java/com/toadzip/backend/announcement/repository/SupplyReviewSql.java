@@ -1,6 +1,6 @@
 package com.toadzip.backend.announcement.repository;
 
-import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 
 public final class SupplyReviewSql {
     public static final String TARGET_VALUES = """
@@ -8,7 +8,9 @@ public final class SupplyReviewSql {
               jsonb_build_object(
                 'connection', jsonb_build_object('complexId', r.housing_complex_id, 'typeId', r.housing_type_id,
                   'complexName', c.name, 'address', c.road_address, 'deleted', c.admin_deleted,
-                  'typeName', h.name, 'exclusiveArea', h.exclusive_area, 'supplyArea', h.supply_area),
+                  'typeName', h.name, 'exclusiveArea', h.exclusive_area, 'supplyArea', h.supply_area,
+                  'typeIds', (SELECT string_agg(l.housing_type_id::text, ',' ORDER BY l.housing_type_id)
+                    FROM supply_row_housing_types l WHERE l.supply_row_id = r.id)),
                 'names', jsonb_build_object('complexName', r.source_complex_name,
                   'typeName', r.source_housing_type_name, 'pnu', r.supply_pnu),
                 'areas', jsonb_build_object('exclusiveArea', CASE WHEN r.area_override
@@ -39,7 +41,7 @@ public final class SupplyReviewSql {
               SELECT COALESCE(jsonb_agg(projected ORDER BY projected::text), '[]'::jsonb) FROM (
                 SELECT (SELECT COALESCE(jsonb_object_agg(field, raw -> field) FILTER (WHERE jsonb_exists(raw, field)), '{}'::jsonb)
                   FROM jsonb_array_elements_text(saved -> 'fields') field) AS projected FROM (
-            """ + QualityComparisonRepository.SOURCE_ROWS + """
+            """ + IngestSourceRows.NORMALIZED_ROWS + """
                 ) source WHERE category = saved ->> 'category' AND source_key = saved ->> 'sourceKey'
               ) projected_rows
             )) ORDER BY ord), '[]'::jsonb)

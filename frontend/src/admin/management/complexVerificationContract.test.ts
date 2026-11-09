@@ -17,6 +17,10 @@ describe('단지 검증 응답', () => {
     expect(value.sources).toEqual([])
     expect(currentText('HOUSEHOLD_COUNT', value.currentValues)).toBe('0세대')
   })
+  it('지번을 모르는 단지의 PNU 없음을 받는다', () => {
+    const value = parseComplexVerification({ ...response, currentValues: { ...currentValues, ADDRESS: { ...currentValues.ADDRESS, pnu: null } } })
+    expect(value.currentValues.ADDRESS.pnu).toBeNull()
+  })
   it.each([
     { ...response, status: 'AUTO_VERIFIED' },
     { ...response, snapshotToken: '' },
@@ -46,7 +50,7 @@ it('코드와 기존 한글 유형값을 같은 의미로 비교하며 주소가
     rentalType: '5년임대', roadAddress: currentValues.ADDRESS.roadAddress, pnu: '다른 PNU', householdCount: 0,
     housingType: '26A', exclusiveArea: 26, collectedAt: null }
   expect(sourceMatches('AGENCY', currentValues, source)).toBe(true)
-  expect(sourceMatches('RENTAL_TYPE', { ...currentValues, RENTAL_TYPE: 'PUBLIC_RENTAL_5Y' }, source)).toBe(true)
+  expect(sourceMatches('RENTAL_TYPE', { ...currentValues, RENTAL_TYPE: 'PUBLIC_RENTAL' }, source)).toBe(true)
   expect(sourceMatches('RENTAL_TYPE', { ...currentValues, RENTAL_TYPE: '5년임대' }, source)).toBe(true)
   expect(sourceMatches('ADDRESS', currentValues, source)).toBe(false)
   expect(sameValue({ a: 1, b: [0, 2] }, { b: [0, 2], a: 1 })).toBe(true)

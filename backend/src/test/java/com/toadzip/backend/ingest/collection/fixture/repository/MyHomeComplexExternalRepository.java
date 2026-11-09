@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture.repository;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
@@ -24,7 +24,7 @@ public class MyHomeComplexExternalRepository {
         this.client = client;
     }
 
-    public JsonNode fetch(MyHomeRegion region, MyHomeComplexCollectionRequest request, int page) {
+    public JsonNode fetch(MyHomeRegion region, MyHomeComplexCollectionCommand request, int page) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("brtcCode", region.provinceCode());
         params.add("signguCode", region.districtCode());

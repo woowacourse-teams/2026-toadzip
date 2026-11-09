@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.myhome.complex.controller;
 
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionCommand;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -33,7 +33,7 @@ public class MyHomeComplexCollectionController {
             @Min(value = 1, message = "1 이상이어야 합니다.")
             @Max(value = 1_000, message = "1000 이하여야 합니다.") int maxPages
     ) {
-        MyHomeComplexCollectionReport report = collectionService.collect(new MyHomeComplexCollectionRequest(
+        MyHomeComplexCollectionReport report = collectionService.collect(new MyHomeComplexCollectionCommand(
                 provinceCode,
                 districtCode,
                 pageSize,

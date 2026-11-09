@@ -1,8 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestRejectedException;
 
 public final class ExternalDataRateLimit {
 
@@ -18,7 +17,7 @@ public final class ExternalDataRateLimit {
                 && failure.isRateLimited()) {
             return 1;
         }
-        if (exception instanceof LhAnnouncementUnavailableException failure
+        if (exception instanceof ExternalDataRequestRejectedException failure
                 && failure.isRateLimited()) {
             return 1;
         }

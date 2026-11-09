@@ -1,5 +1,6 @@
 package com.toadzip.backend.admin.quality.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.dto.QualityComparison;
 import com.toadzip.backend.admin.quality.dto.QualityComparisonRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequestMapping("/api/admin/quality/{resource}/{id}/comparison")
 public class QualityComparisonController {
@@ -33,7 +35,7 @@ public class QualityComparisonController {
     @GetMapping
     public ApiResponse<QualityComparison> detail(@PathVariable QualityResource resource, @PathVariable long id,
             @RequestParam(defaultValue = "basic")
-            @Pattern(regexp = "basic|(?:type|row|target):[1-9][0-9]{0,17}") String target) {
+            @Pattern(regexp = QualityComparisonRequest.TARGET) String target) {
         return new ApiResponse<>(comparison.detail(resource, id, target));
     }
 
@@ -49,7 +51,7 @@ public class QualityComparisonController {
     public ApiResponse<QualityComparison> link(@PathVariable QualityResource resource, @PathVariable long id,
             @Valid @RequestBody QualityComparisonRequest.Link request, Principal actor) {
         try (var lease = ownership.acquire()) {
-            return new ApiResponse<>(comparison.link(resource, id, request, actor.getName(), false));
+            return new ApiResponse<>(comparison.link(resource, id, request, actor.getName()));
         }
     }
 
@@ -57,7 +59,7 @@ public class QualityComparisonController {
     public ApiResponse<QualityComparison> unlink(@PathVariable QualityResource resource, @PathVariable long id,
             @Valid @RequestBody QualityComparisonRequest.Link request, Principal actor) {
         try (var lease = ownership.acquire()) {
-            return new ApiResponse<>(comparison.link(resource, id, request, actor.getName(), true));
+            return new ApiResponse<>(comparison.unlink(resource, id, request, actor.getName()));
         }
     }
 

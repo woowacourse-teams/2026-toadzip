@@ -9,10 +9,15 @@ import { useDocumentScrollActivity } from './useDocumentScrollActivity.ts'
 import scrollbarStyles from './DocumentScrollbar.module.css'
 
 // Keep the SDK's :root variables and generic annotation styles inside this viewer.
-const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} }`
+// pdf.js는 쪽 테두리(9px)를 content-box로 계산한다. 앱 전역의 `* { box-sizing: border-box }`가 덮으면 그림만 테두리만큼 줄어
+// 글자층·검색 강조가 아래·오른쪽으로 밀리므로 쪽 상자는 content-box로 되돌린다.
+const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} .page { box-sizing: content-box; } }`
 
-/** 외부에서 근거 위치를 지정한다. nonce가 바뀔 때마다 해당 쪽으로 이동하고 query를 강조한다. */
-export type PdfFocus = { readonly page: number; readonly query: string; readonly nonce: number }
+/**
+ * 외부에서 근거 위치를 지정한다. nonce가 바뀔 때마다 해당 쪽으로 이동하고 query를 강조한다.
+ * context가 있으면 같은 텍스트 줄에 그 표기가 있는 값만 강조하고, 찾지 못하면 아무것도 강조하지 않고 quote와 함께 알린다.
+ */
+export type PdfFocus = { readonly page: number; readonly query: string | readonly string[]; readonly nonce: number; readonly context?: readonly string[]; readonly quote?: string }
 type PdfPreviewProps = { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry; readonly focus?: PdfFocus | null }
 
 export default function PdfDocumentPreview(props: PdfPreviewProps) {
@@ -29,18 +34,22 @@ function PdfPreview({ url, name, telemetry, focus }: PdfPreviewProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scale, setScale] = useState('page-width')
+  // 근거 위치 찾기 결과를 알리는 동안은 true. 직접 검색을 열면 그 결과로 바뀐다.
+  const [focusSearch, setFocusSearch] = useState(false)
   const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, goToPage, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef, telemetry)
 
   useEffect(() => {
     if (!ready || !focus) return
     // Keep keyboard focus in the review and highlight only on the evidence page.
     goToPage(focus.page)
-    search(focus.query, false, false, focus.page)
+    setFocusSearch(true)
+    search(focus.query, false, false, focus.page, focus.context ?? null)
   }, [ready, focus, goToPage, search])
 
   const openSearch = useCallback(() => {
     telemetry?.action('search_open')
     setSearchOpen(true)
+    setFocusSearch(false)
     inputRef.current?.focus()
     inputRef.current?.select()
     if (query) search(query)
@@ -108,6 +117,7 @@ function PdfPreview({ url, name, telemetry, focus }: PdfPreviewProps) {
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
+    {focus && focusSearch && !searchOpen && result.notFound && <p role="status" className={styles.focusMissing}>위치를 찾지 못했습니다 · p.{focus.page} 원문과 인용문을 확인하세요{focus.quote ? <q>{focus.quote}</q> : null}</p>}
     {error && <p role="alert" className={styles.error}>PDF를 표시하지 못했어요. 다운로드해서 확인해 주세요.</p>}
     <div className={styles.viewport}>
       <div ref={containerRef} className={`${styles.scroll} ${scrollbarStyles.scrollbar}`} role="region" aria-label={`${name} 문서`} tabIndex={0}>

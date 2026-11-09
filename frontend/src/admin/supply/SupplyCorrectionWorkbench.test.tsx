@@ -174,11 +174,12 @@ it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단�
   expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 익산 한스빌 국민임대')
 })
 
-it('LH 공급 원본 행이 공급행에 없으면 직접 추가를 막고 이유를 알린다', async () => {
+it('같은 전용면적 공급행이 없어 붙지 않은 LH 공급 원본 행은 직접 추가를 막지 않는 참고 정보로 알린다', async () => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace), unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] })
   await setup(false)
-  expect(screen.getByRole('button', { name: '직접 추가' })).toBeDisabled()
-  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)이 아직 공급행에 없습니다.')
+  expect(screen.getByRole('button', { name: '직접 추가' })).toBeEnabled()
+  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)과 전용면적이 같은 공급행이 없습니다. LH 행은 세대수 검산용 참고 정보라 저장을 막지 않습니다.')
+  expect(screen.getByRole('note')).not.toHaveTextContent('LH 행 연결')
 })
 
 it('LH 원본과 중복 가능한 행을 같은 주택형의 펼침 행으로 합치면 조건과 표기를 옮기고 직접 추가 행은 지운다', async () => {

@@ -1,0 +1,386 @@
+{
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "announcement": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "postedDate": {
+              "type": "string",
+              "nullable": true
+            },
+            "applicationStartDate": {
+              "type": "string",
+              "nullable": true
+            },
+            "applicationEndDate": {
+              "type": "string",
+              "nullable": true
+            },
+            "winnerAnnouncementDate": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          "required": [
+            "name",
+            "postedDate",
+            "applicationStartDate",
+            "applicationEndDate",
+            "winnerAnnouncementDate"
+          ]
+        },
+        "receptionPlaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "ONLINE",
+                  "VISIT",
+                  "MAIL",
+                  "ETC"
+                ],
+                "nullable": true
+              },
+              "address": {
+                "type": "string",
+                "nullable": true
+              },
+              "contact": {
+                "type": "string",
+                "nullable": true
+              },
+              "url": {
+                "type": "string",
+                "nullable": true
+              },
+              "guidance": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "name",
+              "method",
+              "address",
+              "contact",
+              "url",
+              "guidance"
+            ]
+          }
+        },
+        "complexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sourceComplexName": {
+                "type": "string"
+              },
+              "address": {
+                "type": "string",
+                "nullable": true
+              },
+              "totalHouseholdCount": {
+                "type": "integer",
+                "nullable": true
+              },
+              "parkingCount": {
+                "type": "integer",
+                "nullable": true
+              }
+            },
+            "required": [
+              "sourceComplexName",
+              "address",
+              "totalHouseholdCount",
+              "parkingCount"
+            ]
+          }
+        },
+        "supplyRows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "complexReference": {
+                "type": "object",
+                "properties": {
+                  "sourceComplexName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceComplexName"
+                ]
+              },
+              "sourceHousingTypeName": {
+                "type": "string",
+                "nullable": true
+              },
+              "expectedMoveInMonth": {
+                "type": "string",
+                "nullable": true
+              },
+              "totalSupplyHouseholdCount": {
+                "type": "integer",
+                "nullable": true
+              },
+              "exclusiveArea": {
+                "type": "number",
+                "nullable": true
+              },
+              "commonArea": {
+                "type": "number",
+                "nullable": true
+              },
+              "supplyArea": {
+                "type": "number",
+                "nullable": true
+              },
+              "constructedHouseholdCount": {
+                "type": "integer",
+                "nullable": true
+              },
+              "subtypes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "exclusiveArea": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "commonArea": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "constructedHouseholdCount": {
+                      "type": "integer",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "exclusiveArea",
+                    "commonArea",
+                    "constructedHouseholdCount"
+                  ]
+                }
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "target": {
+                      "type": "string"
+                    },
+                    "supplyHouseholdCount": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "이번 공고의 대상별 모집수. 입주자(당첨자)와 예비자 수를 따로 적은 표는 그 합"
+                    },
+                    "reserveCount": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "이번 공고에서 새로 모집하는 예비자 수. 기존 대기자 수는 제외"
+                    },
+                    "rentalDeposit": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "monthlyRent": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "convertedDeposit": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "applicationCondition": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "supplyHouseholdCount",
+                    "reserveCount",
+                    "rentalDeposit",
+                    "monthlyRent",
+                    "convertedDeposit",
+                    "applicationCondition"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "complexReference",
+              "sourceHousingTypeName",
+              "expectedMoveInMonth",
+              "totalSupplyHouseholdCount",
+              "exclusiveArea",
+              "commonArea",
+              "supplyArea",
+              "constructedHouseholdCount",
+              "subtypes",
+              "targets"
+            ]
+          }
+        },
+        "schedules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "scheduleType": {
+                "type": "string",
+                "enum": [
+                  "APPLICATION",
+                  "DOCUMENT_SUBMISSION",
+                  "WINNER_ANNOUNCEMENT",
+                  "CONTRACT",
+                  "MOVE_IN",
+                  "ETC"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "startAt": {
+                "type": "string"
+              },
+              "endAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "scheduleType",
+              "name",
+              "startAt",
+              "endAt"
+            ]
+          }
+        },
+        "unresolvedFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "reason"
+            ]
+          }
+        }
+      },
+      "required": [
+        "announcement",
+        "receptionPlaces",
+        "complexes",
+        "supplyRows",
+        "schedules",
+        "unresolvedFields"
+      ]
+    },
+    "sharedCounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "같이 쓰는 totalSupplyHouseholdCount 경로 또는 여러 대상의 같은 supplyHouseholdCount/reserveCount 경로"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "paths",
+          "count",
+          "page",
+          "quote"
+        ]
+      }
+    },
+    "notApplicable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "page",
+          "quote"
+        ]
+      }
+    }
+  },
+  "required": [
+    "data",
+    "sharedCounts",
+    "notApplicable",
+    "evidence"
+  ]
+}

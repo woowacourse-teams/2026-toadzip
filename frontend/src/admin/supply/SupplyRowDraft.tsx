@@ -1,10 +1,11 @@
+import { sameTypeName } from '../announcement-pdf/areas'
 import { useEffect, useRef, useState } from 'react'
 import { labels } from '../management/fields'
 import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
 import { isRecord, type ManagementDetailData } from '../management/managementContract'
 import { getMatchingHousingTypes, type MatchingHousingType } from '../ingest/supplyMatchingApi'
-import { blankTarget, type CorrectionRow, type CorrectionSource } from './supplyCorrectionApi'
+import { blankTarget, type CorrectionRow, type CorrectionSource, type LinkedHousingType, type NewHousingType } from './supplyCorrectionApi'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { SupplyTargetDraft } from './SupplyTargetDraft'
 import styles from './SupplyCorrection.module.css'
@@ -15,10 +16,10 @@ function linkIssues(row: CorrectionRow): string[] {
   return [...(row.housingComplexId ? [] : ['단지 미연결']), ...(row.housingTypeId || row.newHousingType ? [] : ['주택형 미연결'])]
 }
 
-export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, sharedCount, onDelete, deleted = false }: {
+export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last, sources = [], inline = false, onDelete, deleted = false }: {
   value: CorrectionRow; onChange: (value: CorrectionRow) => void; onRemove: () => void;
   onMove: (delta: number) => void; first: boolean; last: boolean
-  inline?: boolean; sharedCount?: number
+  inline?: boolean
   /** 저장된 행 중 관리자가 추가한 행(원천 없음)만 받는다. 누르면 삭제 예정으로 표시하고, 다시 누르면 취소한다. */
   onDelete?: () => void; deleted?: boolean
   /** 이 행이 기록한 원천행(마이홈·LH)과 작업실 원천 목록에서 찾은 값. */
@@ -27,7 +28,8 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
   const [types, setTypes] = useState<MatchingHousingType[]>([])
   const [candidateComplex, setCandidateComplex] = useState<ManagementDetailData | null>(null)
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
-  const [lookup, setLookup] = useState(false)
+  // 함께 모집하는 주택형은 id만 오므로, 연결이 있는 행은 펼칠 때 단지 주택형을 불러와 이름·면적을 보여 준다.
+  const [lookup, setLookup] = useState(!!value.linkedHousingTypes?.length)
   const request = useRef<AbortController | null>(null)
   const complexId = value.housingComplexId
   const selectedType = value.newHousingType ?? types.find(type => type.id === value.housingTypeId)
@@ -51,7 +53,8 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       if (controller.signal.aborted) return
       const address = detail.data.address
       const pnu = address && typeof address === 'object' && !Array.isArray(address) ? address.pnu : null
-      onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null,
+      // 대표·단지를 바꾸면 빈 목록으로 연결을 비운다. 생략하면 대표를 원래대로 되돌렸을 때 서버가 이전 연결을 유지한다.
+      onChange({ ...value, housingComplexId: id, housingComplexName: name, housingTypeId: null, newHousingType: null, linkedHousingTypes: [],
         complexName: value.complexName || name, pnu: typeof pnu === 'string' ? pnu : value.pnu })
       setTypes(candidates); setCandidateComplex(detail); setLookup(true)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 조회하지 못했습니다.') }
@@ -86,12 +89,12 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
         {/* 연결 확인과 해제는 같은 단지 연결에 대한 동작이라 한 줄에 둔다. */}
         {(value.housingComplexId || !value.groupId) && <div className={styles.actions}>
           {value.housingComplexId && <button type="button" onClick={() => setLookup(true)}>이 단지의 주택형 확인</button>}
-          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null }) }}>단지·주택형 연결 해제</button>}
+          {!value.groupId && <button type="button" onClick={() => { setTypes([]); setLookup(false); onChange({ ...value, housingComplexId: null, housingComplexName: null, housingTypeId: null, newHousingType: null, linkedHousingTypes: [] }) }}>단지·주택형 연결 해제</button>}
         </div>}
         {value.housingComplexId && <>
           {lookup && <label>공통 주택형<select value={value.newHousingType ? 'new' : value.housingTypeId ?? ''} onChange={event => {
-            if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea } })
-            else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null })
+            if (event.target.value === 'new') onChange({ ...value, housingTypeId: null, newHousingType: { name: value.typeName, exclusiveArea: value.exclusiveArea ?? 0, supplyArea: value.supplyArea }, linkedHousingTypes: [] })
+            else onChange({ ...value, housingTypeId: event.target.value ? Number(event.target.value) : null, newHousingType: null, linkedHousingTypes: [] })
           }}><option value="">미연결</option>{types.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡ · #{type.id}</option>)}<option value="new">누락된 주택형 만들기</option></select></label>}</>}
         {value.newHousingType && <div className={styles.fields}>
           <label>새 공통 주택형 이름<input required maxLength={255} value={value.newHousingType.name} onChange={event => field('newHousingType', { ...value.newHousingType!, name: event.target.value })} /></label>
@@ -100,7 +103,7 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
           <p>공통 주택형 생성과 이 행의 연결을 함께 적용합니다. 기존 공통 주택형은 변경하지 않습니다.</p>
         </div>}
         {lookup && candidateComplex && <section aria-label="연결 후보 비교">
-          <p>선택 단지: {candidateComplex.summary.name} · {candidateComplex.summary.subtitle} · {labels[candidateComplex.summary.rental] ?? candidateComplex.summary.rental}</p>
+          <p>선택 단지: {candidateComplex.summary.name} · {candidateComplex.summary.subtitle} · {labels[candidateComplex.summary.rental ?? ''] ?? candidateComplex.summary.rental}</p>
           <p>공고 공급 주소 식별자: {value.pnu || '미확인'} / 단지 주소 식별자: {candidatePnu ?? '미확인'}</p>
           {selectedType && <div className="admin-table-scroll"><table className="admin-table"><caption>공고 입력값과 선택한 공통 주택형</caption>
             <thead><tr><th scope="col">비교 항목</th><th scope="col">공고 입력값</th><th scope="col">선택한 공통 주택형</th></tr></thead><tbody>
@@ -110,9 +113,12 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
             </tbody></table></div>}
           <p>이름·주소·면적은 비교 근거입니다. 같은 이름도 별개 주택형일 수 있으므로 공식 원문으로 대응을 확인하세요. 공고 모집수와 주택형 전체 세대수는 다른 범위입니다.</p>
         </section>}
+        {value.housingComplexId && (value.housingTypeId || value.newHousingType) && <LinkedHousingTypesDraft value={value} types={types} lookup={lookup}
+          typesLoaded={lookup && candidateComplex?.summary.id === complexId}
+          shared={!!value.groupId} onLookup={() => setLookup(true)} onChange={links => field('linkedHousingTypes', links)} />}
       </fieldset>
       {error && <p role="alert">{error}</p>}
-      {(value.groupId || sharedCount !== undefined) && <p>공통 모집수 {sharedCount ?? value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수 변경은 위의 ‘원천별 공급행 보정’에서 처리하세요.</p>}
+      {value.groupId && <p>공통 모집수 {value.sharedHouseholdCount ?? '미확정'}세대는 묶음에 한 번만 보관합니다. 단지·공통 모집수는 여기서 바꿀 수 없습니다.</p>}
       <fieldset><legend>이 공고에만 적용할 공급정보</legend>
       {/* 기존 행의 원천 단지명은 정제가 관리한다. 원천이 없는 새 행만 처음 표기를 입력한다. */}
       {value.id ? <p className={styles.sourceName}>수집 원문 단지명: {value.complexName}</p> : null}
@@ -126,10 +132,10 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
             {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기 →</a></> : null}
           </p>
         </div>
-        <label>공급 PNU<input required maxLength={255} value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
+        <label>공급 PNU<input maxLength={255} placeholder="지번을 모르면 비움" value={value.pnu} onChange={event => field('pnu', event.target.value)} /></label>
         <label>공급 구분<select value={value.category} onChange={event => field('category', event.target.value as CorrectionRow['category'])}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
         <label>입주 예정 연월<input type="month" value={value.moveInMonth ?? ''} onChange={event => field('moveInMonth', event.target.value || null)} /></label>
-        <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId || sharedCount !== undefined} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
+        <label>금회 모집수 (세대)<input type="number" min="0" step="1" disabled={!!value.groupId} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
       </div><p>빈 수량·금액은 미확인, 숫자 0은 확인된 0입니다. 전체 세대수는 변경하지 않습니다.</p>
       <label className={styles.check}><input type="checkbox" checked={value.areaOverride} onChange={event => field('areaOverride', event.target.checked)} />이 공고의 면적을 별도로 보정·보호</label>
       <div className={styles.fields}>{(['exclusiveArea', 'supplyArea'] as const).map(key => <label key={key}>{key === 'exclusiveArea' ? '공고별 전용면적 (㎡)' : '공고별 공급면적 (㎡)'}<input type="number" min="0" step="0.0001" disabled={!value.areaOverride} value={value[key] ?? ''} onChange={event => field(key, event.target.value === '' ? null : Number(event.target.value))} /></label>)}</div>
@@ -141,4 +147,57 @@ export function SupplyRowDraft({ value, onChange, onRemove, onMove, first, last,
       <label className={styles.check}><input type="checkbox" checked={value.targetCountsComparable} onChange={event => field('targetCountsComparable', event.target.checked)} />대상 모집수가 서로 중복되지 않고 행 모집수와 같은 범위임을 확인했습니다.</label>
     </fieldset>
   </details>
+}
+
+/** 작업실 순서(기존 주택형 id 순, 새 주택형은 그 뒤 전용면적 순)로 맞춰 순서만 다른 목록을 바뀐 값으로 보지 않게 한다. */
+function sortLinks(links: LinkedHousingType[]) {
+  return [...links].sort((a, b) => (a.housingTypeId ?? Infinity) - (b.housingTypeId ?? Infinity)
+    || (a.newHousingType?.exclusiveArea ?? 0) - (b.newHousingType?.exclusiveArea ?? 0))
+}
+const blankNewType: NewHousingType = { name: '', exclusiveArea: 0, supplyArea: null }
+
+/**
+ * 대표 주택형과 함께 모집하는 주택형(세부 타입 26B·26C) 목록. 고치면 고친 목록 전체를 보내고, 손대지 않으면 조회한 값을 그대로 둔다.
+ * 공고 신청형 한 행은 같은 면적의 여러 단지 주택타입을 함께 모집할 수 있어, 대표·이미 연결한 주택형만 다시 고를 수 없다.
+ */
+function LinkedHousingTypesDraft({ value, types, lookup, typesLoaded, shared, onLookup, onChange }: {
+  value: CorrectionRow; types: MatchingHousingType[]; lookup: boolean; typesLoaded: boolean; shared: boolean
+  onLookup: () => void; onChange: (links: LinkedHousingType[]) => void
+}) {
+  const [draft, setDraft] = useState<NewHousingType | null>(null)
+  const links = value.linkedHousingTypes ?? []
+  // 공고 신청형 한 행은 같은 면적의 여러 단지 주택타입(59A·59A1·59C)을 함께 모집할 수 있다. 같은 주택타입(기존은 id, 새 주택타입은 이름)만 두 번 연결하지 않는다.
+  const usedIds = [value.housingTypeId, ...links.map(link => link.housingTypeId)].filter(id => id != null)
+  const newNames = [value.newHousingType, ...links.map(link => link.newHousingType)].flatMap(type => type ? [type.name] : [])
+  const choices = types.filter(type => !usedIds.includes(type.id))
+  const label = (link: LinkedHousingType) => {
+    if (link.newHousingType) return `${link.newHousingType.name} · 전용 ${link.newHousingType.exclusiveArea}㎡ · 새 주택형 생성 예정`
+    const type = types.find(item => item.id === link.housingTypeId)
+    return type ? `${type.name} · 전용 ${type.exclusiveArea}㎡ · #${type.id}` : `주택형 #${link.housingTypeId}`
+  }
+  const draftConflict = draft && draft.exclusiveArea > 0 && (newNames.some(name => sameTypeName(name, draft.name)) ? '대표나 이미 연결한 새 주택형과 이름이 같습니다.'
+    : types.some(type => sameTypeName(type.name, draft.name, type.exclusiveArea, draft.exclusiveArea)) ? '이 단지에 같은 이름의 주택형이 있습니다. 목록에서 고르세요.' : '')
+  return <fieldset><legend>함께 모집하는 주택형</legend>
+    {shared ? <p>공통 모집 묶음 행은 묶음의 행마다 주택형을 따로 연결하므로 함께 모집하는 주택형을 연결할 수 없습니다.</p> : <>
+      <p className={styles.sourceName}>공고 한 행이 여러 전용면적(예: 26A·26B·26C)을 함께 모집할 때 대표 주택형 밖의 주택형을 연결합니다. 대표나 단지를 바꾸면 연결이 비워집니다.</p>
+      {links.length ? <ul>{links.map((link, index) => <li key={link.housingTypeId ?? `new:${link.newHousingType?.name}:${link.newHousingType?.exclusiveArea}`}>{label(link)}{' '}
+        <button type="button" aria-label={`${label(link)} 빼기`} onClick={() => onChange(links.filter((_, at) => at !== index))}>빼기</button></li>)}</ul>
+        : <p>대표 주택형만 연결되어 있습니다.</p>}
+      {lookup ? <div className={styles.fields}>
+        <label>기존 주택형 추가<select value="" onChange={event => { if (event.target.value) onChange(sortLinks([...links, { housingTypeId: Number(event.target.value) }])) }}>
+          <option value="">{choices.length ? '주택형 선택' : '추가할 수 있는 주택형 없음'}</option>
+          {choices.map(type => <option key={type.id} value={type.id}>{type.name} · 전용 {type.exclusiveArea}㎡ · #{type.id}</option>)}</select></label>
+      </div> : <div className={styles.actions}><button type="button" onClick={onLookup}>이 단지의 주택형 불러오기</button></div>}
+      {draft ? <div className={styles.fields}>
+        <label>함께 모집할 새 주택형 이름<input maxLength={255} value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
+        <label>새 주택형 전용면적 (㎡)<input type="number" min="0.0001" step="0.0001" value={draft.exclusiveArea || ''} onChange={event => setDraft({ ...draft, exclusiveArea: Number(event.target.value) })} /></label>
+        <label>새 주택형 공급면적 (㎡)<input type="number" min="0" step="0.0001" value={draft.supplyArea ?? ''} onChange={event => setDraft({ ...draft, supplyArea: event.target.value === '' ? null : Number(event.target.value) })} /></label>
+        {draftConflict && <p role="alert">{draftConflict}</p>}
+        {/* 단지 주택형을 불러와야 같은 이름 주택형이 있는지 확인할 수 있다(단지 주택타입은 공고문 표기 이름으로 나눈다). */}
+        <div className={styles.actions}><button type="button" disabled={!typesLoaded || !draft.name.trim() || !(draft.exclusiveArea > 0) || !!draftConflict}
+          onClick={() => { onChange(sortLinks([...links, { newHousingType: { ...draft, name: draft.name.trim() } }])); setDraft(null) }}>새 주택형 연결</button>
+          <button type="button" onClick={() => setDraft(null)}>취소</button></div>
+      </div> : <div className={styles.actions}><button type="button" onClick={() => { setDraft(blankNewType); onLookup() }}>새 주택형 만들어 연결</button></div>}
+    </>}
+  </fieldset>
 }

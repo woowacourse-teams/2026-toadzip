@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.repository.external.AnnouncementAttachme
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,8 +28,16 @@ public class AnnouncementAttachmentService {
 
     // Materialize the source without holding a database transaction during the external request.
     public AttachmentContent read(long announcementId, long attachmentId, boolean download) {
-        AttachmentSource source = repository.findPublicSource(announcementId, attachmentId)
-                .orElseThrow(() -> new AttachmentUnavailableException(Reason.NOT_FOUND));
+        return read(repository.findPublicSource(announcementId, attachmentId), download);
+    }
+
+    /** 관리자 PDF 추출은 아직 공개되지 않은 미확정 공고의 첨부도 PDF로 읽는다. */
+    public AttachmentContent readForAdmin(long announcementId, long attachmentId) {
+        return read(repository.findAdminSource(announcementId, attachmentId), false);
+    }
+
+    private AttachmentContent read(Optional<AttachmentSource> found, boolean download) {
+        AttachmentSource source = found.orElseThrow(() -> new AttachmentUnavailableException(Reason.NOT_FOUND));
         TemporaryAttachment file = client.read(source.fileUrl());
         try {
             byte[] bytes = file.prefix();

@@ -30,13 +30,18 @@ public class UtmKCoordinateConverter {
 
     private static final String WGS84_PARAMETERS = "+proj=longlat +datum=WGS84 +no_defs";
 
+    private static final double ROUND_TRIP_TOLERANCE_METERS = 1.0;
+
     private final CoordinateTransform transform;
+
+    private final CoordinateTransform inverseTransform;
 
     public UtmKCoordinateConverter() {
         CRSFactory factory = new CRSFactory();
         CoordinateReferenceSystem utmK = factory.createFromParameters("UTM-K", UTM_K_PARAMETERS);
         CoordinateReferenceSystem wgs84 = factory.createFromParameters("WGS84", WGS84_PARAMETERS);
         transform = new CoordinateTransformFactory().createTransform(utmK, wgs84);
+        inverseTransform = new CoordinateTransformFactory().createTransform(wgs84, utmK);
     }
 
     public Wgs84Coordinate convert(UtmKCoordinate coordinate) {
@@ -45,6 +50,7 @@ public class UtmKCoordinateConverter {
             double y = finiteValue(coordinate.y());
             ProjCoordinate result = new ProjCoordinate();
             transform.transform(new ProjCoordinate(x, y), result);
+            validateRoundTrip(x, y, result);
             return new Wgs84Coordinate(decimal(result.y), decimal(result.x));
         }
         catch (RuntimeException exception) {
@@ -53,6 +59,16 @@ public class UtmKCoordinateConverter {
                     "UTM-K 좌표를 WGS84 좌표로 변환하지 못했습니다.",
                     exception
             );
+        }
+    }
+
+    private void validateRoundTrip(double x, double y, ProjCoordinate converted) {
+        ProjCoordinate restored = new ProjCoordinate();
+        inverseTransform.transform(converted, restored);
+        if (!Double.isFinite(restored.x) || !Double.isFinite(restored.y)
+                || Math.abs(restored.x - x) > ROUND_TRIP_TOLERANCE_METERS
+                || Math.abs(restored.y - y) > ROUND_TRIP_TOLERANCE_METERS) {
+            throw new IllegalArgumentException("원본 좌표로 역변환한 결과가 일치하지 않습니다.");
         }
     }
 

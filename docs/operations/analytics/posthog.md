@@ -89,6 +89,38 @@ localStorage.removeItem('toadzip.analytics.disabled')
 location.reload()
 ```
 
+## 커뮤니티 유입과 후속 행동 건수
+
+커뮤니티 링크에는 `utm_source=community_a&utm_campaign=sprint_3&utm_content=post_1`을 붙인다.
+값은 공개 배포용 코드만 사용한다. 영문 소문자로 시작하고 소문자·숫자·밑줄·하이픈으로 64자까지 허용한다.
+계정 ID, 사람별 코드, 이메일과 자유 입력은 넣지 않는다.
+세 값은 URL에서 제거하고 탭 저장소에 최초 유입부터 30분만 보관한다. 새로고침·활동·동의 변경은 기간을 늘리지 않는다.
+새 UTM 링크는 이전 필드를 섞지 않고 출처를 교체한다. 만료 후 새 행동과 늦은 알림 완료에는 이전 출처를 쓰지 않는다.
+
+브라우저가 기존 PostHog 공개 설정으로 `campaign_activity`를 직접 전송한다. 서버 API·DB·별도 배포 변수는 없다.
+동의 여부와 관계없이 UTM이 남아 있는 공개 화면의 유입, 실제 단지·공고 상세 표시, 알림함 조회·알림 열기,
+검색·필터 적용·알림 신청·원문 클릭·다운로드 요청을 발생 건수로 센다.
+허용 목록의 원본은 [campaignStats.ts](../../../frontend/src/analytics/campaignStats.ts)다.
+팀원 제외 키, 브라우저 DNT와 GPC가 켜져 있으면 전송하지 않는다.
+
+전송 속성은 세 UTM, 행동명 `action`, `count=1`, 공개 단지·공고 ID, 환경·스키마·측정 방식과 수집 제어값으로 제한한다.
+쿠키·인증·리퍼러·계정·개별 알림 ID·방문/기기/세션 ID·제품 이벤트 연결 키·프로필 속성은 보내지 않는다.
+공통 `distinct_id=campaign-statistics-v1`은 시스템 값이며 방문자를 뜻하지 않는다.
+각 요청 UUID는 그 전송에만 쓰며 기존 SDK와 공유하지 않는다. 시각은 KST 날짜 시작으로 내리고 프로필·GeoIP·IP 속성을 끈다.
+브라우저에서 외부 수집 서버에 직접 연결하므로 HTTP 연결의 IP/UA 노출까지 없애는 구성은 아니다.
+작은 건수와 공개 대상의 조합도 개인정보와 결합해 재식별하거나 광고에 이용하지 않는다.
+
+PostHog에서는 `campaign_activity`, `measurement_kind=campaign_counts_v1`, 목적 환경을 고르고
+`count`의 합계를 세 UTM·행동·공개 대상 ID로 분리한다. 방문자 수, 개인별 순서·퍼널·사람별 전환율로 해석하지 않는다.
+운영에서는 [커뮤니티 유입과 후속 행동 건수](https://us.posthog.com/project/652606/dashboard/2302209)에서
+게시글별 건수와 조회된 단지·공고 ID를 확인한다.
+기존 동의 후 SDK 이벤트와 합산하거나 연결하지 않는다. 원시 요청은 자동 재전송하지 않아 통신 실패·차단·페이지 종료 시 누락될 수 있다.
+로컬 검증과 실제 프로젝트 수신은 별개이며 배포 후 수신을 확인한다.
+
+특정 개인을 알아볼 수 없는 정보의 범위는 [개인정보 보호법 제58조의2](https://www.law.go.kr/법령/개인정보보호법/제58조의2)와
+[개인정보위의 행태정보 처리 안내](https://pipc.go.kr/np/cop/bbs/selectBoardArticle.do?bbsId=BS074&mCode=C020010000&nttId=9888)를 참고한다.
+수집 항목 제한만으로 서비스 전체의 법률 준수를 보증하지 않으며 제공자 처리·공개·국외 처리 조건은 별도 운영 확인 대상이다.
+
 ## 개인정보와 세션 리플레이
 
 자동 클릭 수집, 자동 페이지뷰·페이지 이탈, 히트맵·성능·예외·콘솔·네트워크 본문 및 헤더 수집을 끈다. 앱에서 허용한 제품 이벤트는 `captureProductEvent`, 표준 페이지뷰는 `captureWebPageView`를 통해 같은 동의·정제·전송 보호 경로로 보낸다. 제품 속성의 키와 값 형식도 [productEvents.ts](../../../frontend/src/analytics/productEvents.ts)에서 제한한다.
@@ -103,7 +135,7 @@ location.reload()
 
 ## 이벤트 공통 계약
 
-모든 제품 이벤트에는 `event_id`, `schema_version`, `environment`, `page_name`, `auth_state`를 붙인다. `distinct_id`는 SDK가 관리한다. 아래 표는 각 행동에 추가되는 속성만 적는다. 모든 속성을 모든 이벤트에 채우는 것은 아니다. 알 수 없는 값은 추정해서 넣지 않는다.
+동의 후 SDK 제품 이벤트에는 `event_id`, `schema_version`, `environment`, `page_name`, `auth_state`를 붙인다. `distinct_id`는 SDK가 관리한다. 아래 표는 각 행동에 추가되는 속성만 적는다. 모든 속성을 모든 이벤트에 채우는 것은 아니다. 알 수 없는 값은 추정해서 넣지 않는다.
 
 공개 단지·공고·첨부·주택형·지역 ID는 분석 연결을 위해 허용한다. 방문·검색·편집·문서 열기·요청 식별자는 개인정보와 무관한 UUID다. 이벤트나 속성을 추가하려면 먼저 이 계약, allowlist, 발생 지점과 가까운 행동 검증을 함께 갱신한다. raw DOM autocapture로 대체하지 않는다.
 

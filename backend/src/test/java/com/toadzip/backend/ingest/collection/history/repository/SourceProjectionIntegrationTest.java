@@ -2,10 +2,9 @@ package com.toadzip.backend.ingest.collection.history.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
-import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
-import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceReader;
-import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.lh.collection.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.lh.collection.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -20,8 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({MyHomeAnnouncementSourceReader.class, LhAnnouncementQuerySourceReader.class,
-        LhAnnouncementSupplySourceReader.class, LhAnnouncementDetailSourceReader.class})
+@Import({MyHomeAnnouncementSourceReader.class, LhAnnouncementSupplySourceReader.class,
+        LhAnnouncementDetailSourceReader.class})
 @ActiveProfiles("test")
 @Transactional
 class SourceProjectionIntegrationTest {
@@ -81,7 +80,7 @@ class SourceProjectionIntegrationTest {
     }
 
     @Test
-    void canonicalQueryVersionSuppressesOldRowsAndVerifiedEmptyKeepsItsMeaning() {
+    void canonicalQueryVersionSuppressesOldRows() {
         String query = "PAN_ID=PROJECTION-PAN&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06&SPL_INF_TP_CD=062";
         String old = query + "&COLLECTION_VERSION=6";
         String current = query + "&COLLECTION_VERSION=7";
@@ -94,8 +93,6 @@ class SourceProjectionIntegrationTest {
                 LhAnnouncementQuery.requestHashOf(query), hash, current, record);
 
         assertThat(supplies.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PROJECTION-PAN", oldHash)).isEmpty();
-        assertThat(supplies.hasVerifiedEmptySupplies("PROJECTION-PAN", current)).isTrue();
-        assertThat(supplies.hasVerifiedEmptySupplies("PROJECTION-PAN", old)).isFalse();
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.mapping.dto.ComplexMergePreviewResponse;
 import com.toadzip.backend.ingest.mapping.dto.ComplexMergeRequest;
 import com.toadzip.backend.ingest.mapping.dto.ComplexMergeResponse;
 import com.toadzip.backend.ingest.mapping.dto.ComplexMergeCandidateResponse;
+import com.toadzip.backend.ingest.mapping.service.ComplexMergeCandidateService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMergeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -25,9 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MyHomeComplexMergeController {
 
     private final MyHomeComplexMergeService service;
+    private final ComplexMergeCandidateService candidates;
 
-    public MyHomeComplexMergeController(MyHomeComplexMergeService service) {
+    public MyHomeComplexMergeController(MyHomeComplexMergeService service, ComplexMergeCandidateService candidates) {
         this.service = service;
+        this.candidates = candidates;
     }
 
     @GetMapping("/candidates")
@@ -35,7 +38,7 @@ public class MyHomeComplexMergeController {
             @RequestParam(defaultValue = "0") @Min(0) long afterId,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return service.candidates(afterId, size);
+        return candidates.candidates(afterId, size);
     }
 
     @PostMapping("/preview")

@@ -8,6 +8,7 @@ export type DataPipelineType =
   | 'ANNOUNCEMENT_SYNC'
   | 'ANNOUNCEMENT_REGISTRATION'
   | 'SH_ANNOUNCEMENT_COLLECTION'
+  | 'GH_ANNOUNCEMENT_COLLECTION'
 
 export type DataPipelineExecutionStatus =
   | 'IDLE'
@@ -109,7 +110,7 @@ export async function getLhAnnouncementQuality(): Promise<LhAnnouncementQuality>
   return body
 }
 
-export async function applyVerifiedLhSupplyReplacement(pblancId: string, request: {
+export async function applyVerifiedLhSupplyReplacement(panId: string, request: {
   requestDescription: string
   proposedFingerprint: string
   evidenceUrl: string
@@ -117,7 +118,7 @@ export async function applyVerifiedLhSupplyReplacement(pblancId: string, request
 }): Promise<void> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(
-    `${apiBaseUrl}/api/admin/ingest/lh/announcements/supplies/${encodeURIComponent(pblancId)}/verified-replacement`,
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/supplies/${encodeURIComponent(panId)}/verified-replacement`,
     {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
@@ -164,6 +165,7 @@ export type LocationSummaryImportReport = {
   targetRoadAddressCount: number
   matchedRoadAddressCount: number
   unmatchedRoadAddressCount: number
+  preparedRoadAddressCount: number
   storedLocationCount: number
   replacedRowCount: number
   invalidatedMappingCandidateCount: number
@@ -202,11 +204,11 @@ export type ExternalDataCollectionReport = {
 }
 
 export async function refreshLhAnnouncement(
-  source: LhRefreshSource, pblancId: string,
+  source: LhRefreshSource, panId: string,
 ): Promise<ExternalDataCollectionReport> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(
-    `${apiBaseUrl}/api/admin/ingest/lh/announcements/${source}/${encodeURIComponent(pblancId)}/refresh`,
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/${source}/${encodeURIComponent(panId)}/refresh`,
     { method: 'POST', credentials: 'include', headers: { [csrfToken.headerName]: csrfToken.token } },
   )
   const body = await readJson(response)
@@ -223,23 +225,25 @@ export function isExternalDataCollectionReport(value: unknown): value is Externa
     )
 }
 
-export async function startDataPipeline(
-  type: DataPipelineType,
-  serviceKey?: string,
-): Promise<DataPipelineExecution> {
-  const executionKey = serviceKey?.trim()
-  if (executionKey === '') throw new Error('공공데이터포털 API 키를 입력해 주세요.')
+export async function startDataPipeline(type: DataPipelineType): Promise<DataPipelineExecution> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(`${apiBaseUrl}${pipelinePath(type)}`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      [csrfToken.headerName]: csrfToken.token,
-      ...(executionKey === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    ...(executionKey === undefined ? {} : { body: JSON.stringify({ serviceKey: executionKey }) }),
+    headers: { [csrfToken.headerName]: csrfToken.token },
   })
   return readExecutionResponse(response)
+}
+
+/** 서버가 공공데이터포털 수집 키를 설정했는지 알려 준다. 키 값은 받지 않는다. */
+export async function getDataPipelineReadiness(): Promise<{ serviceKeyConfigured: boolean }> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/readiness`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isRecord(body) || typeof body.serviceKeyConfigured !== 'boolean') {
+    throw new Error('수집 준비 상태 응답 형식이 올바르지 않습니다.')
+  }
+  return { serviceKeyConfigured: body.serviceKeyConfigured }
 }
 
 export async function getDataPipelineStatus(
@@ -247,31 +251,6 @@ export async function getDataPipelineStatus(
 ): Promise<DataPipelineExecution> {
   const response = await fetch(`${apiBaseUrl}${pipelinePath(type)}`, {
     credentials: 'include',
-  })
-  return readExecutionResponse(response)
-}
-
-export async function startAnnouncementRegistration(pblancId: string): Promise<DataPipelineExecution> {
-  const identifier = pblancId.trim()
-  if (!identifier) throw new Error('마이홈 공고 ID를 입력해 주세요.')
-  const csrfToken = await requestCsrfToken()
-  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
-    body: JSON.stringify({ pblancId: identifier }),
-  })
-  return readExecutionResponse(response)
-}
-
-export async function startAnnouncementRegistrationUrl(url: string): Promise<DataPipelineExecution> {
-  const target = url.trim()
-  if (!target) throw new Error('마이홈 공고 URL을 입력해 주세요.')
-  const csrfToken = await requestCsrfToken()
-  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration/url`, {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
-    body: JSON.stringify({ url: target }),
   })
   return readExecutionResponse(response)
 }
@@ -320,6 +299,102 @@ async function requestCsrfToken(): Promise<CsrfToken> {
     throw new Error('CSRF 토큰 응답 형식이 올바르지 않습니다.')
   }
   return body
+}
+
+export const initialRegistrationStatuses = ['EXISTING', 'LOCATION_REQUIRED', 'INFORMATION_REQUIRED', 'READY', 'FAILED', 'COMPLETED'] as const
+export type InitialRegistrationStatus = typeof initialRegistrationStatuses[number]
+export type InitialRegistrationTarget = {
+  sourceComplexIdentifier: string; name: string | null; roadAddress: string | null
+  status: InitialRegistrationStatus; detail: string; housingComplexId: number | null; checkedAt: string
+  location?: PreparedLocation | null
+}
+
+export const locationFailureReasons = ['INVALID_ADDRESS', 'ADDRESS_NOT_FOUND', 'COORDINATE_NOT_FOUND', 'COORDINATE_CONVERSION_ERROR'] as const
+export type LocationFailureReason = typeof locationFailureReasons[number]
+export type PreparedLocation = {
+  address: string | null; latitude: number | null; longitude: number | null; origin: 'ZIP' | 'ADMIN' | null
+  failure: LocationFailureReason | null; checkedAt: string; checkedBy: string | null
+}
+export type LocationPreparationResponse = {
+  counts: Record<LocationFailureReason | 'READY', number>; targets: InitialRegistrationTarget[]
+  totalElements: number; page: number; totalPages: number
+}
+
+export async function getLocationPreparation(page: number): Promise<LocationPreparationResponse> {
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/locations?page=${page}&size=20`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  const counts = isRecord(body) ? body.counts : null
+  if (!isRecord(body) || !isRecord(counts) || !['READY', ...locationFailureReasons].every(reason => isCount(counts[reason]))
+    || !isCount(body.totalElements) || !isCount(body.page) || !isCount(body.totalPages)
+    || !Array.isArray(body.targets) || !body.targets.every(target => isInitialRegistrationTarget(target)
+      && target.location != null && isPreparedLocation(target.location))) {
+    throw new Error('주소·좌표 준비 응답 형식이 올바르지 않습니다.')
+  }
+  return body as LocationPreparationResponse
+}
+
+export async function supplementInitialRegistrationLocation(sourceComplexIdentifier: string,
+  address: string, latitude: number, longitude: number): Promise<void> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/locations`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [token.headerName]: token.token },
+    body: JSON.stringify({ sourceComplexIdentifier, address, latitude, longitude }),
+  })
+  if (!response.ok) throw apiError(response.status, await readJson(response))
+}
+
+function isPreparedLocation(value: unknown): value is PreparedLocation {
+  if (!isRecord(value) || typeof value.checkedAt !== 'string' || !Number.isFinite(Date.parse(value.checkedAt))
+    || !(value.checkedBy === null || typeof value.checkedBy === 'string')) return false
+  if (locationFailureReasons.some(reason => reason === value.failure)) {
+    return value.address === null && value.latitude === null && value.longitude === null && value.origin === null
+  }
+  return value.failure === null && typeof value.address === 'string' && value.address.trim().length > 0
+    && typeof value.latitude === 'number' && Number.isFinite(value.latitude) && Math.abs(value.latitude) <= 90
+    && typeof value.longitude === 'number' && Number.isFinite(value.longitude) && Math.abs(value.longitude) <= 180
+    && (value.origin === 'ZIP' || value.origin === 'ADMIN')
+}
+export type InitialRegistrationResponse = {
+  counts: Record<InitialRegistrationStatus, number>; targets: InitialRegistrationTarget[]
+  totalElements: number; page: number; totalPages: number
+}
+const initialRegistrationPath = '/api/admin/ingest/myhome/initial-registration'
+
+export async function getInitialRegistration(status: InitialRegistrationStatus | '', page: number, size: number): Promise<InitialRegistrationResponse> {
+  const query = new URLSearchParams({ page: String(page), size: String(size) })
+  if (status) query.set('status', status)
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}?${query}`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  const counts = isRecord(body) ? body.counts : null
+  if (!isRecord(body) || !isRecord(counts) || !initialRegistrationStatuses.every(status => isCount(counts[status]))
+    || !isCount(body.totalElements) || !isCount(body.page) || !isCount(body.totalPages)
+    || !Array.isArray(body.targets) || !body.targets.every(isInitialRegistrationTarget)) {
+    throw new Error('단지 등록 현황 응답 형식이 올바르지 않습니다.')
+  }
+  return body as InitialRegistrationResponse
+}
+
+export async function refreshInitialRegistration(): Promise<void> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/refresh`, {
+    method: 'POST', credentials: 'include', headers: { [token.headerName]: token.token },
+  })
+  if (!response.ok) throw apiError(response.status, await readJson(response))
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+function isInitialRegistrationTarget(value: unknown): value is InitialRegistrationTarget {
+  return isRecord(value) && typeof value.sourceComplexIdentifier === 'string'
+    && (value.name === null || typeof value.name === 'string') && (value.roadAddress === null || typeof value.roadAddress === 'string')
+    && initialRegistrationStatuses.some(status => status === value.status) && typeof value.detail === 'string'
+    && (value.housingComplexId === null || isCount(value.housingComplexId))
+    && typeof value.checkedAt === 'string' && Number.isFinite(Date.parse(value.checkedAt))
+    && (value.location === undefined || value.location === null || isPreparedLocation(value.location))
 }
 
 async function readExecutionResponse(response: Response): Promise<DataPipelineExecution> {
@@ -428,6 +503,7 @@ function isLocationSummaryImportReport(value: unknown): value is LocationSummary
     && typeof value.targetRoadAddressCount === 'number'
     && typeof value.matchedRoadAddressCount === 'number'
     && typeof value.unmatchedRoadAddressCount === 'number'
+    && isCount(value.preparedRoadAddressCount)
     && typeof value.storedLocationCount === 'number'
     && typeof value.replacedRowCount === 'number'
     && typeof value.invalidatedMappingCandidateCount === 'number'
@@ -443,6 +519,7 @@ function isDataPipelineType(value: unknown): value is DataPipelineType {
     || value === 'ANNOUNCEMENT_SYNC'
     || value === 'ANNOUNCEMENT_REGISTRATION'
     || value === 'SH_ANNOUNCEMENT_COLLECTION'
+    || value === 'GH_ANNOUNCEMENT_COLLECTION'
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
@@ -469,6 +546,7 @@ function pipelinePath(type: DataPipelineType): string {
     ANNOUNCEMENT_SYNC: 'announcement-sync',
     ANNOUNCEMENT_REGISTRATION: 'announcement-registration',
     SH_ANNOUNCEMENT_COLLECTION: 'sh-announcement-collection',
+    GH_ANNOUNCEMENT_COLLECTION: 'gh-announcement-collection',
   }
   return `/api/admin/ingest/pipelines/${paths[type]}`
 }

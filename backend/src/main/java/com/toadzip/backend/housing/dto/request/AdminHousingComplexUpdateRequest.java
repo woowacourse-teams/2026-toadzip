@@ -17,7 +17,7 @@ public record AdminHousingComplexUpdateRequest(
         @NotNull RentalType rentalType,
         @NotNull AgencyCode agencyCode,
         @NotNull @Valid AdminHousingComplexCreateRequest.AddressRequest address,
-        @NotNull @PositiveOrZero Integer totalHouseholdCount,
+        @PositiveOrZero Integer totalHouseholdCount,
         LocalDate completionDate,
         @Size(max = 255) String heatingType,
         @Size(max = 255) String buildingType,

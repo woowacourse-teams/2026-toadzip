@@ -5,20 +5,35 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.assertj.core.api.Assertions.assertThat;
-import org.springframework.http.MediaType;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.JsonNode;
-import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import jakarta.persistence.EntityManager;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -27,21 +42,21 @@ import org.springframework.transaction.annotation.Transactional;
 class AdminManagementIntegrationTest {
 
     @Autowired
-    private com.toadzip.backend.user.repository.UserRepository memberRepository;
+    private UserRepository memberRepository;
 
     private String memberId() {
-        var member = com.toadzip.backend.user.domain.User.create(
-                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        var member = User.create(
+                "google:permission-" + UUID.randomUUID(), LocalDateTime.now());
         return memberRepository.saveAndFlush(member).getId().toString();
     }
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
-    private com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService ownership;
+    private IngestExecutionOwnershipService ownership;
 
     @org.junit.jupiter.api.BeforeEach
     void isolateOwnershipFromTestTransaction() {
         org.mockito.Mockito.when(ownership.acquire()).thenAnswer(invocation -> org.mockito.Mockito.mock(
-                com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService.Execution.class));
+                IngestExecutionOwnershipService.Execution.class));
     }
 
     @Autowired private MockMvc mvc;
@@ -103,6 +118,8 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].announcement.originalUrl").value("https://example.com/notice"))
                 .andExpect(jsonPath("$.data.items[0].announcement.recruitmentType").value("NEW"))
                 .andExpect(jsonPath("$.data.items[0].announcement.publicationType").value("ORIGINAL"))
+                .andExpect(jsonPath("$.data.items[0].announcement.origin").value("ADMIN_ENTRY"))
+                .andExpect(jsonPath("$.data.items[0].announcement.supplyOwner").value("ANNOUNCEMENT_DOCUMENT"))
                 .andExpect(jsonPath("$.data.items[0].announcement.postedDate").value("2026-09-01"))
                 .andExpect(jsonPath("$.data.items[0].announcement.applicationStartDate").value("2026-09-10"))
                 .andExpect(jsonPath("$.data.items[0].announcement.applicationEndDate").value("2026-09-20"))
@@ -114,12 +131,12 @@ class AdminManagementIntegrationTest {
     @Test
     void 공고_상세는_연결된_첨부파일을_표시순서로_반환한다() throws Exception {
         long id = createAnnouncement(createComplex());
-        var announcement = entityManager.find(com.toadzip.backend.announcement.domain.Announcement.class, id);
-        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
-                announcement, "참고.pdf", com.toadzip.backend.announcement.domain.AttachmentType.REFERENCE,
+        var announcement = entityManager.find(Announcement.class, id);
+        entityManager.persist(AnnouncementAttachment.create(
+                announcement, "참고.pdf", AttachmentType.REFERENCE,
                 "https://example.com/reference.pdf", 1));
-        entityManager.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(
-                announcement, "공고문.pdf", com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT,
+        entityManager.persist(AnnouncementAttachment.create(
+                announcement, "공고문.pdf", AttachmentType.ANNOUNCEMENT,
                 "https://example.com/notice.pdf", 0));
         entityManager.flush();
 
@@ -148,6 +165,8 @@ class AdminManagementIntegrationTest {
                         .value("https://example.com/notice"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.recruitmentType").value("NEW"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.publicationType").value("ORIGINAL"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.origin").value("ADMIN_ENTRY"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.supplyOwner").value("ANNOUNCEMENT_DOCUMENT"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.postedDate").value("2026-09-01"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.applicationStartDate").value("2026-09-10"))
                 .andExpect(jsonPath("$.data.announcements[0].announcement.applicationEndDate").value("2026-09-20"))
@@ -159,7 +178,7 @@ class AdminManagementIntegrationTest {
     void 수정과_휴지통_복구는_이력을_남기고_기존_버전의_덮어쓰기를_거부한다() throws Exception {
         long id = createComplex();
         String path = "/api/admin/housing-complexes/" + id;
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         data.put("name", "관리자가 수정한 단지");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
@@ -186,7 +205,7 @@ class AdminManagementIntegrationTest {
     void 관리자_수정과_삭제_상태를_재정제가_덮어쓰지_않는다() throws Exception {
         long id = createComplex();
         String path = "/api/admin/housing-complexes/" + id;
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         data.put("name", "확인된 단지명");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(data.toString())).andExpect(status().isOk());
@@ -234,13 +253,27 @@ class AdminManagementIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(0));
     }
 
+    @Test
+    void 단지명_검색은_공고문_블록_표기가_달라도_같은_블록을_찾는다() throws Exception {
+        long id = createComplex();
+        entityManager.createNativeQuery("UPDATE housing_complexes SET name = '화성동탄2 A63블록' WHERE id = :id")
+                .setParameter("id", id).executeUpdate();
+        for (String keyword : List.of("동탄2 A63BL", "A-63", "a63블럭")) {
+            mvc.perform(get("/api/admin/housing-complexes").param("keyword", keyword).with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                    .andExpect(jsonPath("$.data.items[0].id").value(id));
+        }
+        mvc.perform(get("/api/admin/housing-complexes").param("keyword", "동탄2 A64BL").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(0));
+    }
+
 
     @Test
     void 공고_수정과_공급행_수정은_재정제에도_유지되고_단지_삭제를_막는다() throws Exception {
         long complexId = createComplex();
         long announcementId = createAnnouncement(complexId);
         String path = "/api/admin/announcements/" + announcementId;
-        var values = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var values = (ObjectNode) getData(path).get("data");
         values.put("name", "검토한 모집 공고");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(values.toString()))
@@ -248,7 +281,7 @@ class AdminManagementIntegrationTest {
         var current = getData(path);
         long version = current.get("data").get("version").asLong();
         var supply = current.get("supplyRows").get(0);
-        var supplyValues = (tools.jackson.databind.node.ObjectNode) supply.get("data");
+        var supplyValues = (ObjectNode) supply.get("data");
         supplyValues.put("totalSupplyHouseholdCount", 17);
         supplyValues.put("announcementHousingTypeName", "공고 표기 59A(신혼부부)");
         String sourceTypeName = supply.get("sourceHousingTypeName").asText();
@@ -264,13 +297,13 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyRows[0].sourceHousingTypeName").value(sourceTypeName));
         mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
                         .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class,
+        var row = entityManager.find(SupplyRow.class,
                 supply.get("id").asLong());
         var announcement = row.getAnnouncement();
         assertThat(announcement.enrichFromLh("new-pan", "수집 이유", null)).isFalse();
         // 재정제는 원천 이름만 갱신하고 관리자가 정한 값은 유지한다. 이름 갱신은 공고 변경으로 세지 않는다.
         assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111",
-                com.toadzip.backend.announcement.domain.SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
+                SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
         assertThat(row.getSourceHousingTypeName()).isEqualTo("주택형");
         assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("공고 표기 59A(신혼부부)");
         assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(17);
@@ -322,7 +355,7 @@ class AdminManagementIntegrationTest {
                 "recruitmentType":"NEW","agencyCode":"LH","postedDate":"2026-09-01",
                 "applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-20",
                 "winnerAnnouncementDate":"2026-10-01","originalUrl":"https://example.com/notice",
-                "receptionPlace":{"name":"LH","method":"ONLINE","contact":"1600-1004"},
+                "receptionPlaces": [{"name":"LH","method":"ONLINE","contact":"1600-1004"}],
                 "supplyRow":{"sourceComplexName":"테스트 단지","sourceHousingTypeName":"36A",
                 "supplyPnu":"1114010100100010000","supplyCategory":"NEW_SUPPLY","totalSupplyHouseholdCount":5}}
                 """.formatted(complexId);
@@ -352,7 +385,7 @@ class AdminManagementIntegrationTest {
         long newerId = createComplex();
         long announcementId = createAnnouncement(olderId);
         createAnnouncement(newerId);
-        for (String table : java.util.List.of("housing_complexes", "announcements")) {
+        for (String table : List.of("housing_complexes", "announcements")) {
             long id = table.equals("housing_complexes") ? olderId : announcementId;
             entityManager.createNativeQuery("UPDATE " + table + " SET created_at = '2026-01-01T00:00:00Z'")
                     .executeUpdate();
@@ -424,8 +457,54 @@ class AdminManagementIntegrationTest {
         mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))))
                 .andExpect(status().isConflict());
+        // 공백·대소문자만 다른 이름도 같은 주택타입이다.
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))
+                                .replace("16A", "16 a")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 이름")));
+        // 단지 주택타입은 공고문 표기 이름으로 나누므로 같은 전용면적이어도 이름이 다르면 추가한다(59B-1·59D-1).
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.replace(String.valueOf(version), String.valueOf(next))
+                                .replace("16A", "16B").replace("16.37", "16.3700")))
+                .andExpect(status().isOk());
         mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
                 .andExpect(jsonPath("$.data[0].action").value("CREATE_HOUSING_TYPE"));
+    }
+
+    @Test
+    void PDF_보정이_공고문_값으로_만든_주택형은_관리자_수정으로_보호하지_않는다() throws Exception {
+        long id = createComplex();
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"version": %d, "name": "059.6300A", "exclusiveArea": 59.63, "supplyArea": 78.9091,
+                                 "householdCount": 198, "fromAnnouncement": true}
+                                """.formatted(version)))
+                .andExpect(status().isOk());
+        long next = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"version": %d, "name": "74A", "exclusiveArea": 74.5, "householdCount": 35,
+                                 "fromAnnouncement": false}
+                                """.formatted(next)))
+                .andExpect(status().isOk());
+        long last = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/housing-types").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"version": %d, "name": "84A", "exclusiveArea": 84.5}
+                                """.formatted(last)))
+                .andExpect(status().isOk());
+
+        List<Object[]> flags = entityManager.createNativeQuery("""
+                SELECT name, admin_modified, name_admin_modified, household_count_admin_modified, total_household_count
+                FROM housing_types WHERE housing_complex_id = :id ORDER BY exclusive_area
+                """).setParameter("id", id).getResultList();
+        assertThat(flags).hasSize(3);
+        assertThat(flags.get(0)).containsExactly("059.6300A", false, false, false, 198);
+        assertThat(flags.get(1)).containsExactly("74A", true, true, true, 35);
+        assertThat(flags.get(2)).containsExactly("84A", true, true, false, null);
     }
 
     @Test
@@ -445,7 +524,7 @@ class AdminManagementIntegrationTest {
         mvc.perform(put("/api/admin/housing-complexes/" + otherId + "/housing-types/" + typeId)
                         .with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
-        for (String invalid : java.util.List.of(body.replace("59.5", "-1"),
+        for (String invalid : List.of(body.replace("59.5", "-1"),
                 body.replace("59.5", "59.12345"), body.replace("59B", " "),
                 body.replace("null", "-1"))) {
             mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
@@ -498,6 +577,57 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 주택형_이름_수정과_복구는_같은_이름_주택형을_단지에_둘_만들지_않고_같은_면적은_막지_않는다() throws Exception {
+        long id = createComplex();
+        long first = createHousingType(id);
+        var second = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-59-" + id, "59A", new BigDecimal("59.5"), null);
+        entityManager.persist(second);
+        entityManager.flush();
+        String path = "/api/admin/housing-complexes/" + id;
+        String secondPath = path + "/housing-types/" + second.getId();
+        String body = """
+                {"version": %d, "name": "%s", "exclusiveArea": %s, "householdCount": null}
+                """;
+        // 같은 전용면적(46.8)으로 바꾸는 것은 막지 않는다. 이름이 다르면 다른 주택타입이다.
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "59A", "46.8000")))
+                .andExpect(status().isOk());
+        // 다른 주택형과 같은 이름으로는 바꾸지 않는다.
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "46A형", "46.8")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("이 단지에 같은 이름")));
+
+        mvc.perform(delete(path + "/housing-types/" + first).param("version", String.valueOf(getData(path).get("data").get("version").asLong()))
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isOk());
+        mvc.perform(put(secondPath).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "46A", "46.8")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("휴지통에 같은 이름")));
+
+        // 휴지통 주택형과 같은 이름의 주택형이 그사이 생겼으면 복구하지 않는다.
+        var legacy = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-46A2-" + id, "46A", new BigDecimal("46.9"), null);
+        entityManager.persist(legacy);
+        entityManager.flush();
+        mvc.perform(post(path + "/housing-types/" + first + "/restore").param("version", String.valueOf(getData(path).get("data").get("version").asLong()))
+                        .with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("복구할 수 없습니다")));
+        // 면적만 바꿔 숫자 형명이 다른 주택형과 같은 집이 되면(046.9700A를 46.9로 고치면 46.9의 46A와 같음) 막는다.
+        var coded = HousingType.createFromMyHome(complexes.findById(id).orElseThrow(), "TYPE-CODED-" + id, "046.9700A", new BigDecimal("46.97"), null);
+        entityManager.persist(coded);
+        entityManager.flush();
+        mvc.perform(put(path + "/housing-types/" + coded.getId()).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "046.9700A", "46.9")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("같은 이름")));
+        // 이름·면적을 바꾸지 않는 수정(세대수)은 같은 이름 주택형이 겹친 기존 단지에서도 막지 않는다.
+        mvc.perform(put(path + "/housing-types/" + legacy.getId()).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(getData(path).get("data").get("version").asLong(), "46A", "46.9").replace("\"householdCount\": null", "\"householdCount\": 12")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void 공급행이_연결된_주택형은_휴지통으로_옮기지_않는다() throws Exception {
         long id = createComplex();
         long typeId = createHousingType(id);
@@ -511,10 +641,94 @@ class AdminManagementIntegrationTest {
         assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
     }
 
+    @Test
+    void 함께_모집하는_주택형으로만_연결된_주택형도_휴지통으로_옮기지_않는다() throws Exception {
+        long id = createComplex();
+        long typeId = createHousingType(id);
+        long announcementId = createAnnouncement(id);
+        entityManager.createNativeQuery("""
+                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
+                        SELECT id, :typeId FROM supply_rows WHERE announcement_id = :id
+                        """).setParameter("typeId", typeId).setParameter("id", announcementId).executeUpdate();
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        mvc.perform(delete(path + "/housing-types/" + typeId).param("version", String.valueOf(version))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+        assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
+    }
+
+    @Test
+    void 공급행_대표를_바꾸면_함께_모집하던_주택형을_변경_전_이력에_남긴다() throws Exception {
+        long complexId = createComplex();
+        long representativeId = createHousingType(complexId);
+        var joint = HousingType.createFromMyHome(complexes.findById(complexId).orElseThrow(), "JOINT-" + complexId,
+                "59A", new BigDecimal("59.9"), null);
+        entityManager.persist(joint); entityManager.flush();
+        long id = createAnnouncement(complexId);
+        entityManager.createNativeQuery("UPDATE supply_rows SET housing_type_id = :typeId WHERE announcement_id = :id")
+                .setParameter("typeId", representativeId).setParameter("id", id).executeUpdate();
+        entityManager.createNativeQuery("""
+                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
+                        SELECT id, unnest(ARRAY[:representative, :joint]) FROM supply_rows WHERE announcement_id = :id
+                        """).setParameter("representative", representativeId).setParameter("joint", joint.getId())
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        String path = "/api/admin/announcements/" + id;
+        var current = getData(path);
+        long rowId = current.get("supplyRows").get(0).get("id").asLong();
+
+        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
+                                + ",\"housingComplexId\":" + complexId + ",\"supplyRow\":" + current.get("supplyRows").get(0).get("data") + "}"))
+                .andExpect(status().isOk());
+        entityManager.flush();
+
+        var change = (Object[]) entityManager.createNativeQuery("SELECT before_value, after_value FROM admin_data_changes "
+                + "WHERE resource_id = :id AND action = 'UPDATE_SUPPLY'").setParameter("id", id).getSingleResult();
+        assertThat(json.readTree((String) change[0]).get("housingTypeIds").toString())
+                .isEqualTo("[" + Math.min(representativeId, joint.getId()) + "," + Math.max(representativeId, joint.getId()) + "]");
+        assertThat(json.readTree((String) change[1]).get("housingTypeIds").toString()).isEqualTo("[]");
+    }
+
+    @Test
+    void 공급행_대표를_다른_주택형으로_바꾸면_이력의_변경_후_연결은_새_대표만_남긴다() throws Exception {
+        long complexId = createComplex();
+        long representativeId = createHousingType(complexId);
+        var complex = complexes.findById(complexId).orElseThrow();
+        var joint = HousingType.createFromMyHome(complex, "JOINT-" + complexId, "59A", new BigDecimal("59.9"), null);
+        var replacement = HousingType.createFromMyHome(complex, "NEXT-" + complexId, "74A", new BigDecimal("74.9"), null);
+        entityManager.persist(joint); entityManager.persist(replacement); entityManager.flush();
+        long id = createAnnouncement(complexId);
+        entityManager.createNativeQuery("UPDATE supply_rows SET housing_type_id = :typeId WHERE announcement_id = :id")
+                .setParameter("typeId", representativeId).setParameter("id", id).executeUpdate();
+        entityManager.createNativeQuery("""
+                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
+                        SELECT id, unnest(ARRAY[:representative, :joint]) FROM supply_rows WHERE announcement_id = :id
+                        """).setParameter("representative", representativeId).setParameter("joint", joint.getId())
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        String path = "/api/admin/announcements/" + id;
+        var current = getData(path);
+        long rowId = current.get("supplyRows").get(0).get("id").asLong();
+
+        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
+                                + ",\"housingComplexId\":" + complexId + ",\"housingTypeId\":" + replacement.getId()
+                                + ",\"supplyRow\":" + current.get("supplyRows").get(0).get("data") + "}"))
+                .andExpect(status().isOk());
+        entityManager.flush();
+
+        var change = (Object[]) entityManager.createNativeQuery("SELECT before_value, after_value FROM admin_data_changes "
+                + "WHERE resource_id = :id AND action = 'UPDATE_SUPPLY'").setParameter("id", id).getSingleResult();
+        assertThat(json.readTree((String) change[0]).get("housingTypeIds").toString())
+                .isEqualTo("[" + Math.min(representativeId, joint.getId()) + "," + Math.max(representativeId, joint.getId()) + "]");
+        assertThat(json.readTree((String) change[1]).get("housingTypeIds").toString()).isEqualTo("[" + replacement.getId() + "]");
+    }
+
     private long createHousingType(long complexId) {
-        var type = com.toadzip.backend.housing.domain.HousingType.createFromMyHome(
+        var type = HousingType.createFromMyHome(
                 complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,
-                "46A", new java.math.BigDecimal("46.8"), null);
+                "46A", new BigDecimal("46.8"), null);
         entityManager.persist(type);
         entityManager.flush();
         return type.getId();
@@ -523,29 +737,77 @@ class AdminManagementIntegrationTest {
     @Test
     void 연락처가_미확인인_기존_공고도_수정하고_null을_보존한다() throws Exception {
         long id = createAnnouncement(createComplex());
-        entityManager.createNativeQuery("UPDATE announcements SET reception_contact = NULL WHERE id = :id")
+        entityManager.createNativeQuery("UPDATE announcement_reception_places SET contact = NULL WHERE announcement_id = :id")
                 .setParameter("id", id).executeUpdate();
         entityManager.clear();
         String path = "/api/admin/announcements/" + id;
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         data.put("name", "단지 탭에서 수정한 공고");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.data.name").value("단지 탭에서 수정한 공고"))
-                .andExpect(jsonPath("$.data.data.receptionPlace.contact").isEmpty());
-        var updated = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
-        ((tools.jackson.databind.node.ObjectNode) updated.get("receptionPlace")).put("name", " ");
+                .andExpect(jsonPath("$.data.data.receptionPlaces[0].contact").isEmpty());
+        var updated = (ObjectNode) getData(path).get("data");
+        ((ObjectNode) updated.get("receptionPlaces").get(0)).put("name", " ");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
+    void 공고_접수처는_보낸_목록_순서대로_저장하고_줄이거나_순서를_바꿔도_그대로_반영한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        var data = (ObjectNode) getData(path).get("data");
+        var places = data.putArray("receptionPlaces");
+        places.addObject().put("name", "LH 청약플러스").put("method", "ONLINE").put("url", "https://apply.lh.or.kr");
+        places.addObject().put("name", "견본주택").put("method", "VISIT").put("address", "서울시 1")
+                .put("guidance", "인터넷 취약계층만 현장 접수");
+        places.addObject().put("name", "지역본부").put("method", "VISIT").put("contact", "02-000-0000");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                .andExpect(status().isOk());
+        assertThat(receptionRows(id)).containsExactly("0|LH 청약플러스|ONLINE|null", "1|견본주택|VISIT|인터넷 취약계층만 현장 접수",
+                "2|지역본부|VISIT|null");
+
+        var reordered = (ObjectNode) getData(path).get("data");
+        var kept = reordered.withArray("receptionPlaces");
+        var visit = kept.get(1).deepCopy();
+        kept.removeAll();
+        kept.add(visit);
+        kept.addObject().put("name", "LH 청약플러스").put("method", "ONLINE");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(reordered.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.receptionPlaces.length()").value(2));
+        entityManager.clear();
+        assertThat(receptionRows(id)).containsExactly("0|견본주택|VISIT|인터넷 취약계층만 현장 접수", "1|LH 청약플러스|ONLINE|null");
+
+        // 배포 전에 열린 화면은 접수처 하나를 receptionPlace로 보낸다. 무시하고 지우지 않고 한 곳으로 읽는다.
+        var legacy = (ObjectNode) getData(path).get("data");
+        legacy.remove("receptionPlaces");
+        legacy.putObject("receptionPlace").put("name", "LH 청약센터").put("method", "ONLINE");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(legacy.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.receptionPlace").doesNotExist());
+        entityManager.clear();
+        assertThat(receptionRows(id)).containsExactly("0|LH 청약센터|ONLINE|null");
+    }
+
+    private List<String> receptionRows(long id) {
+        return ((List<?>) entityManager.createNativeQuery("""
+                        SELECT display_order || '|' || name || '|' || method || '|' || COALESCE(guidance, 'null')
+                        FROM announcement_reception_places WHERE announcement_id = :id ORDER BY display_order
+                        """).setParameter("id", id).getResultList()).stream().map(String::valueOf).toList();
+    }
+
+    @Test
     void PDF_근거와_변경값을_같은_수정이력에_보존한다() throws Exception {
-        for (String path : java.util.List.of("/api/admin/housing-complexes/" + createComplex(),
+        for (String path : List.of("/api/admin/housing-complexes/" + createComplex(),
                 "/api/admin/announcements/" + createAnnouncement(createComplex()))) {
-            var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+            var data = (ObjectNode) getData(path).get("data");
             data.put("name", "PDF 확인 이름");
             data.set("documentEvidence", json.readTree(documentEvidence()));
             mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
@@ -563,10 +825,10 @@ class AdminManagementIntegrationTest {
     @Test
     void 잘못된_PDF_근거는_값과_이력을_변경하지_않는다() throws Exception {
         String path = "/api/admin/housing-complexes/" + createComplex();
-        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        var data = (ObjectNode) getData(path).get("data");
         String before = data.toString();
         data.put("name", "잘못된 수정");
-        for (String invalid : java.util.List.of(documentEvidence().replace("https://example.com/notice.pdf", "file:///tmp/a"),
+        for (String invalid : List.of(documentEvidence().replace("https://example.com/notice.pdf", "file:///tmp/a"),
                 documentEvidence().replace("a".repeat(64), "bad-hash"),
                 documentEvidence().replace("\"page\":2", "\"page\":0"),
                 documentEvidence().replace("공고문에서 확인", " "),
@@ -581,14 +843,61 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 공급행이나_공급대상을_고치면_원천_소유_공고가_공고문_소유가_된다() throws Exception {
+        long complexId = createComplex();
+        long id = createAnnouncement(complexId);
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var target = SupplyTarget.createFromSource(entityManager.find(SupplyRow.class, rowId),
+                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"), new BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        long targetId = target.getId();
+        // 직접 등록 공고는 처음부터 공고문 소유라 정제가 만든 공고처럼 원천 소유로 되돌려 둔다.
+        useSourceOwner(id);
+        var current = getData(path);
+        var supplyValues = (ObjectNode) current.get("supplyRows").get(0).get("data");
+        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
+                                + ",\"housingComplexId\":" + complexId + ",\"supplyRow\":" + supplyValues + "}"))
+                .andExpect(status().isOk());
+        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+
+        useSourceOwner(id);
+        String body = """
+                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
+                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
+                 "applicationCondition":"공고문 참조","documentEvidence":%s}
+                """.formatted(getData(path).get("data").get("version").asLong(),
+                documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
+        mvc.perform(put(path + "/supply-targets/" + targetId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(withExpectedTargetValues(path, body)))
+                .andExpect(status().isOk());
+        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+    }
+
+    private void useSourceOwner(long id) {
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET supply_owner = 'LH_SOURCE' WHERE id = ?1")
+                .setParameter(1, id).executeUpdate();
+        entityManager.clear();
+        assertThat(supplyOwner(id)).isEqualTo("LH_SOURCE");
+    }
+
+    private String supplyOwner(long id) {
+        entityManager.flush();
+        return (String) entityManager.createNativeQuery("SELECT supply_owner FROM announcements WHERE id = ?1")
+                .setParameter(1, id).getSingleResult();
+    }
+
+    @Test
     void 공급대상_금액은_근거와_함께_수정하고_원천_덮어쓰기를_막는다() throws Exception {
         long id = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;
         long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
-        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
-                "LH:TEST", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
-                new java.math.BigDecimal("200000"), 0);
+        var row = entityManager.find(SupplyRow.class, rowId);
+        var target = SupplyTarget.createFromSource(row,
+                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"),
+                new BigDecimal("200000"), 0);
         entityManager.persist(target);
         entityManager.flush();
         long version = getData(path).get("data").get("version").asLong();
@@ -604,8 +913,8 @@ class AdminManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("12000000"))
                 .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").value("0"));
         assertThat(row.isAdminModified()).isTrue();
-        assertThat(target.updateFromSource("청년", "1순위", 9, java.math.BigDecimal.ONE,
-                java.math.BigDecimal.ONE, 0)).isFalse();
+        assertThat(target.updateFromSource("청년", "1순위", 9, BigDecimal.ONE,
+                BigDecimal.ONE, 0)).isFalse();
         assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
         mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
@@ -620,8 +929,8 @@ class AdminManagementIntegrationTest {
         long otherId = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;
         long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
-        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
+        var row = entityManager.find(SupplyRow.class, rowId);
+        var target = SupplyTarget.createFromSource(row,
                 "LH:VALIDATION", "청년", null, null, null, null, 0);
         entityManager.persist(target);
         entityManager.flush();
@@ -639,7 +948,7 @@ class AdminManagementIntegrationTest {
         mvc.perform(put("/api/admin/announcements/" + otherId + "/supply-targets/" + target.getId())
                         .with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
-        for (String invalid : java.util.List.of(body.replace("999999999999999999", "-1"),
+        for (String invalid : List.of(body.replace("999999999999999999", "-1"),
                 body.replace("999999999999999999", "1.5"),
                 body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "),
                 body.replace("\"expectedValues\":{", "\"unusedValues\":{"))) {
@@ -658,20 +967,20 @@ class AdminManagementIntegrationTest {
         long id = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;
         long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(com.toadzip.backend.announcement.domain.SupplyRow.class, rowId);
-        var target = com.toadzip.backend.announcement.domain.SupplyTarget.createFromSource(row,
-                "LH:CONCURRENT", "청년", "1순위", 5, new java.math.BigDecimal("10000000"),
-                new java.math.BigDecimal("200000"), 0);
+        var row = entityManager.find(SupplyRow.class, rowId);
+        var target = SupplyTarget.createFromSource(row,
+                "LH:CONCURRENT", "청년", "1순위", 5, new BigDecimal("10000000"),
+                new BigDecimal("200000"), 0);
         entityManager.persist(target);
         entityManager.flush();
         var detail = getData(path);
         long version = detail.get("data").get("version").asLong();
-        var body = (tools.jackson.databind.node.ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
+        var body = (ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
         body.set("expectedValues", body.deepCopy());
         body.put("version", version);
         body.put("rentalDeposit", "12000000");
-        target.updateFromSource("청년", "1순위", 5, new java.math.BigDecimal("10000000"),
-                new java.math.BigDecimal("250000"), 0);
+        target.updateFromSource("청년", "1순위", 5, new BigDecimal("10000000"),
+                new BigDecimal("250000"), 0);
         entityManager.flush();
         assertThat(getData(path).get("data").get("version").asLong()).isEqualTo(version);
 
@@ -686,7 +995,7 @@ class AdminManagementIntegrationTest {
     }
 
     private String withExpectedTargetValues(String path, String body) throws Exception {
-        var values = (tools.jackson.databind.node.ObjectNode) json.readTree(body);
+        var values = (ObjectNode) json.readTree(body);
         values.set("expectedValues", getData(path).get("supplyTargets").get(0).get("data"));
         return values.toString();
     }

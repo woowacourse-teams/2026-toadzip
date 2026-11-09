@@ -264,10 +264,7 @@ function appendUniqueAnnouncements(
   ]
 }
 
-function requestErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
+function requestErrorMessage(_error: unknown) {
   return '잠시 후 다시 시도해 주세요.'
 }
 

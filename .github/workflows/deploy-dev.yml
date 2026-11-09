@@ -21,9 +21,12 @@ jobs:
   frontend:
     uses: ./.github/workflows/frontend-ci.yml
 
+  ai-worker:
+    uses: ./.github/workflows/ai-worker-ci.yml
+
   deploy:
     name: Deploy to development server
-    needs: [backend, frontend]
+    needs: [backend, frontend, ai-worker]
     if: github.ref == 'refs/heads/develop'
     runs-on: [self-hosted, linux, toadzip-dev]
     timeout-minutes: 30

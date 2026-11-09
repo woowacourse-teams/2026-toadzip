@@ -47,7 +47,7 @@ describe('데이터 실행 이력', () => {
     await screen.findAllByRole('button', { name: /상세 (펼치기|접기)/ })
     expect(getHistory.mock.calls).toEqual([[0, 'complex'], [1, 'complex'], [0, 'complex'], [0, 'complex']])
   })
-  it('단지 이력 상세는 저장된 단계별 결과만 표시하고 당시 상태가 아닌 오류 조회는 제공하지 않는다', async () => {
+  it('단지 이력에서 과거 정제 결과와 해당 실행에 연결된 오류의 현재 상태를 조회한다', async () => {
     getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REFINEMENT', completedStepResults: [
       { step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } },
     ] })])
@@ -57,18 +57,57 @@ describe('데이터 실행 이력', () => {
     expect(within(detail).getByText('신규 단지').nextSibling).toHaveTextContent('4')
     expect(within(detail).getByText('갱신 단지').nextSibling).toHaveTextContent('7')
     expect(within(detail).getByText('실패한 원천').nextSibling).toHaveTextContent('2')
-    expect(screen.queryByRole('button', { name: '결과 오류 조회' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: '오류 종류' })).not.toBeInTheDocument()
     expect(getFailureReviews).not.toHaveBeenCalled()
+    expect(detail).toHaveTextContent('현재 검토 상태')
+    fireEvent.click(within(detail).getByRole('button', { name: '결과 오류 조회' }))
+    await screen.findByRole('region', { name: '결과 오류' })
+    expect(getFailureReviews).toHaveBeenCalledWith('complex', 'complex', 'ALL', 0, expect.any(AbortSignal), { executionId: 'run-1', keyword: '' })
     expect(screen.queryByRole('button', { name: /실행 중지|정제 실행|수정|보정/ })).not.toBeInTheDocument()
   })
-  it('v2 이력 상세에도 같은 단계 표시를 쓰며 진행 중 이력에서 중지하지 않는다', async () => {
-    getHistory.mockResolvedValue([execution({ status: 'RUNNING', currentStepName: '마이홈 단지 수집' })])
-    render(<MemoryRouter><PipelineHistory domain="complex" compact /></MemoryRouter>)
-    fireEvent.click(await screen.findByRole('button', { name: /상세 보기/ }))
-    expect(screen.getByRole('list', { name: '실행 단계' }).children).toHaveLength(4)
-    expect(screen.getByRole('button', { name: '마이홈 단지 수집 진행' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: /실행 중지/ })).not.toBeInTheDocument()
+  it('공고 이력의 실행 상세는 이력 카드 뒤 별도 카드로 열어 단계별 성공·실패를 보이고 닫으면 누른 행으로 돌아간다', async () => {
+    getHistory.mockResolvedValue([
+      execution({ executionId: 'sync-1', type: 'ANNOUNCEMENT_SYNC', status: 'COMPLETED_WARNINGS', totalStepCount: 4,
+        completedSteps: ['LH 공고 목록 수집', 'LH 공고 공급 원본 수집', 'LH 공고 상세 원본 수집'],
+        partiallyFailedSteps: [{ step: 'MAP_LH_ANNOUNCEMENTS', stepName: 'LH 공고 정제', report: { failedSourceCount: 2 } }] }),
+      execution({ executionId: 'sync-0', type: 'ANNOUNCEMENT_SYNC', status: 'RUNNING', totalStepCount: 2,
+        currentStepName: 'LH 공고 목록 수집' }),
+    ])
+    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    const [syncTrigger, runningTrigger] = await screen.findAllByRole('button', { name: /상세 보기/ })
+    const history = screen.getByRole('region', { name: '실행 이력' })
+
+    fireEvent.click(syncTrigger)
+    const detail = screen.getByRole('region', { name: '실행 상세' })
+    expect(history).not.toContainElement(detail)
+    expect(history.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(detail).getByRole('heading', { name: '실행 상세' })).toHaveFocus()
+    expect(within(detail).getByRole('button', { name: 'LH 공고 목록 수집 성공' })).toBeVisible()
+    expect(within(detail).getByRole('button', { name: 'LH 공고 정제 부분 실패' })).toBeVisible()
+    expect(within(detail).queryByText(/선택 시점의 기록/)).not.toBeInTheDocument()
+    fireEvent.click(within(detail).getByRole('button', { name: '닫기' }))
+    expect(screen.queryByRole('region', { name: '실행 상세' })).not.toBeInTheDocument()
+    expect(syncTrigger).toHaveFocus()
+
+    // 실행 중인 기록은 선택 시점 기록임을 알리고 이력에서 중지하지 않는다.
+    fireEvent.click(runningTrigger)
+    const running = screen.getByRole('region', { name: '실행 상세' })
+    expect(within(running).getByText(/선택 시점의 기록/)).toBeVisible()
+    expect(within(running).getByRole('list', { name: '실행 단계' }).children).toHaveLength(2)
+    expect(within(running).getByRole('button', { name: 'LH 공고 목록 수집 진행' })).toBeVisible()
+    expect(within(running).queryByRole('button', { name: /실행 중지/ })).not.toBeInTheDocument()
+  })
+  it('공고 이력에 함께 오는 GH 수집도 단계 결과와 공개 전 확인 안내를 보인다', async () => {
+    getHistory.mockResolvedValue([execution({ executionId: 'gh-1', type: 'GH_ANNOUNCEMENT_COLLECTION', totalStepCount: 2,
+      completedSteps: ['GH 공고 원천 수집', 'GH 공고 정제'] })])
+    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    const row = (await screen.findByText('GH 공고 수집')).closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: /상세 보기/ }))
+    const detail = screen.getByRole('region', { name: '실행 상세' })
+    expect(within(detail).getByRole('button', { name: 'GH 공고 원천 수집 성공' })).toBeVisible()
+    expect(within(detail).getByRole('button', { name: 'GH 공고 정제 성공' })).toBeVisible()
+    expect(within(detail).getByRole('link', { name: '공개 전 확인이 필요한 공고 보기' }))
+      .toHaveAttribute('href', '/admin/announcements?unconfirmed=true&provider=GH')
   })
   it('v2는 도메인 조건을 서버로 보내 실행 이력을 분리한다', async () => {
     getHistory.mockResolvedValue([])

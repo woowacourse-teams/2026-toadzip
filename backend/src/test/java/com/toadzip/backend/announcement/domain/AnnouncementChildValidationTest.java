@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import java.util.List;
 
 class AnnouncementChildValidationTest {
 
@@ -136,7 +137,7 @@ class AnnouncementChildValidationTest {
                 "https://example.com/announcements/1",
                 null,
                 0L,
-                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr"))
         );
     }
 }

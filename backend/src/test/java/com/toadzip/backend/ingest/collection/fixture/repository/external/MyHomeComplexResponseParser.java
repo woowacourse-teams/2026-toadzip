@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.fixture.repository.external;
 
 import com.toadzip.backend.ingest.collection.fixture.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalResponseRows;
 import java.util.List;

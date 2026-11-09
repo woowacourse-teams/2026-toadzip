@@ -71,20 +71,6 @@ public class SupplyTarget {
         adminModified = true;
     }
 
-    public void markLhAmountPreserved() {
-        markLhAmountPreserved("LH_AMOUNT_NOT_PROVIDED");
-    }
-
-    public void markLhAmountPreserved(String reason) {
-        if (adminModified) {
-            return;
-        }
-        if (sourceSupplyTargetIdentifier != null && sourceSupplyTargetIdentifier.startsWith("LH:")
-                && rentalDeposit != null && monthlyRent != null) {
-            lhAmountPreservedReason = reason;
-        }
-    }
-
     private SupplyTarget(
             SupplyRow supplyRow,
             String target,
@@ -163,6 +149,14 @@ public class SupplyTarget {
         return supplyTarget;
     }
 
+    /** DB에서 읽은 금액은 소수 자리가 붙어 있어 값으로 비교한다. 자리수만 다른 같은 금액을 변경으로 세지 않는다. */
+    private static boolean sameAmount(BigDecimal stored, BigDecimal incoming) {
+        if (stored == null || incoming == null) {
+            return stored == incoming;
+        }
+        return stored.compareTo(incoming) == 0;
+    }
+
     public boolean updateFromSource(
             String target,
             String supplyRank,
@@ -183,8 +177,8 @@ public class SupplyTarget {
         if (this.target.equals(incoming.target)
                 && this.supplyRank.equals(incoming.supplyRank)
                 && java.util.Objects.equals(this.supplyHouseholdCount, incoming.supplyHouseholdCount)
-                && java.util.Objects.equals(this.rentalDeposit, incoming.rentalDeposit)
-                && java.util.Objects.equals(this.monthlyRent, incoming.monthlyRent)
+                && sameAmount(this.rentalDeposit, incoming.rentalDeposit)
+                && sameAmount(this.monthlyRent, incoming.monthlyRent)
                 && this.displayOrder == incoming.displayOrder) {
             return clearedPreservation;
         }

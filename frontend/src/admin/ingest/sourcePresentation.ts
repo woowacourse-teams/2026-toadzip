@@ -71,6 +71,25 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
     brdId: '첨부 게시판 코드', fileSeq: '첨부파일 식별자', fileSize: '파일 크기(바이트)',
     fileTp: '첨부 유형 코드', oriFileNm: '첨부파일명', previewUrl: '첨부 미리보기 URL',
   },
+  GH_ANNOUNCEMENT: {
+    pbanc_no: '공고 번호', board: '게시판', kind_code: '공고 종류 코드', title: '공고명', supply_type: '공급유형',
+    region: '지역', posted_date: '게시일', closing_date: '마감일', status: '공고 상태',
+    original_url: '공고 원문 URL', list_url: '수집 목록 URL',
+    districts: '공급정보 지구', reception: '공고 접수처', notice: '안내사항', other_notes: '기타사항',
+    attachments: '공고문 첨부 메타데이터',
+    // 지구·주택형·공급일정·접수처 안의 항목. 같은 키는 지구와 주택형, 지구와 접수처에서 함께 쓴다.
+    name: '이름', address: '소재지', exclusiveAreaRange: '전용면적 범위', recruitmentCount: '모집호수',
+    heatingType: '난방방식', expectedMoveIn: '입주예정월', housingTypes: '주택형',
+    houseTypeCode: '주택형 코드', businessCode: '사업 코드', recruitmentRound: '모집 회차',
+    exclusiveArea: '전용면적', supplyCount: '금회공급 세대수', rentalDeposit: '임대보증금 원천값',
+    monthlyRent: '월임대료 원천값', applicationStatus: '인터넷청약 상태', schedules: '공급일정',
+    images: '이미지', url: '이미지 주소',
+    detailRequest: '상세공급정보 요청 값', detail: '상세공급정보', supplyArea: '공급면적',
+    residentialCommonArea: '주거공용면적', otherCommonArea: '기타공용면적', undergroundParkingArea: '지하주차장면적',
+    contractArea: '계약면적', householdCount: '세대수', currentSupplyCount: '금회분양 세대수', label: '일정 이름', value: '일정 값', phone: '전화번호', operatingPeriod: '접수처 운영기간',
+    atchFileSn: '첨부 묶음 식별자', atchFileDtlSn: '첨부파일 식별자', fileName: '첨부파일명',
+    fileSize: '파일 크기(바이트)', downloadUrl: '첨부 다운로드 URL',
+  },
 }
 
 export const sourcePresentation: Record<SourceCategory, {
@@ -78,9 +97,15 @@ export const sourcePresentation: Record<SourceCategory, {
 }> = {
   SH_ANNOUNCEMENT: {
     provider: '서울주택도시개발공사 · SH 게시판',
-    documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024',
+    documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2',
     firstFields: ['title', 'registered_date', 'department', 'attachments',
       'body_text', 'seq', 'original_url'],
+  },
+  GH_ANNOUNCEMENT: {
+    provider: '경기주택도시공사 · GH주택청약센터',
+    documentationUrl: 'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do',
+    firstFields: ['title', 'supply_type', 'region', 'posted_date', 'closing_date', 'status', 'notice',
+      'other_notes', 'pbanc_no', 'board', 'original_url'],
   },
   MYHOME_COMPLEX: {
     provider: '국토교통부 · 마이홈', documentationUrl: 'https://www.data.go.kr/data/15110581/openapi.do',

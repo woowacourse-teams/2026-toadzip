@@ -21,21 +21,24 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
-import com.toadzip.backend.user.domain.User;
-import com.toadzip.backend.user.repository.UserRepository;
-import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,8 +73,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
     @Autowired
     private HousingComplexRepository housingComplexRepository;
 
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate notificationJdbc;
-    @MockitoSpyBean private com.toadzip.backend.notification.repository.NotificationOutboxRepository outbox;
+    @Autowired private JdbcTemplate notificationJdbc;
+    @MockitoSpyBean private NotificationOutboxRepository outbox;
 
     @BeforeEach
     void cleanDatabase() {
@@ -152,8 +155,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
     @Test
     void 아웃박스_기록후_실패하면_공고와_이벤트가_함께_롤백된다() throws Exception {
         HousingComplex complex = housingComplexRepository.save(createHousingComplex());
-        com.toadzip.backend.notification.repository.NotificationOutboxRepository target =
-                org.springframework.test.util.AopTestUtils.getUltimateTargetObject(outbox);
+        NotificationOutboxRepository target =
+                AopTestUtils.getUltimateTargetObject(outbox);
         org.mockito.Mockito.doAnswer(invocation -> {
             invocation.callRealMethod();
             throw new IllegalStateException("after-outbox-probe");
@@ -183,7 +186,7 @@ class AdminAnnouncementRegistrationIntegrationTest {
     @Test
     void 비관리자는_공고를_저장할_수_없다() throws Exception {
         long memberId = users.saveAndFlush(User.create(
-                "authorization-test:" + java.util.UUID.randomUUID(), LocalDateTime.now())).getId();
+                "authorization-test:" + UUID.randomUUID(), LocalDateTime.now())).getId();
         mockMvc.perform(post(ENDPOINT)
                         .with(user(Long.toString(memberId)).roles("USER"))
                         .with(csrf())
@@ -288,13 +291,13 @@ class AdminAnnouncementRegistrationIntegrationTest {
                   "applicationEndDate": "2026-08-14",
                   "winnerAnnouncementDate": "2026-09-01",
                   "originalUrl": "https://example.com/announcements/1",
-                  "receptionPlace": {
+                  "receptionPlaces": [{
                     "name": "LH 청약센터",
                     "method": "ONLINE",
                     "address": "서울특별시 중구 세종대로 110",
                     "contact": "1600-1004",
                     "url": "https://apply.lh.or.kr"
-                  },
+                  }],
                   "supplyRow": {
                     "sourceComplexName": "원문 두꺼비 행복주택",
                     "sourceHousingTypeName": "36A",

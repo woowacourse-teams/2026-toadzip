@@ -12,6 +12,16 @@ function value(raw: unknown) {
   return display(raw as JsonValue | undefined)
 }
 function record(raw: unknown) { return isRecord(raw) ? raw : {} }
+/** 이력의 접수처 목록. 접수처를 한 곳만 저장하던 때의 이력은 receptionPlace 객체다. */
+function receptionPlacesOf(data: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(data.receptionPlaces)) return data.receptionPlaces.filter(isRecord)
+  return isRecord(data.receptionPlace) ? [data.receptionPlace] : []
+}
+/** 접수처는 순서대로 비교한다. 늘거나 준 접수처는 빈 값과 비교해 추가·삭제로 보인다. */
+function receptionDifferences(before: Record<string, unknown>[], after: Record<string, unknown>[]): Change[] {
+  return Array.from({ length: Math.max(before.length, after.length) }, (_, index) =>
+    differences(`접수처 ${index + 1}${index >= before.length ? ' (추가)' : index >= after.length ? ' (삭제)' : ''}`, receptionFields, before[index] ?? {}, after[index] ?? {})).flat()
+}
 function differences(scope: string, specs: readonly (readonly [string, string, ...unknown[]])[], before: Record<string, unknown>, after: Record<string, unknown>): Change[] {
   return specs.filter(([field]) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null))
     .map(([field, label]) => ({ scope, label, before: before[field], after: after[field] }))
@@ -25,11 +35,11 @@ export function PdfCorrectionHistory({ before, after }: { before: unknown; after
   const oldEvents = events(before.events)
   const changes: Change[] = [
     // 기본정보는 값이 바뀐 단순 필드만 화면 이름으로 보여준다. 접수처는 아래에서 항목별로 나눈다.
-    ...[...new Set([...Object.keys(previous), ...Object.keys(next)])].filter(field => !['version', 'receptionPlace', 'documentEvidence'].includes(field)
+    ...[...new Set([...Object.keys(previous), ...Object.keys(next)])].filter(field => !['version', 'receptionPlace', 'receptionPlaces', 'documentEvidence'].includes(field)
       && !isRecord(previous[field]) && !isRecord(next[field]) && !Array.isArray(previous[field]) && !Array.isArray(next[field])
       && JSON.stringify(previous[field] ?? null) !== JSON.stringify(next[field] ?? null))
       .map(field => ({ scope: '기본정보', label: storedFieldLabel(field), before: previous[field], after: next[field] })),
-    ...differences('접수처', receptionFields, record(previous.receptionPlace), record(next.receptionPlace)),
+    ...receptionDifferences(receptionPlacesOf(previous), receptionPlacesOf(next)),
     ...events(after.events).flatMap(event => {
       const old = oldEvents.find(item => item.id === event.id)
       const scope = `일정 #${String(event.id)}${typeof event.complexName === 'string' ? ` · ${event.complexName}` : ''}${old ? '' : ' (추가)'}`

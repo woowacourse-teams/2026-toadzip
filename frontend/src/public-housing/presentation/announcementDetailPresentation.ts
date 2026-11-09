@@ -101,6 +101,7 @@ function toReceptionPlace(
     name: place.name,
     phoneNumber: place.phoneNumber,
     url: place.url,
+    guidance: place.guidance ?? null,
   }
 }
 

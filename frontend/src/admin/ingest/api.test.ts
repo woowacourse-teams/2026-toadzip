@@ -8,46 +8,58 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
-  it('URL 등록은 세션·CSRF와 URL만 전송하고 서버의 사유를 유지한다', async () => {
-    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
-    const { startAnnouncementRegistrationUrl } = await import('./api.ts')
-    const url = 'https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026'
-    await expect(startAnnouncementRegistrationUrl(` ${url} `)).resolves.toMatchObject({ status: 'RUNNING' })
-    expect(fetchMock).toHaveBeenLastCalledWith(
-      'http://localhost:8080/api/admin/ingest/pipelines/announcement-registration/url',
-      { method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
-        body: JSON.stringify({ url }) },
+  it('주소·좌표 보완은 원천 식별자와 새 주소·좌표를 CSRF와 함께 전달한다', async () => {
+    const fetchMock = prepareFetch(null, 204)
+    const { supplementInitialRegistrationLocation } = await import('./api.ts')
+    await supplementInitialRegistrationLocation('1:HAPPY_HOUSING', '서울특별시 종로구 테스트로 1', 37.5, 127)
+    expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/locations', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+      body: JSON.stringify({ sourceComplexIdentifier: '1:HAPPY_HOUSING', address: '서울특별시 종로구 테스트로 1', latitude: 37.5, longitude: 127 }),
+    })
+  })
+  it('주소·좌표 실패 목록을 페이지와 세션으로 조회한다', async () => {
+    const result = { counts: { READY: 1, INVALID_ADDRESS: 1, ADDRESS_NOT_FOUND: 0, COORDINATE_NOT_FOUND: 0, COORDINATE_CONVERSION_ERROR: 0 },
+      targets: [], totalElements: 0, page: 1, totalPages: 2 }
+    const fetchMock = prepareFetch(result)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse(result))
+    const { getLocationPreparation } = await import('./api.ts')
+    await expect(getLocationPreparation(1)).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/locations?page=1&size=20', { credentials: 'include' })
+  })
+  it('주소·좌표 사유별 집계가 불완전하면 성공으로 처리하지 않는다', async () => {
+    const fetchMock = prepareFetch(null)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse({ counts: { READY: 1 }, targets: [], totalElements: 0, page: 0, totalPages: 0 }))
+    const { getLocationPreparation } = await import('./api.ts')
+    await expect(getLocationPreparation(0)).rejects.toThrow('주소·좌표 준비 응답 형식')
+  })
+  it.each([10, 20, 50, 100])('최초 등록 상태 필터와 페이지를 %d건씩 세션으로 조회한다', async size => {
+    const result = { counts: { EXISTING: 0, LOCATION_REQUIRED: 10, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 90 },
+      targets: [], totalElements: 10, page: 1, totalPages: 2 }
+    const fetchMock = prepareFetch(result)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse(result))
+    const { getInitialRegistration } = await import('./api.ts')
+    await expect(getInitialRegistration('LOCATION_REQUIRED', 1, size)).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://localhost:8080/api/admin/ingest/myhome/initial-registration?page=1&size=${size}&status=LOCATION_REQUIRED`,
+      { credentials: 'include' },
     )
   })
-
-  it('빈 URL은 네트워크 요청을 하지 않는다', async () => {
-    const fetchMock = prepareFetch({})
-    const { startAnnouncementRegistrationUrl } = await import('./api.ts')
-    await expect(startAnnouncementRegistrationUrl(' ')).rejects.toThrow('공고 URL')
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-  it('단건 등록은 공백을 제거한 공고 ID만 세션과 CSRF로 전달한다', async () => {
-    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
-    const { startAnnouncementRegistration } = await import('./api.ts')
-    await expect(startAnnouncementRegistration(' 21026 ')).resolves.toMatchObject({ status: 'RUNNING' })
+  it('최초 등록 상태 재확인은 CSRF를 전달하며 204 빈 응답을 허용한다', async () => {
+    const fetchMock = prepareFetch(null, 204)
+    const { refreshInitialRegistration } = await import('./api.ts')
+    await expect(refreshInitialRegistration()).resolves.toBeUndefined()
     expect(fetchMock).toHaveBeenLastCalledWith(
-      'http://localhost:8080/api/admin/ingest/pipelines/announcement-registration',
-      {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
-        body: JSON.stringify({ pblancId: '21026' }),
-      },
+      'http://localhost:8080/api/admin/ingest/myhome/initial-registration/refresh',
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
     )
   })
-
-  it('단건 등록은 빈 ID를 서버로 보내지 않는다', async () => {
-    const fetchMock = prepareFetch({})
-    const { startAnnouncementRegistration } = await import('./api.ts')
-    await expect(startAnnouncementRegistration(' ')).rejects.toThrow('공고 ID')
-    expect(fetchMock).not.toHaveBeenCalled()
+  it('불완전하거나 음수인 상태 집계는 성공으로 읽지 않는다', async () => {
+    const fetchMock = prepareFetch(null)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse({ counts: { COMPLETED: -1 }, targets: [],
+      totalElements: 0, page: 0, totalPages: 0 }))
+    const { getInitialRegistration } = await import('./api.ts')
+    await expect(getInitialRegistration('', 0, 20)).rejects.toThrow('단지 등록 현황 응답 형식')
   })
-
   it('실행 ID로 접수한 실행의 상태를 조회한다', async () => {
     const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
     fetchMock.mockReset().mockResolvedValue(jsonResponse(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING')))
@@ -85,6 +97,7 @@ describe('관리자 데이터 수집·정제 API', () => {
   it.each([
     ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
     ['SH_ANNOUNCEMENT_COLLECTION', 'sh-announcement-collection'],
+    ['GH_ANNOUNCEMENT_COLLECTION', 'gh-announcement-collection'],
   ] as const)('%s 실행은 기존 세션과 CSRF 계약으로 시작한다', async (type, path) => {
     const fetchMock = prepareFetch(execution(type, 'RUNNING'))
     const { startDataPipeline } = await import('./api.ts')
@@ -161,26 +174,37 @@ describe('관리자 데이터 수집·정제 API', () => {
 
   it.each([
     ['COMPLEX_COLLECTION', 'complex-collection'], ['ANNOUNCEMENT_COLLECTION', 'announcement-collection'],
-    ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
-  ] as const)('%s 실행 키를 URL 대신 JSON 본문으로 전송한다', async (type, path) => {
+    ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
+  ] as const)('%s 수집은 키를 보내지 않고 본문 없이 시작한다', async (type, path) => {
     const fetchMock = prepareFetch(execution(type, 'RUNNING'))
     const { startDataPipeline } = await import('./api.ts')
-    await startDataPipeline(type, '  fixture-execution-key  ')
+    await startDataPipeline(type)
     expect(fetchMock).toHaveBeenLastCalledWith(
       `http://localhost:8080/api/admin/ingest/pipelines/${path}`,
-      {
-        method: 'POST', credentials: 'include',
-        headers: { 'X-CUSTOM-CSRF': 'csrf-token', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceKey: 'fixture-execution-key' }),
-      },
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
     )
   })
 
-  it('공백뿐인 키는 요청 전에 거절한다', async () => {
-    const fetchMock = prepareFetch(execution('COMPLEX_COLLECTION', 'RUNNING'))
-    const { startDataPipeline } = await import('./api.ts')
-    await expect(startDataPipeline('COMPLEX_COLLECTION', '   ')).rejects.toThrow('공공데이터포털 API 키를 입력해 주세요.')
-    expect(fetchMock).not.toHaveBeenCalled()
+  it.each([true, false])('서버 수집 키 설정 여부(%s)를 읽는다', async (configured) => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ serviceKeyConfigured: configured }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { getDataPipelineReadiness } = await import('./api.ts')
+
+    await expect(getDataPipelineReadiness()).resolves.toEqual({ serviceKeyConfigured: configured })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/readiness', { credentials: 'include' },
+    )
+  })
+
+  it('준비 상태 응답에 설정 여부가 없으면 형식 오류로 본다', async () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ serviceKeyConfigured: 'yes' })))
+    const { getDataPipelineReadiness } = await import('./api.ts')
+
+    await expect(getDataPipelineReadiness()).rejects.toThrow('수집 준비 상태 응답 형식이 올바르지 않습니다.')
   })
 
   it('행별 누락을 담은 완료·주의 응답을 읽는다', async () => {
@@ -344,6 +368,7 @@ function locationSummaryReport() {
     storedLocationCount: 3_600,
     replacedRowCount: 0,
     invalidatedMappingCandidateCount: 0,
+    preparedRoadAddressCount: 3_300,
     provinceCodes: ['11', '26'],
   }
 }

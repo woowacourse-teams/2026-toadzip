@@ -37,7 +37,7 @@ public class DataPipelineExecutionMapper {
                 currentStep,
                 stepName(currentStep),
                 currentStepIndex(execution),
-                execution.getType().steps().size(),
+                totalSteps(execution),
                 completedSteps,
                 completedStepResponses(execution),
                 skippedStepResponses(execution),
@@ -104,9 +104,17 @@ public class DataPipelineExecutionMapper {
         );
     }
 
+    /** 지난 SH·GH 실행은 지금보다 많은 단계(수집·정제 분리)를 기록했을 수 있어, 기록된 단계 수보다 작게 보이지 않게 한다. */
+    private int totalSteps(DataPipelineExecution execution) {
+        int recorded = execution.getCompletedStepResults().size() + execution.getSkippedSteps().size()
+                + (execution.getFailedStep() == null ? 0 : 1);
+        return Math.max(execution.getType().steps().size(), recorded);
+    }
+
     private int currentStepIndex(DataPipelineExecution execution) {
         DataPipelineStep currentStep = execution.getCurrentStep();
-        if (currentStep == null) {
+        // 지난 실행에는 지금 유형 정의에서 빠진 옛 단계(마이홈 공고 정제·LH 보강)가 남아 있을 수 있다.
+        if (currentStep == null || !execution.getType().steps().contains(currentStep)) {
             return 0;
         }
         return execution.getType().sequenceOf(currentStep);

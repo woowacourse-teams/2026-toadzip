@@ -5,11 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
+import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
@@ -33,7 +34,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootTest
+@SpringBootTest(properties = "ingest.service-key=test-service-key")
 @ActiveProfiles("test")
 @Import(IngestExecutionOwnershipIntegrationTest.ProbeConfiguration.class)
 class IngestExecutionOwnershipIntegrationTest {
@@ -50,7 +51,7 @@ class IngestExecutionOwnershipIntegrationTest {
 
     @Test
     void 잠금_세션을_잃은_실행의_원천_변경을_거절하고_실패로_남긴다() {
-        MyHomeAnnouncementSource stored = sourceRepository.saveAndFlush(MyHomeAnnouncementSource.from(0,
+        MyHomeAnnouncementSourceView stored = sourceRepository.saveAndFlush(MyHomeSourceViews.announcement(0,
                 new MyHomeAnnouncementSourceSnapshot("OWNERSHIP", 1, null, null, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null)));
@@ -71,7 +72,7 @@ class IngestExecutionOwnershipIntegrationTest {
             assertThat(jdbc.queryForObject("select pg_terminate_backend(?, 5000)", Boolean.class, ownerPid)).isTrue();
             DataPipelineExecutionLock second = new DataPipelineExecutionLock(dataSource);
             try (var ignored = second.tryAcquire().orElseThrow()) {
-                lifecycle.completeRun(java.util.UUID.randomUUID());
+                lifecycle.completeRun(UUID.randomUUID());
             }
             return null;
         }).when(runner).run(any(), any());
@@ -93,7 +94,7 @@ class IngestExecutionOwnershipIntegrationTest {
             new JdbcTemplate(dataSource).update(
                     "update ingest_execution_ownership set generation = generation + 1 where id = 1");
 
-            assertThatThrownBy(() -> lifecycle.completeRun(java.util.UUID.randomUUID()))
+            assertThatThrownBy(() -> lifecycle.completeRun(UUID.randomUUID()))
                     .isInstanceOf(IngestOwnershipLostException.class);
         }
     }
@@ -193,7 +194,7 @@ class IngestExecutionOwnershipIntegrationTest {
         var secondLock = new DataPipelineExecutionLock(dataSource);
         try (var first = firstLock.tryAcquire().orElseThrow(); var ignored = IngestExecutionScope.open(first)) {
             var pending = IngestExecutionScope.propagate(() -> {
-                lifecycle.completeRun(java.util.UUID.randomUUID());
+                lifecycle.completeRun(UUID.randomUUID());
                 return null;
             });
             terminateOwner();
@@ -235,7 +236,7 @@ class IngestExecutionOwnershipIntegrationTest {
 
         @Transactional
         public void write(CountDownLatch entered, CountDownLatch release) throws InterruptedException {
-            repository.saveAndFlush(MyHomeAnnouncementSource.from(0,
+            repository.saveAndFlush(MyHomeSourceViews.announcement(0,
                     new MyHomeAnnouncementSourceSnapshot(UUID.randomUUID().toString(), 1, null, null, null,
                             null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                             null, null, null, null, null, null, null, null, null, null, null)));

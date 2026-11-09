@@ -4,11 +4,12 @@ import { isRecord } from '../management/managementContract'
 export const sourceCategories = {
   MYHOME_COMPLEX: '마이홈 단지',
   LH_LEASE_CATALOG: 'LH 임대 단지',
-  MYHOME_ANNOUNCEMENT: '마이홈 공고',
+  MYHOME_ANNOUNCEMENT: '마이홈 공고(수집 중단)',
   LH_ANNOUNCEMENT_CATALOG: 'LH 공고 목록',
   LH_ANNOUNCEMENT_DETAIL: 'LH 공고 상세',
   LH_ANNOUNCEMENT_SUPPLY: 'LH 공고 공급',
   SH_ANNOUNCEMENT: 'SH 공고',
+  GH_ANNOUNCEMENT: 'GH 공고',
 } as const
 
 export type SourceCategory = keyof typeof sourceCategories

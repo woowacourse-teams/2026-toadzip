@@ -36,9 +36,10 @@ export function NotificationDeliveriesPage() {
     return () => controller.abort()
   }, [query, valid, page, status, keyword, userId, announcementId, setParams])
   return <section className={styles.page}>
-    <header><h1>알림 발송 기록</h1><p>회원별 알림 생성, 기기별 발송 시도, 열람 여부를 확인합니다.</p></header>
+    <header><h1>알림 발송 기록</h1></header>
     {userId && <p><Link to={`/admin/users/${userId}`}>회원 #{userId} 정보·알림 신청</Link>의 발송 기록</p>}
     {announcementId && <p><Link to={workDetailUrl('ANNOUNCEMENT', Number(announcementId), `/admin/notification-deliveries?${params}`, 'info')}>공고 #{announcementId}</Link>의 발송 기록</p>}
+    <div className="admin-list-card">
     <form key={params.toString()} className={styles.filters} onSubmit={event => {
       event.preventDefault(); const form = new FormData(event.currentTarget)
       const next = new URLSearchParams(params); next.delete('page')
@@ -50,7 +51,6 @@ export function NotificationDeliveriesPage() {
       <button className="admin-primary">검색</button><button type="button" onClick={() => setAttempt(value => value + 1)}>새로고침</button>
       {(userId || announcementId) && <Link to="/admin/notification-deliveries">전체 발송 보기</Link>}
     </form>
-    <p className={styles.help}>‘푸시 제공자 접수’는 기기 표시나 사용자의 열람을 보장하지 않습니다. 발송 기록이 없는 알림도 앱 내 알림함에 생성될 수 있습니다. 재시도 대기 중인 건은 다음 예정 시각에 자동 처리됩니다.</p>
     {error ? <p role="alert">{error}</p> : !data ? <p role="status">발송 기록을 불러오는 중…</p> : <>
       <p>총 {data.totalElements.toLocaleString('ko-KR')}건 · 기기별 발송 시도 기준 · 한국 시각</p>
       {!data.items.length ? <p>조건에 맞는 발송 기록이 없습니다. 알림 신청 조건과 생성 시각을 함께 확인해 주세요.</p> : <ol className={styles.list}>
@@ -66,5 +66,6 @@ export function NotificationDeliveriesPage() {
       </ol>}
       <ListPagination page={data.page} totalPages={data.totalPages} label="알림 발송 기록 페이지" onMove={next => setParams(current => { current.set('page', String(next)); return current })} />
     </>}
+    </div>
   </section>
 }

@@ -224,6 +224,17 @@ describe('HousingComplexDetailPanel', () => {
     expect(factValue(typePanel, '기본 월 임대료').getByText('0원')).toBeInTheDocument()
   })
 
+  it('PDF 보정이 공고 값으로 바꾼 기본 임대조건은 출처를 공고문, 날짜를 공고일로 보여 준다', () => {
+    const { panel } = renderPanel(detailWith({ housingTypes: [{
+      ...BASE_DETAIL.housingTypes[0],
+      basicRentalCondition: { deposit: 8_100_000, monthlyRent: 156_230, source: 'ANNOUNCEMENT', sourceUrl: null, collectedAt: '2026-10-20T15:00:00Z' },
+    }] }))
+    const typePanel = within(panel).getByRole('tabpanel', { name: '36A' })
+    expect(within(typePanel).getByText('공고문')).toBeInTheDocument()
+    expect(within(typePanel).getByText(/공고일/)).toBeInTheDocument()
+    expect(within(typePanel).queryByText(/마이홈|수집일/)).not.toBeInTheDocument()
+  })
+
   it('두 면적 전환 버튼으로 모달 전체를 양방향 전환하고 주택형 변경에도 단위를 유지한다', () => {
     const { panel } = renderPanel()
     expect(within(panel).getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
@@ -270,7 +281,7 @@ describe('HousingComplexDetailPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
     expect(record).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
-    expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '알림을 설정했어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))

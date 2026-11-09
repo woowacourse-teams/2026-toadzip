@@ -134,10 +134,12 @@ public class IngestFailureReviewQueryRepository {
                 END AS attachment_count,
                 announcement.application_start_date, announcement.application_end_date,
                 announcement.application_schedule_reviewed,
-                COALESCE(NOT complex.admin_deleted, NOT announcement.admin_deleted) AS public_detail_available,
+                COALESCE(NOT complex.admin_deleted,
+                    NOT announcement.admin_deleted AND announcement.release_status = 'PUBLISHED') AS public_detail_available,
                 CASE WHEN complex.id IS NOT NULL THEN NOT complex.admin_deleted
                         AND complex.latitude IS NOT NULL AND complex.longitude IS NOT NULL
                      WHEN announcement.id IS NOT NULL THEN NOT announcement.admin_deleted
+                        AND announcement.release_status = 'PUBLISHED'
                         AND (announcement.status IN ('ORIGINAL', '원공고')
                              OR (announcement.status IN ('CORRECTION', '정정공고')
                                  AND announcement.previous_announcement_id IS NOT NULL))
@@ -152,7 +154,8 @@ public class IngestFailureReviewQueryRepository {
                     CASE WHEN announcement.status IN ('CORRECTION', '정정공고')
                             AND announcement.previous_announcement_id IS NULL
                          THEN 'MISSING_PREVIOUS_ANNOUNCEMENT' END,
-                    CASE WHEN successor.exists_value THEN 'HAS_SUCCESSOR' END
+                    CASE WHEN successor.exists_value THEN 'HAS_SUCCESSOR' END,
+                    CASE WHEN announcement.release_status = 'UNCONFIRMED' THEN 'UNCONFIRMED' END
                 ], NULL) AS list_exclusion_reasons
             FROM (SELECT COUNT(*) AS total_elements FROM filtered) totals
             LEFT JOIN page_failures failure ON TRUE
@@ -170,7 +173,8 @@ public class IngestFailureReviewQueryRepository {
             LEFT JOIN LATERAL (
                 SELECT EXISTS(SELECT 1 FROM announcements next_announcement
                     WHERE next_announcement.previous_announcement_id = announcement.id
-                        AND next_announcement.admin_deleted = FALSE) AS exists_value
+                        AND next_announcement.admin_deleted = FALSE
+                        AND next_announcement.release_status = 'PUBLISHED') AS exists_value
             ) successor ON TRUE
             ORDER BY failure.last_occurred_at DESC, failure.id DESC, failure.category ASC
             """;

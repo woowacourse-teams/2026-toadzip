@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.controller;
 
+import com.toadzip.backend.admin.controller.AdminManagementApi;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.service.SupplyCorrectionService;
 import com.toadzip.backend.announcement.service.SupplyReviewService;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@AdminManagementApi
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/announcements/{id}/supply-corrections")
@@ -46,6 +48,15 @@ public class SupplyCorrectionController {
     public ApiResponse<SupplyCorrection.Preview> preview(@PathVariable long id,
             @Valid @RequestBody SupplyCorrection.Request request) {
         return new ApiResponse<>(service.preview(id, request));
+    }
+
+    /** 공고 단지 하나의 연결 단지를 관리자가 바꾼다. 그 공고 단지의 공급행도 새 단지로 옮긴다. */
+    @PostMapping("/announcement-complexes/{announcementComplexId}/link")
+    public ApiResponse<SupplyCorrection.Workspace> linkAnnouncementComplex(@PathVariable long id, @PathVariable long announcementComplexId,
+            @Valid @RequestBody SupplyCorrection.ComplexLinkRequest request, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.linkAnnouncementComplex(id, announcementComplexId, request, principal.getName()));
+        }
     }
 
     @PostMapping
