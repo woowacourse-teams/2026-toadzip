@@ -256,6 +256,8 @@ function toAnnouncementSupplyTarget(
     monthlyRent: raw.monthlyRent,
     convertibleDeposit: raw.convertibleDeposit,
     applicationCondition: raw.applicationCondition,
+    ...raw.sharedSupplyHouseholdCount ? { sharedSupplyHouseholdCount: raw.sharedSupplyHouseholdCount } : {},
+    ...raw.sharedWaitlistCount ? { sharedWaitlistCount: raw.sharedWaitlistCount } : {},
   }
 }
 

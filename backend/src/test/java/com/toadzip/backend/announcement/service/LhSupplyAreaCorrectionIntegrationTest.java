@@ -135,7 +135,7 @@ class LhSupplyAreaCorrectionIntegrationTest {
         // 공고문이 고령자 모집수를 60으로 적었다. LH 합(566)과 달라도 대상별 모집수로 저장한다.
         var targets = row.targets().stream().map(target -> target.target().equals("고령자") ? new SupplyCorrection.Target(
                 target.id(), target.key(), false, true, target.displayOrder(), target.target(), target.supplyRank(), 60,
-                target.reserveCount(), target.deposit(), target.rent(), target.convertedDeposit(), target.condition()) : target)
+                target.reserveCount(), target.deposit(), target.rent(), target.convertedDeposit(), target.condition(), null, null) : target)
                 .toList();
         var edited = new Row(row.id(), row.key(), row.housingComplexId(), row.housingComplexName(), row.housingTypeId(), null,
                 null, null, false, false, row.displayOrder(), row.complexName(), "36A", null, row.moveInMonth(), row.category(),

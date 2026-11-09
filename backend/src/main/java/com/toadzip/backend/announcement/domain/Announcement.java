@@ -679,7 +679,7 @@ public class Announcement {
     }
 
     private boolean containsReceptionPlaces(List<ReceptionPlace> incoming) {
-        return incoming.stream().allMatch(place -> receptionPlaces.stream().anyMatch(stored -> stored.isSamePlace(place)));
+        return incoming.stream().allMatch(place -> receptionPlaces.stream().anyMatch(stored -> stored.isSameSourcePlace(place)));
     }
 
     /** 관리되는 목록을 바꾸지 않고 내용만 갈아 끼운다(Hibernate가 추적하는 컬렉션을 유지한다). */

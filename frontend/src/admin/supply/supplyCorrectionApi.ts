@@ -5,7 +5,11 @@ export type CorrectionTarget = {
   id: number | null; key: string; excluded: boolean; protectedValues: boolean; displayOrder: number;
   target: string; supplyRank: string | null; householdCount: number | null; reserveCount: number | null;
   deposit: string | null; rent: string | null; convertedDeposit: string | null; condition: string | null;
+  /** 같은 공급행의 다른 대상과 함께 쓰는 모집수·예비자 수(공통 모집수). 묶인 동안 그 종류의 대상 칸은 비운다. */
+  householdCountGroup?: TargetCountGroup | null; reserveCountGroup?: TargetCountGroup | null;
 }
+/** 공통 모집수 하나. 같은 key의 대상끼리 한 묶음이고 저장된 묶음은 "group:{id}"다. */
+export type TargetCountGroup = { key: string; count: number }
 export type NewHousingType = { name: string; exclusiveArea: number; supplyArea: number | null }
 /** 공급행이 대표 주택형과 함께 모집하는 주택형 하나. 같은 단지의 기존 주택형이나 이 저장에서 만들 새 주택형 중 하나다. */
 export type LinkedHousingType = { housingTypeId: number; newHousingType?: null } | { housingTypeId?: null; newHousingType: NewHousingType }
@@ -64,13 +68,15 @@ const linkedType = (value: unknown) => isRecord(value) && (count(value.housingTy
 const lhRows = (value: unknown) => Array.isArray(value) && value.every(item => isRecord(item) && typeof item.rowIdentifier === 'string'
   && (item.householdCount == null || count(item.householdCount)) && (item.attachedRowKey == null || typeof item.attachedRowKey === 'string')
   && (item.ambiguous == null || typeof item.ambiguous === 'boolean'))
+const countGroup = (value: unknown) => value == null || isRecord(value) && typeof value.key === 'string' && count(value.count)
 function invalid(): never { throw new Error('공급정보 보정 응답이 올바르지 않습니다.') }
 function target(value: unknown): CorrectionTarget {
   if (!isRecord(value) || !nullableId(value.id) || typeof value.key !== 'string'
     || typeof value.excluded !== 'boolean' || typeof value.protectedValues !== 'boolean' || !count(value.displayOrder)
     || typeof value.target !== 'string' || !nullableText(value.supplyRank) || !nullableText(value.condition)
     || !nullableCount(value.householdCount) || !nullableCount(value.reserveCount)
-    || !money(value.deposit) || !money(value.rent) || !money(value.convertedDeposit)) invalid()
+    || !money(value.deposit) || !money(value.rent) || !money(value.convertedDeposit)
+    || !countGroup(value.householdCountGroup) || !countGroup(value.reserveCountGroup)) invalid()
   return value as CorrectionTarget
 }
 function row(value: unknown): CorrectionRow {
@@ -132,6 +138,21 @@ export async function applySupply(id: string, correction: SupplyCorrectionInput,
   const value = await requestManagementApi(path(id), 'POST', { correction, confirmationToken })
   if (!isRecord(value) || !count(value.changeId) || typeof value.alreadyApplied !== 'boolean') invalid()
   return { changeId: value.changeId, alreadyApplied: value.alreadyApplied, workspace: parseSupplyWorkspace(value.workspace) }
+}
+/**
+ * 공통 모집수 정리. 제외한 대상은 묶음에서 빼고, 그 때문에 혼자 남은 대상의 묶음도 푼다(서버는 제외한 대상의 묶음과 대상 하나뿐인 묶음을 거절한다).
+ * 풀린 수는 대상만의 수로 볼 수 없어 비워 둔다. PDF 보정과 공급정보 편집이 저장 직전에 함께 쓴다.
+ */
+export function dropLoneGroups(targets: CorrectionTarget[]) {
+  for (const slot of ['householdCountGroup', 'reserveCountGroup'] as const) {
+    const members = new Map<string, CorrectionTarget[]>()
+    for (const target of targets) {
+      const group = target[slot]
+      if (group && !target.excluded) members.set(group.key, [...members.get(group.key) ?? [], target])
+      else if (group) target[slot] = null
+    }
+    for (const list of members.values()) if (list.length < 2) list.forEach(target => { target[slot] = null })
+  }
 }
 export function blankTarget(order: number): CorrectionTarget {
   return { id: null, key: crypto.randomUUID(), excluded: false, protectedValues: false, displayOrder: order,

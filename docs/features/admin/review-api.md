@@ -77,6 +77,8 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 - POST `/preview`: `{snapshotToken, document, fields, schedules, attachments, correction}`. `document`는 신규 등록과 같은 `admin-announcement-import/v1`이다. `fields`에는 적용할 기본정보 필드명과 접수처를 바꿀 때 `receptionPlaces`(문서의 목록으로 통째로 교체)를, 일정·첨부에는 `{inputIndex, existingId}`를 넣는다. `existingId: null`은 추가이며 기존 ID는 현재 공고 소속이어야 한다. `correction`은 기존 공급 보정 요청 계약이다.
 - POST: `{request, confirmationToken}`. 관리자 인증·CSRF·수집 소유권과 공고 잠금 아래 동일 미리보기를 재검증하고 모든 변경과 `CORRECT_FROM_PDF` 이력을 한 트랜잭션으로 저장한다. 같은 트랜잭션에서 이 공고의 미해결 `myhome_announcement_mapping_failures`·`lh_announcement_enrichment_failures`를 해결로 바꾸고 `last_resolved_by`에 보정한 관리자를 남긴다(`V20261026_01`). 정제가 해결한 실패는 이 값이 비어 있다. 원천 비교 스냅샷은 저장 전·후 한 번씩만 계산한다.
 - 선택적 `housingTypeValues: [{rowKey, name, supplyArea, householdCount, basicDeposit, basicMonthlyRent, linkedHousingTypeId, linkedNewHousingTypeArea, linkedNewHousingTypeName}]`는 공고문에서 읽은 주택형 값이다. 한 행이 같은 면적의 새 주택형을 여럿 만들면 `linkedNewHousingTypeName`(새 주택형 이름)을 함께 보내야 하고, 없으면 400이다. 이름이 같은 단지의 다른 주택형 이름과 같으면 이름만 반영하지 않고 `housingTypeWarnings`로 알린다. 연결 주소가 없으면 그 행의 대표 주택형에 반영한다. `linkedHousingTypeId`는 그 행이 함께 모집하는 기존 주택형, `linkedNewHousingTypeArea`는 함께 모집하는 새 주택형의 전용면적이며 둘 중 하나만 준다. 같은 행의 같은 주택형에 두 번 보내거나 그 행이 함께 모집하지 않는 주택형을 가리키면 400이다. 함께 모집하는 주택형을 생략한 공급 행은 저장된 연결을 유지하므로 그것만으로 공급행 변경이 되지 않는다.
+- 바꿀 항목이 하나도 없으면(공고문과 지금 값이 같거나, 공급행 순서·생략한 연결만 다른 요청) 거절하지 않고 미리보기 응답 `unchanged: true`를 준다. 이때 적용은 값을 쓰지 않고 공고문으로 확인한 것만 남긴다: 공급정보 주인을 공고문으로 바꾸고 재확인 표시를 지우며, 남은 정제·보강 실패를 해결로 바꾸고 `CONFIRM_FROM_PDF` 이력을 한 건 남긴다. 공급 보정 작업 번호는 기록하지 않는다. 관리자 공급정보 편집(`/supply-corrections`)은 지금처럼 바뀐 공급행이 없으면 거절한다.
+- 공급 대상(`correction.rows[].targets[]`)의 선택 필드 `householdCountGroup`·`reserveCountGroup: {key, count}`는 같은 공급행의 대상 여럿이 함께 쓰는 모집수·예비자 수(공통 모집수)다. 같은 `key`의 대상끼리 한 묶음이고 `count`는 대상마다 같게 보낸다. 묶음은 제외하지 않은 대상 둘 이상이 써야 하고, 묶인 대상은 그 종류의 칸(`householdCount`·`reserveCount`)을 비워야 하며, 어기면 400이다. 묶음은 종류마다 `supply_target_count_groups`에 한 번만 저장하고(`V20261109_01`), 작업실은 저장된 묶음을 `group:{id}` key로 돌려준다. 공개 상세의 공급 대상은 `sharedSupplyHouseholdCount`·`sharedWaitlistCount: {count, targets}`(함께 쓰는 수와 대상 이름)로 보인다. 공급행끼리의 공통 모집 묶음(`groupId`)과는 다르다.
 - 이 경로는 관리자 화면의 PDF 보정만 사용한다. 공급행·기본정보·접수처·일정 변경을 이력 한 건에 남기며 별도의 `CORRECT_SUPPLY` 이력을 만들지 않는다. 공급 보정의 작업 번호는 이 이력에 연결해 같은 작업 번호의 재적용을 막는다. 이전에 저장된 `UPDATE_FROM_JSON` 이력과 함께 남은 `CORRECT_SUPPLY` 이력은 그대로 둔다.
 - 미확인·null 기본값과 확인되지 않은 일정·첨부는 선택 적용을 거절한다. 선택하지 않은 값과 하위 항목은 유지하며 생략으로 삭제하지 않는다. 기존 ID·원천 식별자·확인된 접수 일정은 유지한다. 공개된 공고에는 신규 알림을 만들지 않는다.
 - 미확정 공고(`releaseStatus=UNCONFIRMED`, SH·GH 원천 공고)는 이 경로에서 관리자가 `publish: true`(선택, 기본 false)를 보낼 때만 공개한다. 공급행이 미리 단지에 연결돼 있어도 요청하지 않으면 공개하지 않는다. 요청하면 미리보기가 적용 뒤 남는 공급행 중 제외하지 않고 삭제되지 않은 단지에 연결된 행이 있는지 확인해 없으면 400으로 거절하고, 응답 `publishes`와 확인 토큰에 공개 여부를 담는다. 다른 변경이 없어도 공개만 적용할 수 있다. 적용은 같은 트랜잭션에서 단지 연결을 다시 확인한 뒤 공개하고 신규 공고 알림을 한 번 쌓으며, 이미 공개된 공고는 다시 쌓지 않는다. 관리자 공고 수정(`PUT /api/admin/announcements/{id}`)은 공개 상태를 바꾸지 않는다.
@@ -88,7 +90,7 @@ PDF 보정의 미확정 공고는 접수 시작일·접수 종료일·당첨자 
 
 ### PDF 보정 저장
 
-JSON 전체 갱신에서도 이 공급 보정과 기본정보·일정 변경은 함께 성공하거나 롤백한다. 새 DB 스키마는 추가하지 않는다.
+JSON 전체 갱신에서도 이 공급 보정과 기본정보·일정 변경은 함께 성공하거나 롤백한다. 공통 모집수 묶음 표(`V20261109_01`) 말고는 새 DB 스키마를 추가하지 않는다.
 PDF 보정 저장은 범위 검토 완료를 만들지 않는다. 같은 트랜잭션에서 이 공고에 남은 마이홈 정제·LH 보강 실패를 저장한 관리자의 해결로 바꾸고, 공급정보 주인을 공고문으로 바꾼다.
 LH 공고 정제는 공고문 소유 공고의 공급행을 다시 만들지 않으므로 관리자가 저장한 단지·주택형 연결이 그대로 남는다. 마이홈 정제용 저장 매칭도 함께 기록하지만 지원을 종료한 마이홈 정제만 읽는다.
 

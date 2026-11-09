@@ -96,6 +96,59 @@ class AnnouncementSourceUpdateTest {
         assertThat(announcement.getReceptionPlaces()).hasSize(2);
     }
 
+    @Test
+    void 관리자가_LH_접수처의_이름과_주소_표기를_공고문대로_바꿔도_같은_도로명_건물번호면_원천_변경으로_보지_않는다() {
+        ReceptionPlace lh = ReceptionPlace.create("관리사무소", ReceptionMethod.VISIT,
+                "경기도 평택시 팽성읍 팽성송화로 163(주공아파트) 관리사무소", "031-651-6776", null);
+        Announcement announcement = announcement("기존 공고명", List.of(lh));
+        announcement.reviseByAdmin(announcement("기존 공고명", List.of(
+                ReceptionPlace.create("평택송화단지 아파트 관리사무소", ReceptionMethod.VISIT, "경기도 평택시 팽성읍 팽성송화로 163",
+                        "031-651-6776", null, "고령자 등 인터넷 신청이 어려운 경우 현장 방문 신청 가능"))));
+
+        announcement.enrichFromLh("PAN-1", null, List.of(lh));
+
+        assertThat(announcement.isSourceReviewRequired()).isFalse();
+    }
+
+    @Test
+    void 관리자가_고친_공고의_온라인_접수처는_URL_호스트가_같으면_이름이_달라도_같은_접수처다() {
+        ReceptionPlace lh = ReceptionPlace.create("LH청약플러스", ReceptionMethod.ONLINE, null, "1600-1004",
+                "https://apply.lh.or.kr");
+        Announcement announcement = announcement("기존 공고명", List.of(lh));
+        announcement.reviseByAdmin(announcement("기존 공고명", List.of(ReceptionPlace.create("인터넷 및 모바일 신청 (LH청약플러스)",
+                ReceptionMethod.ONLINE, null, "1600-1004", "https://apply.lh.or.kr/", null))));
+
+        announcement.enrichFromLh("PAN-1", null, List.of(lh));
+
+        assertThat(announcement.isSourceReviewRequired()).isFalse();
+    }
+
+    @Test
+    void 관리자가_고친_공고에서_같은_건물의_LH_접수처_전화번호만_바뀌어도_원천_변경_확인을_켠다() {
+        ReceptionPlace stored = ReceptionPlace.create("평택송화단지 아파트 관리사무소", ReceptionMethod.VISIT,
+                "경기도 평택시 팽성읍 팽성송화로 163", "031-651-6776", null);
+        Announcement announcement = announcement("기존 공고명", List.of(stored));
+        announcement.reviseByAdmin(announcement("기존 공고명", List.of(stored)));
+
+        announcement.enrichFromLh("PAN-1", null, List.of(ReceptionPlace.create("관리사무소", ReceptionMethod.VISIT,
+                "경기도 평택시 팽성읍 팽성송화로 163(주공아파트) 관리사무소", "031-651-0000", null)));
+
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 관리자가_고친_공고에서_LH_접수처가_다른_건물로_옮기면_원천_변경_확인을_켠다() {
+        Announcement announcement = announcement("기존 공고명", List.of(ReceptionPlace.create("관리사무소", ReceptionMethod.VISIT,
+                "경기도 평택시 팽성읍 팽성송화로 163", "031-651-6776", null)));
+        announcement.reviseByAdmin(announcement("기존 공고명", List.of(ReceptionPlace.create("관리사무소",
+                ReceptionMethod.VISIT, "경기도 평택시 팽성읍 팽성송화로 163", "031-651-6776", null))));
+
+        announcement.enrichFromLh("PAN-1", null, List.of(ReceptionPlace.create("관리사무소", ReceptionMethod.VISIT,
+                "경기도 평택시 팽성읍 팽성송화로 165", "031-651-6776", null)));
+
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
     private boolean updateReception(Announcement announcement, List<ReceptionPlace> places) {
         return announcement.updateFromMyHome(null, null, "기존 공고명", AnnouncementPublicationType.ORIGINAL,
                 RentalType.NATIONAL_RENTAL, RecruitmentType.NEW, AgencyCode.LH, LocalDate.of(2026, 8, 1),

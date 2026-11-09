@@ -1,6 +1,8 @@
 import type { ExtractedAnnouncement, HousingTypeValue, JsonObject, JsonUpdateInput, JsonWorkspace } from '../announcement-json/api'
 import { blankRow, blankTarget, nextDisplayOrder, type CorrectionRow, type CorrectionTarget, type LinkedHousingType } from '../supply/supplyCorrectionApi'
 import { evidenceFor, normalizePath, noteFor, receptionPlacesOf, text, type Evidence, type Extraction, type Subtype } from './extraction'
+import { duplicateOf, normalizedMethod, samePlace } from './receptionPlaces'
+import { applySharedCounts, dropLoneGroups, markSharedCells, rowCountGroups } from './targetCountGroups'
 import { createdTypeName, foldSameHousingType, renamedTypeName, withoutTrailingParentheses } from './subtypes'
 import { applicationTypeKey, sameApplicationType } from '../supply/applicationType'
 import { announcementHousingType, type AnnouncementType } from './areas'
@@ -22,7 +24,8 @@ export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], [
  * 접수처 하나의 검토. 공고문에는 인터넷 접수와 현장 접수처 여러 곳이 함께 나온다. extracted는 PDF 접수처 순번(null이면 PDF에 없는 지금 접수처),
  * existing은 짝지은 지금 접수처 순번(null이면 PDF에서 새로 더하는 접수처)이다. include가 false면 저장할 때 이 접수처를 뺀다.
  */
-export type ReceptionReview = { extracted: number | null; existing: number | null; include: boolean; cells: Cell[] }
+/** duplicateOf는 PDF에 없는 지금 접수처가 다른 지금 접수처와 같은 곳일 때 그 접수처 순번이다(같은 곳 중복, 기본으로 뺀다). */
+export type ReceptionReview = { extracted: number | null; existing: number | null; include: boolean; cells: Cell[]; duplicateOf?: number | null }
 export type TargetReview = { destination: string; cells: Cell[] }
 /** 세부 타입이 연결할 주택형. 기존 주택형 ID, PDF 형명·면적으로 만들 새 주택형('new'), 연결 안 함('none'), 아직 못 정함(null)이다. */
 export type SubtypeChoice = number | 'new' | 'none' | null
@@ -194,11 +197,12 @@ export function autoHousingType(row: RowReview) {
 /**
  * 연결 주택형을 정하지 않은 행이 저장할 때 연결할 단지 주택타입. 공고문 주택타입 이름(housingTypeName, 없으면 공고 표기)이 같은 주택타입이고,
  * 없으면 null이라 저장할 때 그 이름으로 새로 만든다(assembleReview). 단지 주택타입은 공고문 표기 이름으로 나누므로 면적이 같아도 이름이 다르면 잇지 않는다.
+ * 다만 주택타입 열이 없어 신청형 이름으로 잇는 행은, 이름이 같은 주택타입의 면적이 0.1㎡ 이상 다르면 면적이 같은 주택타입에 잇는다(announcementHousingType).
  */
 export function expectedHousingType(row: RowReview) {
   if (!autoHousingType(row)) return null
   const value = (field: string) => { const cell = row.cells.find(item => item.field === field); return cell ? savedValue(cell) : null }
-  return announcementHousingType(row.proposal.candidates, housingTypeNameOf(row), value('exclusiveArea'), row.otherTypeNames)
+  return announcementHousingType(row.proposal.candidates, housingTypeNameOf(row), value('exclusiveArea'), row.otherTypeNames, Boolean(row.housingTypeName))
 }
 /** 행이 연결할 단지 주택타입의 공고문 이름. PDF 주택타입 열 이름, 없으면 저장할 공고 표기의 첫 표기(신청자 표기 제외)다. */
 export function housingTypeNameOf(row: RowReview) {
@@ -230,6 +234,7 @@ export function leavesGroup(proposal: Pick<RowProposal, 'destination' | 'superse
     .every(row => proposal.supersedes?.includes(row.key))
 }
 export function createRowReview(extraction: Extraction, index: number, proposal: RowProposal, workspace: JsonWorkspace): RowReview {
+  const shared = rowCountGroups(extraction, index)
   const source = extraction.supplyRows[index], current = workspace.supply.rows.find(row => row.key === proposal.destination)
   const targets = defaultTargetDestinations({ targets: source.targets }, current)
   const subtypes = source.subtypes.length ? subtypeReviews(extraction, index, proposal) : undefined
@@ -249,12 +254,14 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
   const area = source.values.exclusiveArea, now = proposal.candidates.find(type => type.id === current?.housingTypeId)
   const housingTypeName = text(source.values.houseTypeName) ?? null, typeNameForLink = createdTypeName(housingTypeName ?? source.typeName ?? '')
   const others = otherTypeNames(extraction, index)
-  const linked = !subtypes && areaValue(area) && typeNameForLink ? announcementHousingType(proposal.candidates, typeNameForLink, area, others) : null
+  const linked = !subtypes && areaValue(area) && typeNameForLink ? announcementHousingType(proposal.candidates, typeNameForLink, area, others, housingTypeName !== null) : null
   const relink = Boolean(current?.housingTypeId != null && !subtypes && areaValue(area) && typeNameForLink && (now ? linked?.id !== now.id : true))
   const target = relink ? linked : null
   if (relink) {
     const type = rowCells.find(cell => cell.field === 'housingTypeId')!
-    const note = target ? `저장할 곳의 지금 주택타입이 공고문 주택타입 '${typeNameForLink}'과 달라 '${target.name}'에 연결합니다.`
+    const sameNamed = now && createdTypeName(now.name) === typeNameForLink && target && target.id !== now.id
+    const note = sameNamed ? `지금 주택타입 '${now.name}'(${now.exclusiveArea}㎡)의 전용면적이 공고문 ${String(area)}㎡와 달라 같은 면적의 '${target.name}'에 연결합니다.`
+      : target ? `저장할 곳의 지금 주택타입이 공고문 주택타입 '${typeNameForLink}'과 달라 '${target.name}'에 연결합니다.`
       : `저장할 곳의 지금 주택타입이 공고문 주택타입 '${typeNameForLink}'과 달라(공고문이 그 주택타입을 따로 적었거나 같은 집을 찾지 못함), 저장하면 '${typeNameForLink}' 주택타입을 새로 만들어 연결합니다.`
     Object.assign(type, { note, extracted: { ...type.extracted, note } })
   }
@@ -277,8 +284,11 @@ export function createRowReview(extraction: Extraction, index: number, proposal:
     Object.assign(count, { state: 'confirm', note, extracted: { ...count.extracted, state: 'confirm', note } })
   }
   return syncRepresentative({ proposal, include: true, reviewed: false, key: current?.key ?? crypto.randomUUID(), cells: rowCells, subtypes, housingTypeName, otherTypeNames: others, ...relink ? { relinkTo: target?.id ?? 'new' as const } : {},
-    targets: source.targets.map((target, at) => ({ destination: targets[at], cells: cells(extraction, `supplyRows[${index}].targets[${at}]`, targetFields, target,
-      current?.targets.find(item => (item.id ? String(item.id) : item.key) === targets[at]) as unknown as JsonObject) })) })
+    targets: source.targets.map((target, at) => {
+      const values = cells(extraction, `supplyRows[${index}].targets[${at}]`, targetFields, target, current?.targets.find(item => (item.id ? String(item.id) : item.key) === targets[at]) as unknown as JsonObject)
+      markSharedCells(values, shared.get(at), members => members.map(member => String(source.targets[member]?.target ?? `대상 ${member + 1}`)))
+      return { destination: targets[at], cells: values }
+    }) })
 }
 /**
  * 저장할 곳을 바꾼 제안으로 공급행 검토를 다시 만든다(단지 정하기, 저장할 곳 바꾸기). 관리자가 고른 칸 값은 이어받고, 대상 대응은
@@ -329,22 +339,31 @@ export function currentReceptionPlaces(workspace: JsonWorkspace): JsonObject[] {
   return Array.isArray(places) ? places.filter(place => place !== null && typeof place === 'object' && !Array.isArray(place)) as JsonObject[] : []
 }
 const placeName = (value: unknown) => typeof value === 'string' ? value.replace(/\s+/g, '').toLowerCase() : ''
+const methodNote = '주소만 있고 인터넷 주소가 없어 현장 접수로, 또는 인터넷 주소만 있어 인터넷 접수로 읽었습니다. 공고문과 다르면 고치세요.'
 /**
- * PDF 접수처를 접수 방식과 이름이 같은 지금 접수처와 짝짓는다. 이름이 다른 접수처끼리 짝지으면 PDF에 없는 칸이 지금 접수처 값으로 남아
- * 다른 접수처의 주소·연락처가 섞이므로, 짝이 없으면 새 접수처로 더한다. PDF에 없는 지금 접수처는 그대로 두되 관리자가 뺄 수 있다.
- * 이름·방식을 읽지 못한 새 접수처는 기본으로 빼 둔다. 순서는 지금 접수처 순서를 지키고 새 접수처를 PDF 순서로 뒤에 붙인다.
+ * PDF 접수처를 지금 접수처와 짝짓는다. 방식·이름이 같은 접수처를 먼저, 없으면 같은 곳(도로명+건물번호·URL 호스트, receptionPlaces.samePlace)인
+ * 접수처를 고른다. LH 원천은 같은 곳을 다른 이름으로 주므로(관리사무소 ↔ 평택송화단지 아파트 관리사무소) 이름만으로 짝지으면 같은 곳이 두 번 저장된다.
+ * 주소가 다른 접수처끼리는 짝짓지 않는다(다른 접수처의 주소·연락처가 섞인다). 짝이 없으면 새 접수처로 더한다.
+ * PDF에 없는 지금 접수처는 그대로 두되, 남길 접수처와 같은 곳이면 중복으로 기본에서 뺀다. 이름·방식을 읽지 못한 새 접수처도 기본으로 빼 둔다.
+ * 순서는 지금 접수처 순서를 지키고 새 접수처를 PDF 순서로 뒤에 붙인다.
  */
 function receptionReviews(extraction: Extraction, workspace: JsonWorkspace): ReceptionReview[] {
   const current = currentReceptionPlaces(workspace), used = new Set<number>()
-  const reviews: ReceptionReview[] = extraction.receptionPlaces.map((place, index) => {
-    const existing = current.findIndex((item, at) => !used.has(at) && item.method === place.method && placeName(item.name) !== '' && placeName(item.name) === placeName(place.name))
+  const unused = (match: (item: JsonObject) => boolean) => current.findIndex((item, at) => !used.has(at) && match(item))
+  const reviews: ReceptionReview[] = extraction.receptionPlaces.map((source, index) => {
+    const place: JsonObject = { ...source, method: normalizedMethod(source) as JsonObject[string] }
+    let existing = unused(item => item.method === place.method && placeName(item.name) !== '' && placeName(item.name) === placeName(place.name))
+    if (existing < 0) existing = unused(item => samePlace(item, place))
     if (existing >= 0) used.add(existing)
     const values = cells(extraction, `receptionPlaces[${index}]`, receptionFields, place, existing >= 0 ? current[existing] : {})
+    if (place.method !== source.method) Object.assign(values.find(cell => cell.field === 'method')!, { note: methodNote })
     const readable = values.filter(cell => ['name', 'method'].includes(cell.field)).every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved', 'invalid'].includes(cell.state))
     return { extracted: index, existing: existing >= 0 ? existing : null, include: existing >= 0 || readable, cells: values }
   })
   current.forEach((place, index) => {
-    if (!used.has(index)) reviews.push({ extracted: null, existing: index, include: true, cells: cells(extraction, `currentReceptionPlaces[${index}]`, receptionFields, {}, place) })
+    if (used.has(index)) return
+    const twin = duplicateOf(current, index, at => used.has(at))
+    reviews.push({ extracted: null, existing: index, include: twin === null, duplicateOf: twin, cells: cells(extraction, `currentReceptionPlaces[${index}]`, receptionFields, {}, place) })
   })
   return reviews.sort((left, right) => (left.existing ?? current.length + (left.extracted ?? 0)) - (right.existing ?? current.length + (right.extracted ?? 0)))
 }
@@ -716,7 +735,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
     // 세부 타입을 함께 연결하지 않는 행은 대표가 그대로면 저장된 연결을 유지하고 바뀌면 대표만 남기도록 목록을 보내지 않는다.
     if (!subtypes) row.linkedHousingTypes = undefined
     if (entry.cells.some(cell => ['exclusiveArea', 'supplyArea'].includes(cell.field) && cell.selected)) row.areaOverride = true
-    const selectedTargets = new Set<string>()
+    const selectedTargets = new Set<string>(), shared = rowCountGroups(review.extraction, index)
     for (const [at, target] of entry.targets.entries()) {
       if (target.destination === 'exclude') continue
       if (!target.destination) throw new ReviewError(`${row.typeName}: 수정할 기존 임대조건을 선택하거나 새 임대조건으로 추가하세요.`, `row:${index}`)
@@ -729,8 +748,10 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
       // 소득 유무 표기는 공고마다 달라(소득無·소득(×)) 단지에 쌓이는 대상 이름을 하나로 맞춘다.
       if (next.target) next.target = canonicalTarget(next.target)
       if (!next.target?.trim()) throw new ReviewError(`${row.housingComplexName ?? row.complexName} ${rowName(review, index)} 조건 ${at + 1}: 공급 대상 이름을 입력하세요.`, `target:${index}:${at}`)
+      applySharedCounts(next, shared.get(at))
       if (!stored) row.targets.push(next)
     }
+    dropLoneGroups(row.targets)
     // 대상별 모집수를 합해 볼 수 있는 행은 합계가 행 모집수를 넘으면 서버가 거절한다. 같은 대상을 새 임대조건으로 겹쳐 넣었을 때 생긴다.
     const targetSum = row.targets.filter(target => !target.excluded).reduce((sum, target) => sum + (target.householdCount ?? 0), 0)
     if (row.targetCountsComparable && row.householdCount !== null && targetSum > row.householdCount) {

@@ -44,9 +44,24 @@ export type AnnouncementType = { name: string; exclusiveArea: unknown }
  * 주택타입이 이것 하나이며, 그 이름을 이 공고의 다른 주택타입(others)이 쓰지 않을 때 그것이다. 이름 형식만 다른 같은 집(단지 '26' ↔ 공고문
  * '26A')은 잇고, 공고문이 같은 면적에 따로 적은 주택타입(55C-1·55D-1, 36A·36B)은 잇지 않는다. 없으면 null이고 저장할 때 새로 만든다.
  */
-export function announcementHousingType(types: MatchingHousingType[], name: string | null | undefined, exclusiveArea: unknown, others: AnnouncementType[] = []): MatchingHousingType | null {
+export function announcementHousingType(types: MatchingHousingType[], name: string | null | undefined, exclusiveArea: unknown, others: AnnouncementType[] = [],
+  fromTypeColumn = true): MatchingHousingType | null {
   const named = namedHousingType(types, name, exclusiveArea)
-  if (named) return named
+  // 주택타입 열이 없는 공고문은 신청형 이름을 쓴다. 병합 칸 하나('46')가 면적이 다른 주택타입 여럿(45.79㎡·46.22㎡)을 덮을 수 있어,
+  // 이름이 같은 주택타입의 면적이 0.1㎡ 이상 다르면 면적이 같은 주택타입을 먼저 찾는다(평택송화 46형이 46.22㎡ 주택타입을 45.79㎡ 값으로 덮은 문제).
+  // 그보다 작은 차이(59.88 ↔ 59.87)는 면적 표기 차이로 보고 이름이 같은 주택타입에 잇는다.
+  if (named && (fromTypeColumn || !farArea(named.exclusiveArea, exclusiveArea))) return named
+  return sameAreaType(types, exclusiveArea, others) ?? named
+}
+
+/** 두 면적이 표기 차이를 넘어 다른 집인지(0.1㎡ 이상). 한쪽을 모르면 다르다고 보지 않는다. */
+function farArea(left: unknown, right: unknown) {
+  const a = areaKey(left), b = areaKey(right)
+  return a !== null && b !== null && Math.abs(a - b) >= 10
+}
+
+/** 면적이 같은 단지 주택타입이 하나뿐이고 다른 공고문 주택타입이 그 면적·이름을 쓰지 않으면 그것이다. */
+function sameAreaType(types: MatchingHousingType[], exclusiveArea: unknown, others: AnnouncementType[]): MatchingHousingType | null {
   if (others.some(other => sameArea(other.exclusiveArea, exclusiveArea))) return null
   const free = types.filter(type => sameArea(type.exclusiveArea, exclusiveArea) && !others.some(other => sameTypeName(type.name, other.name, type.exclusiveArea, other.exclusiveArea)))
   return free.length === 1 ? free[0] : null
