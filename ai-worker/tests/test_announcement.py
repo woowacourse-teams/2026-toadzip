@@ -896,3 +896,36 @@ def test_two_different_addresses_for_one_complex_in_the_supply_table_stay_unreso
     assert tree["data"]["complexes"][0]["address"] is None
     assert any(item["path"] == "complexes[0].address" and "소재지" in item["reason"]
                for item in tree["data"]["unresolvedFields"])
+
+
+@pytest.mark.parametrize("names, lh_labels, first_confirmed", [
+    # 모델이 블록마다 다른 이름을 냈다. 표 위 가장 가까운 제목이라 확인되고 공급행이 따로 남는다.
+    (("광주선운2 A-1블록", "광주선운2 A-3블록"), (), True),
+    # 모델이 두 행 모두 A-1블록으로 냈다. LH 단지명에 A-3블록이 있어 A-3블록 표의 행은 확인되지 않는다.
+    (("광주선운2 A-1블록", "광주선운2 A-1블록"), ("광주선운2 A-1블록", "광주선운2 A-3블록"), False),
+    # LH 행도 없이 한 이름만 냈다. 표 위에서 찾히는 후보가 하나뿐이라 가장 가까운지 가릴 수 없어 제목 대조를 하지 않는다.
+    (("광주선운2 A-1블록", "광주선운2 A-1블록"), (), False),
+    # 한 행에만 이름을 냈다. LH 단지명이 후보로 들어와야(작업 입력 → 공급 단계 → 조립) 가장 가까운 제목임을 가린다.
+    (("광주선운2 A-1블록", ""), ("광주선운2 A-1블록", "광주선운2 A-3블록"), True),
+    (("광주선운2 A-1블록", ""), (), False),
+])
+def test_block_heading_complex_names_are_checked_against_the_nearest_heading(names, lh_labels, first_confirmed):
+    from test_pages import block_heading_tables_pdf
+    rows = [{"rowIds": [row_id], "complexName": name, "housingType": "55B-1", "target": "신혼부부", "reserveCount": 20}
+            for row_id, name in zip(("P1:T1:R2", "P1:T2:R2"), names)]
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []}}
+    job_input = {"sourceSupplyRows": [{"source": "LH", "order": index, "complexLabel": label, "typeName": "55B-1",
+                                       "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": "20"}
+                                      for index, label in enumerate(lh_labels)]}
+
+    result = AnnouncementPdfExtractor(StageReplyModel({"data": {"rows": rows}, "sharedCounts": []}, notice)).extract(
+        job(block_heading_tables_pdf(), job_input))
+
+    tree = json.loads(result["json"])
+    unconfirmed = {item["path"] for item in tree["data"]["unresolvedFields"]}
+    assert ("supplyRows[0].complexReference.sourceComplexName" not in unconfirmed) is first_confirmed
+    if first_confirmed:
+        assert tree["data"]["supplyRows"][0]["complexReference"]["sourceComplexName"] == names[0]
+    if names == ("광주선운2 A-1블록", "광주선운2 A-3블록"):
+        # 두 블록의 55B-1이 공급행 하나로 합쳐지지 않고 따로 남는다.
+        assert [row["complexReference"]["sourceComplexName"] for row in tree["data"]["supplyRows"]] == list(names)

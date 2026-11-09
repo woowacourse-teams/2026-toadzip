@@ -290,6 +290,39 @@ def test_merged_complex_cell_names_every_row_it_spans():
     assert [row.values.get("complexName") for row in table.rows[1:]] == ["동탄2 A40BL", "동탄2 A40BL", "동탄2 A50BL", None]
 
 
+def test_merged_target_and_rent_cells_belong_to_every_housing_type_row_but_merged_counts_do_not():
+    # 광주선운2: 55A-1·55B-1이 공급대상·임대조건 칸 하나를 함께 쓰고 예비자 수는 형마다 따로다. 전환 한도는 위 행이 증액(+),
+    # 아래 행이 감액(-) 줄이라 아래 행의 증액 한도도 위 행 값이다. 세로로 병합된 수량 칸(55C-1 예비자 수)은 이어받지 않는다.
+    rows = [
+        ["공급형별", "공급대상", "대기중인 예비자수", "금회모집 예비자수", "임대보증금(천원)", "월임대료(원)",
+         "전환가능 보증금 한도액(천원)", None],
+        ["55A-1", "신혼부부·한부모가족", "-", "20", "67,400", "342,610", "(+)", "41,000"],
+        ["55B-1", None, "-", "20", None, None, "(-)", "55,000"],
+        ["55C-1", None, "-", None, None, None, "(-)", "55,000"],
+    ]
+
+    lower, merged_count = tables.SupplyTable.of(4, 2, rows, None, False).rows[2:]
+
+    assert {name: lower.values.get(name) for name in ("target", "reserveCount", "rentalDeposit", "monthlyRent",
+                                                      "convertedDeposit")} == {
+        "target": "신혼부부·한부모가족", "reserveCount": "20", "rentalDeposit": "67,400", "monthlyRent": "342,610",
+        "convertedDeposit": "41,000"}
+    assert "reserveCount" not in merged_count.values
+    assert merged_count.values["target"] == "신혼부부·한부모가족"
+
+
+def test_lower_row_keeps_its_own_increase_limit_when_rent_cells_are_merged():
+    rows = [
+        ["공급형별", "공급대상", "금회모집 예비자수", "임대보증금(천원)", "월임대료(원)", "전환가능 보증금 한도액(천원)", None],
+        ["55A-1", "신혼부부", "20", "67,400", "342,610", "(+)", "41,000"],
+        ["55B-1", None, "20", None, None, "(+)", "39,000"],
+    ]
+
+    lower = tables.SupplyTable.of(4, 2, rows, None, False).rows[2]
+
+    assert lower.values["convertedDeposit"] == "39,000"
+
+
 def test_supply_area_parent_header_over_exclusive_and_common_columns_is_not_the_supply_area():
     rows = [
         ["블록", "주택형", "세대당 주택면적(㎡)", None, "건설호수"],

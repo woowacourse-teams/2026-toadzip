@@ -5,6 +5,7 @@
 """
 
 import re
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from ai_worker import checks
@@ -24,8 +25,10 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
                       evidence: list[dict], unresolved: list[dict],
                       source_row_values: dict[str, dict[str, str]] | None = None,
                       target_values: dict[str, dict[str, dict[str, str]]] | None = None,
-                      block_counts: dict[str, dict[str, int]] | None = None) -> list[str]:
-    """block_counts는 주택타입 여럿을 묶은 주택형 공급행의 경로별 수량 합이다. 그 수량은 행 칸 대신 이 합과 대조한다.
+                      block_counts: dict[str, dict[str, int]] | None = None,
+                      headings: "Headings | None" = None) -> list[str]:
+    """headings는 단지명 열이 없는 표의 단지명을 표 위 가장 가까운 제목과 대조할 때 쓴다(Headings).
+    block_counts는 주택타입 여럿을 묶은 주택형 공급행의 경로별 수량 합이다. 그 수량은 행 칸 대신 이 합과 대조한다.
     공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
     target_values는 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표의 행별 묶음 칸이다(target_cells).
     확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 경고는 근거를 확인하지 못한 경로마다 한 줄이고,
@@ -53,7 +56,7 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
         )
         if supported and (not source_pages or evidence_page in source_pages):
             values = source_row_values or {}
-            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values)
+            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values, headings)
             _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, target_values,
                                          (block_counts or {}).get(path, {}))
             continue
@@ -107,14 +110,17 @@ def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
 def _check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
                                 source_row_values: dict[str, dict[str, str]],
                                 unresolved: list[dict],
-                                target_values: dict[str, dict[str, dict[str, str]]] | None) -> None:
-    """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다."""
+                                target_values: dict[str, dict[str, dict[str, str]]] | None,
+                                headings: "Headings | None") -> None:
+    """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다. 단지명 칸이 없는 행의 단지명은 표 위 가장 가까운 제목과 비교한다."""
     for values, field, source_field in _supply_string_fields_at_path(path, rows):
         value = values.get(field)
         if not isinstance(value, str) or not value:
             continue
         if any(normalize_source_text(cell) == normalize_source_text(value)
                for cell in source_texts(source_field, row_ids, source_row_values, target_values)):
+            continue
+        if source_field == "complexName" and headings is not None and headings.confirms(value, row_ids, source_row_values):
             continue
         values[field] = None if field == "sourceHousingTypeName" else ""
         field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"
@@ -153,6 +159,47 @@ def _supply_string_fields_at_path(path: str, rows: list[dict]) -> list[tuple[dic
     if target_index >= len(targets):
         return []
     return [(targets[target_index], "target", "target")]
+
+
+@dataclass(frozen=True)
+class Headings:
+    """단지명 열 없이 블록 제목(■ 광주선운2 A-1블록) 아래 표를 둔 공고의 단지명 대조. above는 행 ID → 같은 쪽에서 그 표 위에
+    있는 글, names는 대조할 단지명 후보(모델 응답 단지명과 LH 공급행의 단지명)다. 모델은 표 위 제목을 보지 못하고 LH 행에서
+    단지명을 얻으므로, LH 단지명을 후보에 넣어야 모든 행에 한 블록 이름을 붙인 응답을 거를 수 있다."""
+
+    above: dict[str, str]
+    names: tuple[str, ...]
+    # 표 위 글들에서 찾히는 서로 다른 후보가 둘 이상인지. 후보가 하나뿐이면(LH 행이 없거나 LH 단지명이 제목과 글자가 다른데
+    # 모델이 모든 행에 한 블록 이름을 붙인 경우) 가장 가까운지 가릴 수 없어 대조하지 않는다. 같은 블록의 두 표기
+    # (A-1블록 ⊂ 광주선운2 A-1블록)는 하나로 센다.
+    usable: bool = field(init=False, default=False)
+
+    def __post_init__(self):
+        texts = {normalize_source_text(text) for text in self.above.values()}
+        found = {candidate for candidate in {normalize_source_text(item) for item in self.names} - {""}
+                 if any(candidate in text for text in texts)}
+        distinct = {candidate for candidate in found if not any(candidate != other and candidate in other for other in found)}
+        object.__setattr__(self, "usable", len(distinct) > 1)
+
+    def confirms(self, name: object, row_ids, row_values: dict[str, dict[str, str]]) -> bool:
+        """단지명 칸이 없는 행의 단지명이 행 ID 표 위의 가장 가까운 단지명인지. 단지명 칸이 있는 행은 칸과 대조하므로 아니다."""
+        if not self.usable or not isinstance(name, str) or not name.strip() \
+                or source_texts("complexName", row_ids, row_values):
+            return False
+        return any(nearest_heading(name, self.above.get(row_id, ""), self.names) for row_id in row_ids)
+
+
+def nearest_heading(name: str, heading: str, names) -> bool:
+    """표 위 글(heading)에서 name이 후보 단지명 가운데 표에 가장 가깝게(가장 늦게) 끝나는지. 끝이 같으면 긴 이름이다.
+    A-3블록 표의 행에 위쪽 A-1블록 이름을 붙인 값, 블록 제목 안에 들어 있는 지구명(광주선운2)만 낸 값은 받지 않는다."""
+    text = normalize_source_text(heading)
+    ends = {}
+    for candidate in {normalize_source_text(item) for item in (*names, name) if isinstance(item, str)} - {""}:
+        at = text.rfind(candidate)
+        if at >= 0:
+            ends[candidate] = at + len(candidate)
+    own = normalize_source_text(name)
+    return own in ends and max(ends, key=lambda candidate: (ends[candidate], len(candidate))) == own
 
 
 def normalize_source_text(value: str) -> str:

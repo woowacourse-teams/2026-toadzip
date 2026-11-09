@@ -41,6 +41,77 @@ def test_compact_supply_rows_are_assembled_from_cell_values_into_manager_contrac
     }
 
 
+SEONUN_RENT_CELLS = [
+    ["공급형별", "공급대상", "대기중인 예비자수", "금회모집 예비자수", "임대보증금(천원)", "월임대료(원)",
+     "전환가능 보증금 한도액(천원)", None],
+    ["55A-1 (주거약자)", "신혼부부· 한부모가족", "-", "20", "67,400", "342,610", "(+)", "41,000"],
+    ["55B-1 (주거약자)", None, "-", "20", None, None, "(-)", "55,000"],
+]
+
+
+def seonun_pages(headings: dict[str, str] | None = None) -> pages.PromptPages:
+    """광주선운2 A-1블록 임대조건표(대상·보증금·월세 칸이 두 형에 걸쳐 병합)를 표 판독기로 읽은 입력."""
+    rows = tables.SupplyTable.of(4, 2, SEONUN_RENT_CELLS, None, False).rows
+    return pages.PromptPages(
+        rental_rows=0, supply_text="table", supply_pages=[4],
+        supply_row_ids=frozenset(row.id for row in rows), supply_row_text={row.id: row.text for row in rows},
+        notice_text="body", notice_pages=[1], complex_candidates=[], table_structure_fallback=False,
+        ambiguous_supply_tables=False, supply_row_values={row.id: row.values for row in rows},
+        supply_row_headings=headings or {})
+
+
+def test_lower_housing_type_under_merged_target_and_rent_cells_keeps_its_target_and_amounts():
+    # 병합 칸 아래 형(55B-1)의 대상·금액을 원문 대조가 지우면 대상이 '전체'가 되고 보증금·월세가 빈다.
+    item = {"complexName": "", "target": "신혼부부· 한부모가족", "reserveCount": 20, "rentalDeposit": 67400000,
+            "monthlyRent": 342610, "convertedDeposit": 41000000}
+    compact = {"data": {"rows": [{**item, "rowIds": ["P4:T2:R2"], "housingType": "55A-1 (주거약자)"},
+                                 {**item, "rowIds": ["P4:T2:R3"], "housingType": "55B-1 (주거약자)"}]}}
+
+    tree, _ = supply_assembly.assemble(compact, seonun_pages())
+
+    assert [[(target["target"], target["reserveCount"], target["rentalDeposit"], target["monthlyRent"],
+              target["convertedDeposit"]) for target in row["targets"]] for row in tree["data"]["supplyRows"]] == [
+        [("신혼부부·한부모가족", 20, 67400000, 342610, 41000000)]] * 2
+    assert not [item for item in tree["data"]["unresolvedFields"] if ".targets[" in item["path"]]
+
+
+def test_complex_names_from_block_headings_keep_same_type_rows_of_two_blocks_apart():
+    # 표에 단지명 열이 없고 블록 제목이 표 위에 있다. 단지명을 지우면 두 블록의 55B-1이 화면에서 한 공급행으로 접힌다.
+    above_a1 = "■ 광주선운2 A-1블록 (총 336세대)\n[금회모집 임대조건]"
+    selected = pages.PromptPages(
+        rental_rows=0, supply_text="table", supply_pages=[4],
+        supply_row_ids=frozenset({"P4:T2:R4", "P4:T4:R4"}),
+        supply_row_text={"P4:T2:R4": "55B-1\t신혼부부· 한부모가족\t-\t20", "P4:T4:R4": "55B-1\t신혼부부· 한부모가족\t-\t20"},
+        notice_text="body", notice_pages=[1], complex_candidates=[], table_structure_fallback=False,
+        ambiguous_supply_tables=False,
+        supply_row_values={row_id: {"housingType": "55B-1", "target": "신혼부부· 한부모가족", "reserveCount": "20"}
+                           for row_id in ("P4:T2:R4", "P4:T4:R4")},
+        supply_row_headings={"P4:T2:R4": above_a1,
+                             "P4:T4:R4": f"{above_a1}\n55B-1\n■ 광주선운2 A-3블록 (총 147세대)"},
+    )
+    def compact(a3_name):
+        return {"data": {"rows": [
+            {"rowIds": [row_id], "complexName": name, "housingType": "55B-1", "target": "신혼부부· 한부모가족",
+             "reserveCount": 20}
+            for row_id, name in (("P4:T2:R4", "광주선운2 A-1블록"), ("P4:T4:R4", a3_name))]}}
+
+    tree, _ = supply_assembly.assemble(compact("광주선운2 A-3블록"), selected)
+
+    assert [row["complexReference"]["sourceComplexName"] for row in tree["data"]["supplyRows"]] == [
+        "광주선운2 A-1블록", "광주선운2 A-3블록"]
+    assert [item["sourceComplexName"] for item in tree["data"]["complexes"]] == ["광주선운2 A-1블록", "광주선운2 A-3블록"]
+    assert not [item for item in tree["data"]["unresolvedFields"] if "sourceComplexName" in item["path"]]
+
+    # 모델이 두 블록 행을 모두 A-1블록으로 내도 원천(LH) 단지명에 A-3블록이 있으면 A-3블록 표 행의 A-1블록은 확인되지 않는다.
+    mislabeled, _ = supply_assembly.assemble(compact("광주선운2 A-1블록"), selected,
+                                            source_names=["광주선운2 A-1블록", "광주선운2 A-3블록"])
+
+    # 같은 이름·같은 형이라 한 공급행으로 묶이고(기존 동작), 단지명은 미확인으로 남아 화면이 확인을 요구한다.
+    assert [row["complexReference"]["sourceComplexName"] for row in mislabeled["data"]["supplyRows"]] == ["광주선운2 A-1블록"]
+    assert "supplyRows[0].complexReference.sourceComplexName" in {
+        item["path"] for item in mislabeled["data"]["unresolvedFields"]}
+
+
 def test_compact_target_removes_extraction_whitespace_around_parentheses():
     selected = pages.PromptPages(
         rental_rows=0, supply_text="table", supply_pages=[5],

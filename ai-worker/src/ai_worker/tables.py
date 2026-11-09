@@ -347,24 +347,39 @@ def _table_row_field_values(rows: list[list[str | None]], row_index: int,
         else:
             del values["convertedDeposit"]
     # 단지명 칸이 세로로 병합되면 아래 행 칸은 None이다(실제 빈칸은 ''). 병합 칸은 위 행 값과 같은 칸이라 이어받는다.
-    column = columns.get("complexName")
-    if column is not None and "complexName" not in values and column < len(row) and row[column] is None:
-        merged = _merged_value_above(rows, row_index, column)
-        if merged:
-            values["complexName"] = merged
+    # 자기 주택형 칸이 있는 행은 공급대상·임대조건 칸도 이어받는다(광주선운2: 55A-1·55B-1이 대상·보증금·월세 칸 하나를
+    # 함께 쓴다). 주택형 칸이 없는 행은 위 행의 이어지는 줄(전환 감액 줄 등)이라 대상·금액을 이어받지 않는다. 수량 칸은
+    # 이어받지 않는다. 세로로 병합된 수량은 여러 행이 함께 쓰는 공통 수량이라 행마다 같은 수를 두면 중복으로 센다
+    # (supply_assembly._merged_count_rows).
+    own_type = bool(values.get("housingType"))
+    for name in ("complexName", *(("target", "rentalDeposit", "monthlyRent") if own_type else ())):
+        column = columns.get(name)
+        if column is not None and name not in values and column < len(row) and row[column] is None:
+            origin = _merged_origin_above(rows, row_index, column)
+            if origin is not None:
+                values[name] = rows[origin][column]
+    # 보증금 칸이 병합된 형 행은 위 행의 임대조건을 함께 쓴다. 전환 한도의 증액(+) 줄이 병합을 시작한 행에만 있으면(아래 행은
+    # 감액(-) 줄) 그 증액 한도가 이 행의 한도다.
+    deposit, converted = columns.get("rentalDeposit"), columns.get("convertedDeposit")
+    if (own_type and converted is not None and "convertedDeposit" not in values and deposit is not None
+            and deposit < len(row) and row[deposit] is None):
+        origin = _merged_origin_above(rows, row_index, deposit)
+        limit = increase_limit(rows[origin], converted) if origin is not None else None
+        if limit:
+            values["convertedDeposit"] = limit
     _add_money_units(values, columns, table_column_headers(rows[:min(row_index, 6)], max(map(len, rows))))
     return values
 
 
-def _merged_value_above(rows: list[list[str | None]], row_index: int, column: int) -> str | None:
-    """세로 병합 칸의 값. 위로 올라가며 None이 아닌 첫 칸을 찾고, 머리글 줄이나 실제 빈칸을 만나면 값이 없다."""
+def _merged_origin_above(rows: list[list[str | None]], row_index: int, column: int) -> int | None:
+    """세로 병합 칸이 시작하는 행. 위로 올라가며 None이 아닌 첫 칸을 찾고, 머리글 줄이나 실제 빈칸을 만나면 없다."""
     for above in range(row_index - 1, -1, -1):
         cell = rows[above][column] if column < len(rows[above]) else ""
         if cell is None:
             continue
         if _is_header_row(rows[above]) or not cell.strip():
             return None
-        return cell
+        return above
     return None
 
 
