@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { getUser, listUsers } from './api'
 
+vi.mock('../../api/apiBaseUrl', () => ({ getApiBaseUrl: () => 'http://localhost:8080' }))
+
 const user = { id: 7, email: null, provider: 'UNKNOWN', createdAt: '2026-10-04T09:12:34.123456' }
 function respond(value: unknown, status = 200) {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } }))
