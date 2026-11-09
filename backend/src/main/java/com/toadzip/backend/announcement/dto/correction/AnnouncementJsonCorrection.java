@@ -39,7 +39,8 @@ public final class AnnouncementJsonCorrection {
     /**
      * 공고문에서 읽은 공급행 주택형의 값. 저장할 때 그 행이 고른 주택형(새로 만드는 주택형 포함)에 반영한다.
      * 연결 주소가 없으면 대표 주택형, linkedHousingTypeId는 함께 모집하는 기존 주택형, linkedNewHousingTypeArea는
-     * 함께 모집하는 새 주택형(전용면적)이다. 둘 중 하나만 준다.
+     * 함께 모집하는 새 주택형(전용면적)이다. 둘 중 하나만 준다. 한 행이 같은 면적의 새 주택형을 여럿 만들면(59A·59A1)
+     * linkedNewHousingTypeName(새 주택형 이름)으로 그중 하나를 가리킨다.
      */
     public record HousingTypeValue(@NotBlank @Size(max = 64) String rowKey,
             @Size(max = 255) String name,
@@ -48,9 +49,10 @@ public final class AnnouncementJsonCorrection {
             @PositiveOrZero Long basicDeposit,
             @PositiveOrZero Long basicMonthlyRent,
             @Positive Long linkedHousingTypeId,
-            @Positive @Digits(integer = 6, fraction = 4) BigDecimal linkedNewHousingTypeArea) {
+            @Positive @Digits(integer = 6, fraction = 4) BigDecimal linkedNewHousingTypeArea,
+            @Size(max = 255) String linkedNewHousingTypeName) {
         public HousingTypeValue(String rowKey, String name, BigDecimal supplyArea, Integer householdCount) {
-            this(rowKey, name, supplyArea, householdCount, null, null, null, null);
+            this(rowKey, name, supplyArea, householdCount, null, null, null, null, null);
         }
     }
     public record TypeValues(String name, BigDecimal supplyArea, Integer householdCount, Long basicDeposit,

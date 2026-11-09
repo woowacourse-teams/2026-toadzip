@@ -12,7 +12,7 @@ export type HousingComplexCreateRequest = {
     latitude: number
     longitude: number
   }
-  totalHouseholdCount: number
+  totalHouseholdCount: number | null
   /** 입주 전 신규 단지는 준공일·건물 정보를 아직 모를 수 있다. */
   completionDate: string | null
   heatingType: string | null
@@ -44,13 +44,8 @@ export type AnnouncementCreateRequest = {
   applicationEndDate: string
   winnerAnnouncementDate: string
   originalUrl: string
-  receptionPlace: {
-    name: string
-    method: string
-    address: string | null
-    contact: string
-    url: string | null
-  }
+  /** 공고문에 나온 순서대로 한 곳 이상, 최대 20곳. */
+  receptionPlaces: ReceptionPlaceCreateRequest[]
   supplyRow: {
     sourceComplexName: string
     sourceHousingTypeName: string
@@ -59,6 +54,16 @@ export type AnnouncementCreateRequest = {
     supplyCategory: string
     totalSupplyHouseholdCount: number
   }
+}
+
+/** 인터넷 접수처는 연락처가 없을 수 있다. guidance는 그 접수처의 안내 한 줄이다. */
+export type ReceptionPlaceCreateRequest = {
+  name: string
+  method: string
+  address: string | null
+  contact: string | null
+  url: string | null
+  guidance: string | null
 }
 
 export type AnnouncementCreateResponse = {

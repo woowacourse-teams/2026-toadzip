@@ -181,6 +181,14 @@ const ANNOUNCEMENT_DETAIL = {
       phoneNumber: '1600-1004',
       url: null,
     },
+    {
+      name: '행복주택 견본주택',
+      method: 'VISIT',
+      address: '서울시 강남구 1',
+      phoneNumber: null,
+      url: null,
+      guidance: '인터넷 취약계층만 현장 접수',
+    },
   ],
   schedules: [
     {
@@ -891,7 +899,7 @@ describe('공공주택 응답 계약', () => {
       viewCount: 0,
       targets: [],
       supplyHouseholdCount: 0,
-      receptionPlaces: [{ address: null, url: null }],
+      receptionPlaces: [{ address: null, url: null }, { name: '행복주택 견본주택', guidance: '인터넷 취약계층만 현장 접수' }],
       schedules: [{ name: null, endAt: null }],
       attachments: [{ fileName: null, fileUrl: null }],
       supplyRows: [

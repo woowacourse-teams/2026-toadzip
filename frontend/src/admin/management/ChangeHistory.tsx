@@ -40,9 +40,15 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
     <div className="admin-pagination"><button disabled={page === 0 || busy} onClick={() => setPage(v => v-1)}>이전 이력</button><span>{page+1} 페이지</span><button disabled={items.length < 20 || busy} onClick={() => setPage(v => v+1)}>다음 이력</button></div></section>
 }
 function readValue(text:string): unknown { try { return JSON.parse(text) as unknown } catch { return text } }
+/** 이전 이력의 한 곳짜리 `receptionPlace` 객체를 새 `receptionPlaces` 목록의 접수처 1로 읽어, 이전·새 이력을 같은 칸으로 비교한다. */
+function withReceptionPlaces(value: unknown): unknown {
+  if (!isRecord(value) || !('receptionPlace' in value) || 'receptionPlaces' in value) return value
+  const { receptionPlace, ...rest } = value
+  return { ...rest, receptionPlaces: isRecord(receptionPlace) ? [receptionPlace] : [] }
+}
 function ChangedValues({ before, after }: { before: unknown; after: unknown }) {
-  const previous = new Map(storedDataRows(before).map(row => [row.path, row.value]))
-  const next = new Map(storedDataRows(after).map(row => [row.path, row.value]))
+  const previous = new Map(storedDataRows(withReceptionPlaces(before)).map(row => [row.path, row.value]))
+  const next = new Map(storedDataRows(withReceptionPlaces(after)).map(row => [row.path, row.value]))
   const paths = [...new Set([...previous.keys(), ...next.keys()])].filter(path => path !== 'version' && !path.startsWith('documentEvidence') && !path.startsWith('comparisonEvidence')
     && (previous.has(path) !== next.has(path) || JSON.stringify(previous.get(path)) !== JSON.stringify(next.get(path))))
   return <div className="admin-history-summary">

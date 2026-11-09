@@ -76,8 +76,8 @@ public class HousingComplex {
     @Embedded
     private Address address;
 
-    @Column(nullable = false)
-    private int totalHouseholdCount;
+    // 공고에서 확인하지 못한 전체 세대수는 0과 구분해 비워 둔다.
+    private Integer totalHouseholdCount;
 
     @Column(nullable = false)
     private String provider;
@@ -112,7 +112,7 @@ public class HousingComplex {
             String sourceComplexIdentifier,
             String supplyType,
             Address address,
-            int totalHouseholdCount,
+            Integer totalHouseholdCount,
             String provider,
             LocalDate completionDate,
             String heatingType,
@@ -127,7 +127,7 @@ public class HousingComplex {
         validateNotBlank(sourceComplexIdentifier, "원천 단지 식별자");
         validateNotBlank(supplyType, "공급유형");
         validateRequired(address, "주소");
-        validateNonNegative(totalHouseholdCount, "전체 세대수");
+        validateNonNegativeIfPresent(totalHouseholdCount, "전체 세대수");
         validateNotBlank(provider, "공급기관");
         validateNotBlankIfPresent(heatingType, "난방유형");
         validateNotBlankIfPresent(housingType, "주택유형");
@@ -155,7 +155,7 @@ public class HousingComplex {
             String sourceComplexIdentifier,
             String supplyType,
             Address address,
-            int totalHouseholdCount,
+            Integer totalHouseholdCount,
             String provider,
             LocalDate completionDate,
             String heatingType,
@@ -189,7 +189,7 @@ public class HousingComplex {
             String sourceComplexIdentifier,
             String supplyType,
             Address address,
-            int totalHouseholdCount,
+            Integer totalHouseholdCount,
             String provider,
             LocalDate completionDate,
             String heatingType,
@@ -220,7 +220,7 @@ public class HousingComplex {
             String name,
             String supplyType,
             Address address,
-            int totalHouseholdCount,
+            Integer totalHouseholdCount,
             String provider,
             LocalDate completionDate,
             String heatingType,
@@ -294,8 +294,8 @@ public class HousingComplex {
         adminUpdatedAt = java.time.Instant.now();
     }
 
-    public void adoptVerifiedMerge(int householdCount, String imageUrl, Integer moveOutCount) {
-        validateNonNegative(householdCount, "확인된 전체 세대수");
+    public void adoptVerifiedMerge(Integer householdCount, String imageUrl, Integer moveOutCount) {
+        validateNonNegativeIfPresent(householdCount, "확인된 전체 세대수");
         validateNonNegativeIfPresent(moveOutCount, "최근 1년 퇴거자 수");
         totalHouseholdCount = householdCount;
         this.imageUrl = imageUrl;
@@ -321,7 +321,7 @@ public class HousingComplex {
         return name.equals(incoming.name)
                 && supplyType.equals(incoming.supplyType)
                 && address.hasSameValues(incoming.address)
-                && totalHouseholdCount == incoming.totalHouseholdCount
+                && java.util.Objects.equals(totalHouseholdCount, incoming.totalHouseholdCount)
                 && provider.equals(incoming.provider)
                 && java.util.Objects.equals(completionDate, incoming.completionDate)
                 && java.util.Objects.equals(heatingType, incoming.heatingType)

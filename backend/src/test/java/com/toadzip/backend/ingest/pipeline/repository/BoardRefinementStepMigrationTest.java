@@ -27,7 +27,7 @@ class BoardRefinementStepMigrationTest {
     @Autowired private DataSource dataSource;
 
     @Test
-    void 기존_이력을_보존하면서_모든_단계_저장소에_두_기관_정제를_허용한다() throws Exception {
+    void 기존_이력을_보존하면서_모든_단계_저장소에_두_기관_수집_정제를_허용한다() throws Exception {
         try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA board_refinement_migration_test");
             statement.execute("SET search_path TO board_refinement_migration_test");
@@ -43,6 +43,7 @@ class BoardRefinementStepMigrationTest {
                         "MAP_GH_ANNOUNCEMENTS")).isInstanceOf(SQLException.class);
 
                 migrate(connection, "V20261104_06__board_announcement_refinement_steps.sql");
+                migrate(connection, "V20261107_01__board_announcement_collect_refine_steps.sql");
 
                 for (String column : List.of("current_step", "failed_step")) {
                     verifySteps(connection, "data_pipeline_executions", column);

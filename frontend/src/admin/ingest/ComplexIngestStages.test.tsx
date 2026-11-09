@@ -2,14 +2,15 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { DataPipelineControl } from './DataPipelineControl'
-import { getDataPipelineStatus, getInitialRegistration, refreshInitialRegistration, startDataPipeline, stopDataPipeline, type DataPipelineExecution, type DataPipelineType, type LocationSummaryImportReport, uploadLocationSummary } from './api'
+import { getDataPipelineStatus, getLocationPreparation, getInitialRegistration, refreshInitialRegistration, startDataPipeline, stopDataPipeline, type DataPipelineExecution, type DataPipelineType, type LocationSummaryImportReport, uploadLocationSummary } from './api'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(),
   getDataPipelineStatus: vi.fn(), startDataPipeline: vi.fn(), stopDataPipeline: vi.fn(), uploadLocationSummary: vi.fn(),
-  getInitialRegistration: vi.fn(), refreshInitialRegistration: vi.fn(),
+  getInitialRegistration: vi.fn(), refreshInitialRegistration: vi.fn(), getLocationPreparation: vi.fn(),
 }))
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.mocked(getLocationPreparation).mockResolvedValue({ counts: { READY: 0, INVALID_ADDRESS: 0, ADDRESS_NOT_FOUND: 0, COORDINATE_NOT_FOUND: 0, COORDINATE_CONVERSION_ERROR: 0 }, targets: [], totalElements: 0, page: 0, totalPages: 0 })
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type))
   localStorage.removeItem('toadzip:admin:initial-registration:page-size')
   vi.mocked(getInitialRegistration).mockResolvedValue({
@@ -58,7 +59,7 @@ it('가로 탭에 선택한 단계만 표시하고 각 실행 버튼은 한 곳�
   expect(screen.getByText('등록 확인 단지')).not.toBeVisible()
   expect(screen.getAllByRole('button', { name: '좌표 데이터 업로드', hidden: true })).toHaveLength(1)
   expect(screen.queryByRole('button', { name: '단지 수집·정제' })).not.toBeInTheDocument()
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
   select('3 단지 등록')
   expect(screen.queryByText(/현재 저장된 단지 원본 전체/)).not.toBeInTheDocument()
@@ -71,7 +72,7 @@ it('세 단계의 안내를 호버·포커스·클릭으로 열고 Escape나 영
   await show()
   for (const [tab, stage, text] of [
     ['1 원천 수집', '단지 원천 수집', '마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.'],
-    ['2 좌표 적재', '주소에 맞는 좌표 적재', '위치정보요약DB 월 전체분 ZIP을 업로드해 저장된 단지 원본의 주소에 맞는 좌표를 준비합니다.'],
+    ['2 주소·좌표 준비', '주소·좌표 준비', '위치정보요약DB ZIP으로 주소와 지도용 좌표를 확인하고, 보완할 단지는 주소 검색 또는 직접 입력으로 준비합니다.'],
     ['3 단지 등록', '단지 등록', '단지별 등록 여부와 다음에 필요한 작업을 확인하세요.'],
   ]) {
     select(tab)
@@ -116,7 +117,7 @@ it('방향키·Home·End로 탭을 선택하고 포커스를 옮긴다', async (
   const first = screen.getByRole('tab', { name: '1 원천 수집' })
   first.focus()
   fireEvent.keyDown(first, { key: 'ArrowRight' })
-  const second = screen.getByRole('tab', { name: '2 좌표 적재' })
+  const second = screen.getByRole('tab', { name: '2 주소·좌표 준비' })
   expect(second).toHaveFocus()
   expect(second).toHaveAttribute('aria-selected', 'true')
   fireEvent.keyDown(second, { key: 'End' })
@@ -133,28 +134,28 @@ it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지한다', async (
   let resolve: (value: LocationSummaryImportReport) => void = () => {}
   vi.mocked(uploadLocationSummary).mockReturnValue(new Promise(complete => { resolve = complete }))
   await show()
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   const input = screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')
   const zip = new File(['fixture'], 'summary.zip', { type: 'application/zip' })
   fireEvent.change(input, { target: { files: [zip] } })
   select('1 원천 수집')
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   fireEvent.click(screen.getByRole('button', { name: '좌표 데이터 업로드' }))
   select('1 원천 수집')
   expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeDisabled()
-  expect(screen.getByRole('tab', { name: '2 좌표 적재' })).toHaveAccessibleDescription('진행 중')
+  expect(screen.getByRole('tab', { name: '2 주소·좌표 준비' })).toHaveAccessibleDescription('진행 중')
   select('3 단지 등록')
   expect(screen.getByRole('button', { name: '대상 상태 확인' })).toBeDisabled()
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   expect(screen.getByText(/좌표 파일을 처리하고 있습니다/)).toBeVisible()
   await act(async () => resolve({ sourceFileName: 'summary.zip', textFileCount: 1, scannedRowCount: 4,
-    storedLocationCount: 2, replacedRowCount: 0, invalidatedMappingCandidateCount: 0, provinceCodes: ['11'],
+    preparedRoadAddressCount: 1, storedLocationCount: 2, replacedRowCount: 0, invalidatedMappingCandidateCount: 0, provinceCodes: ['11'],
     targetRoadAddressCount: 3, matchedRoadAddressCount: 2, unmatchedRoadAddressCount: 1 }))
   await screen.findByRole('region', { name: '좌표 적재 결과' })
   expect(uploadLocationSummary).toHaveBeenCalledExactlyOnceWith(zip)
   expect(startDataPipeline).not.toHaveBeenCalled()
   select('3 단지 등록')
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   expect(screen.getByRole('region', { name: '좌표 적재 결과' })).toBeVisible()
 })
 it.each(['complex-registration', 'complex-refinement'])('직접 연결된 %s는 단지 등록을 열고 쓰기 작업을 자동 실행하지 않는다', async hash => {
@@ -178,7 +179,7 @@ it('재진입 시 진행 중 수집을 복구하고 과거 정제 결과를 등�
   select('3 단지 등록')
   expect(within(screen.getByRole('tabpanel')).getByText('등록 확인 단지')).toBeVisible()
   expect(within(screen.getByRole('tabpanel')).queryByRole('group', { name: '실행 상태' })).not.toBeInTheDocument()
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeDisabled()
 })
 it('지난 정제 결과와 지원 종료된 실행 버튼을 단지 등록에 표시하지 않는다', async () => {
@@ -247,7 +248,7 @@ it('단계 탭을 오가도 등록 상태 필터·표시 건수·페이지를 �
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 0, 10))
   fireEvent.click(screen.getByRole('button', { name: '다음 대상' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 1, 10))
-  select('2 좌표 적재')
+  select('2 주소·좌표 준비')
   expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
   select('3 단지 등록')
   expect(screen.getByLabelText('진행 상태')).toHaveValue('READY')

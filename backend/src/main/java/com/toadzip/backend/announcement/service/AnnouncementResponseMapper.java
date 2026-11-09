@@ -101,7 +101,7 @@ final class AnnouncementResponseMapper {
                 aggregate.supplyComplexCount(),
                 aggregate.supplyHouseholdCount(),
                 announcement.getOriginalUrl(),
-                receptionPlaceResponses(announcement.getReceptionPlace()),
+                announcement.getReceptionPlaces().stream().map(this::receptionPlaceResponse).toList(),
                 schedules.stream().map(this::scheduleResponse).toList(),
                 attachments.stream().map(this::attachmentResponse).toList(),
                 supplyComposition.supplyRows(),
@@ -205,15 +205,9 @@ final class AnnouncementResponseMapper {
                 receptionPlace.getMethod(),
                 receptionPlace.getAddress(),
                 receptionPlace.getContact(),
-                receptionPlace.getUrl()
+                receptionPlace.getUrl(),
+                receptionPlace.getGuidance()
         );
-    }
-
-    private List<ReceptionPlaceResponse> receptionPlaceResponses(ReceptionPlace receptionPlace) {
-        if (receptionPlace == null) {
-            return List.of();
-        }
-        return List.of(receptionPlaceResponse(receptionPlace));
     }
 
     private AnnouncementScheduleResponse scheduleResponse(AnnouncementSchedule schedule) {

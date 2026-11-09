@@ -8,12 +8,16 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
-import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
-@Repository
+/**
+ * GH 사이트 HTML을 받는다. JPA 예외 변환이 붙는 @Repository로 두면 호출 전 검증의 IllegalArgumentException이
+ * InvalidDataAccessApiUsageException으로 바뀌어, 주택형 하나만 실패로 남기는 호출자의 처리를 빠져나간다.
+ */
+@Component
 public class GhAnnouncementExternalRepository {
 
     private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -38,10 +42,13 @@ public class GhAnnouncementExternalRepository {
         return fetch(board.detailUrl(pbancNo, kindCode), board);
     }
 
-    /** 주택형 상세공급정보 팝업. 상세 화면이 보내는 폼 값만 그대로 보낸다. */
+    /**
+     * 주택형 상세공급정보 팝업. 상세 화면이 보내는 폼 값만 그대로 보낸다.
+     * 주택형 값에는 "49형", "51A(주거약자형)"처럼 한글과 괄호도 온다.
+     */
     public String fetchHousingTypeDetail(GhAnnouncementBoard board, Map<String, String> form) {
         if (!form.keySet().equals(Set.copyOf(GhHousingTypeDetails.REQUEST_FIELDS))
-                || !form.getOrDefault("houseTyCd", "").matches("[0-9A-Za-z,\\-]+")) {
+                || !form.getOrDefault("houseTyCd", "").matches("[0-9A-Za-z가-힣(),\\-]+")) {
             throw new IllegalArgumentException("GH 주택형 상세 요청 값이 올바르지 않습니다.");
         }
         var body = new LinkedMultiValueMap<String, String>();

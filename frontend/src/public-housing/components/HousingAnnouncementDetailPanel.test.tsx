@@ -22,8 +22,8 @@ import { ConditionsContext, type ConditionsContextValue } from '../../user/condi
 import { EMPTY_PROFILE, type ComparisonView, type ConditionsRepository } from '../../user/conditions/conditionsModel'
 
 function evidenceConditions(): ConditionsContextValue {
-  const view: ComparisonView = { announcementId: '101', availability: 'AVAILABLE', referenceDate: '2026-11-06', requiredQualification: null, types: [{
-    key: 'youth', label: '청년', coverage: 'GENERAL', status: 'MATCHED', units: '', guidances: [],
+  const view: ComparisonView = { announcementId: '101', availability: 'AVAILABLE', referenceDate: '2026-11-06', freshness: 'CURRENT', status: 'ELIGIBLE', headline: '지원할 수 있어요', profileVersion: 1, evaluatedProfileVersion: 1, eligibleOptionIdsInRegion: ['youth'], scopeNote: null, types: [{
+    key: 'youth', label: '청년', status: 'ELIGIBLE', units: '', guidances: [],
     checks: [{ id: 'income', label: '본인 소득', status: 'SATISFIED', mine: '월 230만 원', criterion: '월 256만 원 이하', basis: null, evidence: { page: 6, location: '소득표', fileName: null }, fields: ['APPLICANT_MONTHLY_INCOME'], missingReason: null }],
   }] }
   return {
@@ -564,9 +564,22 @@ describe('HousingAnnouncementDetailPanel', () => {
     ['공고문 참조', '공고문 참조'],
   ])('문의 전화번호 %s의 구분 기호와 안내를 보존한다', (phoneNumber, expected) => {
     render(<HousingAnnouncementDetailPanel detail={detail({ receptionPlaces: [{
-      name: '상담센터', methodLabel: '전화', address: null, url: null, phoneNumber,
+      name: '상담센터', methodLabel: '전화', address: null, url: null, phoneNumber, guidance: null,
     }] })} onClose={vi.fn()} />)
     expect(screen.getByText(expected)).toBeVisible()
+  })
+
+  it('인터넷과 현장 접수처를 공고문 순서대로 따로 보이고 접수처마다 안내 문구를 붙인다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ receptionPlaces: [
+      { name: 'LH청약플러스', methodLabel: '인터넷', address: null, url: 'https://apply.lh.or.kr', phoneNumber: null, guidance: '모바일 앱으로도 신청할 수 있습니다' },
+      { name: '행복주택 견본주택', methodLabel: '현장', address: '서울시 강남구 1', url: null, phoneNumber: '0212345678', guidance: '인터넷 취약계층만 현장 접수' },
+    ] })} onClose={vi.fn()} />)
+    const items = within(screen.getByText('LH청약플러스').closest('ul')!).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(within(items[0]).getByText('모바일 앱으로도 신청할 수 있습니다')).toBeVisible()
+    expect(within(items[1]).getByText('행복주택 견본주택')).toBeVisible()
+    expect(within(items[1]).getByText('인터넷 취약계층만 현장 접수')).toBeVisible()
+    expect(within(items[0]).queryByText('인터넷 취약계층만 현장 접수')).toBeNull()
   })
 
   it('상세 제목에 focus를 옮길 때 목록과 페이지를 스크롤하지 않는다', () => {
@@ -1151,6 +1164,7 @@ function detail(
       name: 'LH청약플러스',
       phoneNumber: null,
       url: 'https://example.com/apply',
+      guidance: null,
     }],
     recruitmentTypeLabel: '예비입주자 모집',
     regionNames: ['경기 성남시'],

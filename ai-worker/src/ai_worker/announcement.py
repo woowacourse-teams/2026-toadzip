@@ -2,7 +2,7 @@
 
 이 모듈은 실행 흐름만 맡는다. 쪽 선택은 pages, 공급표를 코드와 모델 중 어디서 읽을지는 supply_sources,
 본문 단계 프롬프트는 stage_prompts, 두 단계 결과 합치기는 merge가 한다.
-LH·GH 공고는 이미 수집한 공급행 틀을 함께 준다(source_frame). 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
+LH 공고는 이미 수집한 LH 행을 참고 목록·검산에, GH 공고는 공급행 틀을 식별자 맞추기에 쓴다(source_frame). 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 """
 
 import json
@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 
 KIND = "ANNOUNCEMENT_PDF_EXTRACTION"
 SUPPLY_TABLE_UNSTRUCTURED = "SUPPLY_TABLE_UNSTRUCTURED"
+PDF_TEXT_MISSING = "PDF_TEXT_MISSING"
 # 쪽 처리가 이만큼도 남기지 않으면 모델을 부르지 않는다. 쪽마다 확인해 남은 쪽을 읽지 않고 바로 실패로 끝낸다.
 # 모델 호출과 응답 뒤 검산을 위한 최소 시간 여유다.
 MIN_MODEL_TIME = 240
@@ -40,6 +41,13 @@ class AnnouncementPdfExtractor:
         document = pages.open_pdf(job.pdf)
         with document:
             texts = pages.page_texts(document, model_cutoff)
+            # 스캔본은 쪽마다 글자가 없어 표 칸을 읽을 수 없고, 값을 원문 칸과 대조할 수도 없다. 비용을 쓰기 전에 끝낸다.
+            if not any(text.strip() for text in texts):
+                raise PermanentError(
+                    PDF_TEXT_MISSING,
+                    "이미지로 된(스캔) PDF라 글자를 읽을 수 없어 자동 추출을 하지 않았습니다. "
+                    "공급정보 편집에서 직접 입력하거나 글자가 들어 있는 PDF로 다시 시도해 주세요.",
+                )
             selection = pages.select(texts)
             selected = pages.prompt_pages(document, selection.pages, model_cutoff)
         if selected.unstructured_supply_pages:
@@ -60,7 +68,7 @@ class AnnouncementPdfExtractor:
             notice_reply = notice_future.result()
         supply = source.read()
         notice_tree = checks.first_json_object(notice_reply.content, {
-            "announcement": dict, "receptionPlace": dict, "complexes": list, "schedules": list,
+            "announcement": dict, "receptionPlaces": list, "complexes": list, "schedules": list,
             "unresolvedFields": list,
         })
         warnings = [f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다."] if selection.whole_document else []
@@ -70,8 +78,7 @@ class AnnouncementPdfExtractor:
         # merge는 페이지 변환 전에 tree를 만들므로, 최종 결과의 근거를 원본 PDF 쪽 번호로 변환한다.
         tree, merge_warnings = merge.merge(supply.tree, notice_tree)
         warnings += merge_warnings
-        warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, [row.type_name for row in rows],
-                                  [row.count() for row in rows], selected.rental_rows)
+        warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, rows, selected.rental_rows)
         warnings += frame.link(tree)
         checks.normalize_note_paths(tree, warnings)
         usage = _combined_usage(*supply.usage, notice_reply.usage)

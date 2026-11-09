@@ -49,3 +49,19 @@ describe('관리 상세 응답 계약', () => {
     expect(() => parseManagementDetail({ ...detail(), schedules: null })).toThrow('접수 일정 응답')
   })
 })
+
+it('공고 접수 상태와 복수 확인 사유를 검증하고 보존한다', () => {
+  const announcement = {
+    sourceIdentifier: 'LH-7', originalUrl: 'https://example.com/notice', recruitmentType: null,
+    postedDate: '2026-11-08', applicationStartDate: null, applicationEndDate: null, winnerAnnouncementDate: null,
+    applicationStatus: 'UNKNOWN', attentionReasons: ['SCHEDULE_MISSING', 'UNCONFIRMED'],
+  }
+  const value = { ...detail(), summary: { ...summary, announcement } }
+  expect(parseManagementDetail(value).summary.announcement).toEqual(announcement)
+  expect(() => parseManagementDetail({ ...value, summary: { ...summary,
+    announcement: { ...announcement, applicationStatus: 'INVALID' },
+  } })).toThrow('상세 응답이 올바르지 않습니다.')
+  expect(() => parseManagementDetail({ ...value, summary: { ...summary,
+    announcement: { ...announcement, attentionReasons: ['ANY'] },
+  } })).toThrow('상세 응답이 올바르지 않습니다.')
+})

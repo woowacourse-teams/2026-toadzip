@@ -171,13 +171,10 @@ function announcementRequest(): AnnouncementCreateRequest {
     applicationEndDate: '2026-08-14',
     winnerAnnouncementDate: '2026-09-01',
     originalUrl: 'https://example.com/announcement',
-    receptionPlace: {
-      name: 'LH 청약센터',
-      method: 'ONLINE',
-      address: null,
-      contact: '1600-1004',
-      url: null,
-    },
+    receptionPlaces: [
+      { name: 'LH 청약플러스', method: 'ONLINE', address: null, contact: null, url: 'https://apply.lh.or.kr', guidance: null },
+      { name: '두꺼비 주거복지지사', method: 'VISIT', address: '서울시 중구 세종대로 1', contact: '1600-1004', url: null, guidance: '인터넷 취약계층만 현장 접수' },
+    ],
     supplyRow: {
       sourceComplexName: '원문 단지',
       sourceHousingTypeName: '36A',

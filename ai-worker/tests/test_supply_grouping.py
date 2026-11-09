@@ -28,6 +28,7 @@ def assemble(tables, tableless_pages=()):
         supply_row_ids=frozenset(values), supply_row_text={key: "row" for key in values},
         notice_text="", notice_pages=[], complex_candidates=[], table_structure_fallback=False,
         ambiguous_supply_tables=False, supply_row_values=grouped.row_values,
+        supply_row_subtypes={row.id: row.subtypes for item in tables for row in item.rows if row.subtypes},
     )
     tree, _ = supply_assembly.assemble(grouped.compact, selected)
     return grouped, tree
@@ -356,3 +357,113 @@ def test_income_split_in_both_count_and_rent_tables_is_left_to_the_model():
     ], header=RENT_HEADER)
 
     assert supply_grouping.group([quantity, rent], row_values([quantity, rent]), []) is None
+
+
+def test_merged_area_cells_take_the_area_above_not_the_complex_row_area():
+    # 경기행복주택 공고: 파주 35AB는 위 35A1,B1과 면적 칸이 병합돼 있고, 평택 26A1-1·26A1-2는 쪽을 넘은 병합 칸이라 빈칸이다.
+    page4 = table(4, [
+        ["파주", "26A", "청년", "10", "26.7900", "18.8200"],
+        [None, "35A1,B1", "청년", "10", "35.0200", "24.4800"],
+        [None, "35AB", "고령자", "10", None, None],
+        ["평택", "26A1", "청년", "40", "26.7300", "13.0781"],
+    ])
+    page5 = table(5, [
+        ["", "26A1-1", "주거급여 수급자", "5", "", ""],
+        [None, "26A1-2", "고령자", "2", None, None],
+        [None, "26B", "청년", "5", "26.7300", "13.0781"],
+    ], inherit=page4)
+
+    _, tree = assemble([page4, page5])
+
+    areas = {row["sourceHousingTypeName"]: row["exclusiveArea"] for row in tree["data"]["supplyRows"]}
+    assert areas == {"26A": 26.79, "35A1,B1": 35.02, "35AB": 35.02, "26A1": 26.73, "26A1-1": 26.73, "26A1-2": 26.73,
+                     "26B": 26.73}
+    # 원문 대조가 물려받은 면적을 지우지 않도록 면적이 적힌 행을 근거 행에 넣는다.
+    assert "P4:T1:R3" in next(item["rowIds"] for item in tree["sourceRows"] if item["path"] == "supplyRows[2]")
+    assert tree["data"]["unresolvedFields"] == []
+
+
+def test_a_merged_looking_area_is_not_taken_from_the_row_above_when_the_complex_changes():
+    page4 = table(4, [["파주", "26A", "청년", "10", "26.7900", "18.8200"]])
+    page5 = table(5, [["수원", "17A", "청년", "1", "", ""]], inherit=page4)
+
+    _, tree = assemble([page4, page5])
+
+    assert tree["data"]["supplyRows"][1]["exclusiveArea"] is None
+
+
+def test_a_new_table_with_its_own_header_does_not_take_the_area_of_the_previous_table():
+    page4 = table(4, [["파주", "26A", "청년", "10", "26.7900", "18.8200"]])
+    page5 = table(5, [["", "17A", "청년", "1", "", ""]])
+
+    _, tree = assemble([page4, page5])
+
+    assert tree["data"]["supplyRows"][1]["exclusiveArea"] is None
+
+
+def test_an_area_inherited_twice_keeps_every_row_it_came_from():
+    # 위 행이 전용은 물려받고 공용은 자기 칸에 있으면, 아래 행의 공용 근거는 그 위 행이다.
+    page4 = table(4, [
+        ["파주", "35A1", "청년", "10", "35.0200", "24.4800"],
+        [None, "35A2", "청년", "5", None, "24.5000"],
+        [None, "35AB", "고령자", "10", None, None],
+    ])
+
+    _, tree = assemble([page4])
+
+    row = tree["data"]["supplyRows"][2]
+    assert (row["exclusiveArea"], row["commonArea"]) == (35.02, 24.5)
+    assert {"P4:T1:R2", "P4:T1:R3"} <= set(next(item["rowIds"] for item in tree["sourceRows"] if item["path"] == "supplyRows[2]"))
+
+
+def test_a_blank_area_on_the_first_row_of_the_next_page_is_not_filled_when_the_row_has_its_own_area():
+    page4 = table(4, [["Alpha", "36AB1", "청년", "3", "36.2643", "20.9058"]])
+    page5 = table(5, [["", "44A", "고령자", "3", "44.1269", ""]], inherit=page4)
+
+    _, tree = assemble([page4, page5])
+
+    assert tree["data"]["supplyRows"][1]["commonArea"] is None
+
+
+def test_code_grouped_housing_type_row_gets_subtypes_from_its_house_type_column():
+    quantity = table(3, [
+        ["Alpha", "059.9000A", "59A", "청년", "10", "59.98", "21.5309"],
+        [None, None, "59A1", None, None, None, None],
+        [None, None, "59C", None, None, "59.99", "21.5345"],
+    ], header=[["단지명", "청약구분", "주택타입", "공급대상", "모집호수 예비자", "주거전용", "주거공용"]])
+
+    _, tree = assemble([quantity])
+
+    row, = tree["data"]["supplyRows"]
+    assert (row["sourceHousingTypeName"], row["exclusiveArea"]) == ("059.9000A", 59.98)
+    assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in row["subtypes"]] == [
+        ("59A·59A1", 59.98, 21.5309), ("59C", 59.99, 21.5345)]
+
+
+def test_target_recruitment_count_is_winners_plus_reserves_of_the_same_rows():
+    # 모집수는 입주자(당첨자)와 예비자를 합한 수다(사용자 결정). 코드 경로도 당첨자 수만 쓰지 않는다.
+    header = [["단지명", "청약구분", "공급대상", "당첨자 수", "예비자", "주거전용", "주거공용"]]
+    _, tree = assemble([table(4, [["Alpha", "26A", "청년", "5", "15", "26.1", "13.0"]], header=header)])
+
+    target = tree["data"]["supplyRows"][0]["targets"][0]
+    assert (target["supplyHouseholdCount"], target["reserveCount"]) == (20, 15)
+    assert tree["data"]["supplyRows"][0]["totalSupplyHouseholdCount"] == 20
+    assert unresolved_paths(tree) == set()
+
+    # 예비자 칸만 두 대상에 병합되면 대상별 모집수를 정할 수 없다.
+    _, tree = assemble([table(4, [["Alpha", "26A", "청년", "5", "15", "26.1", "13.0"],
+                                  [None, None, "신혼부부", "4", None, None, None]], header=header)])
+    assert [target["supplyHouseholdCount"] for target in tree["data"]["supplyRows"][0]["targets"]] == [None, None]
+    assert {"supplyRows[0].targets[0].supplyHouseholdCount", "supplyRows[0].targets[1].supplyHouseholdCount"} \
+        <= unresolved_paths(tree)
+
+
+def test_recruitment_column_beside_a_separate_reserve_column_is_entrants():
+    # 모집호수(하위 열 없음) | 예비자: 모집호수는 입주자 수이고 모집수는 둘의 합이다(사용자 결정).
+    header = [["단지명", "청약구분", "공급대상", "모집호수", "예비자", "주거전용", "주거공용"]]
+    _, tree = assemble([table(4, [["Alpha", "26A", "청년", "2", "41", "26.1", "13.0"]], header=header)])
+
+    row = tree["data"]["supplyRows"][0]
+    assert (row["totalSupplyHouseholdCount"], row["targets"][0]["supplyHouseholdCount"],
+            row["targets"][0]["reserveCount"]) == (43, 43, 41)
+    assert unresolved_paths(tree) == set()

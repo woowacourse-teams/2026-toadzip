@@ -37,24 +37,22 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 - `/api/admin/announcements/{id}/supply-corrections`: GET 현재 공급행·대상·원천·소실 경고와 snapshotToken.
 - GET의 `rowSources`는 공급행이 기록한 원천행 `{rowKey, category, sourceKey}`이며 한 행에 여러 개일 수 있다. GH 공고 정제가 만든 공급행 틀은 `GH_ANNOUNCEMENT`와 틀 행 키(`{공고 식별자}:{지구명}:{주택형 코드}`)를 준다. PDF 추출 결과의 `sourceRow`가 이 키라 화면이 그 틀 행을 고치도록 제안한다. 응답 전용이며 보정 요청에는 포함하지 않는다.
   - 마이홈(`MYHOME_ANNOUNCEMENT`)은 공급행이 기록한 원천 키를 그대로 준다.
-  - LH(`LH_ANNOUNCEMENT_SUPPLY`)는 공급행이 `LH:{panId}:SUPPLY:{순번}`만 기록하므로, 원천 키 `{panId}:{요청 해시}:{순번}` 중 공고 번호와 순번이 같은 것이 하나일 때 그 키를 준다. 없으면 기록값을 그대로 줘서 찾을 수 없음을 알리고, 여러 개면 추정하지 않고 생략한다.
-  - 관리자가 LH 공급 원본 한 행을 주택형별로 나눈 행(`LH_SPLIT`)은 나눈 LH 행 식별자 `LH:{panId}:SUPPLY:{순번}`을 준다. 같은 키를 가진 행들은 중복이 아니라 의도한 분리 형제다.
+  - LH(`LH_ANNOUNCEMENT_SUPPLY`)는 그 공급행에 붙은 LH 줄(아래 `lhSupplyRows`의 `attachedRowKey`)마다 원천 키 `{panId}:{요청 해시}:{순번}` 중 공고 번호와 순번이 같은 것이 하나일 때 그 키를 준다. 없으면 LH 줄 식별자 `LH:{panId}:SUPPLY:{순번}`을 그대로 줘서 찾을 수 없음을 알리고, 여러 개면 추정하지 않고 생략한다. 한 공급행에 LH 줄이 여럿 붙을 수 있다.
   - 원천 식별자가 없는 행(직접 추가 등)은 목록에 없다.
-- GET의 `lhSupplyRows`는 소유와 관계없이 LH 공고 ID(`lh_pan_id`)로 LH 공고 정제가 읽는 최신 LH 공급 원본 행 전체 `{rowIdentifier, complexLabel, typeName, exclusiveArea, householdCount, attachedRowKey, splitRowKeys}`다. `householdCount`는 LH 이번 공급 수(정수가 아니면 null), `attachedRowKey`는 그 LH 행 식별자를 기록한 공급행(통합행), `splitRowKeys`는 그 LH 행에서 나눈 공급행이다. LH 공고 ID가 없거나 최신 공고목록에 그 공고가 하나로 있지 않으면 빈 목록이다. 이 목록의 행 식별자·붙은 행·분리행은 snapshotToken에 포함된다.
-- GET의 `unattachedLhSupplyRows`는 LH 원천 소유 공고의 `lhSupplyRows` 중 어떤 공급행도 LH 행 식별자나 분리 원천으로 가리키지 않는 행이다. 정제 뒤 원천이 늘었으면 여기 남는다. 공고문 소유 공고는 정제가 공급행을 만들지 않으므로 빈 목록이다. 이 목록이 있어도 새 공급행 추가를 막지 않는다. 미리보기는 이 저장 뒤에도 남는 행을 `unattachedLhSupplyRows`와 경고로 돌려준다. 저장하면 공고문 소유가 되어 정제가 그 행을 공급행으로 만들지 않기 때문이다.
-- 요청 행의 선택적 `saveMode`와 `lhSourceRowIdentifier`(`lhSupplyRows[].rowIdentifier` 값)로 LH 공급 원본 행에 놓는 방식을 정한다. `saveMode`를 생략하면 `id`가 있는 행은 `UPDATE`, 없는 행은 `ADD`이므로 기존 요청과 같다.
-  - `UPDATE`: 기존 행 수정. `ADD`: LH 원천과 무관한 새 행. 두 방식은 `lhSourceRowIdentifier`를 받지 않는다.
-  - `ATTACH`: 아직 공급행이 되지 않은 LH 행에 새 행을 붙여 그 행에 LH 행 식별자를 기록한다. 이미 공급행이나 분리행이 있는 LH 행, 한 요청에서 같은 LH 행에 두 번 붙이기, 기존 행은 400이다.
-  - `SPLIT`: LH 한 행(예: 모집 240, 면적 미확인)을 주택형별 행으로 나눈다. 그 LH 행에 붙은 통합행은 ID와 LH 행 대응을 유지한 채 첫 분리행으로 넣어야 하고, 나머지는 `id` 없는 새 행이다. 같은 `lhSourceRowIdentifier`의 행이 둘 이상이어야 하며 모든 분리행에 분리 원천(`supply_rows.lh_split_source_identifier`, `V20261103_02`)을 기록한다. 합계는 분리행 합으로만 센다. 통합행을 빼거나, 다른 LH 행에 붙은 기존 행·LH 원천 없이 추가한 행·공통 모집 묶음 행을 넣거나, 최신 LH 공급 원본에 없는 행을 지정하면 400이다. 처음 나누는 요청에서 통합행이 저장된 모집수를 그대로 두고 다른 분리행에 모집수가 있으면 그 합계를 두 번 세므로 400이다(첫 분리행 모집수를 그 주택형 값으로 바꿔야 한다).
-  - 미리보기의 `splits: [{lhSourceRowIdentifier, rowKeys, householdCount, lhHouseholdCount}]`는 저장 뒤 분리 묶음이다. `householdCount`는 제외하지 않은 분리행 합계(미확정이 있으면 null)다. 이번에 나눈 합계가 LH 공급 수와 다를 때와 분리 형제행을 지우거나 제외해 합계가 바뀔 때 경고한다.
+- 공급행은 (공고 단지, 주택형(신청형))마다 하나다. 신청형은 형명 끝의 신청자 표기(`(고령자)`·`[청년]`)를 떼고 공백·대소문자·끝 `형`·앞자리 0을 무시해 비교한다. 우선·일반·고령자 같은 신청자 묶음은 그 행의 대상(`targets`)이다. 같은 전용면적이어도 신청형이 다르면(`55A1`·`55C(주거약자)`) 공급행을 따로 두고 같은 단지 주택형을 함께 가리킨다. LH 공급 원본 행은 공급행을 정하지 않는 보조 원천이며 세대수 검산과 식별에만 쓴다. LH 행 수와 공급행 수가 달라도 오류가 아니다.
+- GET의 `lhSupplyRows`는 소유와 관계없이 LH 공고 ID(`lh_pan_id`)로 LH 공고 정제가 읽는 최신 LH 공급 원본 행 전체 `{rowIdentifier, complexLabel, typeName, exclusiveArea, householdCount, attachedRowKey, ambiguous}`다. `householdCount`는 LH 이번 공급 수(정수가 아니면 null)다. `attachedRowKey`는 저장하지 않고 읽을 때 계산한다. 같은 공고 단지에서 LH 전용면적(소수 셋째 자리에서 반올림한 둘째 자리)이 공급행의 연결 주택형·LH 대표·공고 면적 중 하나와 같은 제외하지 않은 공급행이고, LH 면적이 없으면 그 줄로 만든 공급행이다. 그런 공급행이 여럿이면 원천 형명·공고 표기의 신청형이 같은 행으로 좁히고, 그래도 하나로 정해지지 않으면 표시 순서상 첫 행에 붙이고 `ambiguous`를 true로 준다. LH 공고 ID가 없거나 최신 공고목록에 그 공고가 하나로 있지 않으면 빈 목록이다.
+- GET의 `applicationTypeNames`는 행 키별 주택형(신청형) 이름 `{"row:{id}": 이름}`이다. 공고 표기, 없으면 원천 형명이다. 행의 `typeName`은 공고 표기가 없으면 연결 주택형 이름이라 신청형을 가리지 못하므로, 화면은 저장할 곳 고르기와 중복 안내에서 이 이름을 써 서버의 같은 신청형 판정과 같은 기준을 쓴다. 읽기 전용이며 요청에는 보내지 않는다.
+- GET의 `unattachedLhSupplyRows`는 LH 원천 소유 공고의 `lhSupplyRows` 중 붙은 공급행이 없는 행이다. 오류가 아니라 정보이며 저장을 막지 않는다. 공고문 소유 공고는 공고문이 공급행을 정하므로 빈 목록이다.
+- 요청(`correction`)과 요청 행은 정의되지 않은 JSON 필드를 400으로 거절한다. 예전의 `newGroups`, 행의 `saveMode`·`lhSourceRowIdentifier`(LH 행 분리·붙이기)는 더 받지 않는다.
 - POST `/preview`: 전체 행·하위 조건 변경안과 UUID 작업 번호, 근거·이유를 검증하여 변경 전후와 confirmationToken 반환. 저장하지 않는다.
 - 행의 `typeName`은 이 공고의 주택형 표기다. 조회는 공개 화면에 보이는 이름을 주고, 저장은 공고 표기로만 한다. 기존 행의 `complexName`은 원천 단지명이라 요청 값과 관계없이 유지한다. 원천이 없는 새 행만 입력값을 원천 이름으로 남긴다.
-- 행의 `linkedHousingTypes`는 대표 주택형(`housingTypeId` 또는 `newHousingType`)과 함께 모집하는 주택형이며 대표는 빼고 적는다. LH 한 행이 여러 전용면적(세부 타입 26A·B·C)을 모집하면 공급행 하나가 그 주택형을 모두 가리킨다(`supply_row_housing_types`). GET은 현재 연결을 `[{housingTypeId}]`로 주고 snapshotToken에 포함하므로, 화면을 연 뒤 연결이 바뀌면 미리보기는 409(`ADMIN_DATA_STALE`)다.
+- 단지 주택형은 공고문 표기 이름으로 나눈다(같은 전용면적이어도 이름이 다르면 다른 주택형). PDF 보정 화면은 연결할 주택형(`housingTypeId`)이나 새 주택형(`newHousingType`)을 정해 보낸다. 이번 저장에서 새로 넣거나 고친 제외하지 않은 행이 `housingComplexId`와 양수 `exclusiveArea`만 주고 둘을 비우면 서버가 정한다: 이름(`typeName`의 첫 형명, 신청자 표기·공백·대소문자·끝 `형`·앞자리 0 무시)이 같은 주택형, 없으면 같은 면적 주택형이 하나뿐일 때 그것, 없으면 그 첫 형명·면적으로 새 주택형을 만든다. 새 주택형은 단지에 이름이 같은 주택형이 있으면(휴지통 포함) 400이고, 한 저장에서 이름이 같은 새 주택형은 하나만 만든다. 미리보기 `after`에 정한 주택형이 담긴다. 주택형이 있던 기존 행을 비워 보낸 요청은 연결을 끊은 것이라 다시 채우지 않는다.
+- 한 단지에서 공급행은 신청형마다 하나다. 이번 저장에서 바꾸거나 새로 만든 행이 제외·삭제하지 않은 다른 행과 같은 (단지, 신청형)이면 400이다. 행의 신청형은 이름을 바꾼 행과 새 행이면 요청 `typeName`, 아니면 저장된 공고 표기(없으면 원천 형명)다. 작업실 `typeName`은 공고 표기가 없으면 연결 주택형 이름이라 신청형을 가리지 못하기 때문이다. 신청형이 다른 행이 같은 주택형을 가리키는 것은 허용한다. 표시 순서만 밀린 행은 바꾼 행으로 보지 않고, 다시 보정하지 않은 옛 행끼리는 손대지 않는 한 그대로 둔다.
+- 행의 `linkedHousingTypes`는 대표 주택형(`housingTypeId` 또는 `newHousingType`)과 함께 모집하는 주택형이며 대표는 빼고 적는다. 공고문이 여러 전용면적(세부 타입 26A·B·C)의 모집수를 하나로만 적으면 공급행 하나가 그 주택형을 모두 가리킨다(`supply_row_housing_types`). GET은 현재 연결을 `[{housingTypeId}]`로 주고 snapshotToken에 포함하므로, 화면을 연 뒤 연결이 바뀌면 미리보기는 409(`ADMIN_DATA_STALE`)다.
   - 요청 항목은 같은 단지의 기존 주택형 `{housingTypeId}` 또는 이 저장에서 만들 `{newHousingType: {name, exclusiveArea, supplyArea}}` 중 하나다. 저장 후 연결은 대표와 이 목록이고 대표는 항상 들어간다.
   - 생략(null)하면 대표가 그대로일 때 저장된 연결을 유지하고, 대표가 바뀌면 대표만 남긴다. 이 필드가 없는 기존 요청과 같은 결과다. 빈 목록은 대표만 남긴다. 연결만 바꿔도 바뀐 행이다.
-  - 한 행에는 전용면적마다 주택형 하나만 연결한다. 대표와 같은 주택형·면적, 다른 단지의 주택형, 단지에 같은 면적 주택형이 있거나 휴지통에 있는 새 주택형은 400이다. 대표 주택형이 없는 행과 공통 모집 묶음 행(`groupId`가 있거나 `newGroups`에 든 행)은 빈 목록만 받는다.
-  - 한 저장에서 같은 단지·전용면적의 새 주택형은 대표든 함께 모집하는 주택형이든 행이 달라도 하나를 만들어 함께 쓴다. 미리보기 확인 토큰은 연결한 기존 주택형의 값도 포함한다.
-  - 공고 단지를 다른 단지로 다시 연결(`POST /announcement-complexes/{id}/link`)하면 그 공고 단지의 공급행은 대표만 새 단지의 같은 면적 주택형으로 옮기고 함께 모집하던 주택형은 빠진다. 빠진 연결은 이력의 변경 전 `housingTypeIds`에 남는다.
+  - 공고 신청형 한 행은 같은 면적의 여러 단지 주택형(59A·59A1·59C)을 함께 연결할 수 있다. 같은 주택형(기존은 id, 새 주택형은 이름)을 두 번 연결하거나 대표와 같은 주택형, 다른 단지의 주택형, 단지에 같은 이름 주택형이 있거나 휴지통에 있는 새 주택형은 400이다. 대표 주택형이 없는 행과 공통 모집 묶음 행(`groupId`가 있는 행)은 빈 목록만 받는다. 미리보기 확인 토큰은 연결한 기존 주택형의 값도 포함한다.
+  - 공고 단지를 다른 단지로 다시 연결(`POST /announcement-complexes/{id}/link`)하면 그 공고 단지의 공급행은 대표와 함께 모집하던 주택형을 모두 새 단지의 같은 면적 주택형으로 옮긴다. 새 단지에 그 면적이 없는 연결만 빠지고 이력의 변경 전 `housingTypeIds`에 남는다.
 - POST: `{correction, confirmationToken}`. 공고 잠금과 수집 소유권 아래 전체 보정·새 주택형·보호·이력을 한 트랜잭션으로 저장한다.
 - 기존 행·조건 ID를 생략해 삭제할 수 없다. 제외·복원으로 이력을 유지하고 일정의 단지 참조를 검증한다.
 - 예외로 원천 없이 관리자가 추가한 행(`MANUAL:` 식별자, 공통 모집 묶음 밖)은 지울 수 있다. GET의 `deletableRowKeys`가 그 행 키이고, 요청의 `deletedRowKeys`에 키를 넣고 `rows`에서 빼면 행과 하위 조건을 지운다. 원천행은 다음 정제가 다시 만들므로 지울 수 없고 400으로 거절한다. 지운 행은 변경 이력의 변경 전 값과 `deletedRowKeys`로 남는다.
@@ -62,7 +60,7 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 - 원천·현재값·후보의 변경은 오래된 미리보기를 거절한다. 현재 미연결·미확정 상태는 경고이며 검토 완료로 변경하지 않는다.
 - 409 응답의 `code`로 대응을 나눈다. 조회 이후 저장값·원천이 바뀌어 snapshotToken이나 confirmationToken이 맞지 않으면 `ADMIN_DATA_STALE`이며, 최신값을 다시 조회해 입력을 맞추면 저장할 수 있다. 일정이 참조하는 단지 제외, 휴지통의 단지 연결, 같은 UUID의 다른 요청 같은 규칙 위반은 `ADMIN_DATA_CONFLICT`이며 다시 조회해도 풀리지 않으므로 `message`를 그대로 보여 준다.
 - 금액은 원 단위 18자리 이하 정수 문자열, 수량은 음수가 아닌 정수 또는 null이다. 합계 검증은 명시적으로 동일 범위를 확인한 행에만 적용한다.
-- 기존 공통 모집 묶음은 바꿀 수 없다(원천별 공급행 보정은 지원 종료). 공급 보정의 선택적 `newGroups`로 기존 단일 원천행의 새 묶음을 만들 수 있다. 묶음 합계를 개별 행에 복제하지 않는다. 묶음은 마이홈 원천이 키라서 마이홈 공고 원천이 없는 공고(LH 목록으로만 만든 공고)는 `newGroups`를 400으로 거절한다. 그 공고에서 여러 주택형이 모집수를 함께 쓰면 공급행 하나에 모집수를 두고 `linkedHousingTypes`로 주택형을 연결한다.
+- 새 공통 모집 묶음은 만들지 않는다. 여러 주택형이 모집수를 함께 쓰면 공급행 하나에 모집수를 두고 `linkedHousingTypes`로 주택형을 연결한다. 이미 저장된 공통 모집 묶음은 모집수와 단지를 바꿀 수 없고, 다시 보정할 때 묶음에서 빠질 수만 있다(요청 행의 `groupId`를 비움). 한 행이라도 빠지면 그 묶음의 나머지 행도 함께 빠지거나 제외해야 하며, 아니면 묶음 모집수와 두 번 집계되므로 400이다.
 - 새 주택형·행·조건과 수정·제외·순서는 관리자 보호를 적용한다. 공개 조회·검색·현재 모집조건에서 제외 상태를 반영한다. 신규 알림을 생성하지 않는다.
 - POST `/reviews`: snapshotToken, `row:{id}` 또는 `target:{id}`, 확인 필드·선택 원천 필드·근거·VERIFIED/ON_HOLD를 기록한다.
 - GET `/reviews`: 최근 100개 기록, 선택 범위의 확인값·현재값·원천 차이·현재 판단을 반환한다. 확인 범위 밖의 변경과 수집 메타데이터 변경은 검토 무효 사유가 아니다.
@@ -76,9 +74,9 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 ## 공고 전체 JSON 선택 갱신
 
 - GET `/api/admin/announcements/{id}/json-corrections`: 공고 상세·공급 작업실·일반 일정과 전체 `snapshotToken`을 반환한다.
-- POST `/preview`: `{snapshotToken, document, fields, schedules, attachments, correction}`. `document`는 신규 등록과 같은 `admin-announcement-import/v1`이다. `fields`에는 적용할 기본정보·접수처 필드명을, 일정·첨부에는 `{inputIndex, existingId}`를 넣는다. `existingId: null`은 추가이며 기존 ID는 현재 공고 소속이어야 한다. `correction`은 기존 공급 보정 요청 계약이다.
+- POST `/preview`: `{snapshotToken, document, fields, schedules, attachments, correction}`. `document`는 신규 등록과 같은 `admin-announcement-import/v1`이다. `fields`에는 적용할 기본정보 필드명과 접수처를 바꿀 때 `receptionPlaces`(문서의 목록으로 통째로 교체)를, 일정·첨부에는 `{inputIndex, existingId}`를 넣는다. `existingId: null`은 추가이며 기존 ID는 현재 공고 소속이어야 한다. `correction`은 기존 공급 보정 요청 계약이다.
 - POST: `{request, confirmationToken}`. 관리자 인증·CSRF·수집 소유권과 공고 잠금 아래 동일 미리보기를 재검증하고 모든 변경과 `CORRECT_FROM_PDF` 이력을 한 트랜잭션으로 저장한다. 같은 트랜잭션에서 이 공고의 미해결 `myhome_announcement_mapping_failures`·`lh_announcement_enrichment_failures`를 해결로 바꾸고 `last_resolved_by`에 보정한 관리자를 남긴다(`V20261026_01`). 정제가 해결한 실패는 이 값이 비어 있다. 원천 비교 스냅샷은 저장 전·후 한 번씩만 계산한다.
-- 선택적 `housingTypeValues: [{rowKey, name, supplyArea, householdCount, basicDeposit, basicMonthlyRent, linkedHousingTypeId, linkedNewHousingTypeArea}]`는 공고문에서 읽은 주택형 값이다. 연결 주소가 없으면 그 행의 대표 주택형에 반영한다. `linkedHousingTypeId`는 그 행이 함께 모집하는 기존 주택형, `linkedNewHousingTypeArea`는 함께 모집하는 새 주택형의 전용면적이며 둘 중 하나만 준다. 같은 행의 같은 주택형에 두 번 보내거나 그 행이 함께 모집하지 않는 주택형을 가리키면 400이다. 함께 모집하는 주택형을 생략한 공급 행은 저장된 연결을 유지하므로 그것만으로 공급행 변경이 되지 않는다.
+- 선택적 `housingTypeValues: [{rowKey, name, supplyArea, householdCount, basicDeposit, basicMonthlyRent, linkedHousingTypeId, linkedNewHousingTypeArea, linkedNewHousingTypeName}]`는 공고문에서 읽은 주택형 값이다. 한 행이 같은 면적의 새 주택형을 여럿 만들면 `linkedNewHousingTypeName`(새 주택형 이름)을 함께 보내야 하고, 없으면 400이다. 이름이 같은 단지의 다른 주택형 이름과 같으면 이름만 반영하지 않고 `housingTypeWarnings`로 알린다. 연결 주소가 없으면 그 행의 대표 주택형에 반영한다. `linkedHousingTypeId`는 그 행이 함께 모집하는 기존 주택형, `linkedNewHousingTypeArea`는 함께 모집하는 새 주택형의 전용면적이며 둘 중 하나만 준다. 같은 행의 같은 주택형에 두 번 보내거나 그 행이 함께 모집하지 않는 주택형을 가리키면 400이다. 함께 모집하는 주택형을 생략한 공급 행은 저장된 연결을 유지하므로 그것만으로 공급행 변경이 되지 않는다.
 - 이 경로는 관리자 화면의 PDF 보정만 사용한다. 공급행·기본정보·접수처·일정 변경을 이력 한 건에 남기며 별도의 `CORRECT_SUPPLY` 이력을 만들지 않는다. 공급 보정의 작업 번호는 이 이력에 연결해 같은 작업 번호의 재적용을 막는다. 이전에 저장된 `UPDATE_FROM_JSON` 이력과 함께 남은 `CORRECT_SUPPLY` 이력은 그대로 둔다.
 - 미확인·null 기본값과 확인되지 않은 일정·첨부는 선택 적용을 거절한다. 선택하지 않은 값과 하위 항목은 유지하며 생략으로 삭제하지 않는다. 기존 ID·원천 식별자·확인된 접수 일정은 유지한다. 공개된 공고에는 신규 알림을 만들지 않는다.
 - 미확정 공고(`releaseStatus=UNCONFIRMED`, SH·GH 원천 공고)는 이 경로에서 관리자가 `publish: true`(선택, 기본 false)를 보낼 때만 공개한다. 공급행이 미리 단지에 연결돼 있어도 요청하지 않으면 공개하지 않는다. 요청하면 미리보기가 적용 뒤 남는 공급행 중 제외하지 않고 삭제되지 않은 단지에 연결된 행이 있는지 확인해 없으면 400으로 거절하고, 응답 `publishes`와 확인 토큰에 공개 여부를 담는다. 다른 변경이 없어도 공개만 적용할 수 있다. 적용은 같은 트랜잭션에서 단지 연결을 다시 확인한 뒤 공개하고 신규 공고 알림을 한 번 쌓으며, 이미 공개된 공고는 다시 쌓지 않는다. 관리자 공고 수정(`PUT /api/admin/announcements/{id}`)은 공개 상태를 바꾸지 않는다.
@@ -88,16 +86,8 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 
 PDF 보정의 미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일과 공급·모집 유형을 함께 채워야 저장된다. 날짜는 `접수처·기본정보`, 유형과 공개 요청은 `공개 전 확인`에서 정한다. 미리보기 뒤 유형이나 공개 요청을 바꾸면 미리보기를 다시 받아야 한다.
 
-### PDF 보정의 새 공통 모집 묶음
+### PDF 보정 저장
 
-공급 보정 요청은 선택적 `newGroups: [{sourceRowId, rowKeys, sharedHouseholdCount}]`를 받는다. 생략하면 빈 목록이며 기존 요청과 호환된다.
-`sourceRowId`는 해당 공고의 유효한 마이홈 원천에 단독으로 대응하는 기존 공급행이다. 기존 묶음이나 여러 행이 이미 대응하는 원천은 거절한다.
-마이홈 원천 한 행이 LH 공급정보로 여러 행이 된 공고는 그 LH 행이 묶음의 원천이다. 묶음 키는 그 행의 원천행 식별자이며, 원천 지문에 LH 행의 표기·면적·이번 공급 수를 더한다.
-`rowKeys`는 기존 행 하나와 새 행을 포함한 2~50개 작업 키다. 모든 행은 같은 단지·PNU·공급구분이며 서로 다른 기존 주택형에 연결되어야 한다.
-행 모집수는 null이고 기존 행·대상 ID는 유지한다. 다른 기존 행의 조건을 이동하거나 새 공통 주택형을 생성하는 요청은 허용하지 않는다.
-
-미리보기는 `newGroups`를 반환하고 원천·후보 주택형의 지문과 묶음을 확인 토큰에 포함한다. 공유 모집수는 합계에 한 번만 더한다.
-적용 시 같은 트랜잭션에서 행·조건, 공통 모집 묶음, 관리자 보정 보호, 원천 대응, 감사 기록을 저장한다.
 JSON 전체 갱신에서도 이 공급 보정과 기본정보·일정 변경은 함께 성공하거나 롤백한다. 새 DB 스키마는 추가하지 않는다.
 PDF 보정 저장은 범위 검토 완료를 만들지 않는다. 같은 트랜잭션에서 이 공고에 남은 마이홈 정제·LH 보강 실패를 저장한 관리자의 해결로 바꾸고, 공급정보 주인을 공고문으로 바꾼다.
 LH 공고 정제는 공고문 소유 공고의 공급행을 다시 만들지 않으므로 관리자가 저장한 단지·주택형 연결이 그대로 남는다. 마이홈 정제용 저장 매칭도 함께 기록하지만 지원을 종료한 마이홈 정제만 읽는다.

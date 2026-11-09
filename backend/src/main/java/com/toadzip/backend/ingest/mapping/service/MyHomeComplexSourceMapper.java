@@ -21,11 +21,19 @@ public class MyHomeComplexSourceMapper {
     private final MyHomeComplexClassificationPolicy classification = new MyHomeComplexClassificationPolicy();
 
     public MyHomeComplexMappingData map(String sourceComplexIdentifier, List<MyHomeComplexSourceView> sources) {
+        return map(sourceComplexIdentifier, sources, null);
+    }
+
+    MyHomeComplexMappingData map(String sourceComplexIdentifier, List<MyHomeComplexSourceView> sources,
+            String preparedAddress) {
         String name = parser.requiredText(sources, MyHomeComplexSourceView::getHsmpNm, "단지명");
         String supplyType = classification.supplyType(
                 parser.requiredText(sources, MyHomeComplexSourceView::getSuplyTyNm, "공급유형")
         );
-        String roadAddress = parser.requiredText(sources, MyHomeComplexSourceView::getRnAdres, "도로명주소");
+        String roadAddress = preparedAddress;
+        if (roadAddress == null) {
+            roadAddress = parser.requiredText(sources, MyHomeComplexSourceView::getRnAdres, "도로명주소");
+        }
         String pnu = parser.pnu(parser.requiredText(sources, MyHomeComplexSourceView::getPnu, "PNU"));
         String provinceCode = parser.provinceCode(
                 parser.requiredText(sources, MyHomeComplexSourceView::getBrtcCode, "시·도 코드")

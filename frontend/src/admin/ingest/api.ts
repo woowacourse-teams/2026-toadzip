@@ -165,6 +165,7 @@ export type LocationSummaryImportReport = {
   targetRoadAddressCount: number
   matchedRoadAddressCount: number
   unmatchedRoadAddressCount: number
+  preparedRoadAddressCount: number
   storedLocationCount: number
   replacedRowCount: number
   invalidatedMappingCandidateCount: number
@@ -305,6 +306,55 @@ export type InitialRegistrationStatus = typeof initialRegistrationStatuses[numbe
 export type InitialRegistrationTarget = {
   sourceComplexIdentifier: string; name: string | null; roadAddress: string | null
   status: InitialRegistrationStatus; detail: string; housingComplexId: number | null; checkedAt: string
+  location?: PreparedLocation | null
+}
+
+export const locationFailureReasons = ['INVALID_ADDRESS', 'ADDRESS_NOT_FOUND', 'COORDINATE_NOT_FOUND', 'COORDINATE_CONVERSION_ERROR'] as const
+export type LocationFailureReason = typeof locationFailureReasons[number]
+export type PreparedLocation = {
+  address: string | null; latitude: number | null; longitude: number | null; origin: 'ZIP' | 'ADMIN' | null
+  failure: LocationFailureReason | null; checkedAt: string; checkedBy: string | null
+}
+export type LocationPreparationResponse = {
+  counts: Record<LocationFailureReason | 'READY', number>; targets: InitialRegistrationTarget[]
+  totalElements: number; page: number; totalPages: number
+}
+
+export async function getLocationPreparation(page: number): Promise<LocationPreparationResponse> {
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/locations?page=${page}&size=20`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  const counts = isRecord(body) ? body.counts : null
+  if (!isRecord(body) || !isRecord(counts) || !['READY', ...locationFailureReasons].every(reason => isCount(counts[reason]))
+    || !isCount(body.totalElements) || !isCount(body.page) || !isCount(body.totalPages)
+    || !Array.isArray(body.targets) || !body.targets.every(target => isInitialRegistrationTarget(target)
+      && target.location != null && isPreparedLocation(target.location))) {
+    throw new Error('주소·좌표 준비 응답 형식이 올바르지 않습니다.')
+  }
+  return body as LocationPreparationResponse
+}
+
+export async function supplementInitialRegistrationLocation(sourceComplexIdentifier: string,
+  address: string, latitude: number, longitude: number): Promise<void> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/locations`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [token.headerName]: token.token },
+    body: JSON.stringify({ sourceComplexIdentifier, address, latitude, longitude }),
+  })
+  if (!response.ok) throw apiError(response.status, await readJson(response))
+}
+
+function isPreparedLocation(value: unknown): value is PreparedLocation {
+  if (!isRecord(value) || typeof value.checkedAt !== 'string' || !Number.isFinite(Date.parse(value.checkedAt))
+    || !(value.checkedBy === null || typeof value.checkedBy === 'string')) return false
+  if (locationFailureReasons.some(reason => reason === value.failure)) {
+    return value.address === null && value.latitude === null && value.longitude === null && value.origin === null
+  }
+  return value.failure === null && typeof value.address === 'string' && value.address.trim().length > 0
+    && typeof value.latitude === 'number' && Number.isFinite(value.latitude) && Math.abs(value.latitude) <= 90
+    && typeof value.longitude === 'number' && Number.isFinite(value.longitude) && Math.abs(value.longitude) <= 180
+    && (value.origin === 'ZIP' || value.origin === 'ADMIN')
 }
 export type InitialRegistrationResponse = {
   counts: Record<InitialRegistrationStatus, number>; targets: InitialRegistrationTarget[]
@@ -344,6 +394,7 @@ function isInitialRegistrationTarget(value: unknown): value is InitialRegistrati
     && initialRegistrationStatuses.some(status => status === value.status) && typeof value.detail === 'string'
     && (value.housingComplexId === null || isCount(value.housingComplexId))
     && typeof value.checkedAt === 'string' && Number.isFinite(Date.parse(value.checkedAt))
+    && (value.location === undefined || value.location === null || isPreparedLocation(value.location))
 }
 
 async function readExecutionResponse(response: Response): Promise<DataPipelineExecution> {
@@ -452,6 +503,7 @@ function isLocationSummaryImportReport(value: unknown): value is LocationSummary
     && typeof value.targetRoadAddressCount === 'number'
     && typeof value.matchedRoadAddressCount === 'number'
     && typeof value.unmatchedRoadAddressCount === 'number'
+    && isCount(value.preparedRoadAddressCount)
     && typeof value.storedLocationCount === 'number'
     && typeof value.replacedRowCount === 'number'
     && typeof value.invalidatedMappingCandidateCount === 'number'

@@ -2,6 +2,8 @@ package com.toadzip.backend.announcement.dto.correction;
 
 import com.toadzip.backend.admin.quality.dto.QualityComparison.Source;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.dto.request.RejectUnknownJsonFields;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -15,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -22,35 +25,32 @@ public final class SupplyCorrection {
     private SupplyCorrection() { }
 
     /** deletableRowKeys는 지울 수 있는 행(원천 없이 관리자가 추가했고 공통 모집 묶음에 없는 행)이다. 원천행은 제외만 할 수 있다. */
-    /** unattachedLhSupplyRows는 LH 원천 소유 공고의 최신 LH 공급 원본 행 중 아직 공급행이 되지 않은(LH 행 식별자로 붙지 않은) 행이다. */
+    /** unattachedLhSupplyRows는 LH 원천 소유 공고의 최신 LH 공급 원본 행 중 같은 전용면적 공급행이 없어 붙지 않은 행이다. 오류가 아니라 정보다. */
     /** announcementComplexes는 이 공고의 공고 단지다. 공급행의 complexName이 공고 단지 이름이고, PDF 단지를 주소로 대응할 때 쓴다. */
-    /** lhSupplyRows는 소유와 관계없이 이 공고의 최신 LH 공급 원본 행 전체와 각 행에 붙은 공급행·분리행이다. 분리·연결할 LH 행을 고를 때 쓴다. */
+    /** lhSupplyRows는 소유와 관계없이 이 공고의 최신 LH 공급 원본 행 전체와 각 행이 붙은 공급행이다. 세대수 검산과 식별에만 쓴다. */
+    /**
+     * applicationTypeNames는 행 키별 주택형(신청형) 이름(공고 표기, 없으면 원천 형명)이다. 행 이름(typeName)은 공고 표기가 없으면 연결
+     * 주택형 이름이라 신청형을 가리지 못하므로, 화면은 이 이름으로 서버의 같은 신청형 판정과 같은 기준을 쓴다. 읽기 전용이다.
+     * matchingAreas는 행 키별 원천 전용면적(정제가 매칭용으로 적어 둔 공고·LH 면적)이다. 주택형이 없어 행 면적(exclusiveArea)이 비어도
+     * 화면이 저장할 곳을 면적으로 고를 수 있게 한다(GH 공급행 틀 '49형' 49.93㎡). 읽기 전용이다.
+     */
     public record Workspace(String snapshotToken, long version, List<Row> rows, List<Source> sources, List<String> sourceWarnings,
             List<RowSource> rowSources, List<String> deletableRowKeys, List<LhSupplyRow> unattachedLhSupplyRows,
-            List<AnnouncementComplexView> announcementComplexes, List<LhSupplyRow> lhSupplyRows) { }
+            List<AnnouncementComplexView> announcementComplexes, List<LhSupplyRow> lhSupplyRows,
+            Map<String, String> applicationTypeNames, Map<String, BigDecimal> matchingAreas) { }
     /** linkMethod는 AUTO·ADMIN·MIGRATED, 연결이 없으면(휴지통 단지 포함) null이다. rowCount는 이 공고 단지의 제외하지 않은 공급행 수다. */
     public record AnnouncementComplexView(long id, String name, String roadAddress, Long housingComplexId, String housingComplexName,
             String linkMethod, int rowCount) { }
     public record ComplexLinkRequest(@NotBlank @Size(max = 200) String snapshotToken, @Positive long housingComplexId) { }
     /**
-     * LH 공급 원본 한 행. householdCount는 LH 목록의 이번 공급 수(정수가 아니면 null), attachedRowKey는 LH 행 식별자를 기록한
-     * 공급행(통합행 포함), splitRowKeys는 이 LH 행에서 나눈 공급행이다. 둘 다 없으면 아직 공급행이 되지 않은 행이다.
+     * LH 공급 원본 한 행. householdCount는 LH 목록의 이번 공급 수(정수가 아니면 null), attachedRowKey는 같은 공고 단지에서 전용면적이
+     * 같아 이 LH 행이 붙은 공급행이다(LhRowAttachments). ambiguous는 같은 면적 공급행이 여럿이라 표시 순서 첫 행에 붙였다는 뜻이다.
      */
     public record LhSupplyRow(String rowIdentifier, String complexLabel, String typeName, String exclusiveArea,
-            Integer householdCount, String attachedRowKey, List<String> splitRowKeys) { }
-    /**
-     * 요청 행의 저장 방식. UPDATE는 기존 행 수정, SPLIT은 LH 공급 원본 한 행을 주택형별 행으로 나누기(통합행은 첫 분리행),
-     * ATTACH는 아직 공급행이 되지 않은 LH 행에 새 행 붙이기, ADD는 LH 원천과 무관한 새 행이다.
-     * 생략하면 id가 있는 행은 UPDATE, 없는 행은 ADD다.
-     */
-    public enum SaveMode { UPDATE, SPLIT, ATTACH, ADD }
-    /** 한 LH 행에서 나눈 공급행. householdCount는 제외하지 않은 분리행 모집수 합계(미확정이 있으면 null), lhHouseholdCount는 LH 공급 수다. */
-    public record Split(String lhSourceRowIdentifier, List<String> rowKeys, Integer householdCount, Integer lhHouseholdCount) { }
+            Integer householdCount, String attachedRowKey, boolean ambiguous) { }
     /** 공급행이 기록한 원천행. 작업실의 sources에서 같은 분류·키의 원천을 찾아 행 옆에 보여준다. */
     public record RowSource(String rowKey, String category, String sourceKey) { }
-    /** splits는 저장 뒤의 LH 분리 묶음, unattachedLhSupplyRows는 이 저장 뒤에도 공급행이 되지 않은 LH 행이다. */
-    public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings,
-            List<NewGroup> newGroups, List<Split> splits, List<LhSupplyRow> unattachedLhSupplyRows) { }
+    public record Preview(String confirmationToken, List<Row> before, List<Row> after, List<String> warnings) { }
     public record Applied(long changeId, boolean alreadyApplied, Workspace workspace) { }
     public record Request(
             @NotNull UUID operationId,
@@ -59,20 +59,15 @@ public final class SupplyCorrection {
             @NotBlank @Size(max = 2048) @Pattern(regexp = "^https?://[^\\s]+$") String sourceUrl,
             @Size(max = 100) String sourcePage,
             @NotNull @Size(max = 500) List<@NotNull @Valid Row> rows,
-            @Size(max = 250) List<@NotNull @Valid NewGroup> newGroups,
-            @Size(max = 500) List<@NotBlank @Size(max = 64) String> deletedRowKeys) {
+            @Size(max = 500) List<@NotBlank @Size(max = 64) String> deletedRowKeys) implements RejectUnknownJsonFields {
         public Request {
-            if (newGroups == null) { newGroups = List.of(); }
             if (deletedRowKeys == null) { deletedRowKeys = List.of(); }
         }
         public Request(UUID operationId, String snapshotToken, String reason, String sourceUrl,
                 String sourcePage, List<Row> rows) {
-            this(operationId, snapshotToken, reason, sourceUrl, sourcePage, rows, List.of(), List.of());
+            this(operationId, snapshotToken, reason, sourceUrl, sourcePage, rows, List.of());
         }
     }
-    public record NewGroup(@Positive long sourceRowId,
-            @NotNull @Size(min = 2, max = 50) List<@NotBlank @Size(max = 64) String> rowKeys,
-            @NotNull @PositiveOrZero Integer sharedHouseholdCount) { }
     public record Apply(@NotNull @Valid Request correction,
             @NotBlank @Size(max = 64) String confirmationToken) { }
 
@@ -103,21 +98,22 @@ public final class SupplyCorrection {
             @PositiveOrZero @Digits(integer = 6, fraction = 4) BigDecimal supplyArea,
             @NotNull @Size(max = 200) List<@NotNull @Valid Target> targets,
             boolean targetCountsComparable,
-            @Size(max = 50) List<@NotNull @Valid LinkedHousingType> linkedHousingTypes,
-            SaveMode saveMode,
-            @Size(max = 255) String lhSourceRowIdentifier) {
+            @Size(max = 50) List<@NotNull @Valid LinkedHousingType> linkedHousingTypes) implements RejectUnknownJsonFields {
         public Row {
             // 화면은 PNU 없는 공급행을 빈 칸으로 보낸다. 저장값(null)과 같은 값으로 받아 바뀐 행으로 보지 않는다.
             if (pnu != null && pnu.isBlank()) { pnu = null; }
         }
 
-        /** 새로 만들 주택형의 단지·전용면적 키. 한 저장에서 이 키가 같은 행들은 새 주택형 하나를 함께 쓴다. */
+        /**
+         * 새로 만들 주택형의 단지·이름 키. 한 저장에서 이 키가 같은 행들은 새 주택형 하나를 함께 쓴다. 단지 주택타입은 공고문 표기 이름으로
+         * 나누므로 같은 면적이어도 이름이 다르면(55C-1·55D-1) 따로 만든다.
+         */
         public String newHousingTypeKey() {
             return newHousingTypeKey(newHousingType);
         }
 
         public String newHousingTypeKey(NewType type) {
-            return housingComplexId + ":" + type.exclusiveArea().stripTrailingZeros().toPlainString();
+            return housingComplexId + ":" + HousingTypeNames.key(type.name());
         }
 
         /**
@@ -138,29 +134,21 @@ public final class SupplyCorrection {
             return new Row(id, key, housingComplexId, housingComplexName, housingTypeId, newHousingType, groupId,
                     sharedHouseholdCount, protectedValues, excluded, order, complexName, typeName, pnu, moveInMonth,
                     category, householdCount, areaOverride, exclusiveArea, supplyArea, targets, targetCountsComparable,
-                    linkedHousingTypes, saveMode, lhSourceRowIdentifier);
+                    linkedHousingTypes);
+        }
+
+        /** 대표 주택형만 바꾼 행. 서버가 전용면적으로 정한 주택형(기존 id 또는 새 주택형)을 넣을 때 쓴다. */
+        public Row withHousingType(Long typeId, NewType newType) {
+            return new Row(id, key, housingComplexId, housingComplexName, typeId, newType, groupId,
+                    sharedHouseholdCount, protectedValues, excluded, displayOrder, complexName, typeName, pnu, moveInMonth,
+                    category, householdCount, areaOverride, exclusiveArea, supplyArea, targets, targetCountsComparable,
+                    linkedHousingTypes);
         }
 
         public Row withLinkedHousingTypes(List<LinkedHousingType> links) {
             return new Row(id, key, housingComplexId, housingComplexName, housingTypeId, newHousingType, groupId,
                     sharedHouseholdCount, protectedValues, excluded, displayOrder, complexName, typeName, pnu, moveInMonth,
-                    category, householdCount, areaOverride, exclusiveArea, supplyArea, targets, targetCountsComparable, links,
-                    saveMode, lhSourceRowIdentifier);
-        }
-
-        /** 저장 방식을 뺀 행. 저장 방식은 요청 지시이고 행 값이 아니므로 저장값과 비교할 때 뺀다. */
-        public Row withoutSaveMode() {
-            return new Row(id, key, housingComplexId, housingComplexName, housingTypeId, newHousingType, groupId,
-                    sharedHouseholdCount, protectedValues, excluded, displayOrder, complexName, typeName, pnu, moveInMonth,
-                    category, householdCount, areaOverride, exclusiveArea, supplyArea, targets, targetCountsComparable,
-                    linkedHousingTypes, null, null);
-        }
-
-        /** 생략한 저장 방식은 id가 있는 행이면 UPDATE, 없는 행이면 ADD다. */
-        public SaveMode resolvedSaveMode() {
-            if (saveMode != null) { return saveMode; }
-            if (id == null) { return SaveMode.ADD; }
-            return SaveMode.UPDATE;
+                    category, householdCount, areaOverride, exclusiveArea, supplyArea, targets, targetCountsComparable, links);
         }
     }
 

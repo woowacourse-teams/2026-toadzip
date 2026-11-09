@@ -10,6 +10,7 @@ import {
   ConditionsConflictError,
   ConditionsSessionError,
   EMPTY_PROFILE,
+  PROFILE_FIELDS,
   type ConditionProfile,
   type ConditionsRepository,
   type StoredConditionProfile,
@@ -22,16 +23,19 @@ afterEach(() => { sessionStorage.clear(); localStorage.clear(); vi.useRealTimers
 const savedProfile = toProfile(setAnswer(setAnswer(emptyDraft(), 'BIRTH_DATE', '1996-03-02'), 'APPLICANT_ASSETS', LATER))
 
 function fakeRepository(initial: StoredConditionProfile = { version: 0, savedAt: null, profile: EMPTY_PROFILE }) {
-  let stored = initial
+  let stored: StoredConditionProfile = { reevaluationState: 'DONE', ...initial }
   const repository = {
     loadProfile: vi.fn(async () => stored),
     saveProfile: vi.fn(async ({ expectedVersion, profile }: { expectedVersion: number; profile: ConditionProfile }) => {
       if (expectedVersion !== stored.version) throw new ConditionsConflictError()
-      stored = { version: stored.version + 1, savedAt: '2026-11-06T03:00:00.000Z', profile }
+      stored = { version: stored.version + 1, savedAt: '2026-11-06T03:00:00.000Z', profile, reevaluationState: 'PENDING' }
       return stored
     }),
     loadComparison: vi.fn(),
     loadListResults: vi.fn(async () => new Map()),
+    loadProcessing: vi.fn(async () => ({ profileVersion: stored.version, requestedVersion: stored.version, state: stored.reevaluationState ?? 'DONE' as const, failedAttempts: 0 })),
+    loadDiscoveries: vi.fn(async () => ({ items: [], nextCursor: 0, hasMore: false })),
+    acknowledgeDiscovery: vi.fn(async () => {}),
     replace(next: StoredConditionProfile) { stored = next },
   }
   return repository
@@ -87,7 +91,7 @@ describe('ConditionsProvider', () => {
     fireEvent.click(screen.getByRole('button', { name: '이 공고와 비교하기' }))
     expect(await screen.findByText('revision:1')).toBeInTheDocument()
     expect(repository.saveProfile).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 0 }))
-    expect(screen.getByRole('status')).toHaveTextContent('내 조건을 저장했어요 · 이 공고와 비교했어요')
+    expect(screen.getByRole('status')).toHaveTextContent('내 조건을 저장했어요 · 현재 정보로 다시 확인하고 있어요')
     expect(screen.queryByRole('heading', { name: '입력을 마쳤어요' })).not.toBeInTheDocument()
   })
 
@@ -132,6 +136,26 @@ describe('ConditionsProvider', () => {
     expect(await screen.findByText('mode:guest')).toBeInTheDocument()
   })
 
+  it('hides the previous account profile and open editor while another account loads', async () => {
+    const first = fakeRepository({ version: 3, savedAt: null, profile: savedProfile })
+    const second = fakeRepository()
+    let resolve: (value: StoredConditionProfile) => void = () => {}
+    second.loadProfile.mockImplementation(() => new Promise((done) => { resolve = done }))
+    const factory = (id: string | null) => id === '7' ? first : second
+    const tree = (id: number) => <MemoryRouter><BookmarkContext value={session('member', id)}>
+      <ConditionsProvider createRepository={factory}><Probe /></ConditionsProvider></BookmarkContext></MemoryRouter>
+    const { rerender } = render(tree(7))
+    await screen.findByText('profile:true')
+    fireEvent.click(screen.getByRole('button', { name: '입력 열기' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    rerender(tree(8))
+    expect(screen.getByText('profile:false')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await act(async () => resolve({ version: 0, savedAt: null, profile: EMPTY_PROFILE, reevaluationState: 'DONE' }))
+    await screen.findByText('mode:member')
+    expect(second.saveProfile).not.toHaveBeenCalled()
+  })
+
   it('asks before a login handoff replaces saved conditions', async () => {
     saveLoginHandoff({ draft: setAnswer(emptyDraft(), 'BIRTH_DATE', '1996-03-02'), origin: 'detail', announcementId: '1' })
     const repository = fakeRepository({ version: 3, savedAt: null, profile: savedProfile })
@@ -158,10 +182,13 @@ describe('ConditionsProvider', () => {
 
   it('hands a guest draft over a real login and saves it after login', async () => {
     saveLoginHandoff({ draft: setAnswer(emptyDraft(), 'BIRTH_DATE', '1996-03-02'), origin: 'list', announcementId: null })
-    const repository = fakeRepository()
+    const repository = fakeRepository({ version: 0, savedAt: null, profile: {
+      familyDetailsState: 'NOT_STARTED', facts: Object.fromEntries(PROFILE_FIELDS.map((field) => [field, { state: 'UNKNOWN' as const }])),
+    } })
     renderProvider(repository)
     expect(await screen.findByText('revision:1')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('로그인하고 내 조건을 저장했어요 · 지원 가능 공고만 모아 봤어요')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('로그인하고 내 조건을 저장했어요 · 현재 정보로 다시 확인하고 있어요')
     expect(sessionStorage.getItem('toadzip:condition-handoff')).toBeNull()
   })
 

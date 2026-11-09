@@ -867,13 +867,13 @@ class AnnouncementQueryServiceTest {
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                ReceptionPlace.create(
+                List.of(ReceptionPlace.create(
                         "LH 청약센터",
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
                         "https://apply.lh.or.kr"
-                )
+                ))
         );
     }
 

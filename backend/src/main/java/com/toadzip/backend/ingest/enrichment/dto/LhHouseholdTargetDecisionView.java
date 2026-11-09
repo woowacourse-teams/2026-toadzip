@@ -16,7 +16,7 @@ import java.util.List;
 public record LhHouseholdTargetDecisionView(long failureId, String token, Complex complex, List<SourceGroup> groups,
         boolean identical, boolean decidable, SavedDecision decision) {
 
-    public record Complex(long id, String name, String supplyType, int totalHouseholdCount, String roadAddress,
+    public record Complex(long id, String name, String supplyType, Integer totalHouseholdCount, String roadAddress,
             List<ComplexHousingType> housingTypes) {
     }
 

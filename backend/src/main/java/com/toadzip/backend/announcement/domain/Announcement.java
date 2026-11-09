@@ -8,11 +8,10 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.AgencyCodeConverter;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.domain.RentalTypeConverter;
-import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.AttributeOverrides;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
-import jakarta.persistence.Embedded;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -22,10 +21,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -168,15 +170,11 @@ public class Announcement {
     @Column(precision = 12, scale = 4)
     private BigDecimal predictedCompetitionRate;
 
-    @Embedded
-    @AttributeOverrides({
-            @AttributeOverride(name = "name", column = @Column(name = "reception_place_name")),
-            @AttributeOverride(name = "method", column = @Column(name = "reception_method")),
-            @AttributeOverride(name = "address", column = @Column(name = "reception_address")),
-            @AttributeOverride(name = "contact", column = @Column(name = "reception_contact")),
-            @AttributeOverride(name = "url", column = @Column(name = "reception_url"))
-    })
-    private ReceptionPlace receptionPlace;
+    /** 접수처는 여러 곳일 수 있다(인터넷 접수와 현장 접수처 여러 곳). 순서는 공고문에 적힌 순서다. */
+    @ElementCollection
+    @CollectionTable(name = "announcement_reception_places", joinColumns = @JoinColumn(name = "announcement_id"))
+    @OrderColumn(name = "display_order")
+    private List<ReceptionPlace> receptionPlaces = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @org.hibernate.annotations.ColumnDefault("'PUBLISHED'")
@@ -201,7 +199,7 @@ public class Announcement {
             long viewCount,
             BigDecimal actualCompetitionRate,
             BigDecimal predictedCompetitionRate,
-            ReceptionPlace receptionPlace
+            List<ReceptionPlace> receptionPlaces
     ) {
         validateNotBlank(sourceAnnouncementIdentifier, "원천 공고 식별자");
         validateNotBlank(name, "공고명");
@@ -238,7 +236,12 @@ public class Announcement {
         this.viewCount = viewCount;
         this.actualCompetitionRate = actualCompetitionRate;
         this.predictedCompetitionRate = predictedCompetitionRate;
-        this.receptionPlace = receptionPlace;
+        this.receptionPlaces = receptionPlaces == null ? new ArrayList<>() : new ArrayList<>(receptionPlaces);
+    }
+
+    /** 접수처 목록(공고문 순서). 바꾸려면 원천 갱신이나 {@link #reviseByAdmin}을 쓴다. */
+    public List<ReceptionPlace> getReceptionPlaces() {
+        return List.copyOf(receptionPlaces);
     }
 
     public void confirmApplicationPeriod(LocalDate start, LocalDate end) {
@@ -266,8 +269,11 @@ public class Announcement {
         status = AnnouncementPublicationType.CORRECTION;
     }
 
-    /** LH 공고목록에는 정정·취소공고와 원공고를 잇는 값이 없어 정제가 공고명으로 찾은 원공고에 잇는다. 이미 이어진 공고는 바꾸지 않는다. */
-    public boolean linkLhRevision(Announcement previous, AnnouncementPublicationType revisionType) {
+    /**
+     * LH 공고목록과 SH·GH 게시판에는 정정·취소공고와 원공고를 잇는 값이 없어 정제가 공고명으로 찾은 원공고에 잇는다. 이미 이어졌거나
+     * 관리자가 손댄 공고는 바꾸지 않는다. 원공고가 LH 공고가 아니면 이전 LH 공고 ID는 비어 있다.
+     */
+    public boolean linkRevision(Announcement previous, AnnouncementPublicationType revisionType) {
         if (revisionType == AnnouncementPublicationType.ORIGINAL || previous == null || previous == this) {
             throw new IllegalArgumentException("정정·취소공고는 다른 이전 공고에만 이을 수 있습니다.");
         }
@@ -305,7 +311,7 @@ public class Announcement {
             String originalUrl,
             String correctionCancellationReason,
             long viewCount,
-            ReceptionPlace receptionPlace
+            List<ReceptionPlace> receptionPlaces
     ) {
         return new Announcement(
                 sourceAnnouncementIdentifier,
@@ -325,7 +331,7 @@ public class Announcement {
                 viewCount,
                 null,
                 null,
-                receptionPlace
+                receptionPlaces
         );
     }
 
@@ -387,7 +393,7 @@ public class Announcement {
             LocalDate applicationEndDate,
             LocalDate winnerAnnouncementDate,
             String originalUrl,
-            ReceptionPlace receptionPlace
+            List<ReceptionPlace> receptionPlaces
     ) {
         if (applicationScheduleReviewed) {
             applicationStartDate = this.applicationStartDate;
@@ -407,7 +413,7 @@ public class Announcement {
         boolean preserveLhCorrection = remainsLh && lhPanId != null;
         boolean preserveLhReceptionPlace = remainsLh && lhReceptionPlaceOwned;
         String ownedCorrectionReason = preserveLhCorrection ? correctionCancellationReason : null;
-        ReceptionPlace ownedReceptionPlace = preserveLhReceptionPlace ? this.receptionPlace : receptionPlace;
+        List<ReceptionPlace> ownedReceptionPlaces = preserveLhReceptionPlace ? this.receptionPlaces : receptionPlaces;
         Announcement incoming = new Announcement(
                 sourceAnnouncementIdentifier,
                 previousSourceAnnouncementIdentifier,
@@ -426,7 +432,7 @@ public class Announcement {
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                ownedReceptionPlace
+                ownedReceptionPlaces
         );
         boolean releasesLhEnrichment = !remainsLh && (lhPanId != null || lhReceptionPlaceOwned);
         if (adminModified || adminDeleted) {
@@ -516,7 +522,7 @@ public class Announcement {
                 unlessReviewed(values.applicationEndDate(), applicationEndDate),
                 Objects.requireNonNullElse(values.winnerAnnouncementDate(), winnerAnnouncementDate),
                 values.originalUrl(), correctionCancellationReason, viewCount, actualCompetitionRate,
-                predictedCompetitionRate, receptionPlace);
+                predictedCompetitionRate, receptionPlaces);
         if (adminModified && !hasSameSourceValues(incoming)) {
             sourceReviewRequired = true;
         }
@@ -579,6 +585,22 @@ public class Announcement {
         return true;
     }
 
+    /**
+     * 기관 게시판이 준 공급유형을 미확정 공고에 채운다. 관리자가 고치기 전까지는 원천을 따르고, 그 뒤나 공개된 공고는 덮지 않고
+     * 원천 값이 다르면 원천 검토 대상으로 표시한다. 원천 유형을 알 수 없으면(null) 있던 값을 지우지 않는다. 값을 바꿨으면 true다.
+     */
+    public boolean observeSourceSupplyType(RentalType sourceSupplyType) {
+        if (sourceSupplyType == null || sourceSupplyType == supplyType || adminDeleted) {
+            return false;
+        }
+        if (adminModified || isPublished()) {
+            sourceReviewRequired = true;
+            return false;
+        }
+        supplyType = sourceSupplyType;
+        return true;
+    }
+
     private LocalDate unlessReviewed(LocalDate source, LocalDate current) {
         if (applicationScheduleReviewed) {
             return current;
@@ -621,7 +643,7 @@ public class Announcement {
         applicationEndDate = incoming.applicationEndDate;
         winnerAnnouncementDate = incoming.winnerAnnouncementDate;
         originalUrl = incoming.originalUrl;
-        receptionPlace = incoming.receptionPlace;
+        replaceReceptionPlaces(incoming.receptionPlaces);
         adminModified = true;
         sourceReviewRequired = false;
         adminUpdatedAt = java.time.Instant.now();
@@ -641,14 +663,33 @@ public class Announcement {
                 && Objects.equals(winnerAnnouncementDate, incoming.winnerAnnouncementDate)
                 && originalUrl.equals(incoming.originalUrl)
                 && Objects.equals(correctionCancellationReason, incoming.correctionCancellationReason)
-                && hasSameReceptionPlace(incoming.receptionPlace);
+                && hasSameReceptionPlaces(incoming.receptionPlaces);
     }
 
-    private boolean hasSameReceptionPlace(ReceptionPlace incoming) {
-        if (receptionPlace == null) {
-            return incoming == null;
+    private boolean hasSameReceptionPlaces(List<ReceptionPlace> incoming) {
+        if (receptionPlaces.size() != incoming.size()) {
+            return false;
         }
-        return receptionPlace.hasSameValues(incoming);
+        for (int index = 0; index < incoming.size(); index++) {
+            if (!receptionPlaces.get(index).hasSameValues(incoming.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean containsReceptionPlaces(List<ReceptionPlace> incoming) {
+        return incoming.stream().allMatch(place -> receptionPlaces.stream().anyMatch(stored -> stored.isSamePlace(place)));
+    }
+
+    /** 관리되는 목록을 바꾸지 않고 내용만 갈아 끼운다(Hibernate가 추적하는 컬렉션을 유지한다). */
+    private void replaceReceptionPlaces(List<ReceptionPlace> incoming) {
+        if (incoming == receptionPlaces) {
+            return;
+        }
+        List<ReceptionPlace> copy = List.copyOf(incoming);
+        receptionPlaces.clear();
+        receptionPlaces.addAll(copy);
     }
 
     private void applySourceValues(Announcement incoming) {
@@ -665,12 +706,17 @@ public class Announcement {
         winnerAnnouncementDate = incoming.winnerAnnouncementDate;
         originalUrl = incoming.originalUrl;
         correctionCancellationReason = incoming.correctionCancellationReason;
-        receptionPlace = incoming.receptionPlace;
+        replaceReceptionPlaces(incoming.receptionPlaces);
     }
 
-    public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+    /** LH 상세로 정정 사유와 접수처를 보강한다. 원천 접수처가 비어 있으면 저장된 접수처를 그대로 둔다. */
+    public boolean enrichFromLh(String panId, String correctionReason, List<ReceptionPlace> receptionPlaces) {
+        receptionPlaces = receptionPlaces == null ? List.of() : receptionPlaces;
+        boolean sourceHasReception = !receptionPlaces.isEmpty();
         if (adminModified || adminDeleted) {
-            if (adminModified && receptionPlace != null && !hasSameReceptionPlace(receptionPlace)) {
+            // 관리자는 LH가 준 접수처 곁에 공고문의 다른 접수처(인터넷 접수 등)를 더하거나 안내 문구를 붙일 수 있다.
+            // LH 접수처가 목록에 그대로 있으면(안내 문구는 빼고 비교) 원천 변경이 아니다.
+            if (adminModified && sourceHasReception && !containsReceptionPlaces(receptionPlaces)) {
                 sourceReviewRequired = true;
             }
             return false;
@@ -684,19 +730,17 @@ public class Announcement {
         String ownedCorrectionReason = correctionReason == null
                 ? correctionCancellationReason
                 : correctionReason;
-        ReceptionPlace ownedReceptionPlace = receptionPlace == null
-                ? this.receptionPlace
-                : receptionPlace;
-        boolean ownsReceptionPlace = receptionPlace != null || lhReceptionPlaceOwned;
+        List<ReceptionPlace> ownedReceptionPlaces = sourceHasReception ? receptionPlaces : this.receptionPlaces;
+        boolean ownsReceptionPlace = sourceHasReception || lhReceptionPlaceOwned;
         if (Objects.equals(lhPanId, panId)
                 && Objects.equals(correctionCancellationReason, ownedCorrectionReason)
-                && hasSameReceptionPlace(ownedReceptionPlace)
+                && hasSameReceptionPlaces(ownedReceptionPlaces)
                 && lhReceptionPlaceOwned == ownsReceptionPlace) {
             return false;
         }
         lhPanId = panId;
         correctionCancellationReason = ownedCorrectionReason;
-        this.receptionPlace = ownedReceptionPlace;
+        replaceReceptionPlaces(ownedReceptionPlaces);
         lhReceptionPlaceOwned = ownsReceptionPlace;
         return true;
     }
@@ -719,7 +763,7 @@ public class Announcement {
             long viewCount,
             BigDecimal actualCompetitionRate,
             BigDecimal predictedCompetitionRate,
-            ReceptionPlace receptionPlace
+            List<ReceptionPlace> receptionPlaces
     ) {
         return new Announcement(
                 sourceAnnouncementIdentifier,
@@ -739,7 +783,7 @@ public class Announcement {
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                receptionPlace
+                receptionPlaces
         );
     }
 
@@ -759,7 +803,7 @@ public class Announcement {
             String originalUrl,
             String correctionCancellationReason,
             long viewCount,
-            ReceptionPlace receptionPlace
+            List<ReceptionPlace> receptionPlaces
     ) {
         return create(
                 sourceAnnouncementIdentifier,
@@ -777,7 +821,7 @@ public class Announcement {
                 originalUrl,
                 correctionCancellationReason,
                 viewCount,
-                receptionPlace
+                receptionPlaces
         );
     }
 
@@ -799,7 +843,7 @@ public class Announcement {
             long viewCount,
             BigDecimal actualCompetitionRate,
             BigDecimal predictedCompetitionRate,
-            ReceptionPlace receptionPlace
+            List<ReceptionPlace> receptionPlaces
     ) {
         return create(
                 sourceAnnouncementIdentifier,
@@ -819,7 +863,7 @@ public class Announcement {
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                receptionPlace
+                receptionPlaces
         );
     }
 

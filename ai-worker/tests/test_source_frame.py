@@ -7,9 +7,10 @@ def gh_row(identifier, complex_label, type_name, exclusive_area=""):
             "exclusiveArea": exclusive_area, "supplyArea": "", "suppliedUnitCount": "", "totalUnitCount": ""}
 
 
-def supply_row(complex_name, housing_type, exclusive_area=None, source_row=None):
+def supply_row(complex_name, housing_type, exclusive_area=None, source_row=None, subtypes=()):
     return {"complexReference": {"sourceComplexName": complex_name}, "sourceHousingTypeName": housing_type,
-            "exclusiveArea": exclusive_area, "sourceRow": source_row, "subtypes": [], "targets": []}
+            "exclusiveArea": exclusive_area, "sourceRow": source_row,
+            "subtypes": [{"name": name, "exclusiveArea": area} for name, area in subtypes], "targets": []}
 
 
 def link(frame_rows, supply_rows):
@@ -37,16 +38,12 @@ def test_gh_rows_are_not_given_to_the_model():
     assert frame.lh_rows == []
 
 
-def test_lh_row_number_is_replaced_by_that_rows_identifier_and_out_of_range_is_cleared():
-    frame_rows = [{"source": "LH", "rowIdentifier": "LH:P:SUPPLY:1", "typeName": "51", "exclusiveArea": "", "supplyArea": "",
-                   "suppliedUnitCount": "200"}]
+def test_lh_rows_do_not_fill_source_row():
+    # LH 행은 공급행에 대응하지 않는 참고 자료다. 화면이 전용면적으로 따로 맞춘다.
+    frame_rows = [{"source": "LH", "rowIdentifier": "LH:P:SUPPLY:1", "complexLabel": "A", "typeName": "51",
+                   "exclusiveArea": "51.98", "supplyArea": "", "suppliedUnitCount": "200"}]
 
-    assert link(frame_rows, [supply_row("A", "51", source_row=1), supply_row("A", "59", source_row=2)]) == (
-        ["LH:P:SUPPLY:1", None], [])
-
-
-def test_model_number_without_lh_rows_is_cleared():
-    assert link([], [supply_row("A", "51", source_row=1)]) == ([None], [])
+    assert link(frame_rows, [supply_row("A", "51", 51.98)]) == ([None], [])
 
 
 def test_gh_frame_row_with_same_district_and_housing_type_token_is_linked():
@@ -113,7 +110,9 @@ def test_gh_district_written_differently_in_the_pdf_is_matched_when_only_one_dis
 
 def test_pdf_name_longer_than_the_frame_district_is_not_taken_as_that_district():
     # PDF 이름이 틀 지구명을 품는 방향("수원 광교 원천" ⊃ "광교")은 다른 지구일 수 있어 맞추지 않는다.
-    frame_rows = [gh_row("GH:1:광교 경기행복주택:36A", "광교 경기행복주택", "36A 청년")]
+    # 틀에 단지가 하나뿐이면 이름이 달라도 그 단지라(사용자 결정), 단지가 여럿인 틀로 본다.
+    frame_rows = [gh_row("GH:1:광교 경기행복주택:36A", "광교 경기행복주택", "36A 청년"),
+                  gh_row("GH:1:안양관양 경기행복주택:36A", "안양관양 경기행복주택", "36A 청년")]
 
     rows, _ = link(frame_rows, [supply_row("광교원천", "36A")])
 
@@ -127,3 +126,81 @@ def test_gh_frame_row_matched_by_several_pdf_rows_is_left_for_the_admin():
     assert link(frame_rows, [supply_row("광교", "36A", 36.7), supply_row("광교", "36A 청년", 36.9)]) == ([None, None], [
         "supplyRows[0], supplyRows[1]: 같은 GH 공급행 틀(광교 36A 청년)에 맞아 하나로 정하지 못함",
     ])
+
+
+DASAN = "다산진건B1블록 장기전세주택"
+
+
+def test_single_complex_frame_is_matched_by_housing_type_even_when_the_district_name_differs():
+    # 작업 121: 틀 지구명(다산진건B1블록 장기전세주택)과 PDF 단지명(다산 진건 데시앙)이 다르다. 틀에 단지가 하나뿐이면 그 단지다.
+    frame = [gh_row(f"GH:808:{DASAN}:{name}", DASAN, name, area)
+             for name, area in (("72A", "72.9858"), ("84A", "84.9876"), ("84B", "84.9585"))]
+    rows, warnings = link(frame, [supply_row("다산 진건 데시앙", name, area)
+                                  for name, area in (("72A", 72.98), ("84A", 84.98), ("84B", 84.95))])
+
+    assert rows == [f"GH:808:{DASAN}:{name}" for name in ("72A", "84A", "84B")]
+    assert warnings == []
+
+
+def test_single_complex_frame_falls_back_to_one_row_of_the_same_area_and_not_to_several():
+    frame = [gh_row(f"GH:808:{DASAN}:{name}", DASAN, name, area)
+             for name, area in (("72A", "72.9858"), ("84C1", "84.9825"), ("84C2", "84.9825"))]
+
+    # 주택형이 같은 틀 행이 없으면 면적이 같은 행 하나와 맞춘다.
+    assert link(frame, [supply_row("다산 진건 데시앙", "72", 72.98)])[0] == [f"GH:808:{DASAN}:72A"]
+    # 면적이 같은 틀 행이 여럿이면 잇지 않는다.
+    assert link(frame, [supply_row("다산 진건 데시앙", "84", 84.98)])[0] == [None]
+
+
+def test_frame_with_several_complexes_still_needs_a_matching_district_name():
+    frame = [gh_row("GH:900:갑지구:59A", "갑지구", "59A", "59.98"), gh_row("GH:900:을지구:59A", "을지구", "59A", "59.98")]
+
+    rows, warnings = link(frame, [supply_row("병 단지", "59A", 59.98)])
+
+    assert rows == [None]
+    assert any("맞추지 못한 PDF 공급행" in warning for warning in warnings)
+
+
+def test_housing_type_row_grouping_several_house_types_is_not_linked_by_area():
+    # 84(84A·84C1·84C2 / 84B·84D)는 틀 행 하나가 아니라 여러 주택타입이다. 면적이 맞는 84A에 이으면 84B 수가 두 번 들어간다.
+    frame = [gh_row(f"GH:808:{DASAN}:{name}", DASAN, name, area)
+             for name, area in (("72A", "72.9858"), ("84A", "84.9876"), ("84B", "84.9585"))]
+    rows, _ = link(frame, [supply_row("다산 진건 데시앙", "72", 72.98, subtypes=[("72A", 72.98)]),
+                           supply_row("다산 진건 데시앙", "84", 84.98, subtypes=[("84A·84C1·84C2", 84.98), ("84B·84D", 84.95)])])
+
+    assert rows == [f"GH:808:{DASAN}:72A", None]
+
+
+def test_area_fallback_only_uses_frame_rows_left_after_matching_by_housing_type():
+    # 틀에 84C1만 있다. 84C1은 주택형으로 맞고, 84C2는 남은 틀 행이 없어 잇지 않는다.
+    frame = [gh_row(f"GH:808:{DASAN}:84C1", DASAN, "84C1", "84.9825")]
+    rows, warnings = link(frame, [supply_row("다산 진건 데시앙", "84C1", 84.98), supply_row("다산 진건 데시앙", "84C2", 84.98)])
+
+    assert rows == [f"GH:808:{DASAN}:84C1", None]
+    assert warnings == ["GH 공급행 틀과 맞추지 못한 PDF 공급행 1개: 다산 진건 데시앙 84C2"]
+
+
+def test_area_fallback_with_several_frame_rows_of_that_area_is_warned_as_such():
+    frame = [gh_row(f"GH:808:{DASAN}:{name}", DASAN, name, "84.9825") for name in ("84C1", "84C2")]
+    rows, warnings = link(frame, [supply_row("다산 진건 데시앙", "84C", 84.98)])
+
+    assert rows == [None]
+    assert any("전용면적이 같은 틀 행이 2개" in warning for warning in warnings)
+
+
+def test_single_complex_frame_still_needs_names_when_the_pdf_has_several_complexes():
+    frame = [gh_row(f"GH:808:{DASAN}:72A", DASAN, "72A", "72.9858")]
+    rows, _ = link(frame, [supply_row("다산 진건 데시앙", "72A", 72.98), supply_row("다른 단지", "59A", 59.98)])
+
+    assert rows == [None, None]
+
+
+def test_one_subtype_entry_naming_several_house_types_is_not_linked_by_area():
+    # 세부 타입 하나가 같은 면적의 주택타입 여럿(84A·84C1·84C2)이면 묶은 주택형이라 84A 틀 행 하나에 잇지 않는다.
+    frame = [gh_row(f"GH:808:{DASAN}:{name}", DASAN, name, area)
+             for name, area in (("72A", "72.9858"), ("84A", "84.9876"), ("84B", "84.9585"))]
+    rows, _ = link(frame, [supply_row("다산 진건 데시앙", "72A", 72.98),
+                           supply_row("다산 진건 데시앙", "84", 84.98, subtypes=[("84A·84C1·84C2", 84.98)]),
+                           supply_row("다산 진건 데시앙", "84B", 84.95)])
+
+    assert rows == [f"GH:808:{DASAN}:72A", None, f"GH:808:{DASAN}:84B"]

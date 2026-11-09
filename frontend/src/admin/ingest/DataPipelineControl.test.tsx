@@ -11,6 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   stopDataPipeline: vi.fn(),
   getLhAnnouncementQuality: vi.fn(),
   getInitialRegistration: vi.fn(),
+  getLocationPreparation: vi.fn(),
 }))
 
 vi.mock('./api', async (importOriginal) => ({
@@ -19,6 +20,7 @@ vi.mock('./api', async (importOriginal) => ({
 }))
 
 beforeEach(() => {
+  apiMocks.getLocationPreparation.mockResolvedValue({ counts: { READY: 0, INVALID_ADDRESS: 0, ADDRESS_NOT_FOUND: 0, COORDINATE_NOT_FOUND: 0, COORDINATE_CONVERSION_ERROR: 0 }, targets: [], totalElements: 0, page: 0, totalPages: 0 })
   apiMocks.getInitialRegistration.mockResolvedValue({
     counts: { EXISTING: 0, LOCATION_REQUIRED: 0, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 0 },
     targets: [], totalElements: 0, page: 0, totalPages: 0,
@@ -137,7 +139,7 @@ describe('DataPipelineControl', () => {
 
   it.each([
     ['SH', 'SH_ANNOUNCEMENT_COLLECTION'], ['GH', 'GH_ANNOUNCEMENT_COLLECTION'],
-  ] as const)('v2 공고 화면에서 %s 수집을 키 없이 실행하고 수집·정제 두 단계를 표시한다', async (agency, type) => {
+  ] as const)('v2 공고 화면에서 %s 수집을 키 없이 실행하고 수집·정제 한 단계를 표시한다', async (agency, type) => {
     apiMocks.startDataPipeline.mockResolvedValue(execution(type, 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     await act(async () => {})
@@ -145,7 +147,7 @@ describe('DataPipelineControl', () => {
     fireEvent.click(screen.getByRole('button', { name: `${agency} 공고 수집` }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith(type)
     const result = await screen.findByRole('article', { name: '현재 작업 단계' })
-    expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(2)
+    expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: '공고 수집 개요로 돌아가기' }))
     await waitFor(() => expect(screen.getByRole('button', { name: `${agency} 공고 수집` })).toBeEnabled())
   })
@@ -655,7 +657,7 @@ describe('DataPipelineControl', () => {
     fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeEnabled())
     expect(screen.getByRole('tabpanel')).toHaveTextContent('완료')
-    fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
+    fireEvent.click(screen.getByRole('tab', { name: '2 주소·좌표 준비' }))
     expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()
     expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION')
   })
@@ -670,7 +672,7 @@ describe('DataPipelineControl', () => {
     expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
     expect(screen.queryByText('일부 실패')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '단지 저장 결과 확인' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '2 좌표 적재' }))
+    fireEvent.click(screen.getByRole('tab', { name: '2 주소·좌표 준비' }))
     expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeVisible()
   })
 

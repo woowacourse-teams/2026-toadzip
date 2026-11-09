@@ -25,6 +25,15 @@ class UtmKCoordinateConverterTest {
     }
 
     @Test
+    void 유한수라도_역변환이_일치하지_않는_비정상_좌표는_거절한다() {
+        assertThatThrownBy(() -> converter.convert(new UtmKCoordinate(
+                new BigDecimal("999999999"), new BigDecimal("999999999"))))
+                .isInstanceOfSatisfying(RoadAddressGeocodingException.class,
+                        exception -> assertThat(exception.getReason())
+                                .isEqualTo(RoadAddressGeocodingFailureReason.COORDINATE_CONVERSION_ERROR));
+    }
+
+    @Test
     void 변환할_수_없는_좌표는_명확한_실패로_반환한다() {
         assertThatThrownBy(() -> converter.convert(new UtmKCoordinate(
                 new BigDecimal("1E+1000"),

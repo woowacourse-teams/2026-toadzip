@@ -1,8 +1,9 @@
 import { RegistrationSelectField, RegistrationTextField } from '../registration/RegistrationFields'
 import { type ManagementValues } from './managementContract'
 import { type Field, valueAt, labels } from './fields'
-export function EditFields({ fields, data, errors, scheduleReviewed = false, onValueChange }: {
-  fields: Field[]; data: ManagementValues; errors: Record<string,string>; scheduleReviewed?: boolean; onValueChange?: (name: string, value: string) => void
+/** namePrefix는 목록 안 한 항목의 칸 이름 앞에 붙인다(예: `receptionPlaces[0].`). 값은 data의 칸 이름으로 읽는다. */
+export function EditFields({ fields, data, errors, scheduleReviewed = false, onValueChange, namePrefix = '' }: {
+  fields: Field[]; data: ManagementValues; errors: Record<string,string>; scheduleReviewed?: boolean; onValueChange?: (name: string, value: string) => void; namePrefix?: string
 }) {
   return <div className={`registration-grid${fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{fields.map(field => {
     const raw = valueAt(data, field.name)
@@ -11,11 +12,11 @@ export function EditFields({ fields, data, errors, scheduleReviewed = false, onV
     const readonly = scheduleReviewed && ['applicationStartDate','applicationEndDate'].includes(field.name)
     if (field.options) {
       const options = field.options.includes(value) || !value ? field.options : [value, ...field.options]
-      return <RegistrationSelectField key={field.name} label={field.label} name={field.name} required={field.required}
+      return <RegistrationSelectField key={field.name} label={field.label} name={namePrefix + field.name} required={field.required}
         errors={errors} {...binding} options={[{value:'',label:field.required ? '선택해 주세요' : '미확인'},...options.map(option => ({value:option,label:labels[option] ?? option}))]} />
     }
-    return <RegistrationTextField key={field.name} label={field.label} name={field.name} errors={errors}
+    return <RegistrationTextField key={field.name} label={field.label} name={namePrefix + field.name} errors={errors}
       {...binding} type={field.type ?? 'text'} required={field.required} min={field.min} max={field.max} step={field.step}
-      maxLength={field.type ? undefined : 255} readOnly={readonly} />
+      maxLength={field.maxLength ?? (field.type ? undefined : 255)} readOnly={readonly} />
   })}</div>
 }

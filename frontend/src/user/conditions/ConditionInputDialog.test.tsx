@@ -5,7 +5,7 @@ import { LATER, emptyDraft, type ConditionDraft } from './conditionDraft'
 
 const filled: ConditionDraft = {
   answers: {
-    BIRTH_DATE: '1996-03-02', RESIDENCE_REGION: '11140', IS_UNIVERSITY_STUDENT: false, IS_JOB_SEEKER: false,
+    BIRTH_DATE: '1996-03-02', RESIDENCE_REGION: '11140', CURRENT_REGION_RESIDENCE_MONTHS: 24, CURRENT_LEASE_END_DATE: '2027-05-01', IS_UNIVERSITY_STUDENT: false, IS_JOB_SEEKER: false,
     APPLICANT_OWNS_HOUSE: false, APPLICANT_OWNS_CAR: false, APPLICANT_ASSETS: LATER, APPLICANT_MONTHLY_INCOME: 2_300_000,
     FAMILY_TYPE: 'UNMARRIED', IS_HOUSEHOLD_SEPARATED: true, REGISTERED_FAMILY_COUNT: 1,
   },
@@ -27,7 +27,7 @@ describe('ConditionInputDialog full mode', () => {
     renderDialog()
     next()
     expect(screen.getByText('1 / 3 단계')).toBeInTheDocument()
-    expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(['날짜를 입력해 주세요.', '시·군·구까지 골라 주세요.', '답을 골라 주세요.', '답을 골라 주세요.'])
+    expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(['날짜를 입력해 주세요.', '시·군·구까지 골라 주세요.', '답을 골라 주세요.', '날짜를 입력해 주세요.', '답을 골라 주세요.', '답을 골라 주세요.'])
   })
 
   it('keeps the specific date error when moving on with an invalid date', () => {

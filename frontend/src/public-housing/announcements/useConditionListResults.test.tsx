@@ -16,15 +16,16 @@ function value(load: ConditionsRepository['loadListResults'], extra: Partial<Con
   }
 }
 
-const result = (announcementId: string, generalMatched: boolean): ListConditionResult => ({
-  announcementId, availability: 'AVAILABLE', generalMatched, best: { label: '청년', coverage: 'GENERAL', status: generalMatched ? 'MATCHED' : 'INPUT_NEEDED' },
+const result = (announcementId: string, eligibleInRegion: boolean): ListConditionResult => ({
+  announcementId, availability: 'AVAILABLE', freshness: 'CURRENT', missingInputs: [], eligibleInRegion, best: { label: '청년', status: eligibleInRegion ? 'ELIGIBLE' : 'UNDETERMINED' },
 })
 
 describe('useConditionListResults', () => {
   it('maps list items to rental type labels and keeps matched ids', async () => {
     const load = vi.fn(async (refs: readonly AnnouncementRef[]) => new Map(refs.map((ref) => [ref.announcementId, result(ref.announcementId, ref.announcementId === '1')])))
     const wrapper = ({ children }: { children: ReactNode }) => <ConditionsContext value={value(load)}>{children}</ConditionsContext>
-    const { result: hook } = renderHook(() => useConditionListResults([item('1'), item('2', 'PERMANENT_RENTAL')]), { wrapper })
+    const items = [item('1'), item('2', 'PERMANENT_RENTAL')]
+    const { result: hook } = renderHook(() => useConditionListResults(items), { wrapper })
     await waitFor(() => expect(hook.current.status).toBe('ready'))
     expect(load.mock.calls[0][0].map((ref) => ref.rentalType)).toEqual(['행복주택', '영구임대'])
     expect([...hook.current.matchedIds]).toEqual(['1'])
@@ -53,7 +54,7 @@ describe('useConditionListResults', () => {
     await waitFor(() => expect(hook.current.status).toBe('ready'))
     rerender({ items: [item('2'), item('3')] })
     expect(hook.current.status).toBe('loading')
-    expect([...hook.current.matchedIds]).toEqual(['2'])
+    expect([...hook.current.matchedIds]).toEqual([])
     resolve(new Map([['2', result('2', false)], ['3', result('3', true)]]))
     await waitFor(() => expect(hook.current.status).toBe('ready'))
     expect([...hook.current.matchedIds]).toEqual(['3'])

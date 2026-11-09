@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.lh.refinement.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.lh.refinement.domain.RoadNumberAddress;
+import com.toadzip.backend.ingest.location.domain.RoadNumberAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

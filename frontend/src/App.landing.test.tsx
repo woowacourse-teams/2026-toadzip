@@ -37,10 +37,21 @@ it('비로그인 첫 방문에는 API 없이 서비스 소개와 시작하기를
   expect(fetcher).not.toHaveBeenCalled()
 })
 
+it('기술 소개 메뉴 없이 마지막 시작하기 영역 다음에 상세 기술 소개를 보여준다', () => {
+  vi.stubGlobal('fetch', vi.fn())
+  open()
+  const navigation = screen.getByRole('navigation', { name: '랜딩페이지 메뉴' })
+  expect(within(navigation).getAllByRole('link').map(link => link.textContent)).toEqual([
+    '서비스 소개', '사용법', '시작하기↗',
+  ])
+  const closing = screen.getByRole('region', { name: /살고 싶은 동네에,.*기다리고 있던 내 집/ })
+  expect(within(closing).getByRole('link', { name: '시작하기' })).toHaveAttribute('href', '/explore')
+  expect(closing.nextElementSibling).toBe(screen.getByRole('region', { name: /정확하고 빠르게 잇는 기술/ }))
+})
+
 it('기술 소개는 사례별 제목과 그림 자료, 측정 조건을 보여준다', () => {
   vi.stubGlobal('fetch', vi.fn())
   open()
-  expect(screen.getByRole('link', { name: '기술 소개' })).toHaveAttribute('href', '#technology')
   const technology = screen.getByRole('region', { name: /정확하고 빠르게 잇는 기술/ })
   const cases = within(technology).getAllByRole('article')
   expect(cases.map((item) => within(item).getByRole('heading', { level: 3 }).textContent)).toEqual([

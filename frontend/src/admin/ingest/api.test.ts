@@ -8,6 +8,30 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it('주소·좌표 보완은 원천 식별자와 새 주소·좌표를 CSRF와 함께 전달한다', async () => {
+    const fetchMock = prepareFetch(null, 204)
+    const { supplementInitialRegistrationLocation } = await import('./api.ts')
+    await supplementInitialRegistrationLocation('1:HAPPY_HOUSING', '서울특별시 종로구 테스트로 1', 37.5, 127)
+    expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/locations', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+      body: JSON.stringify({ sourceComplexIdentifier: '1:HAPPY_HOUSING', address: '서울특별시 종로구 테스트로 1', latitude: 37.5, longitude: 127 }),
+    })
+  })
+  it('주소·좌표 실패 목록을 페이지와 세션으로 조회한다', async () => {
+    const result = { counts: { READY: 1, INVALID_ADDRESS: 1, ADDRESS_NOT_FOUND: 0, COORDINATE_NOT_FOUND: 0, COORDINATE_CONVERSION_ERROR: 0 },
+      targets: [], totalElements: 0, page: 1, totalPages: 2 }
+    const fetchMock = prepareFetch(result)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse(result))
+    const { getLocationPreparation } = await import('./api.ts')
+    await expect(getLocationPreparation(1)).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/locations?page=1&size=20', { credentials: 'include' })
+  })
+  it('주소·좌표 사유별 집계가 불완전하면 성공으로 처리하지 않는다', async () => {
+    const fetchMock = prepareFetch(null)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse({ counts: { READY: 1 }, targets: [], totalElements: 0, page: 0, totalPages: 0 }))
+    const { getLocationPreparation } = await import('./api.ts')
+    await expect(getLocationPreparation(0)).rejects.toThrow('주소·좌표 준비 응답 형식')
+  })
   it.each([10, 20, 50, 100])('최초 등록 상태 필터와 페이지를 %d건씩 세션으로 조회한다', async size => {
     const result = { counts: { EXISTING: 0, LOCATION_REQUIRED: 10, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 90 },
       targets: [], totalElements: 10, page: 1, totalPages: 2 }
@@ -344,6 +368,7 @@ function locationSummaryReport() {
     storedLocationCount: 3_600,
     replacedRowCount: 0,
     invalidatedMappingCandidateCount: 0,
+    preparedRoadAddressCount: 3_300,
     provinceCodes: ['11', '26'],
   }
 }

@@ -4,29 +4,29 @@ import { Button } from '../../design-system/components/Button'
 import { attachmentErrorMessage, loadAnnouncementAttachment } from '../../public-housing/api/announcementAttachments'
 import type { PdfFocus } from '../../public-housing/components/PdfDocumentPreview'
 import { applyJsonUpdate, loadJsonWorkspace, previewJsonUpdate, type JsonPreview, type JsonUpdateInput, type JsonWorkspace } from '../announcement-json/api'
-import { correctionReflected, documentReflected, summarizePreview } from './applySummary'
-import { ApplySummaryPanel } from './ApplySummaryPanel'
+import { correctionReflected, documentReflected } from './applySummary'
 import { ReviewSchedules } from './ReviewSchedules'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
 import type { CorrectionRow, SupplyCorrectionInput } from '../supply/supplyCorrectionApi'
 import { getManagementDetail, ManagementError } from '../management/api'
 import { labels, rentals } from '../management/fields'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
-import { baseRowChanges, draftBaseRows, loadCorrectionDraft, type CorrectionDraft } from './correctionDraftApi'
+import { baseRowChanges, draftBaseRows, draftVersion, loadCorrectionDraft, type CorrectionDraft } from './correctionDraftApi'
 import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { cancelExtraction, extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembleReview, fieldNeeds, pendingField, serverFieldError, serverFieldsError, placementProblems, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
+import { applicableCells, assembleReview, fieldNeeds, groupOf, pendingField, pendingJumpTarget, serverFieldError, serverFieldsError, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, receptionCells, upgradeDraftReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
+import { ReviewReception } from './ReviewReception'
 import { ReviewSupply } from './ReviewSupply'
-import { groupOf, pendingJumpTarget } from './correspondence'
 import { supplyView } from './supplyView'
 import { SupplyNavigator } from './SupplyNavigator'
 import { SharedCountsRepair } from './SharedCountsRepair'
 import { PdfSource, PreparationFooter, RequestPreparation } from './RequestPreparation'
 import styles from './PdfCorrection.module.css'
 
+const outdatedDraftNotice = '이전 방식의 임시저장이라 복원하지 않고 다시 시작합니다. 응답을 다시 검토하면 새로 임시저장합니다.'
 const PdfDocumentPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 type Phase = 'prepare' | 'review' | 'result'
 // attachmentId가 있으면 공고 첨부라 추출 때 서버가 같은 첨부를 받는다.
@@ -122,11 +122,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const restoredText = useRef('')
   // 복원한 초안에는 추출 결과가 없으므로 저장해 둔 AI 워커 경고를 다시 보인다.
   const [restoredWarnings, setRestoredWarnings] = useState<string[]>([])
-  // 적용 전 확인: 서버 미리보기를 받은 보정안. 화면을 고치면 다시 확인해야 한다. lastInput은 응답이 불분명했던 적용 요청이다.
-  const [checked, setChecked] = useState<{ input: JsonUpdateInput; preview: JsonPreview } | null>(null)
+  // lastInput은 응답이 불분명했던 적용 요청이다.
   const lastInput = useRef<JsonUpdateInput | null>(null)
-  useEffect(() => setChecked(null), [review, reason, sourceUrl, sourcePage, release])
-  useEffect(() => { if (checked) reviewPane.current?.querySelector<HTMLElement>('[aria-label="적용 전 확인"]')?.focus() }, [checked])
   const reviewPane = useRef<HTMLDivElement>(null)
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
   // 긴 응답을 입력마다 다시 읽지 않도록 검토 버튼을 누를 때만 읽는다.
@@ -184,6 +181,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     const controller = new AbortController()
     void loadCorrectionDraft(id, controller.signal).then(draft => {
       if (controller.signal.aborted) return
+      // 이전 방식 초안은 복원하지 않고, 새로 시작한 검토의 첫 임시저장이 그 revision의 초안을 덮어쓴다.
+      if (draft && 'outdated' in draft) { drafts.adopt(draft.revision); setDraftChecked(true); setNotice(outdatedDraftNotice); return }
       if (draft) setStoredDraft(draft); else { drafts.adopt(null); setDraftChecked(true) }
     }).catch(cause => { if (!controller.signal.aborted) { setDraftError(`임시저장본을 확인하지 못했습니다. ${cause instanceof Error ? cause.message : ''}`.trim()); setDraftChecked(true) } })
     return () => controller.abort()
@@ -193,7 +192,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   useEffect(() => {
     if (supplyDraft || !draftChecked || phase !== 'review' || !review || !workspace) return
     drafts.schedule({ baseSnapshotToken: workspace.snapshotToken, ...(pdfHash ? { pdfSha256: pdfHash } : {}), ...(extractionId ? { extractionId } : {}),
-      payload: { version: 1, text: text || restoredText.current, review, reason, sourceUrl, sourcePage, section, pdfName: pdf?.name ?? '', baseRows: draftBaseRows(workspace.supply.rows), warnings: workerWarnings, selectedRow } })
+      payload: { version: draftVersion, text: text || restoredText.current, review, reason, sourceUrl, sourcePage, section, pdfName: pdf?.name ?? '', baseRows: draftBaseRows(workspace.supply.rows), warnings: workerWarnings, selectedRow } })
     // 편집 내용이 바뀔 때만 저장을 예약한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [review, reason, sourceUrl, sourcePage, section, selectedRow, draftChecked, draftTick])
@@ -201,7 +200,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (!storedDraft || !workspace) return
     const value = storedDraft.payload
     let next = value.review
-    try { if (storedDraft.stale) next = rebaseReview(value.review, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
+    try { next = upgradeDraftReview(next, workspace); if (storedDraft.stale) next = rebaseReview(next, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
     restoredText.current = value.text; setRestoredWarnings(value.warnings ?? [])
     setText(value.text); setReview(next); setReviewedWith(pdf ? `${pdf.url}\n${value.text}` : ''); setReason(value.reason); setSourceUrl(value.sourceUrl); setSourcePage(value.sourcePage)
     setSection(value.section); setSelectedRow(typeof value.selectedRow === 'number' && value.selectedRow >= 0 && value.selectedRow < next.rows.length ? value.selectedRow : 0); setFilter('all'); setPhase('review'); setError('')
@@ -215,8 +214,19 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       setStoredDraft(null); setDraftChecked(true); setDraftTick(value => value + 1); setDraftError('')
     } catch (cause) { setDraftError(cause instanceof ManagementError && cause.status === 409 ? '그사이 다른 탭에서 초안이 바뀌어 폐기하지 않았습니다. 최신 초안을 다시 불러오세요.' : '임시저장본을 폐기하지 못했습니다. 다시 시도하세요.') }
   }
+  /**
+   * 공급행을 LH 행 기준으로 나누던 이전 방식의 초안은 지금 검토에 이어 쓸 수 없어 복원하지 않는다. 그 초안의 revision을 이어받아
+   * 새로 시작한 검토의 첫 임시저장이 그 초안을 덮어쓰게 한다.
+   */
+  function startOver(revision: number) {
+    drafts.adopt(revision); setStoredDraft(null); setDraftChecked(true); setDraftTick(value => value + 1); setNotice(outdatedDraftNotice)
+  }
   async function reloadDraft() {
-    try { const draft = await loadCorrectionDraft(id); if (draft) setStoredDraft(draft); else { drafts.adopt(null); setDraftTick(value => value + 1) } }
+    try {
+      const draft = await loadCorrectionDraft(id)
+      if (draft && 'outdated' in draft) startOver(draft.revision)
+      else if (draft) setStoredDraft(draft); else { drafts.adopt(null); setDraftTick(value => value + 1) }
+    }
     catch { setDraftError('최신 초안을 불러오지 못했습니다. 다시 시도하세요.') }
   }
   useEffect(() => {
@@ -278,7 +288,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (filter !== 'pending') setFilter('all')
     const row = rowOfReviewId(item.id)
     if (row !== null) setSelectedRow(row)
-    // 저장할 곳 확인은 그 확인을 푸는 곳(단지 정하기·LH·PDF 대응)으로 간다. 상태 배지와 같은 규칙이다.
+    // 저장할 곳 확인은 그 확인을 푸는 곳(단지 정하기)으로 간다. 상태 배지와 같은 규칙이다.
     const target = workspace ? pendingJumpTarget(review, workspace, item.id) : item.id
     setSection(item.section); setMobileView('review'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
   }
@@ -314,7 +324,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   /**
    * 목록·이전·다음으로 고른 공급행은 그 행의 편집 영역 머리가 고정 막대 바로 아래에 오게 옮긴다.
-   * 다른 단지로 넘어가면 그 단지의 단지 정하기·LH·PDF 대응부터 보이게 단지 영역 맨 위로 간다.
+   * 다른 단지로 넘어가면 그 단지의 단지 정하기부터 보이게 단지 영역 맨 위로 간다.
    */
   function stepRow(index: number) {
     const crossing = review !== null && groupOf(review, index) !== groupOf(review, selectedRow)
@@ -337,29 +347,29 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   function start() {
     if (!parsed.ok || !workspace || !pdf) return
     if (review && reviewedWith === `${pdf.url}\n${text}`) { setPhase('review'); setError(''); return }
-    const extraction = supplyDraft ? { ...parsed.value, announcement: {}, receptionPlace: {}, schedules: [] } : parsed.value
+    const extraction = supplyDraft ? { ...parsed.value, announcement: {}, receptionPlaces: [], schedules: [] } : parsed.value
     const next = createReview(extraction, workspace, housing)
     setReview(next); setReviewedWith(`${pdf.url}\n${text}`); setReason(`${pdf.name} · AI 자동 추출 후 PDF와 대조`); setReasonInput(!validEvidenceUrl(sourceUrl.trim()))
     setSourcePage([...new Set(parsed.value.evidence.map(item => item.page))].sort((a, b) => a - b).join(', ').slice(0, 100))
     setPhase('review'); setSection('supply'); setFilter('all'); setError(''); setNotice('')
   }
-  /** 1단계: 보정안을 만들고 서버 미리보기로 검증해 적용 전 확인을 연다. 공급정보 편집표 채우기는 바로 돌려준다. */
+  /**
+   * 보정안을 만들어 서버 미리보기로 검증하고, 통과하면 그 확인 토큰으로 바로 저장한다. 검증에서 막히면 저장하지 않고 문제 칸으로 옮긴다.
+   * 공급정보 편집표 채우기는 바로 돌려준다.
+   */
   async function apply() {
     if (!review || !workspace || blocked || busy || !supplyDraft && reasonProblem) return
     setBusy(true); setError('')
-    let input: JsonUpdateInput | undefined
+    let input: JsonUpdateInput | undefined, preview: JsonPreview
     try {
       input = assembleReview(review, workspace, { reason: reason.trim(), sourceUrl: sourceUrl.trim(), sourcePage: sourcePage.trim() || null }, !supplyDraft && unconfirmed(workspace) ? release : undefined)
-      if (supplyDraft) { supplyDraft.onFill(input.correction); return }
-      const preview = await previewJsonUpdate(id, input)
-      setChecked({ input, preview })
-    } catch (cause) { fail(cause, false, input) } finally { setBusy(false) }
+      if (supplyDraft) { supplyDraft.onFill(input.correction); setBusy(false); return }
+      preview = await previewJsonUpdate(id, input)
+    } catch (cause) { fail(cause, false, input); setBusy(false); return }
+    await save(input, preview)
   }
-  /** 2단계: 확인한 미리보기 그대로 저장한다. */
-  async function confirmApply() {
-    if (!checked || busy || blocked) return
-    setBusy(true); setError('')
-    const { input, preview } = checked
+  /** 미리보기가 돌려준 확인 토큰으로 저장한다. 서버는 미리보기 뒤 값이 바뀌었으면 저장하지 않는다. */
+  async function save(input: JsonUpdateInput, preview: JsonPreview) {
     lastInput.current = input
     try {
       const latest = await applyJsonUpdate(id, input, preview.confirmationToken)
@@ -373,14 +383,14 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
           setError(input.publish
             ? '현재값이 바뀌었거나 같은 보정 요청을 이미 처리했다는 응답을 받았습니다. 공개 요청이 반영됐는지 확인하지 못했습니다. 입력을 유지하고 최신값의 공급정보·기본정보·공개 상태를 비교하세요.'
             : '같은 보정 요청을 이미 처리했다는 응답을 받았지만 저장된 공급정보·기본정보·일정이 이 화면의 변경과 다릅니다. 이 변경은 반영되지 않았습니다. 최신값을 불러와 비교한 뒤 다시 적용하세요.')
-          setBlocked(true); setChecked(null); return
+          setBlocked(true); return
         } catch { /* 최신값을 못 읽으면 일반 실패로 알린다. */ }
       }
       fail(cause, true, input)
     } finally { setBusy(false) }
   }
   function finishApplied(latest: JsonWorkspace, preview: JsonPreview) {
-    setTypeResult({ housingTypes: preview.housingTypes, housingTypeWarnings: preview.housingTypeWarnings }); setPublished(Boolean(preview.publishes)); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false); setChecked(null)
+    setTypeResult({ housingTypes: preview.housingTypes, housingTypeWarnings: preview.housingTypeWarnings }); setPublished(Boolean(preview.publishes)); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false)
     setNotice(''); setRestoredNote('')
     // 적용을 확인한 뒤에만 초안을 지운다. 지우지 못해도 적용은 끝났고, 다음에 열면 이미 적용한 초안(stale)으로 보인다.
     void drafts.remove().catch(() => setDraftError('보정은 적용했지만 임시저장본을 지우지 못했습니다. 다음에 열 때 폐기하세요.'))
@@ -392,7 +402,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     // 서버 검증 메시지가 칸 경로로 오면 화면 칸 이름으로 바꿔 보여 주고 그 칸으로 옮긴다.
     const field = !rejected || !review ? null : Object.keys(cause.fields).length && input ? serverFieldsError(review, input, cause.fields) : serverFieldError(review, cause.message)
     setError(uncertainSave ? '저장 응답을 받지 못했습니다. 최신 저장값을 조회해 적용 여부를 확인한 뒤 다시 비교하세요.' : field ? field.message : cause instanceof Error ? cause.message : '보정 내용을 적용하지 못했습니다. 다시 시도하세요.')
-    setMobileView('review'); setChecked(null)
+    setMobileView('review')
     // 적용 전 검증에 걸리면 문제 항목으로 바로 이동한다.
     if (cause instanceof ReviewError && cause.reviewId) goTo(cause.reviewId)
     else if (field?.reviewId) goTo(field.reviewId)
@@ -400,8 +410,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   function goTo(target: string) {
     const row = rowOfReviewId(target)
     if (row !== null) setSelectedRow(row)
-    // 확인 필요 필터에서도 보이는 곳(남은 확인 항목·행·단지 정하기·LH·PDF 대응)으로 가면 필터를 유지하고, 아니면 전체로 연다.
-    const visible = /^(row:|match:|complex$)/.test(target) || Boolean(review && pendingItems(review, !supplyDraft, workspace ?? undefined, release).some(item => item.id === target))
+    // 확인 필요 필터에서도 보이는 곳(남은 확인 항목·행·단지 정하기)으로 가면 필터를 유지하고, 아니면 전체로 연다.
+    const visible = /^(row:|complex$)/.test(target) || Boolean(review && pendingItems(review, !supplyDraft, workspace ?? undefined, release).some(item => item.id === target))
     setSection(reviewSection(target)); setFilter(current => current === 'pending' && visible ? current : 'all'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
   }
   async function reload() {
@@ -452,16 +462,15 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
             <SectionTabs tabs={sectionTabs(section, pending, Boolean(supplyDraft))} onSelect={tab => { setSection(tab.key); scrollReviewTop() }} />
             <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
           </div>
-          {section === 'supply' && !checked && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, pending)} pending={pending} problems={placementProblems(review, workspace)}
+          {section === 'supply' && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, pending)} pending={pending}
             onSelectComplex={index => { selectRow(index); scrollReviewTop() }} onSelectRow={stepRow} onJump={goTo} />}
         </div>
-        {checked && <ApplySummaryPanel summary={summarizePreview(checked.preview, housing, workspace.supply.lhSupplyRows ?? [])} busy={busy} onApply={() => void confirmApply()} onBack={() => setChecked(null)} />}
-        <fieldset disabled={busy || blocked} hidden={Boolean(checked)} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
+        <fieldset disabled={busy || blocked} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={stepRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
-          {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 한 곳만 저장할 수 있으므로 온라인·현장 병행 여부를 확인하세요.</p>{visibleIn(review.reception) && <h3>접수처</h3>}<ReviewCells cells={review.reception} scope="접수처" needs={fieldNeed} filter={filter} onChange={reception => change({ ...review, reception })} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(review.reception) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
+          {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 인터넷 접수와 현장 접수처를 따로 저장합니다. PDF 접수처는 접수 방식과 이름이 같은 기존 접수처와 대조하고(아니면 새 접수처로 더함), PDF에 없는 기존 접수처는 빼기를 고르면 지웁니다.</p>{visibleIn(receptionCells(review.reception)) && <h3>접수처</h3>}<ReviewReception review={review} workspace={workspace} needs={fieldNeed} filter={filter} onChange={change} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(receptionCells(review.reception)) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
         </div></fieldset>
-        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
+        {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} current={{ rentalType: workspace!.detail.data.rentalType, recruitmentType: workspace!.detail.data.recruitmentType }} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
       </div></div>
       {/* 화면에서 하단 버튼 위에 놓이므로 문서 순서도 버튼 앞에 둬 Tab 이동이 보이는 순서를 따른다. */}
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
@@ -469,9 +478,9 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
     </>}
     {phase === 'result' && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 단지를 확인한 뒤 공개를 요청해 다시 적용하세요.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
-      {(typeResult.housingTypes.length > 0 || typeResult.housingTypeWarnings.length > 0) && <section className={styles.renames} aria-labelledby="housing-type-result-title"><h3 id="housing-type-result-title">공고로 갱신한 주택형</h3><p className={styles.hint}>공급행에 연결한 주택형의 이름·공급면적·세대수(건설호수)를 이번 공고 값으로 맞췄습니다. 관리자가 직접 고친 값과 더 최근 공고의 값은 유지합니다.</p>
-        {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택형 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
-        {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택형 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
+      {(typeResult.housingTypes.length > 0 || typeResult.housingTypeWarnings.length > 0) && <section className={styles.renames} aria-labelledby="housing-type-result-title"><h3 id="housing-type-result-title">공고로 갱신한 주택타입</h3><p className={styles.hint}>공급행에 연결한 주택타입의 이름·공급면적·세대수(건설호수)를 이번 공고 값으로 맞췄습니다. 관리자가 직접 고친 값과 더 최근 공고의 값은 유지합니다.</p>
+        {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택타입 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
+        {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
     </section>}
   </section>
 }
@@ -489,8 +498,8 @@ function changeSummary(changes: PendingChange[]) {
 
 
 const failureReasons: Record<string, string> = {
-  AMBIGUOUS_HOUSING_TYPE: '같은 면적의 주택형이 여러 개라 하나로 정하지 못했습니다',
-  HOUSING_TYPE_NOT_FOUND: '맞는 주택형을 찾지 못했습니다',
+  AMBIGUOUS_HOUSING_TYPE: '같은 면적의 주택타입이 여러 개라 하나로 정하지 못했습니다',
+  HOUSING_TYPE_NOT_FOUND: '맞는 주택타입을 찾지 못했습니다',
 }
 // 실패 검토에서 들어오면 어떤 공급행의 무엇을 고치러 왔는지 먼저 보여 준다.
 function FailureTargets({ rows, workspace }: { rows: string[]; workspace: JsonWorkspace }) {
@@ -531,11 +540,15 @@ function unconfirmed(workspace: JsonWorkspace | null) {
   return workspace?.detail.summary.announcement?.releaseStatus === 'UNCONFIRMED'
 }
 
-function ReleaseCheck({ value, needs, disabled, onChange }: { value: ReleaseChoice; needs: Map<string, string>; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
+/** '현재값 유지' 옵션 이름. 지금 값이 무엇인지 함께 보이고, 값이 없으면 골라야 한다고 알린다. */
+function keepLabel(current: unknown) {
+  return typeof current === 'string' && current ? `현재값 유지 (${labels[current] ?? current})` : '현재값 없음 · 고르세요'
+}
+function ReleaseCheck({ value, current, needs, disabled, onChange }: { value: ReleaseChoice; current: { rentalType: unknown; recruitmentType: unknown }; needs: Map<string, string>; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
   return <section className={styles.releaseCheck} aria-label="공개 전 확인"><h2>공개 전 확인</h2>
     <p className={styles.hint}>미확정 공고라 사용자에게 보이지 않습니다. 저장하려면 접수처·기본정보에서 접수 시작일·접수 종료일·당첨자 발표일을 채우고, 여기서 공급·모집 유형을 정해야 합니다. 공급행에 연결된 단지를 확인한 뒤 공개를 요청하세요. 공개하면 신규 공고 알림이 나갑니다.</p>
-    <label>공급 유형<select data-review-id="release:rentalType" aria-invalid={needs.has('release:rentalType')} title={needs.get('release:rentalType')} value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">현재값 유지</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
-    <label>모집 유형<select data-review-id="release:recruitmentType" aria-invalid={needs.has('release:recruitmentType')} title={needs.get('release:recruitmentType')} value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">현재값 유지</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
+    <label>공급 유형<select data-review-id="release:rentalType" aria-invalid={needs.has('release:rentalType')} title={needs.get('release:rentalType')} value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">{keepLabel(current.rentalType)}</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
+    <label>모집 유형<select data-review-id="release:recruitmentType" aria-invalid={needs.has('release:recruitmentType')} title={needs.get('release:recruitmentType')} value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">{keepLabel(current.recruitmentType)}</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
     <label className={styles.releaseConfirmation}><input type="checkbox" checked={value.publish} disabled={disabled} onChange={event => onChange({ ...value, publish: event.target.checked })} />단지를 확인했고 이 보정과 함께 공개합니다</label>
   </section>
 }

@@ -40,11 +40,11 @@ it('네 패널의 집계와 기존 관리 페이지의 지원 필터를 연결�
   for (const name of ['단지', '공고', '유저', '알림']) expect(screen.getByRole('region', { name })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /재검토 7/ })).toHaveAttribute('href', '/admin/complexes?review=true')
   expect(screen.getByRole('link', { name: /LH 6,831/ })).toHaveAttribute('href', '/admin/complexes?provider=LH')
-  expect(screen.getByRole('link', { name: /미확정 5/ })).toHaveAttribute('href', '/admin/announcements?unconfirmed=true')
+  expect(screen.getByRole('link', { name: /미확정 5/ })).toHaveAttribute('href', '/admin/announcements?attention=UNCONFIRMED')
   expect(screen.getByRole('link', { name: /새 사용자 의견 3/ })).toHaveAttribute('href', '/admin/feedback?status=OPEN')
   expect(screen.getByRole('link', { name: /발송 실패 2/ })).toHaveAttribute('href', '/admin/notification-deliveries?status=FAILED')
   expect(screen.getByRole('link', { name: /재시도 대기 4/ })).toHaveAttribute('href', '/admin/notification-deliveries?status=RETRY')
-  expect(screen.getByRole('link', { name: /모집중/ })).toHaveAttribute('title', expect.stringContaining('필터 추가'))
+  expect(screen.getByRole('link', { name: /모집중/ })).toHaveAttribute('href', '/admin/complexes?recruiting=true')
   expect(screen.getByRole('button', { name: /카카오톡 메시지 발송/ })).toBeInTheDocument()
 })
 it('기간을 바꾸면 가입과 신청·취소만 바뀌고 현재 현황은 유지한다', async () => {

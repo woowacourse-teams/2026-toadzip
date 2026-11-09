@@ -230,12 +230,22 @@
 
 .failureTargets { margin-top:var(--ds-space-2); padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid var(--ds-color-action); background:var(--ds-color-surface-subtle); font-size:var(--ds-text-caption); }
 .failureTargets ul { margin:var(--ds-space-1) 0 0; padding-left:var(--ds-space-4); }
-/* PDF 검토 안의 새 단지 등록: 짧은 입력은 두 칸씩, 주소는 한 줄 전체를 쓴다. */
-.newComplex { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ds-space-2) var(--ds-space-3); margin:var(--ds-space-3) 0 0; padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
+/* 단지명 → 주소 확인 → 등록 순서. 좌표·선택 항목은 상세에서 보완한다. */
+.newComplex { display:grid; min-width:0; gap:var(--ds-space-2) var(--ds-space-3); margin:var(--ds-space-3) 0 0; padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
 .newComplex legend { padding:0 4px; font-weight:var(--ds-weight-strong); }
-.newComplex > p, .newComplex > button, .newComplex > label:nth-of-type(1), .newComplex > label:nth-of-type(2) { grid-column:1 / -1; }
+.newComplex > p { margin:0; }
 .newComplex label { display:grid; gap:2px; font-size:var(--ds-text-caption); }
-.newComplex > .addressSearch, .newComplex > .addressCandidates { grid-column:1 / -1; }
+.registrationDetails { min-width:0; border-top:1px solid var(--ds-color-divider); }
+.registrationDetails > summary { padding-block:var(--ds-space-3); cursor:pointer; font-size:var(--ds-text-caption); font-weight:500; }
+.registrationGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ds-space-3); padding-bottom:var(--ds-space-3); }
+.registrationGrid label { min-width:0; }
+.registrationGrid input { width:100%; box-sizing:border-box; min-width:0; }
+.registrationGrid .fullWidth { grid-column:1 / -1; }
+.addressStatus { display:grid; gap:var(--ds-space-1); padding:var(--ds-space-3); background:var(--ds-color-action-soft); overflow-wrap:anywhere; font-size:var(--ds-text-caption); }
+.addressStatus span { color:var(--ds-color-action); }
+.existingComplexes { display:grid; gap:var(--ds-space-2); width:100%; margin:0; padding:0; list-style:none; }
+.existingComplexes li { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--ds-space-2); overflow-wrap:anywhere; }
+@container (max-width:420px) { .registrationGrid { grid-template-columns:minmax(0,1fr); } }
 .addressSearch { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--ds-space-2); align-items:end; }
 .addressCandidates { display:grid; margin:0; padding:0; list-style:none; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
 .addressCandidates li + li { border-top:1px solid var(--ds-color-divider); }
@@ -254,36 +264,12 @@
 .checks ul { margin:0; padding-left:1.2em; }
 .subtypeLinks ul { margin:0; padding-left:var(--ds-space-4); font-size:var(--ds-text-caption); }
 .subtypeLinks li { line-height:1.7; margin-block:var(--ds-space-1); }
-/* 저장할 곳: 한 문장과 '바꾸기'. 바꾸기를 열면 기존 공급정보 검색 목록과 새 공급정보 추가를 보인다. */
-.placement { display:grid; gap:var(--ds-space-2); margin-block:var(--ds-space-3); }
-.placementSentence { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); }
-.page .placementSentence p { margin:0; font-weight:var(--ds-weight-strong); }
-.placementPicker { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
-.placementOptions { display:grid; max-height:240px; overflow:auto; margin:0; padding:0; list-style:none; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); scrollbar-width:thin; }
-.placementOptions li + li { border-top:1px solid var(--ds-color-divider); }
-.placementOptions button { display:block; width:100%; padding:var(--ds-space-2) var(--ds-space-3); border:0; background:none; color:inherit; font:inherit; font-size:var(--ds-text-caption); text-align:left; cursor:pointer; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-.placementOptions button:hover, .placementOptions button:focus-visible { background:var(--ds-color-control-hover); }
-.placementOptions button[aria-pressed=true] { background:var(--ds-color-action-soft); color:var(--ds-color-action); font-weight:600; }
-.placementOptions small { color:var(--ds-color-action); }
 .page .secondaryButton[aria-pressed=true] { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); color:var(--ds-color-action); }
-/* 단지 탭 위 LH·PDF 대응: LH가 준 행과 PDF 행을 나란히 두고 그 아래에 단지 단위 결정을 묻는다. */
-.complexMatch { display:grid; gap:var(--ds-space-2); margin:0 0 var(--ds-space-3); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); font-size:var(--ds-text-caption); }
-.page .complexMatch h3, .page .complexMatch h4, .page .complexMatch p { margin:0; }
-.complexMatch h3 { font-size:var(--ds-text-body); }
-.matchColumns { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--ds-space-3); }
-.matchColumns > div { display:grid; gap:var(--ds-space-1); align-content:start; }
-.matchColumns ul { margin:0; padding:0; list-style:none; display:grid; gap:2px; font-variant-numeric:tabular-nums; }
-.matchColumns li { padding:var(--ds-space-1) var(--ds-space-2); border-left:3px solid var(--ds-color-divider); background:var(--ds-color-surface-subtle); overflow-wrap:anywhere; }
-.matchColumns li[data-excluded] { color:var(--pdf-quiet-text); }
-.matchColumns p { color:var(--ds-color-label); font-variant-numeric:tabular-nums; }
-.matchDecision { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid var(--ds-color-action); background:var(--ds-color-surface-subtle); }
-/* 경고는 저장을 막지 않는 확인(앰버), 오류는 저장을 막는 문제(마감색)다. */
-.warningNote, .errorNote { padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid; font-size:var(--ds-text-caption); background:var(--ds-color-surface-subtle); }
+/* 경고는 저장을 막지 않는 확인(앰버)이다. */
+.warningNote { padding:var(--ds-space-2) var(--ds-space-3); border-left:3px solid; font-size:var(--ds-text-caption); background:var(--ds-color-surface-subtle); }
 .warningNote { border-color:var(--ds-color-status-upcoming); }
 .warningNote strong { color:var(--ds-color-status-upcoming); }
-.errorNote { border-color:var(--ds-color-deadline); }
-.errorNote strong { color:var(--pdf-alert-text); }
-.page .warningNote p, .page .errorNote p { margin:0 0 var(--ds-space-1); }
+.page .warningNote p { margin:0 0 var(--ds-space-1); }
 .blockReason { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); margin-top:var(--ds-space-1); }
 .blockReason small { color:var(--pdf-alert-text); flex-basis:100%; }
 .draftOffer { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3) var(--ds-space-4); margin-bottom:var(--ds-space-3); border:1px solid var(--ds-color-action); border-radius:var(--ds-radius-control); background:var(--ds-color-action-soft); font-size:var(--ds-text-caption); }
@@ -291,22 +277,6 @@
 .draftOffer ul { margin:0; padding-left:var(--ds-space-5); }
 .draftState { color:var(--ds-color-muted-base); font-size:var(--ds-text-caption); font-variant-numeric:tabular-nums; }
 .draftFailed { display:inline-flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-2); color:var(--pdf-alert-text); font-size:var(--ds-text-caption); }
-.applySummary { display:grid; gap:var(--ds-space-3); padding:var(--ds-space-4) 0; border-top:2px solid var(--ds-color-text-base); font-size:var(--ds-text-caption); }
-.page .applySummary h2 { margin:0; }
-.page .applySummary p { margin:0; }
-.applySummary ul { margin:0; padding-left:var(--ds-space-4); }
-.summaryComplex h3 { display:flex; flex-wrap:wrap; gap:var(--ds-space-2); align-items:baseline; }
-.summaryComplex h3 small { color:var(--ds-color-muted-base); font-weight:400; font-variant-numeric:tabular-nums; }
-.summaryColumns { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--ds-space-3); }
-.summaryColumns ul { list-style:none; padding:0; display:grid; gap:var(--ds-space-1); }
-.summaryColumns li { display:flex; flex-wrap:wrap; gap:var(--ds-space-1) var(--ds-space-2); padding:var(--ds-space-1) var(--ds-space-2); border-left:3px solid var(--ds-color-divider); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-.summaryColumns li[data-change=new], .summaryColumns li[data-change=changed] { border-color:var(--ds-color-action); }
-.summaryColumns li[data-change=excluded] { border-color:var(--ds-color-muted); color:var(--pdf-quiet-text); text-decoration:line-through; }
-.summaryColumns li small { color:var(--ds-color-action); }
-/* 적용 전 확인의 변경 전후 목록: 항목 이름, 이전 값 → 이후 값을 한 줄에 둔다. 좁으면 줄을 바꾼다. */
-.changeList { list-style:none; padding:0; display:grid; gap:var(--ds-space-1); }
-.changeList li { display:flex; flex-wrap:wrap; gap:var(--ds-space-1) var(--ds-space-2); padding:var(--ds-space-1) var(--ds-space-2); border-left:3px solid var(--ds-color-action); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-.changeList li > span:nth-of-type(1) { color:var(--ds-color-muted-base); }
 /* 공급정보 작업 영역: 위는 행 요약 목록, 아래는 고른 행 편집, 옆(넓을 때)은 단지 주택형 패널 */
 .supplyLayout { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--ds-space-3); }
 .supplyLayout[data-panel=true] { grid-template-columns:minmax(0,1fr) minmax(240px,320px); }
@@ -388,3 +358,17 @@ button.statusBadge::after { content:' ›'; }
 .sharedRepair .repairChoice input { width:auto; flex:none; }
 .repairMember { display:flex; align-items:end; gap:var(--ds-space-2); min-width:0; }
 .repairMember label { flex:1; min-width:0; }
+/* 저장할 곳: 한 문장과 '바꾸기'. 바꾸기를 열면 추천과 새 공급정보 추가, 다른 기존 공급정보 검색을 보인다. */
+.placement { display:grid; gap:var(--ds-space-2); }
+.placementSentence { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-2); }
+.page .placementSentence p { margin:0; font-weight:var(--ds-weight-strong); }
+.placementPicker { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3); border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); }
+.placementPicker label { display:grid; gap:var(--ds-space-1); font-size:var(--ds-text-caption); }
+.placementOptions { display:grid; max-height:240px; overflow:auto; margin:0; padding:0; list-style:none; border:1px solid var(--ds-color-divider); border-radius:var(--ds-radius-control); scrollbar-width:thin; }
+.placementOptions li + li { border-top:1px solid var(--ds-color-divider); }
+.placementOptions button { display:block; width:100%; padding:var(--ds-space-2) var(--ds-space-3); border:0; background:none; color:inherit; font:inherit; font-size:var(--ds-text-caption); text-align:left; cursor:pointer; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.placementOptions button:hover:not(:disabled), .placementOptions button:focus-visible { background:var(--ds-color-control-hover); }
+.placementOptions button:disabled { color:var(--pdf-quiet-text); cursor:not-allowed; }
+.placementOptions button[aria-pressed=true] { background:var(--ds-color-action-soft); color:var(--ds-color-action); font-weight:600; }
+.placementOptions small { color:var(--ds-color-action); }
+.placementOptions .hint { padding:var(--ds-space-2) var(--ds-space-3); }

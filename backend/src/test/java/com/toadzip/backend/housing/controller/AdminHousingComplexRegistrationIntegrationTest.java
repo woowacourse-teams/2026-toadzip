@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -86,6 +88,7 @@ class AdminHousingComplexRegistrationIntegrationTest {
     @Test
     void 입주_전_신규_단지는_준공일과_건물_정보와_주차대수를_비워_저장할_수_있다() throws Exception {
         String request = validRequest()
+                .replace("\"totalHouseholdCount\": 0,", "")
                 .replace("\"completionDate\": \"2020-06-30\",", "")
                 .replace("\"heatingType\": \"INDIVIDUAL\",", "")
                 .replace("\"buildingType\": \"APARTMENT\",", "")
@@ -106,12 +109,20 @@ class AdminHousingComplexRegistrationIntegrationTest {
         entityManager.clear();
         HousingComplex saved = housingComplexRepository.findById(housingComplexId).orElseThrow();
         assertAll(
+                () -> assertThat(saved.getTotalHouseholdCount()).isNull(),
                 () -> assertThat(saved.getCompletionDate()).isNull(),
                 () -> assertThat(saved.getHeatingType()).isNull(),
                 () -> assertThat(saved.getElevatorInstalled()).isNull(),
                 () -> assertThat(saved.getRecentOneYearMoveOutCount()).isNull(),
                 () -> assertThat(saved.getParkingSpaceCount()).isNull()
         );
+        mockMvc.perform(get("/api/v1/complexes/{id}", housingComplexId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalHouseholdCount").value(nullValue()));
+        mockMvc.perform(get(ENDPOINT + "/{id}", housingComplexId)
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.totalHouseholdCount").value(nullValue()));
     }
 
     @Test
@@ -287,6 +298,7 @@ class AdminHousingComplexRegistrationIntegrationTest {
                   "buildingType": "APARTMENT",
                   "corridorType": "STAIR",
                   "hasElevator": true,
+                  "totalHouseholdCount": -1,
                   "totalParkingCount": -1,
                   "overviewImageUrl": "ftp://example.com/complex.png",
                   "moveOutCountLastYear": 0

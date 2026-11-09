@@ -1,3 +1,4 @@
+import { applicationStatuses, attentionReasons } from './listFilterLabels'
 import { isVerificationStatus, type VerificationStatus } from './complexVerificationContract'
 
 export type ManagementResource = 'complexes' | 'announcements'
@@ -20,7 +21,7 @@ export type ManagementSummary = {
 export type ManagementComplexSummary = {
   sourceIdentifier: string
   completionDate: string | null
-  totalHouseholdCount: number
+  totalHouseholdCount: number | null
   /** 입주 전 단지는 주차대수를 모를 수 있다. */
   totalParkingCount: number | null
   heatingType: string | null
@@ -48,6 +49,8 @@ export type ManagementAnnouncementSummary = {
   /** LH_SOURCE·ANNOUNCEMENT_DOCUMENT. 이전 서버 응답에는 없다. */
   supplyOwner?: string
   /** UNCONFIRMED·PUBLISHED. 미확정 공고는 사용자에게 보이지 않는다. 이전 서버 응답에는 없다. */
+  applicationStatus?: string | null
+  attentionReasons?: string[] | null
   releaseStatus?: string
 }
 
@@ -248,7 +251,7 @@ function isCount(value: unknown): value is number {
 
 function isManagementComplexSummary(value: unknown): value is ManagementComplexSummary {
   return isRecord(value) && typeof value.sourceIdentifier === 'string' && isNullableString(value.completionDate)
-    && isCount(value.totalHouseholdCount) && (value.totalParkingCount === null || isCount(value.totalParkingCount))
+    && (value.totalHouseholdCount === null || isCount(value.totalHouseholdCount)) && (value.totalParkingCount === null || isCount(value.totalParkingCount))
     && isNullableString(value.heatingType) && isNullableString(value.buildingType) && isNullableString(value.corridorType)
     && (value.hasElevator === null || typeof value.hasElevator === 'boolean')
     && (value.moveOutCountLastYear === null || isCount(value.moveOutCountLastYear))
@@ -265,6 +268,8 @@ function isManagementAnnouncementSummary(value: unknown): value is ManagementAnn
     && (value.origin === undefined || typeof value.origin === 'string')
     && (value.supplyOwner === undefined || typeof value.supplyOwner === 'string')
     && (value.releaseStatus === undefined || typeof value.releaseStatus === 'string')
+    && (value.applicationStatus == null || typeof value.applicationStatus === 'string' && Object.hasOwn(applicationStatuses, value.applicationStatus))
+    && (value.attentionReasons == null || Array.isArray(value.attentionReasons) && value.attentionReasons.every(reason => typeof reason === 'string' && reason !== 'ANY' && Object.hasOwn(attentionReasons, reason)))
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

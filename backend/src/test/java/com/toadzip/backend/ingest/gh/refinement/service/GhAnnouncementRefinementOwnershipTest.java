@@ -14,6 +14,8 @@ import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceR
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import com.toadzip.backend.ingest.refinement.service.BoardRevisionLinker;
+import com.toadzip.backend.ingest.refinement.service.SourceRefinementRunner;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -29,12 +31,12 @@ class GhAnnouncementRefinementOwnershipTest {
         var refiner = mock(GhAnnouncementRefiner.class);
         var guard = mock(IngestWriteOwnershipGuard.class);
         var targets = List.of(source("1"), source("2"), source("3"));
-        when(sources.findAll()).thenReturn(targets);
+        when(sources.findAllByPbancNoIn(List.of("1", "2", "3"))).thenReturn(targets);
         doThrow(new IngestOwnershipLostException()).when(guard).verifyWrite();
         var service = new GhAnnouncementRefinementService(sources, mock(HousingComplexRepository.class), refiner,
-                mock(PlatformTransactionManager.class), guard);
+                new SourceRefinementRunner(mock(PlatformTransactionManager.class), guard), mock(BoardRevisionLinker.class));
 
-        assertThatThrownBy(service::refineAll).isInstanceOf(IngestOwnershipLostException.class);
+        assertThatThrownBy(() -> service.begin().refinePage(List.of("1", "2", "3"))).isInstanceOf(IngestOwnershipLostException.class);
 
         verify(guard, times(1)).verifyWrite();
         verifyNoInteractions(refiner);

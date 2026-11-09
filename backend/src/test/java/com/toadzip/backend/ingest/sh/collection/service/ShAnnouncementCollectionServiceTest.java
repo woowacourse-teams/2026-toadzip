@@ -209,6 +209,45 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 페이지를_마칠_때마다_고른_글을_넘기고_상세를_건너뛴_글도_포함한다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100, 101));
+        when(externalRepository.fetchList(2)).thenReturn(list(2, 11, 110));
+        when(store.findUnchangedCollectedAt(any())).thenAnswer(invocation ->
+                invocation.<List<?>>getArgument(0).size() == 2 ? Map.of("100", RECENTLY_COLLECTED) : Map.of());
+        when(externalRepository.fetchDetail("101")).thenReturn(detail("101"));
+        when(externalRepository.fetchDetail("110")).thenReturn(detail("110"));
+        List<List<String>> pages = new java.util.ArrayList<>();
+
+        service.collect(pages::add);
+
+        assertThat(pages).containsExactly(List.of("100", "101"), List.of("110"));
+        verify(externalRepository, never()).fetchDetail("100");
+    }
+
+    @Test
+    void 호출_제한으로_페이지_중간에서_멈추면_거기까지_처리한_글만_넘긴다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100, 101, 102));
+        when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
+        when(externalRepository.fetchDetail("101")).thenThrow(ExternalDataRequestException.rateLimited("429"));
+        List<List<String>> pages = new java.util.ArrayList<>();
+
+        service.collect(pages::add);
+
+        assertThat(pages).containsExactly(List.of("100", "101"));
+        verify(externalRepository, never()).fetchDetail("102");
+    }
+
+    @Test
+    void 고른_글이_없는_페이지는_넘기지_않는다() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 1));
+        List<List<String>> pages = new java.util.ArrayList<>();
+
+        service.collect(pages::add);
+
+        assertThat(pages).isEmpty();
+    }
+
+    @Test
     void 요청이_연속으로_실패하면_남은_글의_상세를_요청하지_않는다() {
         Integer[] ids = {100, 101, 102, 103, 104, 105, 106, 107, 108, 109};
         when(externalRepository.fetchList(1)).thenReturn(list(1, 10, ids));

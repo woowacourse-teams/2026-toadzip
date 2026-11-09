@@ -884,13 +884,13 @@ class AnnouncementApiIntegrationTest {
                 3L,
                 actualCompetitionRate,
                 null,
-                ReceptionPlace.create(
+                List.of(ReceptionPlace.create(
                         "LH 청약센터",
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
                         "https://apply.lh.or.kr"
-                )
+                ))
         );
     }
 
@@ -923,13 +923,13 @@ class AnnouncementApiIntegrationTest {
                 "https://example.com/announcements/" + sourceIdentifier,
                 null,
                 0L,
-                ReceptionPlace.create(
+                List.of(ReceptionPlace.create(
                         "검색 접수처",
                         ReceptionMethod.ONLINE,
                         null,
                         "1600-1004",
                         "https://apply.lh.or.kr"
-                )
+                ))
         );
     }
 
