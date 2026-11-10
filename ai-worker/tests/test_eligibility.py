@@ -252,6 +252,10 @@ def test_amount_written_in_a_form_blank_matches_the_quote():
 @pytest.mark.parametrize("months, page, regions", [
     (18, "인천광역시에 1년 6개월 이상 계속 거주", ["인천광역시"]),
     (18, "1순위 인천광역시 거주자 2년 이상", []),
+    # 쪽 글의 맨 숫자('1순위')나 합친 표기의 일부('1년 6개월'의 1년·6개월)로는 통과하지 않는다.
+    (12, "1순위 인천광역시 거주자 2년 이상", []),
+    (12, "인천광역시에 1년 6개월 이상 계속 거주", []),
+    (6, "인천광역시에 1년 6개월 이상 계속 거주", []),
     ("24", "인천광역시 2년 이상 거주", []),
 ])
 def test_unverified_residence_months_clear_the_regions_too(months, page, regions):
@@ -264,7 +268,7 @@ def test_unverified_residence_months_clear_the_regions_too(months, page, regions
     [residence] = eligibility.normalize(reply, "2026-09-30", {4: page}).data["common"]["requirements"]
 
     assert residence["regions"] == regions
-    assert residence["minimumMonths"] == (18 if regions else None)
+    assert residence["minimumMonths"] == (months if regions else None)
 
 
 def test_evidence_under_data_gets_original_page_numbers():
@@ -284,3 +288,20 @@ def test_evidence_under_data_gets_original_page_numbers():
 
     assert [(item["path"], item["page"]) for item in extracted.evidence] == [("eligibility.common.requirements[0]", 3)]
     assert extracted.data["common"]["requirements"][0]["minimum"] == 65
+
+
+def test_extra_percent_without_a_unit_on_the_page_and_an_amount_inside_eok_are_not_accepted():
+    """쪽 글에 단위 없는 숫자(120세대)만 있으면 가구원 가산 비율로 인정하지 않고, '3억 3,700만원' 안의 '3,700만원'도 맞추지 않는다."""
+    reply = _reply(common=_group(
+        {"kind": "INCOME", "scope": "HOUSEHOLD", "incomeStandard": "URBAN_WORKER_MONTHLY_INCOME", "incomeYearAsWritten": "전년도",
+         "percent": 100, "householdSizeExtraPercent": [{"householdSize": 1, "percent": 20}], "asWritten": "100% 이하"},
+        {"kind": "ASSETS", "scope": "HOUSEHOLD", "amountAsWritten": "3,700만원", "asWritten": "총자산"},
+    ), evidence=[
+        {"path": "eligibility.common.requirements[0]", "page": 3, "quote": "월평균소득의 100퍼센트 이하"},
+        {"path": "eligibility.common.requirements[1]", "page": 3, "quote": "총자산 3억 3,700만원 이하"},
+    ])
+
+    income, assets = eligibility.normalize(reply, "2026-09-30", {3: "1순위 120세대 공급"}).data["common"]["requirements"]
+
+    assert (income["percent"], income["householdSizeExtraPercent"]) == (None, [])
+    assert assets["maximumKrw"] is None

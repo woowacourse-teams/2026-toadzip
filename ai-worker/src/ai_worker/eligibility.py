@@ -200,9 +200,10 @@ def _contains_percent(value: int, quote: str, page: str) -> bool:
 def _contains_months(months: int, quote: str, page: str) -> bool:
     """거주기간은 'N개월', 'Y년', 'Y년 M개월'처럼 단위가 붙은 형태만 인정한다."""
     years, rest = divmod(months, 12)
-    patterns = [rf"(?<!\d){months}\s*개월"]
+    # '1년 6개월'의 '1년'이나 '6개월'만 맞아 12·6개월로 통과하면 기간이 짧아져 판정이 넓어지므로, 합친 표기의 일부는 인정하지 않는다.
+    patterns = [rf"(?<!\d)(?<!년)(?<!년 ){months}\s*개월"]
     if years and not rest:
-        patterns.append(rf"(?<!\d){years}\s*년")
+        patterns.append(rf"(?<!\d){years}\s*년(?!\s*\d+\s*개월)")
     if years and rest:
         patterns.append(rf"(?<!\d){years}\s*년\s*{rest}\s*개월")
     return any(re.search(pattern, text) for pattern in patterns for text in (quote, page))
