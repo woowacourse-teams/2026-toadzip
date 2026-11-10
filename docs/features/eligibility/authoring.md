@@ -89,7 +89,7 @@ guidance의 대상은 `ANNOUNCEMENT`, `PATH`, `UNIT`, `OPTION`이다. OPTION 대
 | GET 기준 경로 | 현재 초안. 없으면 data null |
 | PUT 기준 경로 | expectedDraftId, expectedRevision, content 전체 저장. 최초에는 ID null·revision 0 |
 | POST 기준 경로 + `/copy` | 현재 공개 내용을 새 ID의 초안으로 복사. 성공 201. 이미 초안이 있으면 409 |
-| POST 기준 경로 + `/from-extraction` | pdfSha256, expectedDraftId, expectedRevision. PDF 보정의 최신 추출 결과(AI 신청자격)와 지금 공급행으로 REVIEWING 초안 저장. 초안이 있으면 그 ID·revision일 때만 덮어씀 |
+| POST 기준 경로 + `/from-extraction` | pdfSha256, expectedDraftId, expectedRevision. PDF 보정의 최신 추출 결과(AI 신청자격)와 지금 공급행으로 REVIEWING 초안 저장. 초안이 있으면 그 ID·revision일 때만 덮어씀. 응답은 ruleSet과 검토 안내 notices |
 | POST 기준 경로 + `/validation` | draftId, expectedRevision의 초안 공개 검증. 성공 204 |
 | POST 기준 경로 + `/publish` | draftId, expectedRevision의 초안을 현재 공개본으로 교체 |
 | GET `/api/admin/basic-comparison/income-standards` | 실제 소득표 ID·종류·연도·금액·출처 조회 |
@@ -105,14 +105,14 @@ guidance의 대상은 `ANNOUNCEMENT`, `PATH`, `UNIT`, `OPTION`이다. OPTION 대
 
 | 추출 결과 | 초안 |
 |---|---|
-| 공급행(관리자가 뺀 행·대상 제외) | supplyUnits. 모집수가 0보다 크면 RECRUITING, 모르면 UNKNOWN, 0이면 선택지를 만들지 않음 |
-| `targets[]`와 `supplyTargets` | paths. 워커가 맞춘 공급대상 이름과 같은 대상만 잇고, 잇지 못한 경로는 scopeNote에 남김 |
+| 공급행(관리자가 뺀 행·대상 제외) | supplyUnits. 모집수(공통 모집수 묶음이면 묶음 수)가 0보다 크면 RECRUITING, 모르면 UNKNOWN, 0이면 선택지를 만들지 않음 |
+| `targets[]`와 `supplyTargets` | paths. 워커가 맞춘 공급대상 이름과 공백만 무시하고 같은 대상만 잇는다. 잇지 못한 경로와 경로가 없는 공급대상은 공개 내용이 아니라 응답 notices로 관리자에게 알림 |
 | 묶음의 `qualifications` | 그중 하나만 갖추면 되는 자격이라 자격마다 경로를 나눔 |
-| 요건 | commonChecks·paths[].checks. 무주택세대구성원은 FAMILY_OWNS_HOUSE, 세대 소득은 HOUSEHOLD_MONTHLY_INCOME과 REGISTERED_FAMILY_COUNT, 출산자녀·맞벌이 가산은 해당하지 않는 사람에게만 자동 판정 |
-| 조건으로 바꾸지 못한 요건 | REQUIRED_QUALIFICATION 안내 항목. 기타 요건, 워커가 비운 숫자, 없는 소득 기준표, 읽지 못한 지역, 본인·부모 합산 소득, 장애인 등 가산, 근거 없는 요건이 해당하며 그 범위의 선택지를 지원 가능으로 확정하지 않음 |
+| 요건 | commonChecks·paths[].checks. 무주택세대구성원은 FAMILY_OWNS_HOUSE, 세대 소득은 HOUSEHOLD_MONTHLY_INCOME과 REGISTERED_FAMILY_COUNT. 출산자녀 가산은 미혼이거나 자녀·임신이 없는 사람, 맞벌이 가산은 미혼·한부모이거나 맞벌이가 아닌 사람만 자동 판정 |
+| 조건으로 바꾸지 못한 요건 | REQUIRED_QUALIFICATION 안내 항목. 기타 요건, 워커가 비운 숫자, 없는 소득 기준표, 읽지 못하거나 시·도가 모호한 지역, 본인 소득·본인과 부모 합산 소득(몇 인 가구 기준인지 없음), 장애인 등 가산, 근거 없는 요건이 해당하며 그 범위의 선택지를 지원 가능으로 확정하지 않음 |
 | `exclusions` | APPLICATION_EXCLUSION 안내 |
 
-물량·임대조건·일정은 PDF 근거가 없는 보정 값이라 비워 둔다. 초안은 검토 전이므로 관리자가 확인해 REVIEWED로 저장한 뒤 공개한다.
+물량·임대조건·일정은 PDF 근거가 없는 보정 값이라 비워 둔다. 작성 규칙을 통과하지 못한 초안은 저장하지 않고 이유를 담은 409로 알린다. 초안은 검토 전이므로 관리자가 확인해 REVIEWED로 저장한 뒤 공개한다.
 
 ## 검증과 공개 경계
 

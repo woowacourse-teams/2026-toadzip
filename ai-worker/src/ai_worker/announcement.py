@@ -78,7 +78,7 @@ class AnnouncementPdfExtractor:
         warnings += supply.warnings
         # 공급 근거는 원문 행 ID에서 원본 쪽을 복원하므로 첨부 쪽 번호 변환을 하지 않는다.
         warnings += _remap_stage_pages(notice_tree, selected.notice_pages)
-        extracted = _eligibility(eligibility_reply, eligibility_error, notice_tree, selected.notice_pages)
+        extracted = _eligibility(eligibility_reply, eligibility_error, notice_tree, selected.notice_pages, texts)
         warnings += extracted.warnings
         # merge는 페이지 변환 전에 tree를 만들므로, 최종 결과의 근거를 원본 PDF 쪽 번호로 변환한다.
         tree, merge_warnings = merge.merge(supply.tree, notice_tree, extracted)
@@ -108,7 +108,7 @@ def _optional_reply(future) -> tuple[openai.Reply | None, str | None]:
 
 
 def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dict,
-                 source_pages: list[int]) -> eligibility.Extracted:
+                 source_pages: list[int], texts: list[str]) -> eligibility.Extracted:
     if reply is None:
         return eligibility.failed(error or "응답 없음")
     try:
@@ -117,7 +117,7 @@ def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dic
         return eligibility.failed(invalid.message)
     warnings = _remap_stage_pages(tree, source_pages)
     posted_date = (notice_tree.get("data", {}).get("announcement") or {}).get("postedDate")
-    extracted = eligibility.normalize(tree, posted_date)
+    extracted = eligibility.normalize(tree, posted_date, {index + 1: text for index, text in enumerate(texts)})
     return eligibility.Extracted(extracted.data, extracted.evidence, extracted.conditions,
                                  extracted.condition_evidence, warnings + extracted.warnings)
 

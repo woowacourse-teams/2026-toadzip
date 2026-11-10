@@ -15,6 +15,7 @@ INCOME_STANDARDS = frozenset({"URBAN_WORKER_MONTHLY_INCOME", "STANDARD_MEDIAN_IN
 FAMILY_TYPES = ("UNMARRIED", "SINGLE_PARENT", "COUPLE_OR_ENGAGED")
 ADJUSTMENTS = frozenset({"CHILDBIRTH", "DUAL_INCOME", "DISABILITY", "OTHER"})
 _TEXT_LIMIT = 500
+_NUMBERS = ("minimum", "maximum", "percent", "householdSizeExtraPercent", "maximumKrw", "minimumMonths")
 _SPACES = re.compile(r"\s+")
 _AMOUNT = re.compile(r"(?:(\d+)억)?(?:(\d+)만)?(?:(\d+)천)?(\d+)?원")
 _LIMIT_SUFFIX = re.compile(r"(?:이하|미만|이내|까지)$")
@@ -22,7 +23,6 @@ _LIMIT_SUFFIX = re.compile(r"(?:이하|미만|이내|까지)$")
 _ADULT = re.compile(r"성년")
 _PREVIOUS_YEAR = re.compile(r"전년도|전년|직전\s*연도|직전년도")
 _THIS_YEAR = re.compile(r"당해\s*연도|금년도|올해|해당\s*연도")
-_TARGET_PATH = re.compile(r"eligibility\.targets\[(\d+)\]")
 
 
 @dataclass(frozen=True)
@@ -36,13 +36,18 @@ class Extracted:
     warnings: list[str] = field(default_factory=list)
 
 
-def normalize(reply: dict, posted_date: object) -> Extracted:
-    """reply는 신청자격 단계 응답(data.eligibility, evidence), posted_date는 모집공고일(YYYY-MM-DD)이다."""
+def normalize(reply: dict, posted_date: object, page_texts: dict[int, str] | None = None) -> Extracted:
+    """reply는 신청자격 단계 응답(data.eligibility, evidence), posted_date는 모집공고일(YYYY-MM-DD)이다.
+    page_texts(원본 쪽 번호 → 글)는 인용이 짧아 담지 못하는 보조 숫자(가구원 가산, 거주 개월)를 근거 쪽에서 대조하는 데 쓴다."""
     source = _source(reply)
-    quotes = {item.get("path"): _text(item.get("quote")) for item in checks.objects(reply.get("evidence"))}
+    raw_evidence = _raw_evidence(reply)
+    page_texts = page_texts or {}
+    quotes = {item["path"]: (_text(item.get("quote")), page_texts.get(item.get("page"), "")) for item in raw_evidence}
     warnings: list[str] = []
     year = _posted_year(posted_date)
-    common = _group(source.get("common"), "eligibility.common", quotes, year, warnings)
+    # 빼는 항목이 있으면 뒤 항목의 근거 순번이 달라지므로, 원래 경로 → 새 경로를 모아 근거를 옮긴다.
+    moves: dict[str, str] = {}
+    common = _group(source.get("common"), "eligibility.common", "eligibility.common", quotes, year, warnings, moves)
     targets = []
     for index, item in enumerate(checks.objects(source.get("targets"))):
         name = _text(item.get("target")).strip()
@@ -50,12 +55,16 @@ def normalize(reply: dict, posted_date: object) -> Extracted:
             warnings.append(f"eligibility.targets[{index}]: 대상 이름이 없어 뺐습니다.")
             continue
         supply_target = _text(item.get("supplyTarget")).strip() or name
+        old, new = f"eligibility.targets[{index}]", f"eligibility.targets[{len(targets)}]"
         targets.append({"target": name, "supplyTarget": supply_target,
-                        **_group(item, f"eligibility.targets[{index}]", quotes, year, warnings)})
-    exclusions = [{"title": _limited(item.get("title")), "body": _limited(item.get("body"))}
-                  for item in checks.objects(source.get("exclusions")) if _text(item.get("title")).strip()]
+                        **_group(item, old, new, quotes, year, warnings, moves)})
+    exclusions = []
+    for index, item in enumerate(checks.objects(source.get("exclusions"))):
+        if _text(item.get("title")).strip():
+            moves[f"eligibility.exclusions[{index}]"] = f"eligibility.exclusions[{len(exclusions)}]"
+            exclusions.append({"title": _limited(item.get("title")), "body": _limited(item.get("body"))})
     data = {"common": common, "targets": targets, "exclusions": exclusions}
-    evidence = _evidence_for(reply, data)
+    evidence = _evidence_for(raw_evidence, data, moves)
     conditions, condition_evidence = _conditions(data, evidence)
     return Extracted(data, evidence, conditions, condition_evidence, warnings)
 
@@ -64,26 +73,37 @@ def failed(reason: str) -> Extracted:
     return Extracted(None, warnings=[f"신청자격을 읽지 못했습니다: {reason}"])
 
 
-def _group(item: object, path: str, quotes: dict, year: int | None, warnings: list[str]) -> dict:
+def _group(item: object, path: str, new_path: str, quotes: dict, year: int | None, warnings: list[str],
+           moves: dict[str, str]) -> dict:
+    """path는 모델 응답의 원래 경로(근거·경고), new_path는 결과의 경로다. 남긴 요건·자격의 원래 경로 → 새 경로를 moves에 둔다."""
     group = item if isinstance(item, dict) else {}
     requirements = [
-        _requirement(requirement, f"{path}.requirements[{index}]", quotes.get(f"{path}.requirements[{index}]", ""),
+        _requirement(requirement, f"{path}.requirements[{index}]", quotes.get(f"{path}.requirements[{index}]", ("", "")),
                      year, warnings, nested=False, quotes=quotes)
         for index, requirement in enumerate(checks.objects(group.get("requirements")))
     ]
-    qualifications = [
-        {"exactName": _limited(qualification.get("exactName")),
-         "legalBasis": _limited(qualification.get("legalBasis")) or None,
-         "conditionsAsWritten": _limited(qualification.get("conditionsAsWritten"))}
-        for qualification in checks.objects(group.get("qualifications")) if _text(qualification.get("exactName")).strip()
-    ]
+    for index, requirement in enumerate(requirements):
+        moves[f"{path}.requirements[{index}]"] = f"{new_path}.requirements[{index}]"
+        for option in range(len(requirement.get("options", []))):
+            moves[f"{path}.requirements[{index}].options[{option}]"] = f"{new_path}.requirements[{index}].options[{option}]"
+    qualifications = []
+    for index, qualification in enumerate(checks.objects(group.get("qualifications"))):
+        if _text(qualification.get("exactName")).strip():
+            moves[f"{path}.qualifications[{index}]"] = f"{new_path}.qualifications[{len(qualifications)}]"
+            qualifications.append({"exactName": _limited(qualification.get("exactName")),
+                                   "legalBasis": _limited(qualification.get("legalBasis")) or None,
+                                   "conditionsAsWritten": _limited(qualification.get("conditionsAsWritten"))})
     summary = _limited(group.get("summary")) or None
     return {"requirements": requirements, "qualifications": qualifications, "summary": summary}
 
 
-def _requirement(item: dict, path: str, quote: str, year: int | None, warnings: list[str], nested: bool,
+def _requirement(item: dict, path: str, source: tuple[str, str], year: int | None, warnings: list[str], nested: bool,
                  quotes: dict | None = None) -> dict:
+    """source는 (근거 인용, 근거 쪽 글)이다. 한 숫자라도 대조에 실패하면 그 요건의 숫자를 모두 비운다.
+    나이 한쪽만 남기면 서버가 빈 쪽을 제한 없음으로 읽어 판정이 넓어지기 때문이다."""
     quotes = quotes or {}
+    quote, page = source
+    failed_before = len(warnings)
     kind = item.get("kind") if item.get("kind") in KINDS else "OTHER"
     if kind == "ANY_OF" and nested:
         kind = "OTHER"
@@ -104,6 +124,11 @@ def _requirement(item: dict, path: str, quote: str, year: int | None, warnings: 
             for extra in checks.objects(item.get("householdSizeExtraPercent"))
             if _whole(extra.get("householdSize")) and extra["householdSize"] >= 1 and _whole(extra.get("percent"))
         ]
+        # 가구원 가산은 기본 비율에 더한 최종 비율(100 + 20 = 120)이 근거 인용이나 근거 쪽에 있어야 한다.
+        for extra in result["householdSizeExtraPercent"]:
+            if result["percent"] is not None and not _contains_number(result["percent"] + extra["percent"], quote, page):
+                warnings.append(f"{path}.householdSizeExtraPercent: 근거 쪽에 없는 가구원 가산 비율"
+                                f"({extra['householdSize']}인 {result['percent'] + extra['percent']}%)이라 비웠습니다.")
     if kind in ("INCOME", "ASSETS", "CAR_VALUE"):
         result["adjustments"] = [
             {"kind": adjustment["kind"], "asWritten": _limited(adjustment.get("asWritten"))}
@@ -117,15 +142,22 @@ def _requirement(item: dict, path: str, quote: str, year: int | None, warnings: 
         result["regions"] = [region.strip() for region in item.get("regions") or [] if isinstance(region, str) and region.strip()]
         months = item.get("minimumMonths")
         result["minimumMonths"] = months if _whole(months) and months >= 0 else None
+        if result["minimumMonths"] is not None and not (_contains_number(months, quote, page)
+                                                       or months % 12 == 0 and _contains_number(months // 12, quote, page)):
+            warnings.append(f"{path}.minimumMonths: 근거 쪽에 없는 거주기간({months}개월)이라 비웠습니다.")
     if kind == "FAMILY_TYPE":
         wanted = item.get("familyTypes") or []
         result["familyTypes"] = [value for value in FAMILY_TYPES if value in wanted]
     if kind == "ANY_OF":
         # 선택 요건은 제 근거가 있으면 그 인용으로, 없으면 묶음 근거로 숫자를 대조한다.
         result["options"] = [_requirement(option, f"{path}.options[{index}]",
-                                          quotes.get(f"{path}.options[{index}]", quote), year, warnings, nested=True,
+                                          quotes.get(f"{path}.options[{index}]", source), year, warnings, nested=True,
                                           quotes=quotes)
                              for index, option in enumerate(checks.objects(item.get("options")))]
+    elif len(warnings) > failed_before:
+        for name in _NUMBERS:
+            if name in result:
+                result[name] = [] if name == "householdSizeExtraPercent" else None
     return result
 
 
@@ -146,10 +178,16 @@ def _quoted_amount(written: str, quote: str, path: str, warnings: list[str]) -> 
     if value is None:
         warnings.append(f"{path}: 금액 표기({written})를 원 단위로 읽지 못했습니다.")
         return None
-    if _LIMIT_SUFFIX.sub("", _SPACES.sub("", written)) not in _SPACES.sub("", quote):
+    amount = re.escape(_LIMIT_SUFFIX.sub("", _SPACES.sub("", written)))
+    # 10,800만원 안의 800만원처럼 숫자 중간에서 맞는 것은 인정하지 않는다.
+    if not re.search(rf"(?<![\d,]){amount}", _SPACES.sub("", quote)):
         warnings.append(f"{path}: 근거 인용에 없는 금액({written})이라 비웠습니다.")
         return None
     return value
+
+
+def _contains_number(value: int, quote: str, page: str) -> bool:
+    return any(str(value) in re.findall(r"\d+", text.replace(",", "")) for text in (quote, page))
 
 
 def _quoted_number(value: object, quote: str, path: str, warnings: list[str]) -> int | None:
@@ -184,20 +222,23 @@ def _posted_year(posted_date: object) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _evidence_for(reply: dict, data: dict) -> list[dict]:
-    """남은 항목의 근거만 남긴다. 대상을 뺀 경우 순번이 바뀌므로 원래 대상 순번의 근거를 새 순번으로 옮긴다."""
-    source_targets = checks.objects(_source(reply).get("targets"))
-    kept = [index for index, item in enumerate(source_targets) if _text(item.get("target")).strip()]
-    moves = {old: new for new, old in enumerate(kept)}
+def _raw_evidence(reply: dict) -> list[dict]:
+    """모델은 근거를 최상위 evidence 대신 data.evidence에 두거나, 경로 앞에 data.·$.를 붙이기도 한다. 둘 다 받는다."""
+    data = reply.get("data") if isinstance(reply.get("data"), dict) else {}
+    items = []
+    for item in [*checks.objects(reply.get("evidence")), *checks.objects(data.get("evidence"))]:
+        path = re.sub(r"^\$\.?|^data\.", "", _text(item.get("path")).strip())
+        if path.startswith("eligibility."):
+            items.append({**item, "path": path})
+    return items
+
+
+def _evidence_for(raw_evidence: list[dict], data: dict, moves: dict[str, str]) -> list[dict]:
+    """남은 항목의 근거만 새 경로로 옮겨 남긴다. 뺀 항목의 근거는 버린다."""
     valid = _paths(data)
     evidence = []
-    for item in checks.objects(reply.get("evidence")):
-        path = _text(item.get("path"))
-        target = _TARGET_PATH.match(path)
-        if target:
-            if int(target.group(1)) not in moves:
-                continue
-            path = f"eligibility.targets[{moves[int(target.group(1))]}]" + path[target.end():]
+    for item in raw_evidence:
+        path = moves.get(item["path"])
         if path in valid:
             evidence.append({**item, "path": path})
     return checks.deduplicate(evidence)
@@ -217,9 +258,10 @@ def _paths(data: dict) -> set[str]:
 
 
 def _conditions(data: dict, evidence: list[dict]) -> tuple[list[dict], list[dict]]:
-    """요약을 applicationCondition 합치기 형식으로 바꾼다. 요약의 근거는 그 묶음 첫 근거다."""
+    """요약을 applicationCondition 합치기 형식으로 바꾼다. 대상은 그 경로가 속한 공급대상(supplyTarget)이라
+    하위 경로(대학생 계층의 취업준비생)의 요약도 공급표 대상(대학생)에 붙는다. 요약의 근거는 그 묶음 첫 근거다."""
     groups = [(None, "eligibility.common", data["common"])] + [
-        (target["target"], f"eligibility.targets[{index}]", target) for index, target in enumerate(data["targets"])]
+        (target["supplyTarget"], f"eligibility.targets[{index}]", target) for index, target in enumerate(data["targets"])]
     conditions, condition_evidence = [], []
     for target, path, group in groups:
         if not group["summary"]:

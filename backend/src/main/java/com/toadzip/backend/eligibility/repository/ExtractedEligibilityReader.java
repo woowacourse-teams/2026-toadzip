@@ -75,7 +75,7 @@ public class ExtractedEligibilityReader {
         return new Group(path, requirements, numbered(qualifications, path));
     }
 
-    /** 자격의 근거 경로는 원래 순번이라, 이름 없는 자격을 빼도 순번이 어긋나지 않게 같은 순서로 다시 붙인다. */
+    /** 워커가 이름 없는 자격을 이미 빼고 근거 순번도 옮겼으므로, 남은 순서대로 근거 경로를 붙인다. */
     private static List<Qualification> numbered(List<Qualification> qualifications, String path) {
         List<Qualification> result = new ArrayList<>();
         for (int index = 0; index < qualifications.size(); index++) {
@@ -114,8 +114,9 @@ public class ExtractedEligibilityReader {
         Map<String, Quote> quotes = new LinkedHashMap<>();
         for (JsonNode item : evidence) {
             String path = text(item, "path");
+            // 인용이 빈 근거는 근거로 쓰지 않는다(검증기가 근거 설명을 요구한다).
             if (path != null && path.startsWith("eligibility.") && item.path("page").isIntegralNumber()
-                    && item.path("page").asInt() > 0) {
+                    && item.path("page").asInt() > 0 && text(item, "quote") != null) {
                 quotes.putIfAbsent(path, new Quote(item.path("page").asInt(),
                         Optional.ofNullable(text(item, "quote")).orElse("")));
             }

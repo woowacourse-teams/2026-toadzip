@@ -15,6 +15,7 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'notice'; text: string } | null>(null)
+  const [notices, setNotices] = useState<string[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -39,7 +40,25 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   function create() {
     if (!pdfSha256) return
     if (draft && !window.confirm('지금 초안을 버리고 최신 PDF 추출로 다시 만들까요?')) return
-    void run(() => createEligibilityDraft(announcementId, pdfSha256, draft), '최신 PDF 추출로 초안을 만들었어요. 조건을 확인해 주세요.')
+    void run(async () => {
+      const created = await createEligibilityDraft(announcementId, pdfSha256, draft)
+      setNotices(created.notices)
+      return created.ruleSet
+    }, '최신 PDF 추출로 초안을 만들었어요. 조건을 확인해 주세요.')
+  }
+
+  /** 공개하면 초안이 공개본이 되어 사라지므로, 공개 뒤에는 초안을 다시 읽는다(없으면 비어 있음). */
+  async function publish(current: RuleSet) {
+    setBusy(true); setMessage(null)
+    try {
+      await publishEligibilityDraft(announcementId, current)
+      setDraft(await loadEligibilityDraft(announcementId)); setNotices([])
+      setMessage({ kind: 'notice', text: '공개했어요. 사용자 판정이 곧 다시 계산돼요.' })
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
   }
 
   function save(content: Content, done: string) {
@@ -52,15 +71,16 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
     <h2 id="eligibility-draft-title">신청자격</h2>
     <p>최신 PDF 추출의 신청자격과 지금 저장된 공급정보로 초안을 만들어요. 공급정보를 먼저 적용한 뒤 만드세요. 잘못 읽힌 조건은 직접 확인으로 바꾸면 그 신청 경로는 지원 가능으로 확정하지 않아요.</p>
     <div className={styles.actions}>
-      <Button onClick={create} disabled={busy || !pdfSha256}>{draft ? 'AI 추출로 다시 만들기' : 'AI 추출로 초안 만들기'}</Button>
+      <Button onClick={create} disabled={busy || !loaded || !pdfSha256}>{draft ? 'AI 추출로 다시 만들기' : 'AI 추출로 초안 만들기'}</Button>
       {content && <Button variant="secondary" disabled={busy || reviewed} onClick={() => save({ ...content, metadata: { ...content.metadata, reviewStatus: 'REVIEWED' } }, '검토 완료로 표시했어요. 공개할 수 있어요.')}>검토 완료로 표시</Button>}
-      {draft && <Button variant="secondary" disabled={busy || !reviewed} onClick={() => void run(() => publishEligibilityDraft(announcementId, draft), '공개했어요. 사용자 판정이 곧 다시 계산돼요.')}>공개</Button>}
+      {draft && <Button variant="secondary" disabled={busy || !reviewed} onClick={() => void publish(draft)}>공개</Button>}
     </div>
     {!pdfSha256 && <p className={styles.hint}>PDF를 열면 초안을 만들 수 있어요.</p>}
     {message && <p role={message.kind === 'error' ? 'alert' : 'status'} className={message.kind === 'error' ? styles.warningNote : styles.hint}>{message.text}</p>}
+    {notices.length > 0 && <div className={styles.warningNote}><p><strong>검토할 점</strong></p><ul>{notices.map(item => <li key={item}>{item}</li>)}</ul></div>}
     {loaded && !draft && !message && <p className={styles.hint}>아직 신청자격 초안이 없어요.</p>}
     {content && <>
-      <p className={styles.hint}>{reviewed ? '검토 완료' : '검토 전'} · 기준일 {content.metadata.referenceDate} · 수정 {draft!.revision}회{content.metadata.scopeNote ? ` · ${content.metadata.scopeNote}` : ''}</p>
+      <p className={styles.hint}>{reviewed ? '검토 완료' : '검토 전'} · 기준일 {content.metadata.referenceDate} · 수정 {draft!.revision}회</p>
       <Scope title="모든 신청자에게 적용" scopeId="common" checks={content.commonChecks} content={content} busy={busy}
         onDirect={check => save(moveToDirectCheck(content, 'common', check.id), '직접 확인으로 바꿨어요.')} onEvidence={onEvidence} />
       {content.paths.map(path => <Scope key={path.id} title={path.label} scopeId={path.id} checks={path.checks} content={content} busy={busy}

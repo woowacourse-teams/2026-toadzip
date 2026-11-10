@@ -32,6 +32,14 @@ const draft = (value: Content = content(), revision = 1): RuleSet => ({ id: 7, r
 afterEach(() => vi.clearAllMocks())
 
 describe('moveToDirectCheck', () => {
+  it('다른 조건이 쓰는 대체 안내와 사람이 쓴 안내는 지우지 않는다', () => {
+    const base = content()
+    const manual = { id: 'manual', kind: 'REQUIRED_CHECK', title: '직접 쓴 안내', body: '확인', items: [], targets: [{ scope: 'ANNOUNCEMENT', pathId: null, supplyUnitId: null }], evidenceIds: ['ev-1'] }
+    const moved = moveToDirectCheck({ ...base, guidances: [...base.guidances, manual] }, 'path-1', 'path-1-1')
+
+    expect(moved.guidances.map(guidance => guidance.id)).toEqual(['check-path-1', 'manual', 'direct-path-1'])
+  })
+
   it('조건을 지우지 않고 그 경로의 필수 확인 자격 항목으로 옮기고, 쓰지 않게 된 대체 안내는 뺀다', () => {
     const moved = moveToDirectCheck(content(), 'path-1', 'path-1-2')
 
@@ -53,7 +61,7 @@ describe('ruleText', () => {
 describe('EligibilityDraftPanel', () => {
   it('최신 PDF로 초안을 만들고, 조건을 직접 확인으로 바꿔 저장하며, 검토 완료 전에는 공개할 수 없다', async () => {
     api.load.mockResolvedValue(null)
-    api.create.mockResolvedValue(draft())
+    api.create.mockResolvedValue({ ruleSet: draft(), notices: ['신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.'] })
     api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} />)
 
@@ -62,6 +70,7 @@ describe('EligibilityDraftPanel', () => {
     expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
     expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
     expect(screen.getByText('신청 단위: 인천석남 21A (모집)')).toBeInTheDocument()
+    expect(screen.getByText('신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '공개' })).toBeDisabled()
 
     fireEvent.click(screen.getAllByRole('button', { name: '직접 확인으로 바꾸기' })[1])
@@ -71,8 +80,18 @@ describe('EligibilityDraftPanel', () => {
     expect(await screen.findByText('월평균소득 100% 이하')).toBeInTheDocument()
   })
 
-  it('검토 완료로 표시한 초안만 공개한다', async () => {
-    api.load.mockResolvedValue(draft())
+  it('첫 조회가 끝나기 전에는 초안을 만들 수 없다', async () => {
+    let finish: (value: RuleSet | null) => void = () => {}
+    api.load.mockReturnValue(new Promise(resolve => { finish = resolve }))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeDisabled()
+    finish(null)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeEnabled())
+  })
+
+  it('검토 완료로 표시한 초안만 공개하고, 공개 뒤에는 초안을 다시 읽는다', async () => {
+    api.load.mockResolvedValueOnce(draft()).mockResolvedValueOnce(null)
     api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
     api.publish.mockResolvedValue(draft(content('REVIEWED'), 3))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} onEvidence={vi.fn()} />)
@@ -85,5 +104,9 @@ describe('EligibilityDraftPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '공개' }))
     expect(await screen.findByText('공개했어요. 사용자 판정이 곧 다시 계산돼요.')).toBeInTheDocument()
     expect(api.publish).toHaveBeenCalledWith('12', expect.objectContaining({ revision: 2 }))
+    // 공개본을 초안처럼 들고 있지 않아 다음 작업이 이전 revision으로 409가 나지 않는다.
+    expect(api.load).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeInTheDocument()
   })
 })

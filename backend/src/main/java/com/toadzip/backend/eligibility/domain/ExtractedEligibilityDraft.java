@@ -43,6 +43,7 @@ import java.util.function.Function;
  */
 public final class ExtractedEligibilityDraft {
     private static final String DOCUMENT_ID = "pdf";
+    private static final String SCOPE_NOTE = "공고문의 신청자격 장을 바탕으로 구조화했어요. 우선순위·배점·제출서류는 담지 않았어요.";
     private static final long MAXIMUM_AGE = 150;
     private static final long MAXIMUM_MONTHS = 1800;
 
@@ -87,11 +88,14 @@ public final class ExtractedEligibilityDraft {
         });
     }
 
-    public static EligibilityContent build(Source source) {
+    /** 초안 내용과, 관리자가 검토할 때 알아야 할 안내(잇지 못한 경로·경로가 없는 공급대상). 안내는 공개 내용에 넣지 않는다. */
+    public record Draft(EligibilityContent content, List<String> notices) {}
+
+    public static Draft build(Source source) {
         return new ExtractedEligibilityDraft(source).content();
     }
 
-    private EligibilityContent content() {
+    private Draft content() {
         if (evidences.isEmpty()) {
             throw new EligibilityDraftUnavailableException("추출 결과에 신청자격 근거가 없어 초안을 만들 수 없습니다.");
         }
@@ -138,14 +142,35 @@ public final class ExtractedEligibilityDraft {
         guidances.addAll(common.guidances());
         scopes.forEach(scope -> guidances.addAll(scope.guidances()));
         exclusions();
-        String scopeNote = "AI 추출 초안. 공급대상과 잇지 못한 경로: " + (unmatched.isEmpty() ? "없음" : String.join(", ", unmatched));
-        return new EligibilityContent(
+        List<String> notices = new ArrayList<>();
+        if (!unmatched.isEmpty()) {
+            notices.add("공급대상과 잇지 못한 신청자격 경로: " + String.join(", ", unmatched));
+        }
+        List<String> uncovered = uncoveredTargets(routes, paths);
+        if (!uncovered.isEmpty()) {
+            // 신청자격 경로가 없는 대상의 사용자는 다른 경로에서만 판정되어 공고 전체가 미충족으로 보일 수 있다.
+            notices.add("신청자격 경로가 없는 공급대상: " + String.join(", ", uncovered) + ". 공고문을 확인해 주세요.");
+        }
+        // scopeNote는 사용자 공고 상세에 그대로 보이고 비울 수 없으므로, AI 초안 안내 대신 사용자에게도 맞는 범위 설명을 둔다.
+        EligibilityContent content = new EligibilityContent(
                 new Metadata(source.referenceDate(), ApplicantKind.INDIVIDUAL, AccessMode.APPLICATION_ROUTES,
-                        ReviewStatus.REVIEWING, classification, limit(scopeNote, 2000)),
+                        ReviewStatus.REVIEWING, classification, SCOPE_NOTE),
                 List.of(new SourceDocument(DOCUMENT_ID, source.document().fileName(), source.document().downloadUrl(),
                         source.document().pageCount(), source.document().sha256())),
                 evidences, units, paths, options, guidances, List.of(), List.of(), List.of(), commonChecks,
                 usedQualifications(paths));
+        return new Draft(content, List.copyOf(notices));
+    }
+
+    /** 모집수가 있거나 모르는 공급대상 가운데 만든 경로 어디에도 이어지지 않은 대상. */
+    private List<String> uncoveredTargets(List<Route> routes, List<EligibilityPath> paths) {
+        Set<String> covered = new LinkedHashSet<>();
+        if (!paths.isEmpty()) {
+            routes.forEach(route -> route.supplyTargets().forEach(name -> covered.add(compact(name))));
+        }
+        return source.units().stream().flatMap(unit -> unit.targets().stream())
+                .filter(target -> target.supplyHouseholdCount() == null || target.supplyHouseholdCount() > 0)
+                .map(Target::name).filter(name -> !covered.contains(compact(name))).distinct().toList();
     }
 
     /** 경로가 없으면(공급대상 구분이 없는 공고) 공급표의 모든 대상을 잇는 경로 하나로 본다. */
@@ -286,13 +311,19 @@ public final class ExtractedEligibilityDraft {
         return checks;
     }
 
-    /** 가산이 있으면 해당하지 않는 사람에게만 자동 판정한다. 알아볼 입력이 없는 가산이면 null(직접 확인)이다. */
+    /**
+     * 가산이 있으면 해당하지 않는 사람에게만 자동 판정한다. 알아볼 입력이 없는 가산이면 null(직접 확인)이다.
+     * 자녀·맞벌이 입력은 가족 형태에 따라 받지 않으므로(미혼은 자녀, 미혼·한부모는 맞벌이) 그 가족 형태도 해당하지 않는 사람으로 본다.
+     */
     private static Optional<ProfileRule> appliesWhen(Requirement requirement) {
         List<ProfileRule> conditions = new ArrayList<>();
         for (String adjustment : requirement.adjustments()) {
             switch (adjustment) {
-                case "CHILDBIRTH" -> conditions.add(equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "false"));
-                case "DUAL_INCOME" -> conditions.add(equal(ProfileField.IS_DUAL_INCOME, "false"));
+                case "CHILDBIRTH" -> conditions.add(group(Operator.ANY, List.of(
+                        equal(ProfileField.FAMILY_TYPE, "UNMARRIED"), equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "false"))));
+                case "DUAL_INCOME" -> conditions.add(group(Operator.ANY, List.of(
+                        equal(ProfileField.FAMILY_TYPE, "UNMARRIED"), equal(ProfileField.FAMILY_TYPE, "SINGLE_PARENT"),
+                        equal(ProfileField.IS_DUAL_INCOME, "false"))));
                 default -> {
                     return null;
                 }
@@ -318,8 +349,8 @@ public final class ExtractedEligibilityDraft {
                     : applicant ? ProfileField.APPLICANT_ASSETS : null);
             case "CAR_VALUE" -> money(requirement, household ? ProfileField.FAMILY_CAR_VALUE
                     : applicant ? ProfileField.APPLICANT_CAR_VALUE : null);
-            case "INCOME" -> income(requirement, household ? ProfileField.HOUSEHOLD_MONTHLY_INCOME
-                    : applicant ? ProfileField.APPLICANT_MONTHLY_INCOME : null);
+            // 본인 소득 기준이 몇 인 가구 금액인지 추출 결과에 없어, 등본 가족 수로 넓게 판정하지 않고 직접 확인으로 둔다.
+            case "INCOME" -> income(requirement, household ? ProfileField.HOUSEHOLD_MONTHLY_INCOME : null);
             case "RESIDENCE" -> residence(requirement);
             case "MARRIAGE_PERIOD" -> requirement.maximum() == null ? Optional.empty()
                     : Optional.of(range(Operator.MONTHS_SINCE, ProfileField.MARRIAGE_EVENT, 0L,

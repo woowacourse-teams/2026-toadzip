@@ -67,6 +67,9 @@ public final class EligibilityResponses {
             String comparisonVersion,
             String scopeNote) {}
 
+    /** AI 추출로 만든 초안과 관리자가 검토할 때 알아야 할 안내(공개 내용에는 넣지 않음). */
+    public record ExtractionDraft(RuleSet ruleSet, List<String> notices) {}
+
     public record RuleSet(
             long id,
             long announcementId,

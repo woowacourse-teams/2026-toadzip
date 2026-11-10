@@ -26,8 +26,9 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     void 최신_추출과_공급행으로_검토_전_초안을_만들고_공개는_검토_완료_뒤에만_한다() throws Exception {
         long announcement = notice(true);
 
-        JsonNode draft = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
+        JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
 
+        JsonNode draft = created.path("ruleSet");
         JsonNode content = draft.path("content");
         assertThat(draft.path("status").asString()).isEqualTo("DRAFT");
         assertThat(content.path("metadata").path("reviewStatus").asString()).isEqualTo("REVIEWING");
@@ -36,11 +37,13 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                 .isEqualTo("https://apply.lh.or.kr/notice.pdf");
         assertThat(content.path("documents").get(0).path("pageCount").asInt()).isEqualTo(23);
         assertThat(texts(content.path("paths"), "label")).containsExactly("청년");
+        // 공통 모집수 묶음에 든 청년(소득有) 대상은 묶음 모집수로 모집 중이고, 관리자가 뺀 대상은 잇지 않는다.
         assertThat(texts(content.path("options"), "recruitmentStatus")).containsExactly("RECRUITING");
         assertThat(content.path("supplyUnits").get(0).path("label").asString()).isEqualTo("인천석남 21A");
         assertThat(texts(content.path("commonChecks"), "label")).containsExactly("무주택세대구성원");
         assertThat(content.path("guidances").get(0).path("kind").asString()).isEqualTo("REQUIRED_QUALIFICATION");
-        assertThat(content.path("metadata").path("scopeNote").asString()).contains("고령자");
+        assertThat(content.path("metadata").path("scopeNote").asString()).doesNotContain("고령자");
+        assertThat(texts(created.path("notices"))).containsExactly("공급대상과 잇지 못한 신청자격 경로: 고령자");
         publish(announcement, draft).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("검토 완료한 내용만 공개할 수 있습니다."));
     }
@@ -48,11 +51,11 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     @Test
     void 초안이_있으면_그_초안의_버전으로만_다시_만든다() throws Exception {
         long announcement = notice(true);
-        JsonNode first = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
+        JsonNode first = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk())).path("ruleSet");
 
         fromExtraction(announcement, SHA, null, 0).andExpect(status().isConflict());
         JsonNode second = response(fromExtraction(announcement, SHA, first.path("id").asLong(),
-                first.path("revision").asLong()).andExpect(status().isOk()));
+                first.path("revision").asLong()).andExpect(status().isOk())).path("ruleSet");
 
         assertThat(second.path("id").asLong()).isEqualTo(first.path("id").asLong());
         assertThat(second.path("revision").asLong()).isEqualTo(first.path("revision").asLong() + 1);
@@ -73,11 +76,19 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         long olderWorker = notice(false);
         rejected(olderWorker, SHA, "이 추출 결과에는 신청자격이 없습니다");
 
+        // 공통 요건을 하나도 자동 판정할 수 없고 경로에도 조건이 없으면 작성 규칙을 통과하지 못한다(400이 아니라 이유가 담긴 409).
+        long nothingJudgeable = notice(true);
+        jdbc.update("UPDATE ai_jobs SET result = jsonb_set(result, '{json}', to_jsonb(replace(result->>'json',"
+                + " '\"kind\":\"NO_HOUSE\"', '\"kind\":\"OTHER\"'))) WHERE announcement_id = ?", nothingJudgeable);
+        rejected(nothingJudgeable, SHA, "작성 규칙을 통과하지 못했습니다");
+
         mvc.perform(post(admin(otherPdf) + "/from-extraction").with(user(Long.toString(USER)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body(SHA, null, 0)))
                 .andExpect(status().isForbidden());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id IN (?, ?, ?, ?)",
                 Long.class, withoutExtraction, otherPdf, withoutAttachment, olderWorker)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?",
+                Long.class, nothingJudgeable)).isZero();
     }
 
     private void rejected(long announcement, String sha, String message) throws Exception {
@@ -99,8 +110,11 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                     source_housing_type_name, supply_category, announcement_exclusive_area)
                 VALUES (?, 0, ?, '인천석남', '21A', 'NEW_SUPPLY', 21.00) RETURNING id
                 """, Long.class, announcement, "row-" + announcement);
-        jdbc.update("INSERT INTO supply_targets (supply_row_id, display_order, target, supply_household_count) VALUES"
-                + " (?, 0, '청년', 10), (?, 1, '고령자(주거약자용)', 0)", row, row);
+        Long group = jdbc.queryForObject("INSERT INTO supply_target_count_groups (supply_row_id, kind, household_count)"
+                + " VALUES (?, 'SUPPLY', 10) RETURNING id", Long.class, row);
+        jdbc.update("INSERT INTO supply_targets (supply_row_id, display_order, target, supply_household_count,"
+                + " supply_count_group_id, admin_excluded) VALUES (?, 0, '청년', NULL, ?, false),"
+                + " (?, 1, '고령자(주거약자용)', 0, NULL, false), (?, 2, '청년', 5, NULL, true)", row, group, row, row);
         Map<String, Object> data = new LinkedHashMap<>(Map.of("announcement", Map.of("name", "인천석남 행복주택")));
         if (withEligibility) {
             data.put("eligibility", Map.of(
@@ -143,6 +157,12 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     private static List<String> texts(JsonNode items, String field) {
         List<String> values = new ArrayList<>();
         items.forEach(item -> values.add(item.path(field).asString()));
+        return values;
+    }
+
+    private static List<String> texts(JsonNode items) {
+        List<String> values = new ArrayList<>();
+        items.forEach(item -> values.add(item.asString()));
         return values;
     }
 }

@@ -37,7 +37,7 @@ public class EligibilityDraftSourceRepository {
                 .params(announcementId, fileName).query(String.class).optional();
     }
 
-    /** 관리자가 빼지 않은 공급행과 공급대상. 단지 지역은 주소의 시군구 코드다. */
+    /** 관리자가 빼지 않은 공급행과 공급대상. 공통 모집수 묶음에 든 대상은 묶음의 모집수를 쓴다. 단지 지역은 주소의 시군구 코드다. */
     public List<Unit> units(long announcementId) {
         Map<Long, UnitRow> rows = new LinkedHashMap<>();
         jdbc.sql("""
@@ -46,7 +46,7 @@ public class EligibilityDraftSourceRepository {
                                COALESCE(r.announcement_exclusive_area, ht.exclusive_area) AS exclusive_area,
                                hc.id AS complex_id, ht.id AS type_id, hc.city_county_district_code AS region_code,
                                COALESCE(a.supply_type, hc.supply_type) AS rental_type,
-                               t.target, t.supply_household_count
+                               t.target, COALESCE(t.supply_household_count, g.household_count) AS supply_household_count
                         FROM supply_rows r
                         JOIN announcements a ON a.id = r.announcement_id
                         LEFT JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
@@ -54,6 +54,7 @@ public class EligibilityDraftSourceRepository {
                             AND NOT hc.admin_deleted
                         LEFT JOIN housing_types ht ON ht.id = r.housing_type_id AND NOT ht.admin_deleted
                         LEFT JOIN supply_targets t ON t.supply_row_id = r.id AND NOT t.admin_excluded
+                        LEFT JOIN supply_target_count_groups g ON g.id = t.supply_count_group_id
                         WHERE r.announcement_id = ? AND NOT r.admin_excluded
                         ORDER BY r.display_order, r.id, t.display_order, t.id
                         """)

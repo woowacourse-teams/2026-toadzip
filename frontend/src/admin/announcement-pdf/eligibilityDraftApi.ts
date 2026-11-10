@@ -28,10 +28,15 @@ export async function loadEligibilityDraft(id: string, signal?: AbortSignal): Pr
   return ruleSet(await requestManagementApi(path(id), 'GET', undefined, signal))
 }
 
+/** AI 초안과, 검토할 때 알아야 할 안내(잇지 못한 경로·경로가 없는 공급대상). 안내는 공개 내용에 들어가지 않는다. */
+export type ExtractionDraft = { ruleSet: RuleSet; notices: string[] }
+
 /** 최신 PDF 추출의 신청자격으로 초안을 만든다. 초안이 있으면 그 초안의 ID·revision일 때만 덮어쓴다. */
-export async function createEligibilityDraft(id: string, pdfSha256: string, current: RuleSet | null): Promise<RuleSet> {
+export async function createEligibilityDraft(id: string, pdfSha256: string, current: RuleSet | null): Promise<ExtractionDraft> {
   const body = { pdfSha256, expectedRevision: current?.revision ?? 0, ...(current ? { expectedDraftId: current.id } : {}) }
-  return required(await requestManagementApi(`${path(id)}/from-extraction`, 'POST', body))
+  const value = await requestManagementApi(`${path(id)}/from-extraction`, 'POST', body)
+  if (!isRecord(value)) throw new Error('신청자격 초안 응답이 비어 있습니다.')
+  return { ruleSet: required(value.ruleSet), notices: Array.isArray(value.notices) ? value.notices.filter((item): item is string => typeof item === 'string') : [] }
 }
 
 export async function saveEligibilityDraft(id: string, current: RuleSet, content: Content): Promise<RuleSet> {
@@ -61,9 +66,11 @@ export function moveToDirectCheck(content: Content, scopeId: string, checkId: st
     : { id: guidanceId, kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 직접 확인할 신청자격', body: '자동으로 판정하지 못한 요건이에요. 공고문 원문에서 해당하는지 확인해 주세요.',
       items: [check.label], targets: [common ? { scope: 'ANNOUNCEMENT', pathId: null, supplyUnitId: null } : { scope: 'PATH', pathId: scopeId, supplyUnitId: null }], evidenceIds: check.evidenceIds }
   const remaining = checks.filter(item => item.id !== checkId)
-  const fallbacks = new Set([...content.commonChecks, ...content.paths.flatMap(item => item.checks)].filter(item => item.id !== checkId).map(item => item.fallbackGuidanceId))
+  // 옮긴 조건의 대체 안내만, 다른 조건이 더 쓰지 않을 때 뺀다. 사람이 쓴 다른 안내는 그대로 둔다.
+  const stillUsed = [...content.commonChecks, ...content.paths.flatMap(item => item.checks)]
+    .some(item => item.id !== checkId && item.fallbackGuidanceId === check.fallbackGuidanceId)
   const guidances = [...content.guidances.filter(item => item.id !== guidanceId), guidance]
-    .filter(item => item.kind !== 'REQUIRED_CHECK' || fallbacks.has(item.id))
+    .filter(item => item.id !== check.fallbackGuidanceId || stillUsed)
   return {
     ...content, guidances,
     commonChecks: common ? remaining : content.commonChecks,

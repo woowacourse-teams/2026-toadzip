@@ -3,6 +3,7 @@ package com.toadzip.backend.eligibility.controller;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftVersion;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.SaveDraft;
+import com.toadzip.backend.eligibility.dto.EligibilityResponses.ExtractionDraft;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.RuleSet;
 import com.toadzip.backend.eligibility.repository.EligibilityJsonCodec;
 import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
@@ -58,7 +59,7 @@ public class EligibilityRuleSetController {
     }
 
     @PostMapping("/from-extraction")
-    public ApiResponse<RuleSet> fromExtraction(
+    public ApiResponse<ExtractionDraft> fromExtraction(
             @PathVariable long announcementId, @RequestBody JsonNode request) {
         return new ApiResponse<>(
                 extractionDrafts.create(announcementId, codec.request(request, DraftFromExtraction.class)));

@@ -1,5 +1,7 @@
 package com.toadzip.backend.eligibility.domain;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -12,7 +14,8 @@ public record ExtractedEligibility(
     public ExtractedEligibility {
         routes = EligibilityContent.immutable(routes);
         exclusions = EligibilityContent.immutable(exclusions);
-        quotes = Map.copyOf(quotes);
+        // 근거 ID 순서와 '묶음의 첫 근거'가 실행마다 같도록 원래 순서를 지킨다.
+        quotes = Collections.unmodifiableMap(new LinkedHashMap<>(quotes));
     }
 
     /** 공고 전체(common) 또는 경로 하나에 걸린 요건과, 그중 하나만 갖추면 되는 직접 확인 자격. */
