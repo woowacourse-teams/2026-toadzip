@@ -37,6 +37,8 @@ function renderHome(logoutFails = false) {
   let member = true
   const fetcher = vi.fn(async (input: RequestInfo | URL) => {
     const path = new URL(String(input), 'http://localhost').pathname
+    if (path.endsWith('/eligibility-profile')) return Response.json({ data: { version: 0, updatedAt: null, reevaluationState: 'DONE', profile: { familyDetailsState: 'NOT_STARTED', facts: {} } } })
+    if (path.endsWith('/eligibility/processing')) return Response.json({ data: { profileVersion: 0, requestedVersion: 0, state: 'DONE', failedAttempts: 0 } })
     if (path === '/api/auth/me') return member ? Response.json({ id: 7, email: 'member@example.com' }) : new Response(null, { status: 401 })
     if (path === '/api/v1/bookmarks/me') return Response.json({ items: [] })
     if (path === '/api/auth/csrf') return Response.json({ token: 'csrf', headerName: 'X-CSRF' })

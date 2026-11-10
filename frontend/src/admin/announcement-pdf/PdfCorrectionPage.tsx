@@ -20,6 +20,7 @@ import { applicableCells, assembleReview, fieldNeeds, groupOf, pendingField, pen
 import { ReviewCells } from './ReviewCells'
 import { ReviewReception } from './ReviewReception'
 import { ReviewSupply } from './ReviewSupply'
+import { EligibilityDraftPanel } from './EligibilityDraftPanel'
 import { supplyView } from './supplyView'
 import { SupplyNavigator } from './SupplyNavigator'
 import { SharedCountsRepair } from './SharedCountsRepair'
@@ -31,14 +32,16 @@ const PdfDocumentPreview = lazy(() => import('../../public-housing/components/Pd
 type Phase = 'prepare' | 'review' | 'result'
 // attachmentId가 있으면 공고 첨부라 추출 때 서버가 같은 첨부를 받는다.
 type SelectedPdf = { url: string; name: string; file: Blob; attachmentId?: string }
-type SectionTab = { key: ReviewSection; label: string; count: number; selected: boolean }
+type SectionTab = { key: ReviewSection | 'eligibility'; label: string; count: number; selected: boolean }
 /**
- * 검토 영역 탭은 공급정보·일정·접수처·기본정보 세 업무 영역만 둔다. 공급정보 안의 단지는 고정 공급행 막대의 단지 선택에서 고른다
+ * 검토 영역 탭은 공급정보·일정·접수처·기본정보 세 업무 영역과, 적용 뒤 따로 만드는 신청자격 초안만 둔다. 공급정보 안의 단지는 고정 공급행 막대의 단지 선택에서 고른다
  * (단지가 많으면 탭이 여러 줄로 접혀 검토 공간을 차지한다). 확인 수는 그 영역의 남은 확인 항목이다.
  */
-function sectionTabs(section: ReviewSection, pending: { id: string; section: ReviewSection }[], supplyOnly = false): SectionTab[] {
-  const tab = (key: ReviewSection, label: string): SectionTab => ({ key, label, selected: section === key, count: pending.filter(item => item.section === key).length })
-  return supplyOnly ? [tab('supply', '공급정보')] : [tab('supply', '공급정보'), tab('schedule', '일정'), tab('reception', '접수처·기본정보')]
+function sectionTabs(section: ReviewSection, pending: { id: string; section: ReviewSection }[], supplyOnly = false, eligibility = false): SectionTab[] {
+  const tab = (key: ReviewSection, label: string): SectionTab => ({ key, label, selected: !eligibility && section === key, count: pending.filter(item => item.section === key).length })
+  if (supplyOnly) return [tab('supply', '공급정보')]
+  // 신청자격은 공급정보를 적용한 뒤 따로 만드는 초안이라 보정 확인 수에 넣지 않는다.
+  return [tab('supply', '공급정보'), tab('schedule', '일정'), tab('reception', '접수처·기본정보'), { key: 'eligibility', label: '신청자격', count: 0, selected: eligibility }]
 }
 /** 탭 목록. 화살표·Home·End로 탭 사이를 옮기며 바로 연다(자동 활성화). */
 function SectionTabs({ tabs, onSelect }: { tabs: SectionTab[]; onSelect: (tab: SectionTab) => void }) {
@@ -89,6 +92,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [initialRows] = useState(supplyDraft?.rows)
   const [workspace, setWorkspace] = useState<JsonWorkspace | null>(null), [housing, setHousing] = useState<HousingCandidates>({}), [complexes, setComplexes] = useState<ComplexLabels>({})
   const [phase, setPhase] = useState<Phase>('prepare'), [section, setSection] = useState<ReviewSection>('supply')
+  const [eligibilityOpen, setEligibilityOpen] = useState(false)
   const [text, setText] = useState(''), [review, setReview] = useState<Review | null>(null)
   // 응답 준비로 돌아갔다 와도 같은 응답·PDF면 검토하던 선택을 그대로 이어 간다.
   const [reviewedWith, setReviewedWith] = useState('')
@@ -290,7 +294,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (row !== null) setSelectedRow(row)
     // 저장할 곳 확인은 그 확인을 푸는 곳(단지 정하기)으로 간다. 상태 배지와 같은 규칙이다.
     const target = workspace ? pendingJumpTarget(review, workspace, item.id) : item.id
-    setSection(item.section); setMobileView('review'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
+    setSection(item.section); setEligibilityOpen(false); setMobileView('review'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
   }
   function chooseLocalPdf(file: File | undefined) {
     if (!file) return
@@ -413,7 +417,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     if (row !== null) setSelectedRow(row)
     // 확인 필요 필터에서도 보이는 곳(남은 확인 항목·행·단지 정하기)으로 가면 필터를 유지하고, 아니면 전체로 연다.
     const visible = /^(row:|complex$)/.test(target) || Boolean(review && pendingItems(review, !supplyDraft, workspace ?? undefined, release).some(item => item.id === target))
-    setSection(reviewSection(target)); setFilter(current => current === 'pending' && visible ? current : 'all'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
+    setSection(reviewSection(target)); setEligibilityOpen(false); setFilter(current => current === 'pending' && visible ? current : 'all'); setJump(previous => ({ id: target, nonce: (previous?.nonce ?? 0) + 1 }))
   }
   async function reload() {
     setBusy(true); setError('')
@@ -460,16 +464,23 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         {checks.some(check => check.matches === false) && <p className={styles.error}>PDF의 {checks.filter(check => check.matches === false).map(check => `${check.label}(${check.pdf})`).join('·')}이 현재 공고와 다릅니다. 이 공고의 PDF로 받은 응답인지 확인하세요.</p>}
         <div data-review-top className={styles.reviewTop}>
           <div className={styles.tabRow}>
-            <SectionTabs tabs={sectionTabs(section, pending, Boolean(supplyDraft))} onSelect={tab => { setSection(tab.key); scrollReviewTop() }} />
+            <SectionTabs tabs={sectionTabs(section, pending, Boolean(supplyDraft), eligibilityOpen)} onSelect={tab => {
+              if (tab.key === 'eligibility') setEligibilityOpen(true)
+              else { setEligibilityOpen(false); setSection(tab.key) }
+              scrollReviewTop()
+            }} />
             <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
           </div>
-          {section === 'supply' && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, pending)} pending={pending}
+          {!eligibilityOpen && section === 'supply' && <SupplyNavigator review={review} workspace={workspace} view={supplyView(review, selectedRow, filter, pending)} pending={pending}
             onSelectComplex={index => { selectRow(index); scrollReviewTop() }} onSelectRow={stepRow} onJump={goTo} />}
         </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
+          {eligibilityOpen && <EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} onEvidence={item => evidence(item)} />}
+          {!eligibilityOpen && <>
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={stepRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
           {section === 'reception' && <><h2>접수처·기본정보</h2><p>{unconfirmed(workspace) ? '미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일을 모두 채워야 저장됩니다. 공급·모집 유형은 공개 전 확인에서 선택하세요.' : '임대유형·모집유형·기관·공고명은 현재값을 유지합니다.'} 접수처는 인터넷 접수와 현장 접수처를 따로 저장합니다. PDF 접수처는 접수 방식과 이름이 같은 기존 접수처와 대조하고(아니면 새 접수처로 더함), PDF에 없는 기존 접수처는 빼기를 고르면 지웁니다.</p>{visibleIn(receptionCells(review.reception)) && <h3>접수처</h3>}<ReviewReception review={review} workspace={workspace} needs={fieldNeed} filter={filter} onChange={change} onEvidence={evidence} />{visibleIn(review.metadata) && <h3>공고 기본 일정</h3>}<ReviewCells cells={review.metadata} scope="기본정보" needs={fieldNeed} filter={filter} onChange={metadata => change({ ...review, metadata })} onEvidence={evidence} />{!visibleIn(receptionCells(review.reception)) && !visibleIn(review.metadata) && <p className={styles.hint}>{empty}</p>}</>}
+          </>}
         </div></fieldset>
         {!supplyDraft && unconfirmed(workspace) && <ReleaseCheck value={release} current={{ rentalType: workspace!.detail.data.rentalType, recruitmentType: workspace!.detail.data.recruitmentType }} needs={fieldNeed} disabled={busy || blocked} onChange={setRelease} />}
       </div></div>
@@ -484,6 +495,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택타입 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
         {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
     </section>}
+    {/* 공급정보를 적용한 바로 뒤가 신청자격 초안을 만들 때라, 적용 결과 아래에 신청자격 패널을 둔다. */}
+    {phase === 'result' && !supplyDraft && <section className={styles.result}><EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} /></section>}
   </section>
 }
 

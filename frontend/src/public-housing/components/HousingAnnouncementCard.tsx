@@ -1,6 +1,9 @@
 import { MISSING_DATA_LABEL } from '../presentation/missingData.ts'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingAnnouncementCard.module.css'
+import { StatusMark } from '../../user/conditions/conditionIcons'
+import { markOfType } from '../../user/conditions/conditionMarks'
+import type { TypeStatus } from '../../user/conditions/conditionsModel'
 
 export interface HousingAnnouncementCardData {
   readonly announcementId: string
@@ -23,6 +26,8 @@ export interface HousingAnnouncementCardProps {
   readonly cardRef?: (node: HTMLElement | null) => void
   readonly selected?: boolean
   readonly onSelect?: (announcementId: string) => void
+  /** 내 조건 비교 결과 한 줄 */
+  readonly conditionLine?: { readonly status: TypeStatus; readonly text: string } | null
 }
 
 interface StatusPresentation {
@@ -43,6 +48,7 @@ export function HousingAnnouncementCard({
   cardRef,
   selected = false,
   onSelect,
+  conditionLine = null,
 }: HousingAnnouncementCardProps) {
   const title = displayText(announcement.title)
   const status = statusPresentation(announcement)
@@ -102,6 +108,9 @@ export function HousingAnnouncementCard({
         </section>
 
         <AnnouncementFooter announcement={announcement} />
+        {conditionLine && <p className={styles.conditionLine} data-condition-status={conditionLine.status}>
+          <StatusMark status={markOfType(conditionLine.status)} size={14} className={styles.conditionMark} />{conditionLine.text}
+        </p>}
       </div>
 
       {onSelect && (

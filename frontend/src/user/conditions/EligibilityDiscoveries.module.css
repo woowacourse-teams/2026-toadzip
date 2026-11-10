@@ -1,0 +1,8 @@
+.section { padding: var(--ds-space-4, 16px); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
+.section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.section h3 { margin: 0; font-size: 1rem; }
+.section p { color: var(--ds-color-muted); font-size: .875rem; }
+.section > ul { list-style: none; margin: 0; padding: 0; }
+.section > ul > li { padding: 12px 0; border-top: 1px solid var(--ds-color-divider); }
+.section a { color: var(--ds-color-action); font-weight: 700; }
+.section li ul { margin: 8px 0; padding-left: 20px; font-size: .875rem; }

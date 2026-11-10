@@ -21,6 +21,8 @@ interface AnnouncementFilterPanelProps {
   readonly onApply: (filters: AnnouncementSearchFilters) => void
   readonly regionRepository?: PublicHousingRegionRepository
   readonly resultSummary?: ReactNode
+  /** 내 조건 기준 지원 가능 공고만 보기 */
+  readonly eligibilityFilter?: { readonly checked: boolean; readonly onToggle: () => void }
 }
 
 export function AnnouncementFilterPanel({
@@ -28,6 +30,7 @@ export function AnnouncementFilterPanel({
   onApply,
   regionRepository = publicHousingRegionRepository,
   resultSummary,
+  eligibilityFilter,
 }: AnnouncementFilterPanelProps) {
   const mobile = useMobileViewport()
   const [open, setOpen] = useState(false)
@@ -130,6 +133,8 @@ export function AnnouncementFilterPanel({
       <div className={styles.toolbar} role="group" aria-label="공고 목록 도구">
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
         <div className={styles.toolbarControls}>
+          {eligibilityFilter && <button className={styles.sort} type="button" role="switch" aria-checked={eligibilityFilter.checked}
+            aria-label="불러온 공고 중 지원 가능한 공고" title="현재 목록에 불러온 공고를 내 신청자격으로 확인합니다." onClick={eligibilityFilter.onToggle}>지원 가능</button>}
           <div className={styles.sortOptions} role="group" aria-label="공고 정렬">
             <button className={styles.sort} type="button" aria-pressed={latestSelected}
               aria-describedby={sortDescriptionId} onClick={changeSort}>
@@ -207,6 +212,7 @@ export function AnnouncementFilterPanel({
           <div className={styles.fields}>
             <div className={styles.grid}>
               <RegionFilterFields
+                includeSubdistricts
                 initialRegionCode={formFilters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
                 loadingMessage="시·군·구 목록을 불러오는 중이에요."

@@ -72,6 +72,12 @@ import { HousingComplexSummarySheet } from './components/HousingComplexSummarySh
 import { readRecentComplexPreview, withRecentComplexPreview } from './navigation/mobileDetailHistory.ts'
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
+import { ConditionListBanner } from './announcements/ConditionListBanner'
+import { useConditionListResults } from './announcements/useConditionListResults'
+import { listResultText } from './presentation/comparisonPresentation'
+import { useConditions } from '../user/conditions/ConditionsContext'
+import type { ListConditionResult } from '../user/conditions/conditionsModel'
+import { Button } from '../design-system/components/Button'
 import {
   parseAnnouncementSearchFilters,
   parseComplexSearchFilters,
@@ -572,6 +578,15 @@ export function PublicHousingExplorer({
     announcementFilters,
     announcementFiltersKey,
   )
+  const conditions = useConditions()
+  const conditionList = useConditionListResults(announcementResults.state.items, announcementFilters.regionCode)
+  const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
+  const [onlyMatched, setOnlyMatched] = useState(false)
+  const filteringMatched = onlyMatched && conditionsCompared
+  const toggleMatched = useCallback(() => {
+    if (conditionsCompared) setOnlyMatched((current) => !current)
+    else conditions.openNudge('list')
+  }, [conditions, conditionsCompared])
   const updateAnnouncementViewCount = announcementResults.updateViewCount
   const loadMoreAnnouncements = announcementResults.loadMore
 
@@ -1417,13 +1432,21 @@ export function PublicHousingExplorer({
       selectedSearchComplex,
     ],
   )
-  const resultCount = resultCountLabel(
+  const baseResultCount = resultCountLabel(
     activeResultTab,
     complexResults,
     announcementResults.state,
     recentComplexes.length,
 
   )
+  const comparingList = conditionsCompared && (conditionList.status === 'loading' || conditionList.rechecking)
+  const resultCount = filteringMatched && activeResultTab === 'announcements'
+    ? conditionList.status === 'error'
+      ? { accessibleLabel: '신청자격 조회 실패', visibleLabel: '신청자격 조회 실패' }
+      : comparingList
+      ? { accessibleLabel: '지원 가능 공고 확인 중', visibleLabel: '지원 가능 확인 중' }
+      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건` }
+    : baseResultCount
   const complexFilterResultCountLabel = mapFilterResultCountLabel({
     aggregateMapActive,
     requestBlocked,
@@ -1741,11 +1764,14 @@ export function PublicHousingExplorer({
               hidden={activeResultTab !== 'announcements'}
             >
               <div className="housing-results__body">
+                <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList} error={conditionList.status === 'error'} onRetry={conditionList.retry}
+                  filtering={filteringMatched} onToggleFilter={toggleMatched} />
                 <AnnouncementFilterPanel
                   filters={announcementFilters}
                   onApply={applyAnnouncementFilters}
                   regionRepository={regionRepository}
                   resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
+                  eligibilityFilter={conditions.mode === 'disabled' ? undefined : { checked: filteringMatched, onToggle: toggleMatched }}
                 />
                 <div
                   ref={announcementResultsScrollRef}
@@ -1755,6 +1781,11 @@ export function PublicHousingExplorer({
                 >
                   <AnnouncementResultContent
                     state={announcementResults.state}
+                    conditionResults={conditionsCompared ? conditionList.results : null}
+                    matchedIds={filteringMatched ? conditionList.matchedIds : null}
+                    comparing={filteringMatched && comparingList}
+                    comparisonError={filteringMatched && conditionList.status === 'error'}
+                    onComparisonRetry={conditionList.retry}
                     selectedAnnouncementId={selectedAnnouncementId}
                     onSelect={openAnnouncementDetail}
                     onCardRef={(announcementId, node) => {
@@ -1766,6 +1797,8 @@ export function PublicHousingExplorer({
                     }}
                     onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
                   />
+                  {filteringMatched && announcementResults.state.hasNext && <Button size="sm" variant="secondary" onClick={loadMoreAnnouncements}
+                    disabled={announcementResults.state.status === 'loading-more'}>다음 공고도 불러와 확인하기</Button>}
                   {announcementResults.state.items.length > 0 && announcementResults.state.status !== 'error' && (
                     <div ref={announcementListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
                       {announcementResults.state.status === 'loading-more'
@@ -1913,12 +1946,24 @@ function AnnouncementDetailLayer({ returnToMyPage, state, onClose, onOpenComplex
 
 function AnnouncementResultContent({
   state,
+  conditionResults,
+  matchedIds,
+  comparing,
+  comparisonError,
+  onComparisonRetry,
   selectedAnnouncementId,
   onSelect,
   onCardRef,
   onRetry,
 }: {
   state: AnnouncementResultsState
+  conditionResults: ReadonlyMap<string, ListConditionResult> | null
+  /** 지원 가능 공고만 볼 때 남길 공고 */
+  matchedIds: ReadonlySet<string> | null
+  /** 지원 가능 공고만 보는 중 새 목록을 비교하는 중 */
+  comparing: boolean
+  comparisonError: boolean
+  onComparisonRetry: () => void
   selectedAnnouncementId: string | null
   onSelect: (announcementId: string) => void
   onCardRef: (announcementId: string, node: HTMLElement | null) => void
@@ -1956,13 +2001,27 @@ function AnnouncementResultContent({
     )
   }
 
+  if (comparisonError) return <RequestError title="신청자격을 불러오지 못했어요" onRetry={onComparisonRetry} />
+
+  if (comparing) {
+    return (
+      <div className="housing-results__state" role="status">
+        <strong>내 조건과 비교하고 있어요.</strong>
+        <span>지원 가능 공고를 찾고 있어요.</span>
+      </div>
+    )
+  }
+  const items = matchedIds ? state.items.filter((announcement) => matchedIds.has(announcement.announcementId)) : state.items
+  if (matchedIds && items.length === 0 && state.status !== 'loading-more') return <NoMatchedAnnouncements />
+
   return (
     <>
       <ul className="housing-results__list">
-        {state.items.map((announcement) => (
+        {items.map((announcement) => (
           <li key={announcement.announcementId}>
             <HousingAnnouncementCard
               announcement={toHousingAnnouncementCardData(announcement)}
+              conditionLine={conditionLineOf(conditionResults?.get(announcement.announcementId))}
               selected={selectedAnnouncementId === announcement.announcementId}
               cardRef={(node) => onCardRef(announcement.announcementId, node)}
               onSelect={onSelect}
@@ -1975,6 +2034,20 @@ function AnnouncementResultContent({
       )}
     </>
   )
+}
+
+function conditionLineOf(result: ListConditionResult | undefined) {
+  if (!result) return null
+  const text = listResultText(result)
+  if (!text) return null
+  return { status: result.best?.status ?? 'NOT_EVALUATED' as const, text }
+}
+
+function NoMatchedAnnouncements() {
+  return <div className="housing-results__state" role="status">
+    <strong>불러온 공고에는 선택 지역의 지원 가능한 모집 선택지가 없어요</strong>
+    <span>현재 불러온 목록에만 적용한 결과예요. 필터를 해제해 다른 공고도 확인해 주세요.</span>
+  </div>
 }
 
 function resultCountLabel(

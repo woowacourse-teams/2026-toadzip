@@ -18,3 +18,7 @@ it('로그인 시작 전과 만료된 복귀 정보는 성공 콜백에 사용�
   vi.advanceTimersByTime(30 * 60 * 1000)
   expect(readLoginReturn(true)).toBeNull()
 })
+
+it('마이페이지 내 조건 관리로 돌아올 수 있다', () => {
+  expect(safeLoginReturn('/mypage/conditions')).toBe('/mypage/conditions')
+})

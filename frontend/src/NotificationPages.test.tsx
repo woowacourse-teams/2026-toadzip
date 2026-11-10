@@ -26,6 +26,8 @@ function session(member = true) {
     if (!member) return new Response(null, { status: 401 })
     if (url.includes('/api/v1/notifications/unread-count')) return Response.json({ unreadCount: 0 })
     if (url.includes('/api/v1/notifications?')) return Response.json({ items: [], nextCursor: null, readThrough: '0', totalCount: 0 })
+    if (url.endsWith('/eligibility-profile')) return Response.json({ data: { version: 0, updatedAt: null, reevaluationState: 'DONE', profile: { familyDetailsState: 'NOT_STARTED', facts: {} } } })
+    if (url.endsWith('/eligibility/processing')) return Response.json({ data: { profileVersion: 0, requestedVersion: 0, state: 'DONE', failedAttempts: 0 } })
     if (url.endsWith('/api/auth/me')) return new Response(JSON.stringify({ id: 7 }))
     if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
     return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
@@ -108,6 +110,8 @@ it('같은 탭의 일부 해제가 실패하면 미완료 항목만 복원하고
   let settingsRevision = 0
   const writes: Array<{ eventId: string; targetId: string }> = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.endsWith('/eligibility-profile')) return Response.json({ data: { version: 0, updatedAt: null, reevaluationState: 'DONE', profile: { familyDetailsState: 'NOT_STARTED', facts: {} } } })
+    if (url.endsWith('/eligibility/processing')) return Response.json({ data: { profileVersion: 0, requestedVersion: 0, state: 'DONE', failedAttempts: 0 } })
     if (url.endsWith('/api/auth/me')) return Response.json({ id: 7 })
     if (url.endsWith('/bookmarks/me')) return Response.json({ items: [] })
     if (url.endsWith('/csrf')) return Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' })

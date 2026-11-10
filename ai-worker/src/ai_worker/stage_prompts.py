@@ -1,5 +1,5 @@
 """추출 단계별 프롬프트를 만든다. 문구와 응답 스키마는 prompts/ 폴더의 파일이 원본이다.
-본문 단계에는 관리자 스키마에서 그 단계가 맡은 필드만 남겨 보내고, LH 공고의 공급 단계에는 LH 공급 API 행을 참고 목록으로 함께 보낸다.
+본문 단계에는 관리자 스키마에서 그 단계가 맡은 필드만 남겨 보내고, 신청자격 단계는 같은 본문 쪽에 신청자격 지시·스키마만 붙이며, LH 공고의 공급 단계에는 LH 공급 API 행을 참고 목록으로 함께 보낸다.
 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 """
 
@@ -22,17 +22,10 @@ _SCHEMA = json.loads(_prompt_text("announcement-pdf-extraction-schema.json"))
 _TEXT_PREFACE = _prompt_text("text-preface.txt")
 _SCHEMA_SUFFIX = _prompt_text("schema-suffix.txt")
 _LH_FRAME = _prompt_text("lh-frame.txt")
-
-
-_APPLICATION_CONDITIONS = {
-    "type": "array",
-    "description": "신청자격 요약. target이 null이면 공고 전체 조건, 아니면 그 공급대상에만 해당하는 조건이다.",
-    "items": {
-        "type": "object",
-        "properties": {"target": {"type": ["string", "null"]}, "condition": {"type": "string"}},
-        "required": ["target", "condition"],
-    },
-}
+_ELIGIBILITY_INSTRUCTIONS = _prompt_text("announcement-pdf-eligibility.txt")
+# 파일은 읽기 좋게 두고, 프롬프트에는 공백을 줄여 보낸다.
+_ELIGIBILITY_SCHEMA = json.dumps(json.loads(_prompt_text("announcement-pdf-eligibility-schema.json")),
+                                 ensure_ascii=False, separators=(",", ":"))
 
 
 def _notice_schema() -> str:
@@ -47,9 +40,7 @@ def _notice_schema() -> str:
 
     data["properties"] = {name: data_properties[name] for name in data_names}
     data["properties"]["complexes"] = _project_complex_schema(data_properties["complexes"], complex_fields)
-    # 신청자격은 본문 단계만 읽는다. 관리자 계약에는 없고 merge가 대상 신청 조건(applicationCondition)에 합친다.
-    data["properties"]["applicationConditions"] = _APPLICATION_CONDITIONS
-    data["required"] = [name for name in data["required"] if name in data_names] + ["applicationConditions"]
+    data["required"] = [name for name in data["required"] if name in data_names]
     schema["properties"] = {name: value for name, value in root.items() if name in (*root_names, "data")}
     schema["required"] = [name for name in schema["required"] if name in schema["properties"]]
     return json.dumps(schema, ensure_ascii=False, indent=2)
@@ -81,3 +72,9 @@ def notice_prompt(selected: pages.PromptPages) -> str:
     context = "[공급 표에서 읽은 단지명 후보]\n" + candidates + "\n\n"
     return (_TEXT_PREFACE + "[추출 단계: 공고 본문]\n" + _INSTRUCTIONS + "\n\n" + context + _SCHEMA_SUFFIX
             + _notice_schema() + "\n\n" + selected.notice_text)
+
+
+def eligibility_prompt(selected: pages.PromptPages) -> str:
+    """신청자격 단계는 본문 단계와 같은 쪽(신청자격·입주자격 절 포함)을 읽고 신청자격만 낸다."""
+    return (_TEXT_PREFACE + "[추출 단계: 신청자격]\n" + _ELIGIBILITY_INSTRUCTIONS + "\n" + _SCHEMA_SUFFIX
+            + _ELIGIBILITY_SCHEMA + "\n\n" + selected.notice_text)

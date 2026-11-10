@@ -26,11 +26,15 @@ import { BookmarkButton } from '../bookmarks/BookmarkButton'
 import { useBookmarks } from '../bookmarks/BookmarkContext'
 import type { BookmarkItem, BookmarkType } from '../bookmarks/bookmarkRepository'
 import { useMyPageReturnState } from './mypageNavigation'
+import { ConditionManagement } from './ConditionManagement'
+import { useConditions } from '../conditions/ConditionsContext'
+import { fromProfile, missingFields } from '../conditions/conditionDraft'
 import styles from './MyPageView.module.css'
 
 type Kind = NotificationTargetType
 type AlarmKind = Kind | 'DEVICES'
 type Sub = { readonly section: 'bookmarks'; readonly kind: BookmarkType } | { readonly section: 'notifications'; readonly kind: AlarmKind }
+  | { readonly section: 'conditions'; readonly kind: null }
 
 const kindLabels: Record<AlarmKind, string> = { COMPLEX: '단지', ANNOUNCEMENT: '공고', REGION: '지역', DEVICES: '기기 관리' }
 
@@ -39,13 +43,14 @@ function readSub(pathname: string, search: string): Sub | null {
   const type = new URLSearchParams(search).get('type')
   if (pathname === '/mypage/bookmarks') return { section: 'bookmarks', kind: type === 'ANNOUNCEMENT' ? 'ANNOUNCEMENT' : 'COMPLEX' }
   if (pathname === '/mypage/notifications') return { section: 'notifications', kind: type === 'ANNOUNCEMENT' || type === 'REGION' || type === 'DEVICES' ? type : 'COMPLEX' }
+  if (pathname === '/mypage/conditions') return { section: 'conditions', kind: null }
   return null
 }
 function subPath(sub: Sub) {
-  return { pathname: `/mypage/${sub.section}`, search: sub.kind === 'COMPLEX' ? '' : `?type=${sub.kind}` }
+  return { pathname: `/mypage/${sub.section}`, search: sub.kind === 'COMPLEX' || sub.kind === null ? '' : `?type=${sub.kind}` }
 }
 function subTitle(sub: Sub) {
-  return sub.section === 'notifications' ? '알림 관리' : '북마크 관리'
+  return sub.section === 'notifications' ? '알림 관리' : sub.section === 'conditions' ? '내 조건 관리' : '북마크 관리'
 }
 
 export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnouncements, onClose }: {
@@ -56,6 +61,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
 }) {
   const bookmarks = useBookmarks()
   const interests = useNotificationInterests()
+  const conditions = useConditions()
   const location = useLocation()
   const navigate = useNavigate()
   const mobile = useMobileViewport()
@@ -70,7 +76,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
     if (selected?.section === 'notifications') setAlarmKind(selected.kind)
   }, [selected?.section, selected?.kind])
   function selectKind(next: Sub) {
-    if (next.section === 'bookmarks') setSavedKind(next.kind); else setAlarmKind(next.kind)
+    if (next.section === 'bookmarks') setSavedKind(next.kind); else if (next.section === 'notifications') setAlarmKind(next.kind)
     void navigate(subPath(next), { replace: true })
   }
 
@@ -156,6 +162,8 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
             value={saved ? `${saved.length}개` : '—'} detail={saved ? breakdown(saved, ['COMPLEX', 'ANNOUNCEMENT']) : undefined} />
           <HubRow to={{ section: 'notifications', kind: alarmKind }} current={sub.section === 'notifications'} label="알림 관리"
             value={alarms ? `${alarms.length}개` : '—'} detail={alarms ? breakdown(alarms, ['COMPLEX', 'ANNOUNCEMENT', 'REGION']) : undefined} />
+          {conditions.mode !== 'disabled' && <HubRow to={{ section: 'conditions', kind: null }} current={sub.section === 'conditions'} label="내 조건 관리"
+            value={conditionsValue(conditions)} />}
         </nav>
         <nav className={`${styles.card} ${styles.feedback}`} aria-label="서비스">
           <FeedbackLink className={styles.row} state={returnState}><span className={styles.rowLabel}>의견 보내기</span><Chevron /></FeedbackLink>
@@ -179,11 +187,25 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
           </header>
           <AlarmList kind={alarmKind} onSelectKind={kind => selectKind({ section: 'notifications', kind })} onOpenComplex={onOpenComplex} onOpenAnnouncement={onOpenAnnouncement} />
         </section>
+        {conditions.mode !== 'disabled' && <section id="mypage-conditions" className={`${styles.card} ${styles.sub}`} aria-labelledby="mypage-conditions-title" data-current={sub.section === 'conditions' || undefined}>
+          <header className={styles.subHeader}>
+            <Link className={styles.back} to="/mypage" aria-label="마이페이지로 돌아가기"><Chevron back /></Link>
+            <h2 id="mypage-conditions-title">내 조건 관리</h2>
+          </header>
+          <ConditionManagement />
+        </section>}
       </main>
     </div>
   </div>
 }
 
+
+function conditionsValue(conditions: ReturnType<typeof useConditions>): string {
+  if (conditions.mode !== 'member') return '—'
+  if (!conditions.hasProfile || !conditions.stored) return '미입력'
+  const missing = missingFields(fromProfile(conditions.stored.profile)).length
+  return missing ? `미입력 ${missing}` : '입력 완료'
+}
 
 function HubRow({ to, current, label, value, detail }: {
   readonly to: Sub; readonly current: boolean; readonly label: string; readonly value: string; readonly detail?: string
