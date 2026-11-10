@@ -157,7 +157,10 @@
 .footer .brand :global(.brand-name) { font-size: 14px; }
 .footer .brand :global(.brand-logo) { width: 28px; height: 28px; }
 .footer p { color: var(--ds-color-label); font-size: 12px; }
-.footer > a:last-child { margin-left: auto; padding: 12px 0; font-size: 12px; }
+.footerLinks { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-left: auto; }
+.footerLinks a { padding: 12px 0; color: var(--ds-color-label); font-size: 12px; }
+.footerLinks a:hover { color: var(--ds-color-text); }
+.toTop { padding: 12px 0; font-size: 12px; }
 
 @keyframes enter { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lineRise { from { transform: translateY(110%); } to { transform: translateY(0); } }
@@ -247,6 +250,8 @@
   .closing p { font-size: 15px; }
   .footer { flex-wrap: wrap; padding: 24px var(--landing-mobile-gutter); gap: 14px; }
   .footer p { width: 100%; order: 3; font-size: 11px; }
+  .footerLinks { width: 100%; order: 2; margin-left: 0; }
+  .toTop { margin-left: auto; }
 }
 
 @media (min-width: 768px) and (not ((hover: none) and (pointer: coarse))) and (max-height: 700px) {

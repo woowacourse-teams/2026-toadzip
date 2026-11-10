@@ -34,6 +34,6 @@ function toggleAreaUnit() {
 }
 
 export function useAreaUnit() {
-  const areaUnit = useSyncExternalStore(subscribe, getAreaUnit)
+  const areaUnit = useSyncExternalStore(subscribe, getAreaUnit, getAreaUnit)
   return { areaUnit, toggleAreaUnit }
 }

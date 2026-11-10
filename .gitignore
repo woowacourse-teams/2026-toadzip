@@ -48,3 +48,4 @@ frontend/public/rhwp-*/
 frontend/public/ocr-*/
 
 frontend/.worker-dev/
+frontend/.prerender/

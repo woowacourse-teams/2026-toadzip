@@ -9,7 +9,7 @@
   "packageManager": "npm@11.17.0",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && vite build --config vite.worker.config.ts",
+    "build": "tsc -b && vite build && vite build --config vite.worker.config.ts && vite build --ssr src/prerender/renderPage.ts --outDir .prerender && node scripts/prerender.mjs",
     "lint": "oxlint",
     "test": "vitest run",
     "check": "npm run lint && npm run test && npm run build",

@@ -34,6 +34,7 @@ services:
       service: caddy
     environment:
       TOADZIP_CADDY_DOMAIN: "${TOADZIP_CADDY_DOMAIN:?Set the application server domain}"
+      TOADZIP_CADDY_REDIRECT_DOMAIN: "${TOADZIP_CADDY_REDIRECT_DOMAIN:-}"
     ports: !override
       - '80:80'
       - '443:443'
