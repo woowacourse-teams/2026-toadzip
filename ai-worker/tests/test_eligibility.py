@@ -238,3 +238,12 @@ def test_closed_lists_match_the_schema_given_to_the_model():
     assert set(requirement["incomeStandard"]["enum"]) - {None} == eligibility.INCOME_STANDARDS
     assert tuple(requirement["familyTypes"]["items"]["enum"]) == eligibility.FAMILY_TYPES
     assert set(requirement["adjustments"]["items"]["properties"]["kind"]["enum"]) == eligibility.ADJUSTMENTS
+
+
+def test_amount_written_in_a_form_blank_matches_the_quote():
+    reply = _reply(common=_group({"kind": "ASSETS", "scope": "HOUSEHOLD", "amountAsWritten": "24,500만원", "asWritten": "총자산"}),
+                   evidence=[{"path": "eligibility.common.requirements[0]", "page": 8, "quote": "총 자산 가액 합산 기준 ( 24,500 )만원 이하"}])
+
+    [assets] = eligibility.normalize(reply, "2026-10-06").data["common"]["requirements"]
+
+    assert assets["maximumKrw"] == 245_000_000

@@ -180,7 +180,8 @@ def _quoted_amount(written: str, quote: str, path: str, warnings: list[str]) -> 
         return None
     amount = re.escape(_LIMIT_SUFFIX.sub("", _SPACES.sub("", written)))
     # 10,800만원 안의 800만원처럼 숫자 중간에서 맞는 것은 인정하지 않는다.
-    if not re.search(rf"(?<![\d,]){amount}", _SPACES.sub("", quote)):
+    # 공고문이 빈칸 양식처럼 '( 24,500 )만원'으로 적어도 같은 금액으로 본다.
+    if not re.search(rf"(?<![\d,]){amount}", re.sub(r"[()\s]", "", quote)):
         warnings.append(f"{path}: 근거 인용에 없는 금액({written})이라 비웠습니다.")
         return None
     return value

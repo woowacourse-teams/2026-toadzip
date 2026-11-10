@@ -122,6 +122,10 @@ public class EligibilityExtractionDraftService {
         Set<String> provinces = new LinkedHashSet<>();
         Set<String> districts = new LinkedHashSet<>();
         for (RegionSearchResult region : catalog) {
+            // 지역 목록에는 읍·면·동(10자리)도 있지만 신청자격 지역은 시·도·시군구 단위로만 둔다.
+            if (region.regionCode().length() != 5) {
+                continue;
+            }
             if (wanted.equals(region.provinceName())) {
                 provinces.add(region.regionCode().substring(0, 2));
             } else if (wanted.equals(region.displayName()) || region.displayName().startsWith(wanted + " ")
