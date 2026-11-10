@@ -91,7 +91,7 @@ describe('ConditionsProvider', () => {
     fireEvent.click(screen.getByRole('button', { name: '이 공고와 비교하기' }))
     expect(await screen.findByText('revision:1')).toBeInTheDocument()
     expect(repository.saveProfile).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 0 }))
-    expect(screen.getByRole('status')).toHaveTextContent('내 조건을 저장했어요 · 현재 정보로 다시 확인하고 있어요')
+    expect(screen.getByRole('status')).toHaveTextContent('조건을 저장했어요. 입력하신 정보로 다시 확인할게요.')
     expect(screen.queryByRole('heading', { name: '입력을 마쳤어요' })).not.toBeInTheDocument()
   })
 
@@ -188,7 +188,7 @@ describe('ConditionsProvider', () => {
     renderProvider(repository)
     expect(await screen.findByText('revision:1')).toBeInTheDocument()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('로그인하고 내 조건을 저장했어요 · 현재 정보로 다시 확인하고 있어요')
+    expect(screen.getByRole('status')).toHaveTextContent('조건을 저장했어요. 입력하신 정보로 다시 확인할게요.')
     expect(sessionStorage.getItem('toadzip:condition-handoff')).toBeNull()
   })
 

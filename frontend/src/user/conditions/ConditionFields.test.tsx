@@ -116,11 +116,16 @@ describe('ConditionField', () => {
     render(<Harness field="REGISTERED_FAMILY_COUNT" initial={setAnswer(emptyDraft(), 'FAMILY_TYPE', 'UNMARRIED')} />)
     expect(screen.getByRole('button', { name: '한 명 줄이기' })).toBeDisabled()
     expect(screen.getByRole('spinbutton')).toHaveValue(null)
+    expect(screen.getByRole('spinbutton')).toHaveAttribute('placeholder', '0')
+    expect(latest.answers.REGISTERED_FAMILY_COUNT).toBeUndefined()
     fireEvent.click(screen.getByRole('button', { name: '한 명 늘리기' }))
     expect(latest.answers.REGISTERED_FAMILY_COUNT).toBe(1)
     expect(screen.getByRole('spinbutton')).toHaveValue(1)
     fireEvent.click(screen.getByRole('button', { name: '한 명 늘리기' }))
     expect(screen.getByRole('spinbutton')).toHaveValue(2)
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '' } })
+    expect(screen.getByRole('spinbutton')).toHaveAttribute('placeholder', '0')
+    expect(latest.answers.REGISTERED_FAMILY_COUNT).toBeUndefined()
   })
 
   it('asks the kind before the date of an event and lets the date wait', () => {

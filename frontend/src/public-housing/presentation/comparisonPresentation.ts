@@ -31,7 +31,7 @@ export function verdictCopy(type: TypeView): { title: string; message: string; s
   const missingFields = type.missingInputs ? [...type.missingInputs] : missingFieldsOf(type)
   const base = { showFix: type.status === 'INELIGIBLE', missingFields }
   switch (type.status) {
-    case 'ELIGIBLE': return { ...base, title: '지원할 수 있어요', message: type.message ?? '입력한 정보로 신청자격을 충족해요.' }
+    case 'ELIGIBLE': return { ...base, title: '기본 조건을 충족해요', message: '좋은 집과 인연이 닿길 응원할게요.' }
     case 'INELIGIBLE': return { ...base, title: `${type.label} 미충족`, message: type.message ?? '확인된 미충족 조건을 먼저 보여드려요.' }
     case 'UNDETERMINED': return { ...base,
       title: missingFields.length ? '입력하면 확인할 수 있어요' : '신청자격을 직접 확인해 주세요',

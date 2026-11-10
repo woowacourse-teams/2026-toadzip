@@ -13,7 +13,6 @@
 .toolbar {
   display: flex;
   flex: 0 0 auto;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -26,17 +25,14 @@
 
 .resultSummary {
   display: flex;
-  flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px;
 }
 
 .resultSummary > span {
-  white-space: normal;
-  word-break: keep-all;
+  white-space: nowrap;
 }
 
 .toolbarControls {

@@ -183,6 +183,15 @@
   font-size: 13.5px;
 }
 
+.eligibleOptions {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 10px;
+  background: var(--ds-color-surface-subtle);
+}
+
+.eligibleOptions ul,
 .required ul {
   display: flex;
   flex-wrap: wrap;
@@ -192,12 +201,21 @@
   list-style: none;
 }
 
+.eligibleOptions ul {
+  margin: 8px 0 0;
+}
+
+.eligibleOptions li,
 .required li {
   padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--ds-color-status-upcoming) 25%, var(--ds-color-surface));
   border-radius: 999px;
   background: var(--ds-color-surface);
   font-size: 12.5px;
+}
+
+.eligibleOptions li {
+  border-color: var(--ds-color-divider);
 }
 
 .tabs {

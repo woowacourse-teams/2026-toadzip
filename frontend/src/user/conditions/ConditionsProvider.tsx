@@ -16,9 +16,7 @@ import {
   type NudgeVariant,
   type OpenInputOptions,
 } from './ConditionsContext'
-import { FIELD_COPY } from './conditionFieldCopy'
 import { draftHasAnswers, emptyDraft, fromProfile, toProfile, todayInSeoul, type ConditionDraft } from './conditionDraft'
-import { withJosa } from './conditionFormat'
 import type { InputOrigin, InputRequest } from './conditionInput'
 import {
   clearMemberDraft,
@@ -65,10 +63,8 @@ interface SaveMeta {
 }
 
 function saveMessage(meta: SaveMeta): string {
-  const head = meta.kind === 'clear' ? '입력 정보를 모두 지웠어요'
-    : meta.kind === 'partial' ? `${withJosa(meta.fields.length === 1 ? FIELD_COPY[meta.fields[0]].label : '추가 정보', '을/를')} 저장했어요`
-    : meta.afterLogin ? '로그인하고 내 조건을 저장했어요' : '내 조건을 저장했어요'
-  return `${head} · 현재 정보로 다시 확인하고 있어요`
+  if (meta.kind === 'clear') return '입력 정보를 모두 지웠어요.'
+  return '조건을 저장했어요.\n입력하신 정보로 다시 확인할게요.'
 }
 
 export function ConditionsProvider({ children, createRepository = defaultRepository }: { readonly children: ReactNode; readonly createRepository?: (userId: string | null) => ConditionsRepository }) {

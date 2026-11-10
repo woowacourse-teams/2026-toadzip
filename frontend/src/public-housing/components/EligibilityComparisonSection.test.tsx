@@ -80,6 +80,10 @@ describe('EligibilityComparisonSection', () => {
     const tabs = await screen.findAllByRole('tab')
     expect(tabs.map((tab) => tab.textContent)).toEqual(['고령자, 충족', '청년, 확인 필요', '신혼부부, 미충족'])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: '내 조건 비교' })).toBeInTheDocument()
+    expect(screen.getByText('기본 조건을 충족해요')).toBeInTheDocument()
+    expect(screen.getByText('좋은 집과 인연이 닿길 응원할게요.')).toBeInTheDocument()
+    expect(screen.getByText('지원 가능한 모집 단지')).toBeInTheDocument()
     fireEvent.keyDown(tabs[0], { key: 'ArrowRight' })
     expect(screen.getByRole('tab', { name: '청년, 확인 필요' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: '청년, 확인 필요' })).toHaveFocus()
@@ -163,6 +167,14 @@ describe('EligibilityComparisonSection', () => {
     renderSection(context({ loadComparison: vi.fn(async () => happyView([], { availability: 'NOT_STRUCTURED' })) }, { hasProfile: false }))
     expect(await screen.findByText('신청자격 판정 준비 중')).toBeInTheDocument()
     expect(screen.getByText('신청 자격은 공고문에서 확인해 주세요.')).toBeInTheDocument()
+  })
+
+  it('shows only the short rechecking message instead of the old verdict', async () => {
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([seniorMatched], { freshness: 'RECHECKING' })) }))
+    expect(await screen.findByText('수정된 정보로 다시 확인하고 있어요.')).toBeInTheDocument()
+    expect(screen.queryByText('기본 조건을 충족해요')).not.toBeInTheDocument()
+    expect(screen.queryByText('지원 가능한 모집 단지')).not.toBeInTheDocument()
+    expect(screen.queryByText(/이전 판정은 표시하지 않아요/)).not.toBeInTheDocument()
   })
 
   it('ignores a late comparison for a previous announcement', async () => {

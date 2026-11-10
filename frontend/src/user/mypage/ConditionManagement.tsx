@@ -9,11 +9,10 @@ import { formatMonthDay } from '../conditions/conditionFormat'
 import type { ProfileField } from '../conditions/conditionsModel'
 import styles from './ConditionManagement.module.css'
 import { RequestError } from '../../public-housing/components/RequestError'
-import { EligibilityDiscoveries } from '../conditions/EligibilityDiscoveries'
 
 /** 마이페이지 > 내 조건 관리. 적용되는 항목을 원래 순서대로 모두 보여 주고 빈 항목은 빨간 "미입력"으로 둔다. */
 export function ConditionManagement() {
-  const { stored, hasProfile, openInput, clearProfile, processing, processingError, mode, retryProfile } = useConditions()
+  const { stored, hasProfile, openInput, clearProfile, mode, retryProfile } = useConditions()
   const [confirm, setConfirm] = useState(false)
   if (mode === 'error') return <RequestError title="내 조건을 불러오지 못했어요" onRetry={retryProfile ?? (() => {})} />
   if (mode === 'loading') return <p role="status">내 조건을 불러오고 있어요.</p>
@@ -31,13 +30,6 @@ export function ConditionManagement() {
   const percent = total ? Math.round((filled / total) * 100) : 0
   const today = todayInSeoul()
   return <div className={styles.body}>
-    <div role="status">
-      <strong>정보 저장 완료</strong>
-      <p>{processingError ? '재판정 진행 상태를 불러오지 못했어요. 저장된 정보는 유지되며 다시 확인하고 있어요.'
-        : processing?.state === 'DONE' && processing.profileVersion === stored.version ? '현재 정보의 재판정이 완료됐어요. 공고 변경 여부는 상세에서 다시 확인해요.'
-        : '현재 정보로 공고의 신청자격을 다시 확인하고 있어요.'}</p>
-    </div>
-    <EligibilityDiscoveries />
     <div className={styles.intro}>
       <p>공고 상세의 자격 비교에 쓰는 정보예요. 내 계정에 저장돼요.{stored.savedAt ? ` ${formatMonthDay(stored.savedAt)} 저장` : ''}</p>
       <Button size="sm" variant="secondary" onClick={() => openInput({ mode: 'full', step: 1, origin: 'mypage' }, {})}>처음부터 다시 입력</Button>

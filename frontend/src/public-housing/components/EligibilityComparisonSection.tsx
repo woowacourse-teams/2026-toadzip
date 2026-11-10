@@ -65,7 +65,7 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
   if (!compared && closed) return null
 
   const head = (extra: React.ReactNode = null, sub: string | null = null) => <div className={styles.head}>
-    <h3 id={headingId}>신청자격 판정</h3>{extra}{sub && <p className={styles.sub}>{sub}</p>}
+    <h3 id={headingId}>내 조건 비교</h3>{extra}{sub && <p className={styles.sub}>{sub}</p>}
   </div>
 
   let body: React.ReactNode = null
@@ -82,7 +82,7 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
   } else if (view.availability === 'CANCELLED' || view.availability === 'NOT_PUBLISHED' || view.freshness === 'NOT_AVAILABLE') {
     body = <p>{view.availability === 'CANCELLED' ? '취소된 모집이에요.' : '현재 신청자격 판정 대상이 아니에요.'} 신청 일정과 공고문을 확인해 주세요.</p>
   } else if (view.freshness === 'RECHECKING') {
-    body = <div role="status"><strong>현재 정보로 다시 확인하고 있어요.</strong><p>현재 정보와 공고 기준으로 판정 중이에요. 이전 판정은 표시하지 않아요.</p></div>
+    body = <div role="status"><strong>수정된 정보로 다시 확인하고 있어요.</strong></div>
   } else {
     const saved = conditions.stored?.savedAt ? formatMonthDay(conditions.stored.savedAt) : null
     return <section className={styles.section} aria-labelledby={headingId}>
@@ -90,8 +90,8 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
         `비교 기준일 ${formatDots(view.referenceDate)}${saved ? ` · ${saved} 저장한 내 조건 기준` : ''}`)}
       {!compared && <Invite detail={detail} labels={view.types.map((type) => type.label)} />}
       <p role="status"><strong>{view.headline}</strong></p>
-      {view.status === 'ELIGIBLE' && <div className={styles.required}>
-        <strong>지원 가능한 모집 선택지</strong>
+      {view.status === 'ELIGIBLE' && <div className={styles.eligibleOptions}>
+        <strong>지원 가능한 모집 단지</strong>
         <ul>{view.types.filter((type) => type.status === 'ELIGIBLE').map((type) => <li key={type.key}>{type.units} · {type.label}</li>)}</ul>
       </div>}
       <Comparison key={detail.announcementId} announcementId={detail.announcementId} types={view.types} revision={loadedRevision}
@@ -219,7 +219,7 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
     <div className={styles.verdict} data-status={type.status}>
       <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={26} className={styles.mark} /></span>
       <div>
-        <span className={styles.pathLabel}>{type.label}</span>
+        {type.status !== 'ELIGIBLE' && <span className={styles.pathLabel}>{type.label}</span>}
         <strong>{copy.title}</strong>
         {copy.message.replace(/[.。]$/, '') !== copy.title.replace(/[.。]$/, '') && <p>{copy.message}</p>}
         {type.missingInputMessage && <p>{type.missingInputMessage}</p>}

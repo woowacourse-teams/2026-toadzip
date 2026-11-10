@@ -21,6 +21,7 @@
   font-family: var(--ds-font-family-ui);
   font-size: var(--ds-text-body);
   line-height: 1.5;
+  white-space: pre-line;
   word-break: keep-all;
   animation: rise 0.2s ease-out both;
 }

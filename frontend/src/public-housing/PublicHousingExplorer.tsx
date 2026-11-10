@@ -1445,7 +1445,7 @@ export function PublicHousingExplorer({
       ? { accessibleLabel: '신청자격 조회 실패', visibleLabel: '신청자격 조회 실패' }
       : comparingList
       ? { accessibleLabel: '지원 가능 공고 확인 중', visibleLabel: '지원 가능 확인 중' }
-      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건` }
+      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `지원 가능 ${conditionList.matchedIds.size}건` }
     : baseResultCount
   const complexFilterResultCountLabel = mapFilterResultCountLabel({
     aggregateMapActive,

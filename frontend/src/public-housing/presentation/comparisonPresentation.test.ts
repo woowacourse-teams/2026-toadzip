@@ -19,7 +19,7 @@ describe('신청자격 결과 표시', () => {
       .toEqual(['NOT_SATISFIED', 'INPUT_NEEDED', 'DIRECT_CHECK_REQUIRED', 'SATISFIED'])
   })
   it('필수 자격 직접 확인과 수집 가능한 입력 부족을 구분한다', () => {
-    expect(verdictCopy(type('ELIGIBLE')).title).toBe('지원할 수 있어요')
+    expect(verdictCopy(type('ELIGIBLE', { message: '지원할 수 있어요' }))).toMatchObject({ title: '기본 조건을 충족해요', message: '좋은 집과 인연이 닿길 응원할게요.' })
     expect(verdictCopy(type('UNDETERMINED')).title).toBe('신청자격을 직접 확인해 주세요')
     expect(verdictCopy(type('UNDETERMINED', { checks: [check('INPUT_NEEDED')] })).title).toBe('입력하면 확인할 수 있어요')
     expect(verdictCopy(type('INELIGIBLE', { checks: [check('INPUT_NEEDED')] }))).toMatchObject({ title: '청년 미충족', showFix: true })

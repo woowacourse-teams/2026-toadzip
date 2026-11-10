@@ -25,6 +25,20 @@ function context(extra: Partial<ConditionsContextValue> = {}): ConditionsContext
 const renderManagement = (value: ConditionsContextValue) => render(<ConditionsContext value={value}><ConditionManagement /></ConditionsContext>)
 
 describe('ConditionManagement', () => {
+  it('keeps saved conditions without displaying or fetching discoveries', () => {
+    const loadDiscoveries = vi.fn()
+    const acknowledgeDiscovery = vi.fn()
+    renderManagement(context({
+      processing: { state: 'DONE', profileVersion: 2, requestedVersion: 2, failedAttempts: 0 },
+      repository: { loadDiscoveries, acknowledgeDiscovery } as unknown as ConditionsRepository,
+    }))
+    expect(screen.getByText('입력한 항목 12 / 17')).toBeInTheDocument()
+    expect(screen.queryByText('정보 저장 완료')).not.toBeInTheDocument()
+    expect(screen.queryByText('새롭게 지원 가능한 공고')).not.toBeInTheDocument()
+    expect(loadDiscoveries).not.toHaveBeenCalled()
+    expect(acknowledgeDiscovery).not.toHaveBeenCalled()
+  })
+
   it('lists every applicable item in order and marks missing ones in red with an input button', () => {
     const value = context()
     renderManagement(value)

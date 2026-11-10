@@ -28,9 +28,9 @@ export function ConditionListBanner({ items, results, loading = false, error = f
   const fill = () => missing.length
     ? openInput({ mode: 'partial', fields: missing, origin: 'list' }, {})
     : openInput({ mode: 'full', step: 1, origin: 'list' }, {})
-  const shell = (icon: ReactNode, title: string, sub: ReactNode, action: ReactNode) => <div className={styles.banner} data-closable={compared || undefined}>
+  const shell = (icon: ReactNode, title: string, sub: ReactNode, action: ReactNode, countScope = false) => <div className={styles.banner} data-closable={compared || undefined}>
     <span className={styles.icon}>{icon}</span>
-    <div className={styles.text}><b>{title}</b>{sub}</div>
+    <div className={styles.text}><b title={countScope ? '현재 목록에 불러온 공고 기준' : undefined}>{title}</b>{sub}</div>
     {action}
     {compared && <button type="button" className={styles.close} aria-label="안내 닫기" onClick={() => {
       hideBannerThisVisit()
@@ -59,13 +59,13 @@ export function ConditionListBanner({ items, results, loading = false, error = f
   const matched = items.filter((item) => results.get(item.announcementId)?.eligibleInRegion).length
   if (matched > 0) {
     const applying = items.filter((item) => results.get(item.announcementId)?.eligibleInRegion && item.applicationStatus === 'APPLYING').length
-    return shell(<StatusMark status="ok" size={20} className={styles.mark} />, `불러온 공고 중 지원 가능 ${matched}건`,
+    return shell(<StatusMark status="ok" size={20} className={styles.mark} />, `지원 가능 공고 ${matched}건`,
       missing.length
         ? <button type="button" className={styles.subLink} onClick={fill}>이 공고들에 필요한 미입력 {missing.length}개 확인<ChevronRightIcon size={14} /></button>
         : <span className={styles.sub}>접수 중 공고 {applying}건 · 내 조건 기준</span>,
-      <button type="button" className={styles.action} data-variant={filtering ? 'secondary' : undefined} onClick={onToggleFilter}>{filtering ? '전체 보기' : `${matched}건 보기`}</button>)
+      <button type="button" className={styles.action} data-variant={filtering ? 'secondary' : undefined} onClick={onToggleFilter}>{filtering ? '전체 보기' : `${matched}건 보기`}</button>, true)
   }
-  return shell(<StatusMark status="tri" size={20} className={styles.mark} />, '불러온 공고 중 지원 가능 0건',
+  return shell(<StatusMark status="tri" size={20} className={styles.mark} />, '지원 가능 공고 0건',
     <span className={styles.sub}>{missing.length ? `이 공고들에 필요한 미입력 ${missing.length}개가 있어요` : '전체 공고의 지원 가능 건수는 아니에요'}</span>,
-    <button type="button" className={styles.action} onClick={fill}>{missing.length ? '채우기' : '수정'}</button>)
+    <button type="button" className={styles.action} onClick={fill}>{missing.length ? '채우기' : '수정'}</button>, true)
 }
