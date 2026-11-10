@@ -110,16 +110,12 @@ qualifications로 구조화한 [D11 사례](decisions.md#공고-사례와-재현
 ## 이전 실행 경로와 데이터
 
 이전 v1 회원·관리자 자격/선정 API는 제공하지 않으며 구 경로는 404다. 현재 `eligibility` 패키지가
-같은 이름이라고 해서 구 평가·선정 엔진을 복원한 것은 아니다. 제거된 경로 목록과 구 데이터 비사용은
+같은 이름이라고 해서 구 평가·선정 엔진을 복원한 것은 아니다. 제거된 경로 목록은
 [전환 테스트](../../../backend/src/test/java/com/toadzip/backend/eligibility/controller/BasicComparisonCutoverIntegrationTest.java)에 남아 있다.
 
-구 `announcement_rule_sets`, `eligibility_profiles`와 관련 테이블은 보존하지만 현재 API에서 읽지 않는다.
 현재 공개 내용이 없으면 NOT_STRUCTURED, 현재 프로필이 없으면 UNKNOWN으로 시작한다.
-원문과 입력 의미를 추정해 구 공개본·프로필을 자동 이전하지 않는다. 구 공개본을 쓰려면 원문을 다시
-검토해 [현재 작성 계약](authoring.md)에 맞게 공개해야 한다.
 
 `UserEligibilityInfo`/`user_eligibility_infos`도 선행 사용자 스키마의 별도 매핑이며 이 기능이 참조하지 않는다.
-구 데이터를 보존하는 것과 현재 JSON을 관계형 행으로 투영하는 것은 다르다.
 적용 조건·중단·검증·실패 대응은 [DB 전환 절차](../../operations/database/eligibility-upgrade.md)를 따른다.
 
 ## 현재 화면 연결과 계약 차이

@@ -12,13 +12,15 @@
 |---|---|
 | 새 빈 DB | 완성 릴리스로 전체 마이그레이션을 순서대로 적용하고 아래 사후 검증 수행 |
 | Flyway 이력이 있는 기존 DB, 해당 마이그레이션 미적용 | 백업·복제본 검증 후 구 writer 중단을 포함한 아래 전환 수행 |
-| V20261110_04~08 적용 완료 | 재백필하지 않는다. writer 호환과 투영·재판정 상태를 확인하고 후속 릴리스의 적용 조건을 검토 |
+| V20261110_02~08 적용 완료 | 재백필하지 않는다. writer 호환과 투영·재판정 상태를 확인하고 후속 릴리스의 적용 조건을 검토 |
 | 테이블은 있으나 Flyway 이력이 없는 DB | [Flyway 최초 도입](flyway.md)을 먼저 별도로 수행. 이 전환에서 임의 baseline으로 우회하지 않음 |
 
 다음은 마이그레이션의 구분이다. 적용된 파일·checksum을 수정하지 않는다.
 
 | 마이그레이션 | 변환·보존 범위 |
 |---|---|
+| [V20261110_02](../../../backend/src/main/resources/db/migration/V20261110_02__eligibility_income_standards.sql) | 소득 조건이 참조하는 소득 기준표 생성 |
+| [V20261110_03](../../../backend/src/main/resources/db/migration/V20261110_03__eligibility_income_standard_values.sql) | 2025년 도시근로자 월평균소득 100% 기준값 추가 |
 | [V20261110_04](../../../backend/src/main/resources/db/migration/V20261110_04__basic_comparison_current_content.sql) | 현재 작성 내용·프로필 테이블 생성. 구 자격 테이블을 자동 변환·삭제하지 않음 |
 | [V20261110_05](../../../backend/src/main/resources/db/migration/V20261110_05__basic_comparison_median_income.sql) | 2026년 중위소득 기준 추가. 이미 있는 종류·연도 값은 덮어쓰지 않음 |
 | [V20261110_06](../../../backend/src/main/resources/db/migration/V20261110_06__comparison_application_structure.sql) | 내용 계약 2/3 허용, 기존 basic_comparison_rule_sets JSON을 관계형 5개 테이블로 한 번 투영. 없는 지역·자격은 추론하지 않음 |
@@ -63,7 +65,7 @@
 
 ## 사후 검증
 
-[읽기 전용 점검 SQL](../../queries/eligibility-status.sql)은 _04~08 적용 후 실행한다.
+[읽기 전용 점검 SQL](../../queries/eligibility-status.sql)은 _02~08 적용 후 실행한다.
 psql의 연결 대상은 승인된 환경에서 별도로 선택하며 원문·프로필 값 없이 집계만 출력한다.
 대규모 투영 비교는 전체 작성 내용을 읽으므로 먼저 복제본에서 비용을 확인한다.
 

@@ -124,13 +124,12 @@ class EligibilityProfileIntegrationTest extends EligibilityIntegrationSupport {
     }
 
     @Test
-    void 다른_회원의_프로필과_섞지_않고_구_프로필을_자동_변환하지_않는다() throws Exception {
+    void 다른_회원의_프로필과_섞지_않는다() throws Exception {
         long other = USER + 1;
         jdbc.update(
                 "INSERT INTO users (id, login_identifier, created_at) VALUES (?,"
                         + " 'comparison-other', now())",
                 other);
-        jdbc.update("INSERT INTO eligibility_profiles (user_id, version) VALUES (?, 1)", other);
         save(USER, 0, BasicComparisonFixtures.b()).andExpect(status().isOk());
         mvc.perform(get(PROFILE).with(user(Long.toString(other)).roles("USER")))
                 .andExpect(status().isOk())
@@ -142,12 +141,6 @@ class EligibilityProfileIntegrationTest extends EligibilityIntegrationSupport {
         mvc.perform(get(PROFILE).with(user(Long.toString(USER)).roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.profile.familyDetailsState").value("PROVIDED"));
-        assertThat(
-                        jdbc.queryForObject(
-                                "SELECT count(*) FROM eligibility_profiles WHERE user_id = ?",
-                                Long.class,
-                                other))
-                .isOne();
     }
 
     @Test

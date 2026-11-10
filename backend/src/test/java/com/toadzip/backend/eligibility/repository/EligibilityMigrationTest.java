@@ -16,7 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
 
 import javax.sql.DataSource;
 
@@ -28,11 +27,9 @@ class EligibilityMigrationTest {
     @Autowired private DataSource dataSource;
 
     @Test
-    void 기존_데이터를_보존하며_초안_공개_중복과_불완전한_공개를_거부한다() throws Exception {
+    void 초안_공개_중복과_불완전한_공개를_거부한다() throws Exception {
         inSchema(
                 sql -> {
-                    assertThat(count(sql, "announcement_rule_sets")).isOne();
-                    assertThat(count(sql, "eligibility_profiles")).isOne();
                     sql.execute(
                             "INSERT INTO basic_comparison_rule_sets (announcement_id, content)"
                                 + " VALUES (1, '{}')");
@@ -125,10 +122,6 @@ class EligibilityMigrationTest {
                 sql.execute("CREATE TABLE announcements (id BIGINT PRIMARY KEY)");
                 sql.execute("INSERT INTO users VALUES (1), (2)");
                 sql.execute("INSERT INTO announcements VALUES (1), (2)");
-                for (String table : List.of("announcement_rule_sets", "eligibility_profiles")) {
-                    sql.execute("CREATE TABLE " + table + " (id BIGINT PRIMARY KEY)");
-                    sql.execute("INSERT INTO " + table + " VALUES (1)");
-                }
                 sql.execute(
                         new ClassPathResource(
                                         "db/migration/V20261110_04__basic_comparison_current_content.sql")

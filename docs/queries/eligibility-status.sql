@@ -1,4 +1,4 @@
--- 신청자격 전환 후 읽기 전용 점검. V20261110_04~08 적용 후 primary DB에서 실행한다.
+-- 신청자격 전환 후 읽기 전용 점검. V20261110_02~08 적용 후 primary DB에서 실행한다.
 -- 실행 위치: 저장소 루트. 접속 대상은 운영자가 별도로 선택한다.
 -- psql -X --set ON_ERROR_STOP=1 --file docs/queries/eligibility-status.sql
 -- 프로필·공고·결과 원문과 사용자 ID를 출력하지 않는다.
