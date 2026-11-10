@@ -51,6 +51,14 @@ final class SeoLabels {
         return Optional.ofNullable(code).map(RENTAL_TYPES::get);
     }
 
+    /** 화면 문구용 공급 유형. 기타(ETC)는 정보가 없어 쓰지 않는다. */
+    static Optional<String> knownRentalType(String code) {
+        if ("ETC".equals(code)) {
+            return Optional.empty();
+        }
+        return rentalType(code);
+    }
+
     static Optional<String> applicationStatus(String code) {
         return Optional.ofNullable(code).map(APPLICATION_STATUSES::get);
     }
@@ -67,6 +75,23 @@ final class SeoLabels {
         return RENTAL_TYPES.keySet().stream()
                 .filter(code -> rentalTypeSlug(code).equals(slug))
                 .findFirst();
+    }
+
+    /** 기관 이름을 모르면("기타") 쓰지 않는다. */
+    static String knownAgency(String name) {
+        if (name == null || name.isBlank() || "기타".equals(name)) {
+            return null;
+        }
+        return name;
+    }
+
+    /** 설명 문장에 쓰려고 공고 제목 앞의 "[정정공고]" 같은 표시를 뗀다. */
+    static String withoutNoticeMark(String title) {
+        String stripped = title.replaceFirst("^(\\s*\\[[^\\]]*])+\\s*", "");
+        if (stripped.isBlank()) {
+            return title;
+        }
+        return stripped;
     }
 
     /** "인천광역시 남동구" → "인천 남동구". */

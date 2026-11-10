@@ -58,7 +58,7 @@ final class RegionSeoPage {
     private String body(String subject, SeoBreadcrumb breadcrumb) {
         SeoHtml html = new SeoHtml().open("main");
         breadcrumb.appendTo(html);
-        html.element("h1", subject + " 단지").element("p", "공개된 단지 " + complexes.totalCount() + "곳");
+        html.element("h1", subject + " 단지").element("p", "총 " + complexes.totalCount() + "곳");
         html.open("ul");
         complexes.items().forEach(complex -> html.open("li")
                 .link("/complexes/" + complex.complexId(), complex.name()).text(complexSummary(complex)).close("li"));
@@ -87,9 +87,10 @@ final class RegionSeoPage {
         return "공급 유형별 단지";
     }
 
-    private static String complexSummary(HousingComplexListItemResponse complex) {
-        String type = SeoLabels.rentalType(complex.rentalType()).orElse("");
-        if (type.isEmpty()) {
+    // 공급 유형별 페이지이거나 이름에 유형이 있으면("○○ 행복주택") 유형을 다시 쓰지 않는다.
+    private String complexSummary(HousingComplexListItemResponse complex) {
+        String type = SeoLabels.knownRentalType(complex.rentalType()).orElse("");
+        if (type.isEmpty() || page.rentalType() != null || complex.name().contains(type)) {
             return "";
         }
         return " · " + type;

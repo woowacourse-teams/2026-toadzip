@@ -43,7 +43,7 @@ class SeoPageApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/seo/pages/complexes/" + complex.getId()))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("<title>세종대로 행복주택 (서울 중구 행복주택) | 공공주택 복덕방</title>")))
+                .andExpect(content().string(containsString("<title>세종대로 행복주택 (서울 중구) | 공공주택 복덕방</title>")))
                 .andExpect(content().string(containsString("<a href=\"/regions/11140\">")));
         mockMvc.perform(get("/api/v1/seo/pages/regions/11140/happy-housing"))
                 .andExpect(status().isOk())

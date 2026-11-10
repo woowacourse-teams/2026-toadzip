@@ -30,7 +30,8 @@ final class AnnouncementSeoPage {
         SeoBreadcrumb breadcrumb = new SeoBreadcrumb().add(announcement.title(), path);
         return new SeoHtmlDocument(
                 title(),
-                announcement.title() + "의 공급 단지와 신청 일정을 복덕방 지도에서 확인하고, 비슷한 새 공고 알림을 받아 보세요.",
+                SeoLabels.withoutNoticeMark(announcement.title())
+                        + "의 공급 단지와 신청 일정을 복덕방 지도에서 확인하고, 비슷한 새 공고 알림을 받아 보세요.",
                 path,
                 listed,
                 List.of(breadcrumb.structuredData()),
@@ -40,7 +41,7 @@ final class AnnouncementSeoPage {
     private String title() {
         List<String> words = new ArrayList<>();
         region().ifPresent(words::add);
-        SeoLabels.rentalType(name(announcement.rentalType())).ifPresent(words::add);
+        SeoLabels.knownRentalType(name(announcement.rentalType())).ifPresent(words::add);
         SeoLabels.recruitmentType(name(announcement.recruitmentType())).ifPresent(words::add);
         if (words.isEmpty()) {
             return announcement.title() + " | " + SeoHtmlDocument.SITE_NAME;
@@ -82,7 +83,7 @@ final class AnnouncementSeoPage {
         html.element("h1", announcement.title()).open("dl")
                 .fact("상태", SeoLabels.applicationStatus(name(announcement.applicationStatus())).orElse(null))
                 .fact("공급 기관", agencyName())
-                .fact("공급 유형", SeoLabels.rentalType(name(announcement.rentalType())).orElse(null))
+                .fact("공급 유형", SeoLabels.knownRentalType(name(announcement.rentalType())).orElse(null))
                 .fact("지역", String.join(", ", announcement.regionNames()))
                 .fact("공고일", date(announcement.publishedAt()))
                 .fact("접수 기간", SeoAnnouncementPeriod.text(
@@ -126,7 +127,7 @@ final class AnnouncementSeoPage {
         if (announcement.agency() == null) {
             return null;
         }
-        return announcement.agency().name();
+        return SeoLabels.knownAgency(announcement.agency().name());
     }
 
     private static String date(LocalDate date) {

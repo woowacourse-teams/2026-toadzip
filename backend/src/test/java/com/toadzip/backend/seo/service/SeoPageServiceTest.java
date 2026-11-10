@@ -37,6 +37,7 @@ import com.toadzip.backend.seo.repository.SeoRegionCount;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -81,6 +82,49 @@ class SeoPageServiceTest {
                 () -> assertTrue(html.contains("<a href=\"/announcements/171\">")),
                 () -> assertTrue(html.contains("\"@type\":\"ApartmentComplex\"")),
                 () -> assertFalse(html.contains("noindex"))
+        );
+    }
+
+    @Test
+    void 이름에_공급유형이_있으면_제목에_다시_쓰지_않고_모르는_기관은_쓰지_않는다() {
+        HousingComplexDetailResponse complex = complex(17, "나라키움 행복주택");
+        when(complexQueryService.getComplex(17)).thenReturn(new HousingComplexDetailResponse(17, complex.name(),
+                complex.rentalType(), new AgencyResponse("ETC", "기타"), complex.address(), complex.completionDate(),
+                complex.buildingType(), complex.hasElevator(), complex.heatingType(), complex.corridorType(),
+                complex.moveOutCountLastYear(), complex.totalHouseholdCount(), complex.totalParkingCount(), null, null,
+                null, null, List.of(), null, List.of(), complex.currentAnnouncements()));
+
+        String html = service.complexPage(17).html();
+
+        assertAll(
+                () -> assertTrue(html.contains("<title>나라키움 행복주택 (서울 중구) | 공공주택 복덕방</title>")),
+                () -> assertFalse(html.contains("공급 기관")),
+                () -> assertTrue(html.contains("접수중 · 2026.11.16~2026.11.17 접수"))
+        );
+    }
+
+    @Test
+    void 공급유형이_기타면_제목과_본문에_쓰지_않고_설명은_여러_표시를_모두_뗀다() {
+        assertAll(
+                () -> assertEquals(Optional.empty(), SeoLabels.knownRentalType("ETC")),
+                () -> assertEquals(Optional.of("국민임대"), SeoLabels.knownRentalType("NATIONAL_RENTAL")),
+                () -> assertEquals("익산부송 모집", SeoLabels.withoutNoticeMark("[정정공고][재공고] 익산부송 모집")),
+                () -> assertEquals("[정정공고]", SeoLabels.withoutNoticeMark("[정정공고]"))
+        );
+    }
+
+    @Test
+    void 공고_본문의_접수기간은_항목_이름과_겹치지_않고_설명은_정정_표시를_뗀다() {
+        when(announcementQueryService.getAnnouncement(171)).thenReturn(announcement(ApplicationStatus.APPLYING));
+        when(pageQueryRepository.isListedAnnouncement(171)).thenReturn(true);
+
+        String html = service.announcementPage(171).html();
+
+        assertAll(
+                () -> assertTrue(html.contains("<dt>접수 기간</dt><dd>2026.11.16~2026.11.17</dd>")),
+                () -> assertTrue(html.contains("<meta name=\"description\" content=\"남동구 국민임대 예비입주자 모집의 공급 "
+                        + "단지와 신청 일정을")),
+                () -> assertTrue(html.contains("<h1>[정정공고] 남동구 국민임대 예비입주자 모집</h1>"))
         );
     }
 
@@ -162,6 +206,9 @@ class SeoPageServiceTest {
                 () -> assertTrue(district.contains("<a href=\"/complexes/17\">서울가람</a>")),
                 () -> assertTrue(district.contains("<a href=\"/regions/11140/happy-housing\">행복주택 (2곳)</a>")),
                 () -> assertTrue(district.contains("<a href=\"/regions/11\">서울특별시</a>")),
+                () -> assertTrue(district.contains("<p>총 3곳</p>")),
+                () -> assertTrue(district.contains("서울가람</a> · 행복주택</li>")),
+                () -> assertTrue(type.contains("서울가람</a></li>")),
                 () -> assertFalse(district.contains("noindex")),
                 () -> assertTrue(type.contains("<link rel=\"canonical\" href=\"https://bokduckbang.com/regions/11140/"
                         + "national-rental\">"))

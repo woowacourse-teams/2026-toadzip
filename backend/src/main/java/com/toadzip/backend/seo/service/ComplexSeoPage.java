@@ -36,7 +36,9 @@ final class ComplexSeoPage {
     private String title() {
         List<String> context = new ArrayList<>();
         regionName().map(SeoLabels::shortRegionName).ifPresent(context::add);
-        SeoLabels.rentalType(complex.rentalType()).ifPresent(context::add);
+        // "○○ 행복주택"처럼 이름에 공급 유형이 있으면 괄호에 다시 쓰지 않는다.
+        SeoLabels.knownRentalType(complex.rentalType()).filter(label -> !complex.name().contains(label))
+                .ifPresent(context::add);
         if (context.isEmpty()) {
             return complex.name() + " | " + SeoHtmlDocument.SITE_NAME;
         }
@@ -55,7 +57,7 @@ final class ComplexSeoPage {
         html.element("h1", complex.name()).open("dl")
                 .fact("지역", regionName().orElse(null))
                 .fact("주소", address().map(HousingComplexAddressResponse::roadAddress).orElse(null))
-                .fact("공급 유형", SeoLabels.rentalType(complex.rentalType()).orElse(null))
+                .fact("공급 유형", SeoLabels.knownRentalType(complex.rentalType()).orElse(null))
                 .fact("공급 기관", agencyName())
                 .fact("준공", Optional.ofNullable(complex.completionDate()).map(SeoHtml::date).orElse(null))
                 .fact("총 세대수", Optional.ofNullable(complex.totalHouseholdCount()).map(count -> count + "세대")
@@ -93,7 +95,8 @@ final class ComplexSeoPage {
 
     private static String announcementSummary(CurrentAnnouncementResponse announcement) {
         String status = SeoLabels.applicationStatus(announcement.applicationStatus()).orElse("");
-        String period = SeoAnnouncementPeriod.text(announcement.applicationStartAt(), announcement.applicationEndAt());
+        String period = SeoAnnouncementPeriod.withSuffix(
+                SeoAnnouncementPeriod.text(announcement.applicationStartAt(), announcement.applicationEndAt()));
         return " " + String.join(" · ", List.of(status, period).stream().filter(text -> !text.isBlank()).toList());
     }
 
@@ -133,6 +136,6 @@ final class ComplexSeoPage {
         if (complex.agency() == null) {
             return null;
         }
-        return complex.agency().name();
+        return SeoLabels.knownAgency(complex.agency().name());
     }
 }
