@@ -10,7 +10,8 @@ const RECRUITMENT: Record<string, string> = { RECRUITING: '모집', UNKNOWN: '�
  * PDF 보정의 신청자격 탭. 최신 추출의 AI 신청자격과 적용한 공급행으로 만든 초안을 보이고, 잘못 읽힌 조건은 지우지 않고 직접 확인으로 바꾼 뒤
  * 검토 완료로 표시해 공개한다. 조건 숫자 고치기는 이 화면에서 하지 않는다.
  */
-export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }: { announcementId: string; pdfSha256: string | null; onEvidence: (item: Evidence) => void }) {
+/** onEvidence가 없으면(PDF 창이 없는 적용 결과 화면) 근거 버튼을 두지 않는다. */
+export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void }) {
   const [draft, setDraft] = useState<RuleSet | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -40,6 +41,7 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   function create() {
     if (!pdfSha256) return
     if (draft && !window.confirm('지금 초안을 버리고 최신 PDF 추출로 다시 만들까요?')) return
+    setNotices([])
     void run(async () => {
       const created = await createEligibilityDraft(announcementId, pdfSha256, draft)
       setNotices(created.notices)
@@ -52,10 +54,17 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
     setBusy(true); setMessage(null)
     try {
       await publishEligibilityDraft(announcementId, current)
-      setDraft(await loadEligibilityDraft(announcementId)); setNotices([])
-      setMessage({ kind: 'notice', text: '공개했어요. 사용자 판정이 곧 다시 계산돼요.' })
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error) })
+      setMessage({ kind: 'error', text: errorText(error) }); setBusy(false)
+      return
+    }
+    // 공개는 이미 성공했으므로 초안을 바로 비우고, 다시 읽기가 실패해도 성공 문구는 유지한다.
+    setDraft(null); setNotices([])
+    setMessage({ kind: 'notice', text: '공개했어요. 사용자 판정이 곧 다시 계산돼요.' })
+    try {
+      setDraft(await loadEligibilityDraft(announcementId))
+    } catch {
+      setMessage({ kind: 'notice', text: '공개했어요. 사용자 판정이 곧 다시 계산돼요. 초안 상태는 화면을 새로 고치면 다시 보여요.' })
     } finally {
       setBusy(false)
     }
@@ -91,7 +100,7 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
 }
 
 function Scope({ title, scopeId, checks, content, busy, onDirect, onEvidence }: {
-  title: string; scopeId: string; checks: Check[]; content: Content; busy: boolean; onDirect: (check: Check) => void; onEvidence: (item: Evidence) => void
+  title: string; scopeId: string; checks: Check[]; content: Content; busy: boolean; onDirect: (check: Check) => void; onEvidence?: (item: Evidence) => void
 }) {
   const common = scopeId === 'common'
   const path = content.paths.find(item => item.id === scopeId)
@@ -103,7 +112,7 @@ function Scope({ title, scopeId, checks, content, busy, onDirect, onEvidence }: 
     .flatMap(item => item.items)
   function evidence(ids: string[]) {
     const item = content.evidences.find(value => ids.includes(value.id))
-    return item ? <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ path: item.id, page: item.firstPage, quote: item.description ?? '' })}>{`근거 p.${item.firstPage} 열기`}</Button> : null
+    return item && onEvidence ? <Button data-design-system className={styles.quietButton} onClick={() => onEvidence({ path: item.id, page: item.firstPage, quote: item.description ?? '' })}>{`근거 p.${item.firstPage} 열기`}</Button> : null
   }
   return <section aria-label={title}>
     <h3>{title}</h3>

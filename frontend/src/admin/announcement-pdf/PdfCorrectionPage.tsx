@@ -496,7 +496,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
     </section>}
     {/* 공급정보를 적용한 바로 뒤가 신청자격 초안을 만들 때라, 적용 결과 아래에 신청자격 패널을 둔다. */}
-    {phase === 'result' && !supplyDraft && <section className={styles.result}><EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} onEvidence={item => evidence(item)} /></section>}
+    {phase === 'result' && !supplyDraft && <section className={styles.result}><EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} /></section>}
   </section>
 }
 

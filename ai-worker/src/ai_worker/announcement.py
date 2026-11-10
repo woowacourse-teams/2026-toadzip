@@ -115,6 +115,8 @@ def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dic
         tree = checks.first_json_object(reply.content, {"eligibility": dict})
     except PermanentError as invalid:
         return eligibility.failed(invalid.message)
+    # 모델이 근거를 data 안에 두면 쪽 번호 변환을 지나지 않으므로, 변환 전에 최상위 근거로 옮긴다.
+    tree["evidence"] = [*checks.objects(tree.get("evidence")), *checks.objects(tree["data"].pop("evidence", None))]
     warnings = _remap_stage_pages(tree, source_pages)
     posted_date = (notice_tree.get("data", {}).get("announcement") or {}).get("postedDate")
     extracted = eligibility.normalize(tree, posted_date, {index + 1: text for index, text in enumerate(texts)})

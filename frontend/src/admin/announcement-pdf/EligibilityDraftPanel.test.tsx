@@ -80,6 +80,26 @@ describe('EligibilityDraftPanel', () => {
     expect(await screen.findByText('월평균소득 100% 이하')).toBeInTheDocument()
   })
 
+  it('PDF 창이 없는 곳(적용 결과)에서는 근거 버튼을 두지 않는다', async () => {
+    api.load.mockResolvedValue(draft())
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} />)
+
+    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /근거 p\./ })).not.toBeInTheDocument()
+  })
+
+  it('공개가 성공하면 초안 다시 읽기가 실패해도 성공으로 보이고 공개를 다시 누를 수 없다', async () => {
+    api.load.mockResolvedValueOnce(draft(content('REVIEWED'))).mockRejectedValueOnce(new Error('네트워크 오류'))
+    api.publish.mockResolvedValue(draft(content('REVIEWED'), 2))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} onEvidence={vi.fn()} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '공개' }))
+
+    expect(await screen.findByText(/공개했어요\./)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
+  })
+
   it('첫 조회가 끝나기 전에는 초안을 만들 수 없다', async () => {
     let finish: (value: RuleSet | null) => void = () => {}
     api.load.mockReturnValue(new Promise(resolve => { finish = resolve }))

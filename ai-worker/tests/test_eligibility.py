@@ -247,3 +247,40 @@ def test_amount_written_in_a_form_blank_matches_the_quote():
     [assets] = eligibility.normalize(reply, "2026-10-06").data["common"]["requirements"]
 
     assert assets["maximumKrw"] == 245_000_000
+
+
+@pytest.mark.parametrize("months, page, regions", [
+    (18, "인천광역시에 1년 6개월 이상 계속 거주", ["인천광역시"]),
+    (18, "1순위 인천광역시 거주자 2년 이상", []),
+    ("24", "인천광역시 2년 이상 거주", []),
+])
+def test_unverified_residence_months_clear_the_regions_too(months, page, regions):
+    """거주기간을 대조하지 못하면 지역도 비운다. 개월만 비우면 서버가 '지역 거주'만 판정해 넓어진다.
+    쪽 글은 단위가 붙은 형태(1년 6개월)만 인정하고, '1순위' 같은 숫자로 통과시키지 않는다."""
+    reply = _reply(common=_group({"kind": "RESIDENCE", "regions": ["인천광역시"], "minimumMonths": months,
+                                  "asWritten": "인천 거주"}),
+                   evidence=[{"path": "eligibility.common.requirements[0]", "page": 4, "quote": "인천광역시에 거주"}])
+
+    [residence] = eligibility.normalize(reply, "2026-09-30", {4: page}).data["common"]["requirements"]
+
+    assert residence["regions"] == regions
+    assert residence["minimumMonths"] == (18 if regions else None)
+
+
+def test_evidence_under_data_gets_original_page_numbers():
+    """모델이 근거를 data 안에 두어도 첨부 쪽 번호를 원본 쪽 번호로 바꾼다(첨부 2쪽 = 원본 3쪽)."""
+    import json
+    from ai_worker import announcement
+    from ai_worker.openai import Reply
+
+    content = json.dumps({"data": {"eligibility": {
+        "common": {"requirements": [{"kind": "AGE", "scope": "APPLICANT", "minimum": 65, "asWritten": "65세 이상"}],
+                   "qualifications": [], "summary": None}, "targets": [], "exclusions": []},
+        "evidence": [{"path": "eligibility.common.requirements[0]", "page": 2, "quote": "만 65세 이상"}]}},
+        ensure_ascii=False)
+    notice = {"data": {"announcement": {"postedDate": "2026-09-30"}}}
+
+    extracted = announcement._eligibility(Reply(content, {}), None, notice, [1, 3], ["표지", "다른 쪽", "만 65세 이상"])
+
+    assert [(item["path"], item["page"]) for item in extracted.evidence] == [("eligibility.common.requirements[0]", 3)]
+    assert extracted.data["common"]["requirements"][0]["minimum"] == 65

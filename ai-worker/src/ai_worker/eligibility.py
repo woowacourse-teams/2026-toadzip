@@ -126,7 +126,7 @@ def _requirement(item: dict, path: str, source: tuple[str, str], year: int | Non
         ]
         # 가구원 가산은 기본 비율에 더한 최종 비율(100 + 20 = 120)이 근거 인용이나 근거 쪽에 있어야 한다.
         for extra in result["householdSizeExtraPercent"]:
-            if result["percent"] is not None and not _contains_number(result["percent"] + extra["percent"], quote, page):
+            if result["percent"] is not None and not _contains_percent(result["percent"] + extra["percent"], quote, page):
                 warnings.append(f"{path}.householdSizeExtraPercent: 근거 쪽에 없는 가구원 가산 비율"
                                 f"({extra['householdSize']}인 {result['percent'] + extra['percent']}%)이라 비웠습니다.")
     if kind in ("INCOME", "ASSETS", "CAR_VALUE"):
@@ -142,8 +142,9 @@ def _requirement(item: dict, path: str, source: tuple[str, str], year: int | Non
         result["regions"] = [region.strip() for region in item.get("regions") or [] if isinstance(region, str) and region.strip()]
         months = item.get("minimumMonths")
         result["minimumMonths"] = months if _whole(months) and months >= 0 else None
-        if result["minimumMonths"] is not None and not (_contains_number(months, quote, page)
-                                                       or months % 12 == 0 and _contains_number(months // 12, quote, page)):
+        if months is not None and result["minimumMonths"] is None:
+            warnings.append(f"{path}.minimumMonths: 개월 수가 아닌 거주기간({months})이라 비웠습니다.")
+        elif result["minimumMonths"] is not None and not _contains_months(months, quote, page):
             warnings.append(f"{path}.minimumMonths: 근거 쪽에 없는 거주기간({months}개월)이라 비웠습니다.")
     if kind == "FAMILY_TYPE":
         wanted = item.get("familyTypes") or []
@@ -158,6 +159,9 @@ def _requirement(item: dict, path: str, source: tuple[str, str], year: int | Non
         for name in _NUMBERS:
             if name in result:
                 result[name] = [] if name == "householdSizeExtraPercent" else None
+        # 거주기간을 비우고 지역만 남기면 서버가 '지역 거주'만 판정해 넓어지므로 지역도 비운다(직접 확인).
+        if kind == "RESIDENCE":
+            result["regions"] = []
     return result
 
 
@@ -181,14 +185,27 @@ def _quoted_amount(written: str, quote: str, path: str, warnings: list[str]) -> 
     amount = re.escape(_LIMIT_SUFFIX.sub("", _SPACES.sub("", written)))
     # 10,800만원 안의 800만원처럼 숫자 중간에서 맞는 것은 인정하지 않는다.
     # 공고문이 빈칸 양식처럼 '( 24,500 )만원'으로 적어도 같은 금액으로 본다.
-    if not re.search(rf"(?<![\d,]){amount}", re.sub(r"[()\s]", "", quote)):
+    if not re.search(rf"(?<![\d,억]){amount}", re.sub(r"[()\s]", "", quote)):
         warnings.append(f"{path}: 근거 인용에 없는 금액({written})이라 비웠습니다.")
         return None
     return value
 
 
-def _contains_number(value: int, quote: str, page: str) -> bool:
-    return any(str(value) in re.findall(r"\d+", text.replace(",", "")) for text in (quote, page))
+def _contains_percent(value: int, quote: str, page: str) -> bool:
+    """짧은 인용은 숫자만, 쪽 글은 단위가 붙은 비율(120%, 120퍼센트)만 인정한다. 쪽 글의 '1순위' 같은 숫자로 통과하지 않게 한다."""
+    return (str(value) in re.findall(r"\d+", quote.replace(",", ""))
+            or re.search(rf"(?<!\d){value}\s*(?:%|퍼센트)", page) is not None)
+
+
+def _contains_months(months: int, quote: str, page: str) -> bool:
+    """거주기간은 'N개월', 'Y년', 'Y년 M개월'처럼 단위가 붙은 형태만 인정한다."""
+    years, rest = divmod(months, 12)
+    patterns = [rf"(?<!\d){months}\s*개월"]
+    if years and not rest:
+        patterns.append(rf"(?<!\d){years}\s*년")
+    if years and rest:
+        patterns.append(rf"(?<!\d){years}\s*년\s*{rest}\s*개월")
+    return any(re.search(pattern, text) for pattern in patterns for text in (quote, page))
 
 
 def _quoted_number(value: object, quote: str, path: str, warnings: list[str]) -> int | None:

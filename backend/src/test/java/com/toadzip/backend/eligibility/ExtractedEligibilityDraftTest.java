@@ -8,6 +8,7 @@ import static com.toadzip.backend.eligibility.domain.ProfileField.BIRTH_DATE;
 import static com.toadzip.backend.eligibility.domain.ProfileField.FAMILY_TYPE;
 import static com.toadzip.backend.eligibility.domain.ProfileField.HAS_CHILDREN_OR_PREGNANCY;
 import static com.toadzip.backend.eligibility.domain.ProfileField.HOUSEHOLD_MONTHLY_INCOME;
+import static com.toadzip.backend.eligibility.domain.ProfileField.IS_DUAL_INCOME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -124,6 +125,20 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 맞벌이_가산은_맞벌이_부부만_직접_확인하고_한부모와_맞벌이_아닌_부부는_자동_판정한다() {
+        EligibilityContent content = draft(evidence(), dualIncome());
+        EligibilityProfile couple = with(b(), HOUSEHOLD_MONTHLY_INCOME, 6_000_000L);
+
+        // 맞벌이 경로 기준(2인 5,866,270원)을 넘는 600만원: 맞벌이 아닌 부부는 미충족, 맞벌이 부부는 가산 기준이라 판단 보류.
+        assertThat(youth(content, couple)).isEqualTo(Status.INELIGIBLE);
+        assertThat(youth(content, with(couple, IS_DUAL_INCOME, true))).isEqualTo(Status.UNDETERMINED);
+        // 한부모는 맞벌이 입력을 받지 않으므로 맞벌이 가산 대상이 아니라 기본 상한으로 판정한다.
+        EligibilityProfile singleParent = with(b(), FAMILY_TYPE, "SINGLE_PARENT");
+        assertThat(youth(content, with(singleParent, HOUSEHOLD_MONTHLY_INCOME, 5_000_000L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(singleParent, HOUSEHOLD_MONTHLY_INCOME, 6_000_000L))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
     void 본인_소득_기준은_가구원_수를_알_수_없어_직접_확인으로_둔다() {
         EligibilityContent content = draft(evidence(), applicantIncome());
 
@@ -232,6 +247,12 @@ class ExtractedEligibilityDraftTest {
     private static Requirement family(String path) {
         return new Requirement("FAMILY_TYPE", null, null, null, null, null, null, null, Map.of(), List.of(), null,
                 List.of(), List.of("COUPLE_OR_ENGAGED"), List.of(), "혼인 중인 자", path);
+    }
+
+    private static List<Requirement> dualIncome() {
+        return List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null, "URBAN_WORKER_MONTHLY_INCOME", 2025, 100,
+                Map.of(), List.of("DUAL_INCOME"), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
+                YOUTH + ".requirements[1]"));
     }
 
     private static List<Requirement> applicantIncome() {
