@@ -19,13 +19,17 @@
 .read strong { font-weight: 500; }
 .empty { padding: 48px 0; text-align: center; line-height: 1.6; }
 .empty p + p { color: var(--ds-color-muted); font-size: 13px; }
-.editToolbar { position: sticky; top: -1px; z-index: 1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 0 0 12px; border-bottom: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); }
+.editHeader { position: sticky; top: calc(-1 * var(--inbox-scroll-padding, 0px)); z-index: 1; margin-top: calc(-1 * var(--inbox-scroll-padding, 0px)); padding-top: var(--inbox-scroll-padding, 0px); background: var(--ds-color-surface); }
+.editHeader .toolbar { margin-bottom: 0; }
+.editHeader .textButton { min-height: 36px; padding-block: 6px; }
+.editToolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 0 0 8px; border-bottom: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); }
 .editToolbar p { flex-basis: 100%; margin: 4px 0 0; color: var(--ds-color-muted); font-size: 12px; line-height: 1.6; }
-.selectAll { display: flex; gap: 10px; align-items: center; min-height: 44px; cursor: pointer; font-size: 13px; }
+.selectAll { display: flex; gap: 10px; align-items: center; min-height: 36px; cursor: pointer; font-size: 13px; }
 .selectRow { display: flex; align-items: flex-start; gap: 12px; padding: 18px 12px; cursor: pointer; }
 .inbox input[type='checkbox'] { flex-shrink: 0; width: 18px; height: 18px; margin: 2px 0; accent-color: var(--ds-color-action); cursor: pointer; }
 .content { min-width: 0; flex: 1; }
 .deleteButton { color: var(--ds-color-text); }
+.editToolbar .deleteButton { min-height: 36px; padding: 0 12px; font-size: 12px; }
 .moreButton { display: block; width: 100%; margin-top: 16px; }
 .feedback { font-size: 13px; line-height: 1.6; }
 .dialogActions { display: flex; gap: 8px; }
@@ -63,3 +67,12 @@
 .nestedUnread .scheduleName::before { content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 6px 2px 0; border-radius: 50%; background: var(--ds-color-brand); vertical-align: middle; }
 .nestedTime { color: var(--ds-color-muted); font-size: 12px; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.groupRow { display: flex; align-items: flex-start; }
+.group.unread > .groupRow { background: var(--ds-color-action-soft); }
+.groupRow > .groupHeader { flex: 1; min-width: 0; padding-left: 12px; }
+.groupRow > .groupHeader:hover { background: transparent; }
+.groupRow:hover { background: var(--ds-color-action-selected); }
+.inbox input.groupCheck { margin: 20px 0 0 12px; }
+.nestedSelect { display: flex; align-items: flex-start; gap: 12px; padding-left: 12px; cursor: pointer; }
+.inbox .nestedSelect input { margin-top: 14px; }
+.nestedSelect .scheduleDetails { margin-left: 0; }

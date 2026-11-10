@@ -81,7 +81,7 @@ it('편집에서 선택한 알림만 확인 후 삭제하고 실패하면 선택
   fireEvent.click(screen.getByRole('button', { name: '편집' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '서울 새 공고 선택' }))
   expect(repository.read).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }))
+  fireEvent.click(screen.getByRole('button', { name: '삭제' }))
   let dialog = screen.getByRole('dialog', { name: '알림 1개를 삭제할까요?' })
   fireEvent.click(within(dialog).getByRole('button', { name: '삭제' }))
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('삭제하지 못했어요')
@@ -95,10 +95,11 @@ it('전체 선택은 모든 페이지를 포함하고 편집 중 갱신되어도
   await screen.findByRole('button', { name: /서울 새 공고/ })
   fireEvent.click(screen.getByRole('button', { name: '편집' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }))
+  expect(screen.getByRole('button', { name: '전체 삭제' })).toBeEnabled()
   fireEvent.click(screen.getByRole('checkbox', { name: '서울 새 공고 선택' }))
   rerender(<MemoryRouter><NotificationInboxContext.Provider value={{ ...context, revision: 1, unreadCount: 36 }}><NotificationInbox /></NotificationInboxContext.Provider></MemoryRouter>)
   expect(repository.list).toHaveBeenCalledOnce()
-  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }))
+  fireEvent.click(screen.getByRole('button', { name: '삭제' }))
   const dialog = screen.getByRole('dialog', { name: '알림 34개를 삭제할까요?' })
   fireEvent.click(within(dialog).getByRole('button', { name: '삭제' }))
   await waitFor(() => expect(repository.delete).toHaveBeenCalledWith({ deleteThrough: '10', excludedIds: ['10'] }, expect.any(AbortSignal)))
@@ -108,7 +109,7 @@ it('계정이 바뀌면 이전 계정의 선택과 삭제 확인을 지운다', 
   await screen.findByRole('button', { name: /서울 새 공고/ })
   fireEvent.click(screen.getByRole('button', { name: '편집' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }))
-  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }))
+  fireEvent.click(screen.getByRole('button', { name: '전체 삭제' }))
   rerender(<MemoryRouter><NotificationInboxContext.Provider value={{ ...context, userId: '2' }}><NotificationInbox /></NotificationInboxContext.Provider></MemoryRouter>)
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(repository.delete).not.toHaveBeenCalled()
@@ -210,10 +211,101 @@ describe('공고별 알림 묶음', () => {
     expect(css).toMatch(/\.groupMeta\s*\{[^}]*gap:\s*8px;/)
   })
 
-  it('편집할 때는 알림을 하나씩 선택할 수 있게 펼쳐 보여 준다', async () => {
-    setup({ list: vi.fn(async () => ({ items, nextCursor: null, readThrough: '13', totalCount: 4 })) })
+  const groupBox = () => screen.getByRole('checkbox', { name: '춘천시, 홍천군지역 국민임대주택 예비입주자 모집 알림 3개 선택' }) as HTMLInputElement
+  function editGroups() {
+    const view = setup({ list: vi.fn(async () => ({ items, nextCursor: null, readThrough: '13', totalCount: 4 })) })
+    return view
+  }
+
+  it('편집할 때도 공고별 묶음을 유지하고 묶음 단위로 선택할 수 있다', async () => {
+    const { repository } = editGroups()
     fireEvent.click(await screen.findByRole('button', { name: '편집' }))
-    expect(screen.getAllByRole('checkbox').filter((box) => box.getAttribute('aria-label')?.endsWith(' 선택'))).toHaveLength(4)
-    expect(screen.queryByRole('button', { name: /펼치기/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /알림 3개 펼치기/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('checkbox', { name: '서울 새 공고 선택' })).not.toBeChecked()
+    fireEvent.click(groupBox())
+    expect(groupBox()).toBeChecked()
+    expect(screen.getByText('3개 선택')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: '알림 3개를 삭제할까요?' })).getByRole('button', { name: '삭제' }))
+    await waitFor(() => expect(repository.delete).toHaveBeenCalled())
+    const [request] = vi.mocked(repository.delete).mock.calls[0]
+    expect('ids' in request && [...request.ids].sort()).toEqual(['11', '12', '13'])
   })
+
+  it('편집 중 묶음을 펼쳐 알림을 하나씩 고르면 묶음 선택이 일부 선택으로 바뀐다', async () => {
+    editGroups()
+    fireEvent.click(await screen.findByRole('button', { name: '편집' }))
+    fireEvent.click(screen.getByRole('button', { name: /알림 3개 펼치기/ }))
+    const list = screen.getByRole('list', { name: '춘천시, 홍천군지역 국민임대주택 예비입주자 모집 알림' })
+    expect(within(list).queryByRole('button', { name: '공고 보기' })).not.toBeInTheDocument()
+    fireEvent.click(within(list).getByRole('checkbox', { name: '서류 제출 · 시작 안내 선택' }))
+    expect(screen.getByText('1개 선택')).toBeVisible()
+    expect(groupBox().checked).toBe(false)
+    expect(groupBox().indeterminate).toBe(true)
+    fireEvent.click(groupBox())
+    expect(groupBox()).toBeChecked()
+    expect(within(list).getByRole('checkbox', { name: '서울 새 공고가 올라왔어요. 선택' })).toBeChecked()
+    fireEvent.click(groupBox())
+    expect(screen.getByText('0개 선택')).toBeVisible()
+    expect(within(list).getByRole('checkbox', { name: '서류 제출 · 마감 안내 선택' })).not.toBeChecked()
+  })
+
+  it('전체 선택 뒤 묶음을 해제하면 그 공고 알림만 삭제에서 뺀다', async () => {
+    const { repository } = editGroups()
+    fireEvent.click(await screen.findByRole('button', { name: '편집' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }))
+    expect(groupBox()).toBeChecked()
+    fireEvent.click(groupBox())
+    expect(screen.getByText('1개 선택')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: '알림 1개를 삭제할까요?' })).getByRole('button', { name: '삭제' }))
+    await waitFor(() => expect(repository.delete).toHaveBeenCalled())
+    const [request] = vi.mocked(repository.delete).mock.calls[0]
+    expect('excludedIds' in request && [...request.excludedIds].sort()).toEqual(['11', '12', '13'])
+  })
+})
+
+it('편집 바는 보관함 창의 스크롤 여백까지 덮어 위에 붙을 때 목록이 비쳐 보이지 않는다', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const inbox = readFileSync(resolve(process.cwd(), 'src/notifications/NotificationInbox.module.css'), 'utf8')
+  const modal = readFileSync(resolve(process.cwd(), 'src/user/auth/MemberMenuModal.module.css'), 'utf8')
+  const header = inbox.match(/\.editHeader\s*\{[^}]*\}/)?.[0] ?? ''
+  const bar = inbox.match(/\.editToolbar\s*\{[^}]*\}/)?.[0] ?? ''
+  expect(header).toMatch(/position:\s*sticky;/)
+  expect(header).toMatch(/top:\s*calc\(-1 \* var\(--inbox-scroll-padding, 0px\)\);/)
+  expect(header).toMatch(/margin-top:\s*calc\(-1 \* var\(--inbox-scroll-padding, 0px\)\);/)
+  expect(header).toMatch(/padding-top:\s*var\(--inbox-scroll-padding, 0px\);/)
+  expect(header).toMatch(/background:\s*var\(--ds-color-surface\);/)
+  expect(bar).not.toMatch(/position:\s*sticky/)
+  expect(modal).toMatch(/\.panel\s*\{[^}]*--inbox-scroll-padding:\s*24px;/)
+})
+
+it('편집 바의 삭제 버튼은 주변 줄보다 작게 둔다', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const inbox = readFileSync(resolve(process.cwd(), 'src/notifications/NotificationInbox.module.css'), 'utf8')
+  const rule = inbox.match(/\.editToolbar \.deleteButton\s*\{[^}]*\}/)?.[0] ?? ''
+  expect(rule).toMatch(/min-height:\s*36px;/)
+  expect(rule).toMatch(/padding:\s*0 12px;/)
+  expect(rule).toMatch(/font-size:\s*12px;/)
+})
+
+it('편집 중 위 두 줄은 위아래 여백을 줄여 촘촘하게 둔다', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const inbox = readFileSync(resolve(process.cwd(), 'src/notifications/NotificationInbox.module.css'), 'utf8')
+  expect(inbox).toMatch(/\.editHeader \.toolbar\s*\{[^}]*margin-bottom:\s*0;/)
+  expect(inbox).toMatch(/\.editHeader \.textButton\s*\{[^}]*min-height:\s*36px;/)
+  expect(inbox).toMatch(/\.selectAll\s*\{[^}]*min-height:\s*36px;/)
+  expect(inbox.match(/\.editToolbar\s*\{[^}]*\}/)?.[0]).toMatch(/padding:\s*0 0 8px;/)
+})
+
+it('보관함만 여는 창은 제목과 편집 줄 사이 위쪽 여백을 줄인다', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const css = readFileSync(resolve(process.cwd(), 'src/user/auth/MemberMenuModal.module.css'), 'utf8')
+  const tsx = readFileSync(resolve(process.cwd(), 'src/user/auth/MemberMenuModal.tsx'), 'utf8')
+  expect(css).toMatch(/\.panel\.inboxPanel\s*\{[^}]*--inbox-scroll-padding:\s*8px;/)
+  expect(tsx).toMatch(/inboxOnly \? <div className=\{`\$\{styles\.panel\} \$\{styles\.inboxPanel\}`\}>/)
 })
