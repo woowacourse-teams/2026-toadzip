@@ -52,7 +52,8 @@ class SeoPageControllerTest {
 
         mockMvc.perform(get("/api/v1/seo/pages/complexes/5"))
                 .andExpect(status().isPermanentRedirect())
-                .andExpect(header().string("Location", "/complexes/17"));
+                .andExpect(header().string("Location", "/complexes/17"))
+                .andExpect(header().string("Cache-Control", "max-age=3600"));
     }
 
     @Test

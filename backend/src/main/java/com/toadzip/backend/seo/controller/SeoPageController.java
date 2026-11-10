@@ -4,6 +4,7 @@ import com.toadzip.backend.seo.dto.response.SeoPage;
 import com.toadzip.backend.seo.service.SeoPageService;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -50,7 +51,9 @@ public class SeoPageController {
 
     private static ResponseEntity<String> response(SeoPage page) {
         if (page.redirectPath() != null) {
-            return ResponseEntity.status(page.status()).location(URI.create(page.redirectPath())).build();
+            // 단지 합치기를 되돌리면 예전 ID가 다시 쓰일 수 있어 브라우저가 이동을 오래 기억하지 않게 한다.
+            return ResponseEntity.status(page.status()).location(URI.create(page.redirectPath()))
+                    .cacheControl(CacheControl.maxAge(Duration.ofHours(1))).build();
         }
         return ResponseEntity.status(page.status())
                 .cacheControl(CacheControl.noStore())

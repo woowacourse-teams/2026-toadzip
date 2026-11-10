@@ -5,6 +5,7 @@ import com.toadzip.backend.seo.repository.SeoRegionCount;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 
 /** 지역 페이지 단위(지역, 지역+공급 유형)의 공개 단지 수. */
 final class SeoRegionCounts {
@@ -45,11 +46,16 @@ final class SeoRegionCounts {
                 .toList();
     }
 
-    List<SeoRegionPage> indexablePages() {
-        return counts.entrySet().stream()
-                .filter(entry -> entry.getValue() >= INDEXABLE_MINIMUM)
-                .map(Map.Entry::getKey)
-                .filter(page -> !"ETC".equals(page.rentalType()))
+    /** 지역 페이지 색인 기준. 페이지의 robots와 지역 사이트맵이 같은 기준을 쓴다. 기타 유형은 색인하지 않는다. */
+    boolean indexable(SeoRegionPage page) {
+        return count(page) >= INDEXABLE_MINIMUM && !"ETC".equals(page.rentalType());
+    }
+
+    /** 이름을 아는(현재 코드의) 지역 중 색인 기준을 넘는 페이지. */
+    List<SeoRegionPage> indexablePages(Predicate<String> knownRegion) {
+        return counts.keySet().stream()
+                .filter(page -> knownRegion.test(page.regionCode()))
+                .filter(this::indexable)
                 .toList();
     }
 }

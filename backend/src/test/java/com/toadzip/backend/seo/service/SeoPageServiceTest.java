@@ -169,6 +169,15 @@ class SeoPageServiceTest {
     }
 
     @Test
+    void 기타_유형_지역_페이지는_단지가_많아도_색인하지_않는다() {
+        when(pageQueryRepository.findRegionCounts()).thenReturn(List.of(new SeoRegionCount("11", "11140", "기타", 5)));
+        when(complexQueryService.getComplexes(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), eq(null), anyInt()))
+                .thenReturn(new HousingComplexListResponse(List.of(listItem(17, "서울가람")), null, false, 5));
+
+        assertTrue(service.regionPage("11140", "etc").html().contains("<meta name=\"robots\" content=\"noindex, follow\">"));
+    }
+
+    @Test
     void 모르는_지역과_공급유형과_단지가_없는_지역은_404다() {
         when(pageQueryRepository.findRegionCounts()).thenReturn(List.of(new SeoRegionCount("11", "11140", "행복주택", 1)));
 

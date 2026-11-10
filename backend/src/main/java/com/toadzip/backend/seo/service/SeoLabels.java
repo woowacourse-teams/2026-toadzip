@@ -2,6 +2,7 @@ package com.toadzip.backend.seo.service;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -59,7 +60,7 @@ final class SeoLabels {
     }
 
     static String rentalTypeSlug(String code) {
-        return code.toLowerCase().replace('_', '-');
+        return code.toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
     static Optional<String> rentalTypeFromSlug(String slug) {

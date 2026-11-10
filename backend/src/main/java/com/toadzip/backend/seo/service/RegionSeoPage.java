@@ -15,14 +15,16 @@ final class RegionSeoPage {
     private final String provinceName;
     private final HousingComplexListResponse complexes;
     private final List<Child> children;
+    private final boolean indexable;
 
     RegionSeoPage(SeoRegionPage page, String regionName, String provinceName,
-            HousingComplexListResponse complexes, List<Child> children) {
+            HousingComplexListResponse complexes, List<Child> children, boolean indexable) {
         this.page = page;
         this.regionName = regionName;
         this.provinceName = provinceName;
         this.complexes = complexes;
         this.children = List.copyOf(children);
+        this.indexable = indexable;
     }
 
     SeoHtmlDocument document() {
@@ -32,7 +34,7 @@ final class RegionSeoPage {
                 subject + " 단지 목록 | " + SeoHtmlDocument.SITE_NAME,
                 regionName + "의 " + typeName() + " 단지를 복덕방 지도에서 확인하고, 새 모집공고 알림을 받아 보세요.",
                 page.path(),
-                complexes.totalCount() >= SeoRegionCounts.INDEXABLE_MINIMUM,
+                indexable,
                 List.of(breadcrumb.structuredData()),
                 body(subject, breadcrumb));
     }

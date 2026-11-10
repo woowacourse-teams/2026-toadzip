@@ -155,14 +155,13 @@ class FrontendRoutesTests(unittest.TestCase):
                 self.assertNotIn('<!--#', text)
                 self.assertNotIn('x-robots-tag', headers)
 
-    def test_backend_not_found_and_redirect_pass_through_and_failures_fall_back_to_app(self):
-        status, _, text = self.get('/complexes/404')
-        self.assertEqual(status, 404)
-        self.assertIn('<h1>missing-body</h1>', text)
-        self.assertNotIn('<!--#', text)
+    def test_backend_redirect_passes_through_and_not_found_or_failures_fall_back_to_app(self):
+        # 페이지 API가 없는 백엔드(배포 순서·롤백)의 404도 같은 경로로 앱 셸이 된다.
+        self.assertEqual(self.get('/complexes/404')[:3:2], (404, 'app-shell'))
+        self.assertEqual(self.get('/announcements/77')[:3:2], (404, 'app-shell'))
         status, headers, _ = self.get('/complexes/5')
         self.assertEqual((status, headers.get('location')), (308, '/complexes/17'))
-        self.assertEqual(self.get('/complexes/500')[:3:2], (200, 'app-shell'))
+        self.assertEqual(self.get('/complexes/500')[:3:2], (500, 'app-shell'))
 
     def test_sitemaps(self):
         self.assertEqual(self.get('/sitemap.xml')[2], '<sitemapindex/>')

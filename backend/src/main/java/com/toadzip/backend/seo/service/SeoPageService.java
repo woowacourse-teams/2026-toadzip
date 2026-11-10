@@ -83,7 +83,7 @@ public class SeoPageService {
         }
         String provinceName = regionCatalog.name(regionCode.substring(0, 2)).orElse(regionName.get());
         RegionSeoPage regionPage = new RegionSeoPage(page, regionName.get(), provinceName,
-                regionComplexes(page), children(page, counts));
+                regionComplexes(page), children(page, counts), counts.indexable(page));
         return SeoPage.found(regionPage.document().render(objectMapper));
     }
 

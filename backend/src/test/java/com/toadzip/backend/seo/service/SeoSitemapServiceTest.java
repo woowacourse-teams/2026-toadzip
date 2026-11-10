@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.housing.service.HousingComplexCodeMapper;
+import com.toadzip.backend.region.repository.RegionSearchResult;
 import com.toadzip.backend.seo.repository.SeoPageQueryRepository;
 import com.toadzip.backend.seo.repository.SeoRegionCount;
 import com.toadzip.backend.seo.repository.SeoSitemapEntry;
@@ -19,7 +20,11 @@ import org.junit.jupiter.api.Test;
 class SeoSitemapServiceTest {
 
     private final SeoPageQueryRepository repository = mock(SeoPageQueryRepository.class);
-    private final SeoSitemapService service = new SeoSitemapService(repository, new HousingComplexCodeMapper());
+    // 11170은 지역 목록에 없는(예전) 코드다.
+    private final SeoRegionCatalog catalog = new SeoRegionCatalog(keyword -> List.of(
+            new RegionSearchResult("11", "서울특별시", null, "서울특별시"),
+            new RegionSearchResult("11140", "서울특별시", "중구", "서울특별시 중구")));
+    private final SeoSitemapService service = new SeoSitemapService(repository, new HousingComplexCodeMapper(), catalog);
 
     @Test
     void 단지_사이트맵은_서울_날짜로_수정일을_쓴다() {
@@ -38,11 +43,11 @@ class SeoSitemapServiceTest {
     }
 
     @Test
-    void 지역_사이트맵은_기준_이상인_지역과_공급유형만_넣고_기타는_뺀다() {
+    void 지역_사이트맵은_기준_이상인_아는_지역과_공급유형만_넣고_기타는_뺀다() {
         when(repository.findRegionCounts()).thenReturn(List.of(
                 new SeoRegionCount("11", "11140", "행복주택", 3),
                 new SeoRegionCount("11", "11140", "기타", 5),
-                new SeoRegionCount("11", "11170", "국민임대", 1)));
+                new SeoRegionCount("11", "11170", "국민임대", 4)));
 
         String xml = service.sitemap("regions").orElseThrow();
 

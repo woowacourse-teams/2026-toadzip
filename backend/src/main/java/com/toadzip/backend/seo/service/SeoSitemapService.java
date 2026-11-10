@@ -17,10 +17,13 @@ public class SeoSitemapService {
 
     private final SeoPageQueryRepository pageQueryRepository;
     private final HousingComplexCodeMapper codeMapper;
+    private final SeoRegionCatalog regionCatalog;
 
-    public SeoSitemapService(SeoPageQueryRepository pageQueryRepository, HousingComplexCodeMapper codeMapper) {
+    public SeoSitemapService(SeoPageQueryRepository pageQueryRepository, HousingComplexCodeMapper codeMapper,
+            SeoRegionCatalog regionCatalog) {
         this.pageQueryRepository = pageQueryRepository;
         this.codeMapper = codeMapper;
+        this.regionCatalog = regionCatalog;
     }
 
     /** 이름이 complexes·announcements·regions가 아니면 비어 있다. */
@@ -42,7 +45,8 @@ public class SeoSitemapService {
 
     private String regions() {
         StringBuilder xml = urlset();
-        new SeoRegionCounts(pageQueryRepository.findRegionCounts(), codeMapper).indexablePages()
+        new SeoRegionCounts(pageQueryRepository.findRegionCounts(), codeMapper)
+                .indexablePages(code -> regionCatalog.name(code).isPresent())
                 .forEach(page -> url(xml, page.path(), null));
         return xml.append("</urlset>\n").toString();
     }
