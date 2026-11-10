@@ -22,10 +22,11 @@ it('로그인 시작 전과 만료된 복귀 정보는 성공 콜백에 사용�
 it('마이페이지 내 조건 관리로 돌아올 수 있다', () => {
   expect(safeLoginReturn('/mypage/conditions')).toBe('/mypage/conditions')
 })
-it('단지·공고 상세 주소로 돌아오고 지도 복귀 주소로도 기억한다', () => {
+it('단지·공고 상세와 지역 주소로 돌아오고 지도 복귀 주소로도 기억한다', () => {
   expect(safeLoginReturn('/complexes/17?login=required&mapZoom=12')).toBe('/complexes/17?mapZoom=12')
   expect(safeLoginReturn('/announcements/201')).toBe('/announcements/201')
-  expect(safeLoginReturn('/regions/28200')).toBe('/explore')
+  expect(safeLoginReturn('/regions/28200/national-rental')).toBe('/regions/28200/national-rental')
+  expect(safeLoginReturn('/regions/abc')).toBe('/explore')
   rememberExplorerPath('/announcements/201?mapZoom=12')
   expect(lastExplorerPath()).toBe('/announcements/201?mapZoom=12')
 })

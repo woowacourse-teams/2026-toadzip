@@ -154,12 +154,14 @@ it('탐색 주소 정규화는 뒤로가기에 중간 주소를 남기지 않는
 })
 
 it.each([
-  ['/regions/28200', '/explore?complexRegionCode=28200'],
-  ['/regions/28/national-rental', '/explore?complexRegionCode=28&complexRentalTypes=NATIONAL_RENTAL'],
-])('지역 목록 주소 %s는 같은 조건의 지도 화면으로 연다', (path, expected) => {
+  ['/regions/28200', '/regions/28200'],
+  ['/regions/28/national-rental', '/regions/28/national-rental'],
+  ['/regions/28200?boundaryRegionCode=11&mapZoom=12', '/regions/28200?mapZoom=12'],
+])('지역 목록 주소 %s는 주소를 유지한 채 지도 화면을 연다', (path, expected) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
   open(path)
-  expect(screen.getByLabelText('현재 주소')).toHaveTextContent(expected)
+  expect(screen.getByLabelText('현재 주소').textContent).toBe(expected)
+  expect(screen.getByRole('heading', { name: '공공임대주택 지도' })).toBeVisible()
 })
 
 it.each(['/complexes/abc', '/announcements/0', '/regions/2820', '/regions/28200/unknown'])('잘못된 상세·지역 주소 %s는 없는 페이지로 보여 준다', (path) => {

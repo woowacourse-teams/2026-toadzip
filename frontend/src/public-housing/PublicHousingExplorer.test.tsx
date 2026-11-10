@@ -4082,6 +4082,7 @@ describe('상세 고유 주소', () => {
       <Route path="/explore" element={explorer} />
       <Route path="/complexes/:complexId" element={explorer} />
       <Route path="/announcements/:announcementId" element={explorer} />
+      <Route path="/regions/:regionCode" element={explorer} />
     </Routes><AddressProbe /></MemoryRouter>)
     return repository
   }
@@ -4108,6 +4109,19 @@ describe('상세 고유 주소', () => {
     fireEvent.click(screen.getByRole('button', { name: '주소 뒤로' }))
     await waitFor(() => expect(screen.getByTestId('address-path')).toHaveTextContent('/explore'))
     await waitFor(() => expect(screen.queryByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).not.toBeInTheDocument())
+  })
+
+  it('지역 주소로 들어오면 주소를 유지한 채 그 지역 단지를 보여 주고 상세에서 돌아오면 지역 주소로 돌아온다', async () => {
+    renderAddressExplorer('/regions/11')
+    await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/regions/11')
+    expect(new URLSearchParams(screen.getByTestId('address-search').textContent ?? '').has('boundaryRegionCode')).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/complexes/17')
+    fireEvent.click(screen.getByRole('button', { name: '주소 뒤로' }))
+    await waitFor(() => expect(screen.getByTestId('address-path')).toHaveTextContent('/regions/11'))
   })
 
   it('공고 상세 주소로 바로 들어오면 공고 상세를 연다', async () => {

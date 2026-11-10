@@ -97,12 +97,13 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 |---|---|---|
 | `/complexes/{id}` | 단지 상세가 열린 지도 화면 | 백엔드 `GET /api/v1/seo/pages/complexes/{id}` |
 | `/announcements/{id}` | 공고 상세가 열린 지도 화면 | 백엔드 `GET /api/v1/seo/pages/announcements/{id}` |
-| `/regions/{시·도 2자리 또는 시·군·구 5자리}[/{공급 유형}]` | 같은 지역·공급 유형으로 거른 `/explore` | 백엔드 `GET /api/v1/seo/pages/regions/…` |
+| `/regions/{시·도 2자리 또는 시·군·구 5자리}[/{공급 유형}]` | 주소를 유지한 채 그 지역을 고르고 공급 유형을 거른 지도 화면 | 백엔드 `GET /api/v1/seo/pages/regions/…` |
 | `/sitemaps/{complexes,announcements,regions}.xml` | – | 백엔드 `GET /api/v1/seo/sitemaps/{이름}.xml` |
 
-- 앱 안의 지도 화면은 상세를 계속 `/explore?complexId=…` 쿼리로 다루고, `src/public-housing/navigation/useExplorerLocation.ts`가 주소창에서만 상세 주소로 바꾼다. 변환 규칙은 `navigation/detailLocation.ts`가 소유한다. 상세를 닫으면 `/explore`로 돌아가고 필터·지도 위치 쿼리는 유지한다.
+- 앱 안의 지도 화면은 상세·지역을 계속 `/explore?complexId=…`, `?boundaryRegionCode=…&complexRentalTypes=…` 쿼리로 다루고, `src/public-housing/navigation/useExplorerLocation.ts`가 주소창에서만 상세·지역 주소로 바꾼다. 변환 규칙은 `navigation/detailLocation.ts`와 `navigation/regionPath.ts`가 소유한다. 상세를 닫으면 `/explore`로 돌아가고 필터·지도 위치 쿼리는 유지한다.
+- 지역 주소에서는 지역과 공급 유형 조건이 그대로인 동안 주소를 유지하고, 사용자가 조건을 바꾸면 `/explore`로 넘어간다. 앱이 들어오자마자 다른 주소로 바꾸면 검색엔진이 JS 이동으로 보고 지역 페이지를 색인하지 않을 수 있기 때문이다.
 - 예전 `/explore?complexId=…`·`?announcementId=…` 링크는 Nginx가 상세 주소로 308 이동하고, 앱은 남은 상세 쿼리를 지운다.
-- 동의 배너, PostHog·유입 건수 경로, 로그인 복귀, 의견 보내기 창, 마이페이지 복귀는 `explorerPagePath()`로 상세 주소도 지도 화면(`/explore`)으로 본다. 분석에는 ID 없는 `/explore`로 기록한다.
+- 동의 배너, PostHog·유입 건수 경로, 로그인 복귀, 의견 보내기 창, 마이페이지 복귀는 `explorerPagePath()`로 상세·지역 주소도 지도 화면(`/explore`)으로 본다. 분석에는 ID 없는 `/explore`로 기록한다.
 - 페이지 HTML은 백엔드 `seo` 패키지가 페이지별 제목·설명·canonical·구조화 데이터와 본문을 만들고, 프론트 Nginx가 SSI(`<!--# include virtual="/__seo-head" -->`)로 이 빌드의 공통 head(스크립트·스타일·대표 이미지)를 끼운다. 블루·그린 프론트는 Edge Nginx(`edge-nginx`)를 거쳐 활성 백엔드에서 받는다(`nginx/api-disabled.conf`).
 - 백엔드의 308은 그대로 내보낸다. 404는 상태를 유지한 채 앱 셸로 바꿔 배포 순서나 롤백으로 페이지 API가 없는 백엔드가 응답해도 앱이 열린다. 백엔드 장애(5xx·연결 실패)에도 앱 셸을 주되 상태 코드는 유지해 크롤러가 빈 셸을 색인하지 않게 한다. 압축 응답에는 SSI가 적용되지 않아 백엔드에 압축을 요청하지 않는다. 형식이 맞지 않는 주소는 Nginx가 404로 응답한다.
 - 마감 공고와 현재 공고가 없는 단지도 페이지를 연다. 공고 목록에서 빠지는 공고(취소, 후속 공고가 있는 공고)와 공개 단지가 3곳 미만인 지역 페이지는 `noindex`로 응답하고 사이트맵에서 뺀다.
