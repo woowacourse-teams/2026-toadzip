@@ -966,10 +966,10 @@ it('공급행 목록은 행마다 저장할 곳과 상태를 요약하고, 단�
   expect(screen.getByRole('combobox', { name: '공급행 1 연결 주택타입 수정' })).toHaveValue('10352')
 })
 
-it('검토 탭은 공급정보·일정·접수처 세 영역만 두고, 공급정보의 단지는 고정 막대에서 확인 수와 함께 고르며 이전·다음과 미해결 이동이 그 행의 단지를 연다', async () => {
+it('검토 탭은 공급정보·일정·접수처와 신청자격 초안만 두고, 공급정보의 단지는 고정 막대에서 확인 수와 함께 고르며 이전·다음과 미해결 이동이 그 행의 단지를 연다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
   const tabs = within(screen.getByRole('tablist', { name: 'PDF 보정 영역' })).getAllByRole('tab')
-  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['공급정보', '일정', '접수처·기본정보'])
+  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['공급정보', '일정', '접수처·기본정보', '신청자격'])
   expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('tabpanel')).toHaveAccessibleName(tabs[0].textContent!)
   const select = screen.getByRole('combobox', { name: '단지' }) as HTMLSelectElement

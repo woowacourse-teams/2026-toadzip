@@ -1,0 +1,89 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EligibilityDraftPanel } from './EligibilityDraftPanel'
+import { moveToDirectCheck, ruleText, type Content, type RuleSet } from './eligibilityDraftApi'
+
+const api = vi.hoisted(() => ({ load: vi.fn(), create: vi.fn(), save: vi.fn(), publish: vi.fn() }))
+vi.mock('./eligibilityDraftApi', async original => ({
+  ...(await original<typeof import('./eligibilityDraftApi')>()),
+  loadEligibilityDraft: api.load, createEligibilityDraft: api.create, saveEligibilityDraft: api.save, publishEligibilityDraft: api.publish,
+}))
+
+const income = { operator: 'INCOME_CEILING', field: 'HOUSEHOLD_MONTHLY_INCOME', expected: null, minimum: null, maximum: null, regions: [],
+  incomeLimit: { standardTableId: 1, percent: 100, sizeExtraPercent: { 1: 20 } }, children: [] }
+const age = { operator: 'AGE_RANGE', field: 'BIRTH_DATE', expected: null, minimum: 19, maximum: 39, regions: [], incomeLimit: null, children: [] }
+
+function content(reviewStatus: 'REVIEWING' | 'REVIEWED' = 'REVIEWING'): Content {
+  return {
+    metadata: { referenceDate: '2026-09-30', reviewStatus, scopeNote: 'AI 추출 초안. 공급대상과 잇지 못한 경로: 고령자' },
+    evidences: [{ id: 'ev-1', firstPage: 3, description: '만 19세 이상 39세 이하' }],
+    supplyUnits: [{ id: 'unit-1', label: '인천석남 21A' }],
+    paths: [{ id: 'path-1', label: '청년', qualificationIds: [], checks: [
+      { id: 'path-1-1', label: '만 19세 이상 39세 이하', rule: age, appliesWhen: null, fallbackGuidanceId: null, evidenceIds: ['ev-1'] },
+      { id: 'path-1-2', label: '월평균소득 100% 이하', rule: income, appliesWhen: null, fallbackGuidanceId: 'check-path-1', evidenceIds: ['ev-1'] }] }],
+    options: [{ id: 'path-1-unit-1', supplyUnitId: 'unit-1', pathId: 'path-1', recruitmentStatus: 'RECRUITING' }],
+    guidances: [{ id: 'check-path-1', kind: 'REQUIRED_CHECK', title: '자동 판정 한계 확인', body: '확인', items: [],
+      targets: [{ scope: 'PATH', pathId: 'path-1', supplyUnitId: null }], evidenceIds: ['ev-1'] }],
+    commonChecks: [], qualifications: [],
+  }
+}
+const draft = (value: Content = content(), revision = 1): RuleSet => ({ id: 7, revision, status: 'DRAFT', content: value })
+
+afterEach(() => vi.clearAllMocks())
+
+describe('moveToDirectCheck', () => {
+  it('조건을 지우지 않고 그 경로의 필수 확인 자격 항목으로 옮기고, 쓰지 않게 된 대체 안내는 뺀다', () => {
+    const moved = moveToDirectCheck(content(), 'path-1', 'path-1-2')
+
+    expect(moved.paths[0].checks.map(check => check.id)).toEqual(['path-1-1'])
+    expect(moved.guidances).toEqual([{ id: 'direct-path-1', kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 직접 확인할 신청자격',
+      body: expect.any(String), items: ['월평균소득 100% 이하'], targets: [{ scope: 'PATH', pathId: 'path-1', supplyUnitId: null }], evidenceIds: ['ev-1'] }])
+  })
+})
+
+describe('ruleText', () => {
+  it('조건을 운영자가 읽는 문장으로 보인다', () => {
+    expect(ruleText(age)).toBe('만 19~39세')
+    expect(ruleText(income)).toBe('세대 월평균소득 기준표 #1 100% 이하(1인 +20%p)')
+    expect(ruleText({ ...age, operator: 'MONEY_CEILING', field: 'FAMILY_TOTAL_ASSETS', minimum: null, maximum: 345_000_000 })).toBe('가족 총자산 34,500만원 이하')
+    expect(ruleText({ ...age, operator: 'EQUALS', field: 'FAMILY_OWNS_HOUSE', expected: 'false', minimum: null, maximum: null })).toBe('본인 포함 가족 주택 없음')
+  })
+})
+
+describe('EligibilityDraftPanel', () => {
+  it('최신 PDF로 초안을 만들고, 조건을 직접 확인으로 바꿔 저장하며, 검토 완료 전에는 공개할 수 없다', async () => {
+    api.load.mockResolvedValue(null)
+    api.create.mockResolvedValue(draft())
+    api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} />)
+
+    expect(await screen.findByText('아직 신청자격 초안이 없어요.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' }))
+    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
+    expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
+    expect(screen.getByText('신청 단위: 인천석남 21A (모집)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '공개' })).toBeDisabled()
+
+    fireEvent.click(screen.getAllByRole('button', { name: '직접 확인으로 바꾸기' })[1])
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1))
+    const saved: Content = api.save.mock.calls[0][2]
+    expect(saved.paths[0].checks.map(check => check.label)).toEqual(['만 19세 이상 39세 이하'])
+    expect(await screen.findByText('월평균소득 100% 이하')).toBeInTheDocument()
+  })
+
+  it('검토 완료로 표시한 초안만 공개한다', async () => {
+    api.load.mockResolvedValue(draft())
+    api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
+    api.publish.mockResolvedValue(draft(content('REVIEWED'), 3))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} onEvidence={vi.fn()} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '검토 완료로 표시' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '공개' })).toBeEnabled())
+    expect(api.save.mock.calls[0][2].metadata.reviewStatus).toBe('REVIEWED')
+    expect(screen.getByRole('button', { name: 'AI 추출로 다시 만들기' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: '공개' }))
+    expect(await screen.findByText('공개했어요. 사용자 판정이 곧 다시 계산돼요.')).toBeInTheDocument()
+    expect(api.publish).toHaveBeenCalledWith('12', expect.objectContaining({ revision: 2 }))
+  })
+})
