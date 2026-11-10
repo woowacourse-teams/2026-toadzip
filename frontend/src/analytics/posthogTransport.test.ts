@@ -6,7 +6,7 @@ const consent = vi.hoisted(() => ({ allowed: true }))
 vi.mock('../privacy/consentStore', () => ({
   analyticsCollectionAllowed: () => consent.allowed,
   consentStore: {
-    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-4' }, requiredScopeVersion: 'analytics-scope-4' } }),
     remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
     transition: () => { consent.allowed = false }, refresh: async () => {},
     onStop: () => () => {}, subscribe: () => () => {},
