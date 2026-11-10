@@ -100,7 +100,7 @@ location.reload()
 ### 검색·AI 유입
 
 UTM이 없는 방문은 페이지를 처음 열 때의 리퍼러를 고정 목록으로 분류해 `organic_source` 하나만 같은 저장소에 30분 보관한다.
-값은 `search_google`, `search_naver`, `search_daum`, `search_bing`, `search_duckduckgo`, `ai_chatgpt`, `ai_perplexity`, `ai_gemini`, `ai_copilot`, `ai_claude`다.
+값은 `search_google`, `search_naver`, `search_daum`, `ai_chatgpt`, `ai_perplexity`, `ai_gemini`, `ai_copilot`, `ai_claude`다.
 목록과 호스트 대응의 원본은 [organicSource.ts](../../../frontend/src/analytics/organicSource.ts)다.
 
 - 원시 리퍼러 주소와 검색어는 저장하거나 전송하지 않는다. 목록에 없는 리퍼러는 분류하지 않고 세지 않는다.

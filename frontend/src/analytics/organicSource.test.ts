@@ -8,8 +8,6 @@ it.each([
   ['https://m.search.naver.com/search.naver', 'search_naver'],
   ['https://search.daum.net/search?q=private', 'search_daum'],
   ['https://m.search.daum.net/', 'search_daum'],
-  ['https://www.bing.com/search?q=private', 'search_bing'],
-  ['https://duckduckgo.com/', 'search_duckduckgo'],
   ['https://chatgpt.com/', 'ai_chatgpt'],
   ['https://chat.openai.com/', 'ai_chatgpt'],
   ['https://www.perplexity.ai/search/private', 'ai_perplexity'],
@@ -28,6 +26,8 @@ it.each([
   'https://mail.google.com/', 'https://blog.naver.com/someone', 'https://cafe.daum.net/', 'https://www.naver.com/',
   'https://google.com.evil.example/', 'https://notchatgpt.com/', 'https://bokduckbang.com/explore',
   'http://www.google.com/',
+  // 집계 대상으로 정하지 않은 검색엔진.
+  'https://www.bing.com/search?q=private', 'https://duckduckgo.com/',
 ])('그 밖의 리퍼러 %s는 분류하지 않는다', (referrer) => {
   expect(organicSourceFromReferrer(referrer)).toBeUndefined()
 })

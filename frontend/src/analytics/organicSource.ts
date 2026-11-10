@@ -3,8 +3,6 @@
 const HOSTS: Record<string, string> = {
   'search.naver.com': 'search_naver', 'm.search.naver.com': 'search_naver',
   'search.daum.net': 'search_daum', 'm.search.daum.net': 'search_daum',
-  'www.bing.com': 'search_bing', 'bing.com': 'search_bing',
-  'duckduckgo.com': 'search_duckduckgo',
   'chatgpt.com': 'ai_chatgpt', 'chat.openai.com': 'ai_chatgpt',
   'perplexity.ai': 'ai_perplexity', 'www.perplexity.ai': 'ai_perplexity',
   'gemini.google.com': 'ai_gemini',
