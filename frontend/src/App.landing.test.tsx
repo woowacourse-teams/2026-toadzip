@@ -84,10 +84,17 @@ it('시작하기는 로그인 없이 지도를 열고 뒤로가기는 랜딩으�
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('공공주택 찾기,')
 })
 
-it.each(['/?complexId=7', '/?announcementId=9&mapZoom=12', '/?boundaryRegionCode=11680', '/?complexMinDeposit=1000', '/?login=failed', '/?inbox=open'])('기존 탐색 공유 주소 %s의 상태를 보존한다', (path) => {
+it.each([
+  ['/?complexId=7', '/complexes/7'],
+  ['/?announcementId=9&mapZoom=12', '/announcements/9?mapZoom=12'],
+  ['/?boundaryRegionCode=11680', '/explore?boundaryRegionCode=11680'],
+  ['/?complexMinDeposit=1000', '/explore?complexMinDeposit=1000'],
+  ['/?login=failed', '/explore?login=failed'],
+  ['/?inbox=open', '/explore?inbox=open'],
+])('기존 탐색 공유 주소 %s의 상태를 보존한다', (path, expected) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
   open(path)
-  expect(screen.getByLabelText('현재 주소')).toHaveTextContent(`/explore${path.slice(1)}`)
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent(expected)
   expect(screen.getByRole('heading', { name: '공공임대주택 지도' })).toBeVisible()
 })
 
@@ -136,7 +143,7 @@ it.each(['/explore', '/?login=failed'])('저장소가 차단되어도 로그인 
 it.each(['/explore/', '/EXPLORE///', '/%65xplore', '/explor%65/'])('탐색 주소 %s를 정규화하면서 공유 조건과 앵커를 보존한다', (path) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
   open(`${path}?complexId=7&mapZoom=12#detail`)
-  expect(screen.getByLabelText('현재 주소').textContent).toBe('/explore?complexId=7&mapZoom=12#detail')
+  expect(screen.getByLabelText('현재 주소').textContent).toBe('/complexes/7?mapZoom=12#detail')
 })
 
 it('탐색 주소 정규화는 뒤로가기에 중간 주소를 남기지 않는다', () => {
@@ -144,4 +151,19 @@ it('탐색 주소 정규화는 뒤로가기에 중간 주소를 남기지 않는
   render(<MemoryRouter initialEntries={['/', '/explore/?complexId=7']}><App /><NavigationProbe /></MemoryRouter>)
   fireEvent.click(screen.getByRole('button', { name: '뒤로' }))
   expect(screen.getByLabelText('현재 주소').textContent).toBe('/')
+})
+
+it.each([
+  ['/regions/28200', '/explore?complexRegionCode=28200'],
+  ['/regions/28/national-rental', '/explore?complexRegionCode=28&complexRentalTypes=NATIONAL_RENTAL'],
+])('지역 목록 주소 %s는 같은 조건의 지도 화면으로 연다', (path, expected) => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
+  open(path)
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent(expected)
+})
+
+it.each(['/complexes/abc', '/announcements/0', '/regions/2820', '/regions/28200/unknown'])('잘못된 상세·지역 주소 %s는 없는 페이지로 보여 준다', (path) => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
+  open(path)
+  expect(screen.getByRole('heading', { name: '페이지를 찾을 수 없어요.' })).toBeVisible()
 })

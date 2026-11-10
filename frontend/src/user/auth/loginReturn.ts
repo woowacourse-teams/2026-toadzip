@@ -1,3 +1,5 @@
+import { explorerPagePath } from '../../public-housing/navigation/detailLocation'
+
 const STORAGE_KEY = 'toadzip:mobile-login-return'
 const MAX_AGE = 30 * 60 * 1000
 
@@ -5,7 +7,7 @@ export function safeLoginReturn(value: string | null): string {
   if (!value?.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/explore'
   try {
     const url = new URL(value, window.location.origin)
-    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info', '/mypage/conditions'].includes(url.pathname)) return '/explore'
+    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info', '/mypage/conditions'].includes(explorerPagePath(url.pathname))) return '/explore'
     url.searchParams.delete('login')
     url.searchParams.delete('reason')
     return url.pathname + url.search + url.hash
@@ -53,12 +55,17 @@ export function loginPageUrl(returnTo: string, failed = false) {
 const EXPLORER_KEY = 'toadzip:last-explore-path'
 export function rememberExplorerPath(path: string) {
   const safe = safeLoginReturn(path)
-  if (!safe.startsWith('/explore')) return
+  if (!isExplorerPath(safe)) return
   try { sessionStorage.setItem(EXPLORER_KEY, safe) } catch { /* Optional navigation memory. */ }
 }
 export function lastExplorerPath(): string {
   try {
     const safe = safeLoginReturn(sessionStorage.getItem(EXPLORER_KEY))
-    return safe.startsWith('/explore') ? safe : '/explore'
+    return isExplorerPath(safe) ? safe : '/explore'
   } catch { return '/explore' }
+}
+
+// 상세 주소도 지도 화면이다. 쿼리를 뺀 경로로 판단한다.
+function isExplorerPath(path: string) {
+  return explorerPagePath(new URL(path, window.location.origin).pathname) === '/explore'
 }

@@ -1,4 +1,5 @@
 import { analyticsCollectionAllowed, consentStore } from '../privacy/consentStore'
+import { explorerPagePath } from '../public-housing/navigation/detailLocation'
 const GOOGLE_TAG_URL = 'https://www.googletagmanager.com/gtag/js'
 const LOAD_TIMEOUT_MS = 15_000
 const MAX_PENDING_EVENTS = 50
@@ -81,7 +82,7 @@ function installDisableFlag(id: string): boolean {
     get: () => (
       externalOptOut || !analyticsCollectionAllowed() ||
       !pageActive ||
-      window.location.pathname !== '/explore' ||
+      explorerPagePath(window.location.pathname) !== '/explore' ||
       browserExcluded() ||
       state === 'failed'
     ),

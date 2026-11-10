@@ -3,7 +3,7 @@ import { PdfCorrectionPage } from './admin/announcement-pdf/PdfCorrectionPage'
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
-import { Link, Navigate, Route, Routes, matchRoutes, useLocation, useNavigationType } from 'react-router'
+import { Link, Navigate, Route, Routes, matchRoutes, useLocation, useNavigationType, useParams } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
@@ -33,6 +33,8 @@ import { LandingPage } from './landing/LandingPage'
 import { hasExplorerState } from './landing/explorerState'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
+import { parseDetailPath, toDetailPathLocation } from './public-housing/navigation/detailLocation'
+import { regionExplorerSearch } from './public-housing/navigation/regionPath'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
 import { MobileInstallProvider } from './install/MobileInstallProvider'
@@ -45,7 +47,14 @@ function LandingEntry() {
     : <LandingPage />
 }
 
+// `/explore`와 상세 주소는 같은 Home을 써서 상세를 여닫을 때 지도를 다시 만들지 않는다.
 function Home() {
+  const location = useLocation()
+  if (parseDetailPath(location.pathname).kind === 'invalid') return <NotFound />
+  return <ExplorerHome />
+}
+
+function ExplorerHome() {
   const location = useLocation()
   useEffect(() => { rememberExplorerPath(location.pathname + location.search + location.hash) }, [location])
   const navigationType = useNavigationType()
@@ -67,6 +76,14 @@ function Home() {
       </div>
     </ExplorerReturnContext>
   )
+}
+
+// 지역 목록 페이지는 검색엔진용이다. 사람에게는 같은 지역·공급 유형으로 거른 지도 화면을 연다.
+function RegionEntry() {
+  const { regionCode, rentalType } = useParams()
+  const { hash } = useLocation()
+  const search = regionExplorerSearch(regionCode, rentalType)
+  return search === null ? <NotFound /> : <Navigate to={{ pathname: '/explore', search, hash }} replace />
 }
 
 function NotFound() {
@@ -145,6 +162,11 @@ export default function App() {
   if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
+  // 예전 상세 링크(`/explore?complexId=1`)는 상세 주소로 바꿔 연다.
+  const detailPath = pathname === '/explore' ? toDetailPathLocation({ pathname, search }) : null
+  if (detailPath && detailPath.pathname !== pathname) {
+    return <Navigate to={{ ...detailPath, hash }} state={state} replace />
+  }
   return (
     <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
@@ -154,10 +176,14 @@ export default function App() {
       <Route path="/" element={<LandingEntry />} />
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
+        <Route path="/complexes/:complexId" element={<Home />} />
+        <Route path="/announcements/:announcementId" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
         <Route path="/mypage" element={<Home />} />
         <Route path="/mypage/:section" element={<Home />} />
       </Route>
+      <Route path="/regions/:regionCode" element={<RegionEntry />} />
+      <Route path="/regions/:regionCode/:rentalType" element={<RegionEntry />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/settings" element={<PrivacySettingsPage />} />

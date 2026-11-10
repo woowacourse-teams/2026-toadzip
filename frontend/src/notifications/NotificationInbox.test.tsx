@@ -18,7 +18,7 @@ it('열면 목록만 조회하고 항목을 눌러야 읽음 처리 후 상세�
   const button = await screen.findByRole('button', { name: /서울 새 공고/ })
   expect(repository.read).not.toHaveBeenCalled()
   fireEvent.click(button)
-  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?announcementId=23'))
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/announcements/23'))
   expect(repository.read).toHaveBeenCalledWith('10', expect.any(AbortSignal))
   expect(repository.readAll).not.toHaveBeenCalled()
 })
@@ -52,7 +52,7 @@ it('읽음 실패는 오류와 별도 공고 이동을 제공하고 읽음으로
   setup({ read: vi.fn(async () => { throw new Error('network') }) })
   fireEvent.click(await screen.findByRole('button', { name: /서울 새 공고/ }))
   expect(await screen.findByRole('alert')).toHaveTextContent('읽음 처리하지 못했어요')
-  expect(screen.getByRole('link', { name: '공고만 보기' })).toHaveAttribute('href', '/explore?announcementId=23')
+  expect(screen.getByRole('link', { name: '공고만 보기' })).toHaveAttribute('href', '/announcements/23')
   expect(screen.getByText('읽지 않음')).toBeVisible()
 })
 it('더 보기로 받은 항목과 삭제된 공고를 표시하고 모두 읽음은 최초 목록 경계만 사용한다', async () => {
@@ -140,7 +140,7 @@ it.each([false, true])('마이페이지 보관함에서 공고 이동 시 복귀
   setup(failure ? { read: vi.fn().mockRejectedValue(new Error('offline')) } : {}, '/mypage/notifications')
   fireEvent.click(await screen.findByRole('button', { name: /서울 새 공고/ }))
   if (failure) fireEvent.click(await screen.findByRole('link', { name: '공고만 보기' }))
-  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?announcementId=23'))
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/announcements/23'))
   expect(screen.getByLabelText('현재 주소')).toHaveAttribute('data-mypage-return', '/mypage/notifications')
 })
 
@@ -148,7 +148,7 @@ it('공고 보기는 알림을 읽음 처리하고 앱의 공고 상세로 이�
   const schedule = { kind: 'DOCUMENT_SUBMISSION' as const, name: '서류제출', startDate: '2026-10-17', endDate: '2026-10-21', startTime: null, endTime: null, scope: null, condition: null, sourceUrl: 'https://example.com/notice', sourcePage: null, phase: 'START' as const }
   const { repository } = setup({ list: vi.fn(async () => ({ items: [{ ...item, type: 'SCHEDULE_REMINDER' as const, content: { type: 'SCHEDULE_REMINDER', targetType: 'ANNOUNCEMENT', targetId: '23', targetName: schedule.name, message: '', schedule } }], nextCursor: null, readThrough: '10', totalCount: 1 })) })
   fireEvent.click(await screen.findByRole('button', { name: '공고 보기' }))
-  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?announcementId=23'))
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/announcements/23'))
   expect(repository.read).toHaveBeenCalledWith('10', expect.any(AbortSignal))
 })
 
@@ -200,7 +200,7 @@ describe('공고별 알림 묶음', () => {
     fireEvent.click(await screen.findByRole('button', { name: /알림 3개 펼치기/ }))
     const list = screen.getByRole('list', { name: '춘천시, 홍천군지역 국민임대주택 예비입주자 모집 알림' })
     fireEvent.click(within(within(list).getAllByRole('listitem')[2]).getByRole('button', { name: '공고 보기' }))
-    await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?announcementId=77'))
+    await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/announcements/77'))
     expect(vi.mocked(repository.read).mock.calls.map(([id]) => id).sort()).toEqual(['11', '12', '13'])
   })
 

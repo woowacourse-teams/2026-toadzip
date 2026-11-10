@@ -24,7 +24,7 @@ describe('새 지원 가능 발견 안내', () => {
     let resolve: () => void = () => {}
     repository.acknowledgeDiscovery.mockImplementation(() => new Promise((done) => { resolve = done }))
     render(<ConditionsContext value={value}><EligibilityDiscoveries /></ConditionsContext>)
-    expect(await screen.findByRole('link', { name: 'D05 실제 공고 제목' })).toHaveAttribute('href', '/explore?announcementId=5')
+    expect(await screen.findByRole('link', { name: 'D05 실제 공고 제목' })).toHaveAttribute('href', '/announcements/5')
     expect(screen.getByText('사천벌리1 26형 · 일반입주자 신청자격')).toBeInTheDocument()
     expect(repository.acknowledgeDiscovery).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '확인했어요' }))

@@ -9,6 +9,7 @@ import { NotificationScheduleDetails } from './NotificationScheduleDetails'
 import { NotificationApiError, type NotificationItem, type NotificationPageResult, type NotificationSchedule } from './notificationRepository'
 import styles from './NotificationInbox.module.css'
 import { captureCampaignStat } from '../analytics/campaignStats'
+import { announcementPath } from '../public-housing/navigation/detailLocation'
 
 const empty: NotificationPageResult = { items: [], nextCursor: null, readThrough: '0', totalCount: 0 }
 interface EditSelection { readonly userId: string; readonly bound: string; readonly total: number; readonly all: boolean; readonly ids: ReadonlySet<string> }
@@ -98,7 +99,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
       setState(current => ({ ...current, page: { ...current.page, items: current.page.items.map(value =>
         (!item && BigInt(value.id) <= BigInt(page.readThrough)) || ids.includes(value.id) ? { ...value, readAt: value.readAt ?? now } : value) } }))
       context?.invalidate()
-      if (item?.targetAvailable) { onNavigate?.(); void navigate(`/explore?announcementId=${item.announcementId}`, { state: returnState }) }
+      if (item?.targetAvailable) { onNavigate?.(); void navigate(announcementPath(String(item.announcementId)), { state: returnState }) }
     } catch (error) {
       if (signal.aborted || version !== generation.current) return
       if (error instanceof NotificationApiError && error.status === 401) sessionExpired?.()
@@ -185,7 +186,7 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
     </div>}
     </div>
     {message && <p className={styles.feedback} role="status">{message}</p>}
-    {actionError && !confirmDelete && <p className={styles.feedback} role="alert">{actionError} {failedItem?.targetAvailable && <Link state={returnState} to={`/explore?announcementId=${failedItem.announcementId}`} onClick={onNavigate}>공고만 보기</Link>}</p>}
+    {actionError && !confirmDelete && <p className={styles.feedback} role="alert">{actionError} {failedItem?.targetAvailable && <Link state={returnState} to={announcementPath(String(failedItem.announcementId))} onClick={onNavigate}>공고만 보기</Link>}</p>}
     {state.error && <p role="alert">{state.error} <button className={styles.textButton} type="button" onClick={() => { finishEditing(); setRetry(value => value + 1) }}>다시 시도</button></p>}
     {!loading && !state.error && !page.items.length && <div className={styles.empty}><p>아직 받은 알림이 없어요.</p><p>관심 단지·지역의 새 공고와 신청한 공고 일정을 알려 드릴게요.</p></div>}
     <ul className={styles.list}>{groupByAnnouncement(page.items).map(group => group.length === 1 ? renderItem(group[0])

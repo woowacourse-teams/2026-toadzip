@@ -7,6 +7,7 @@ import { consentStore } from './consentStore'
 import styles from './Privacy.module.css'
 import { usePrivacyConsent, usePrivacyNotices } from './usePrivacy'
 import { useMobileViewport } from '../public-housing/components/useMobileViewport'
+import { explorerPagePath } from '../public-housing/navigation/detailLocation'
 
 export function PrivacyBoundary() {
   const { pathname } = useLocation()
@@ -17,7 +18,7 @@ export function PrivacyBoundary() {
   }, [adminPage])
   const state = usePrivacyConsent()
   const needsChoice = state.context && (state.requiresChoice || ['UNSET', 'EXPIRED', 'RECONSENT_REQUIRED'].includes(state.context.consent.effectiveStatus))
-  if (pathname !== '/explore' || !needsChoice || state.loading) return null
+  if (explorerPagePath(pathname) !== '/explore' || !needsChoice || state.loading) return null
   return <aside className={styles.floating} aria-label="이용 정보 수집 선택"><AnalyticsChoice /></aside>
 }
 export function AnalyticsChoice({ settings = false }: { readonly settings?: boolean }) {

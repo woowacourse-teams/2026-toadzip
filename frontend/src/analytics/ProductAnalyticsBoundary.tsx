@@ -3,9 +3,11 @@ import { useLocation } from 'react-router'
 import { consentStore } from '../privacy/consentStore'
 import { captureProductEvent, captureWebPageView, createAnalyticsId, setProductPageActive } from './productAnalytics'
 import { useAnalyticsConsent } from './useAnalyticsConsent'
+import { explorerPagePath } from '../public-housing/navigation/detailLocation'
 
 export function ProductAnalyticsBoundary() {
-  const { pathname } = useLocation()
+  // 상세 주소도 같은 지도 화면 방문으로 센다.
+  const pathname = explorerPagePath(useLocation().pathname)
   const allowed = useAnalyticsConsent()
   const visit = useRef<{ pathname: string; id: string } | null>(null)
   const webVisit = useRef<{ pathname: string; id: string; captured: boolean } | null>(null)

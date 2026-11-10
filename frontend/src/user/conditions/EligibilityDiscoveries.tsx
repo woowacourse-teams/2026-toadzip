@@ -8,6 +8,7 @@ import { RequestError } from '../../public-housing/components/RequestError'
 import { useConditions } from './ConditionsContext'
 import { ConditionsConflictError, type EligibilityDiscovery } from './conditionsModel'
 import styles from './EligibilityDiscoveries.module.css'
+import { announcementPath } from '../../public-housing/navigation/detailLocation'
 
 interface DiscoveryRow {
   readonly discovery: EligibilityDiscovery
@@ -93,7 +94,7 @@ export function EligibilityDiscoveries() {
       : <>
         {!current.rows.length && <p>이번 조회에 표시할 새 안내가 없어요.{current.more ? ' 다음 안내도 확인해 주세요.' : ''}</p>}
         <ul>{current.rows.map(({ discovery, title, options }) => <li key={discovery.eventId}>
-          <a href={`/explore?announcementId=${encodeURIComponent(discovery.announcementId)}`}>{title}</a>
+          <a href={announcementPath(encodeURIComponent(discovery.announcementId))}>{title}</a>
           <ul>{options.map((option) => <li key={option}>{option}</li>)}</ul>
           <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => { void acknowledge(discovery) }}>확인했어요</Button>
         </li>)}</ul>
