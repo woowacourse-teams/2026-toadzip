@@ -127,7 +127,7 @@ public final class ExtractedEligibilityDraft {
             }
         }
         if (paths.isEmpty()) {
-            throw new EligibilityDraftUnavailableException("공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다.");
+            throw new EligibilityDraftUnavailableException("공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다. 공급정보 보정을 먼저 적용해 공급대상 이름을 공고문과 맞춘 뒤 다시 만들어 주세요.");
         }
         Set<String> usedUnits = new LinkedHashSet<>(options.stream().map(ApplicationOption::supplyUnitId).toList());
         for (Unit unit : source.units()) {
@@ -191,8 +191,10 @@ public final class ExtractedEligibilityDraft {
 
     private List<ApplicationOption> options(String pathId, List<String> supplyTargets) {
         List<ApplicationOption> options = new ArrayList<>();
+        // 워커가 맞춘 이름과 보정으로 저장한 이름은 공백만 다를 수 있어(가군 (일반) ↔ 가군(일반)) 공백은 무시하고 비교한다.
+        Set<String> wanted = new LinkedHashSet<>(supplyTargets.stream().map(ExtractedEligibilityDraft::compact).toList());
         for (Unit unit : source.units()) {
-            List<Target> matched = unit.targets().stream().filter(target -> supplyTargets.contains(target.name())).toList();
+            List<Target> matched = unit.targets().stream().filter(target -> wanted.contains(compact(target.name()))).toList();
             if (matched.isEmpty()) {
                 continue;
             }
@@ -448,6 +450,10 @@ public final class ExtractedEligibilityDraft {
 
     private static ProfileRule group(Operator operator, List<ProfileRule> children) {
         return new ProfileRule(operator, null, null, null, null, List.of(), null, children);
+    }
+
+    private static String compact(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "");
     }
 
     private static List<String> nonBlank(String... values) {

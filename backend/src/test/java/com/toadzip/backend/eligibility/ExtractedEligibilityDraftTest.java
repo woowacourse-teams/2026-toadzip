@@ -104,6 +104,7 @@ class ExtractedEligibilityDraftTest {
         assertThat(content.options()).extracting(EligibilityContent.ApplicationOption::recruitmentStatus)
                 .containsExactly(RecruitmentStatus.RECRUITING, RecruitmentStatus.RECRUITING, RecruitmentStatus.UNKNOWN,
                         RecruitmentStatus.RECRUITING, RecruitmentStatus.RECRUITING);
+        // 저장된 대상 이름(주거급여  수급자)이 워커가 맞춘 이름(주거급여 수급자)과 공백만 달라도 잇는다.
         assertThat(status(content, b(), "주거급여수급자 · 주거급여 수급자")).isEqualTo(Status.UNDETERMINED);
     }
 
@@ -141,7 +142,7 @@ class ExtractedEligibilityDraftTest {
         ExtractedEligibility eligibility = new ExtractedEligibility(common, routes, List.of(), quotes);
         List<Unit> units = List.of(
                 new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"), List.of(
-                        new Target("청년", 10), new Target("신혼부부·한부모가족", 5), new Target("주거급여 수급자", 3))),
+                        new Target("청년", 10), new Target("신혼부부·한부모가족", 5), new Target("주거급여  수급자", 3))),
                 new Unit(2, "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
                         List.of(new Target("청년", 0), new Target("신혼부부·한부모가족", null))));
         return ExtractedEligibilityDraft.build(new Source(POSTED,
