@@ -1,4 +1,4 @@
-"""공급 단계와 본문 단계의 부분 결과를 관리자 계약 하나로 합친다. 두 단계의 단지를 이름으로 맞추고
+"""공급·본문·신청자격 단계의 부분 결과를 관리자 계약 하나로 합친다. 두 단계의 단지를 이름으로 맞추고
 단지 경로(complexes[N])를 합친 순번으로 고친다. 공급행 값의 원문 대조는 조립(supply_assembly)에서 이미 끝났다."""
 
 import json
@@ -6,11 +6,13 @@ import re
 
 from ai_worker import checks
 from ai_worker.checks import deduplicate
+from ai_worker.eligibility import Extracted
 from ai_worker.supply_assembly import add_complex_name, address_key, complex_key, normalize_address
 
 
-def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
-    """두 단계의 부분 결과를 관리자 계약으로 합친다. 경고는 두 단계의 단지 값이 서로 다른 경우다."""
+def merge(supply: dict, notice: dict, eligibility: Extracted | None = None) -> tuple[dict, list[str]]:
+    """단계별 부분 결과를 관리자 계약으로 합친다. 경고는 두 단계의 단지 값이 서로 다른 경우다.
+    신청자격은 data.eligibility로 두고, 묶음 요약은 공급대상 신청 조건(applicationCondition)에 합친다."""
     supply_data, notice_data = supply["data"], notice["data"]
     supply_rows = checks.objects(supply_data.get("supplyRows"))
     supply_complexes = checks.objects(supply_data.get("complexes"))
@@ -45,7 +47,10 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
                 item.get("path") == path for item in unresolved
             ):
                 unresolved.append({"path": path, "reason": "공급 표와 본문에서 확인하지 못함"})
-    evidence += _apply_conditions(supply_rows, notice_data.get("applicationConditions"), notice_evidence)
+    if eligibility is not None:
+        evidence += eligibility.evidence
+        evidence += _apply_conditions(supply_rows, eligibility.conditions, eligibility.condition_evidence)
+        _link_supply_targets(eligibility.data, supply_rows)
     tree = {
         "data": {
             "announcement": notice_data["announcement"],
@@ -53,6 +58,7 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
             "complexes": complexes,
             "supplyRows": supply_rows,
             "schedules": notice_data["schedules"],
+            "eligibility": eligibility.data if eligibility is not None else None,
             "unresolvedFields": deduplicate(unresolved),
         },
         "sharedCounts": deduplicate(shared_counts),
@@ -89,6 +95,18 @@ def _apply_conditions(supply_rows: list[dict], conditions, notice_evidence: list
             if source:
                 added.append({**source, "path": f"supplyRows[{row_index}].targets[{target_index}].applicationCondition"})
     return added
+
+
+def _link_supply_targets(data: dict | None, supply_rows: list[dict]) -> None:
+    """신청자격 대상마다 그 대상이 속한 공급 표 대상(supplyTarget)과 같은 규칙(_condition_applies)으로 맞은 공급표 대상 이름을
+    원문 그대로 싣는다(supplyTargets).
+    서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다."""
+    if data is None:
+        return
+    names = list(dict.fromkeys(target.get("target") for row in supply_rows for target in checks.objects(row.get("targets"))
+                               if isinstance(target.get("target"), str) and target["target"].strip()))
+    for target in data["targets"]:
+        target["supplyTargets"] = [name for name in names if _condition_applies(target["supplyTarget"], name)]
 
 
 def _condition_applies(condition_target, target_name) -> bool:
