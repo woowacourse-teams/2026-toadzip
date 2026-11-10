@@ -9,7 +9,7 @@ import { ProductAnalyticsBoundary } from '../../analytics/ProductAnalyticsBounda
 import type { AnalyticsStopReason } from '../../privacy/consentStore'
 import { HousingDetailOverlay } from '../components/HousingDetailOverlay'
 import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
-import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
+import type { DetailEntryPoint } from './useProductDetailAnalytics'
 
 const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void>(),
   stopListeners: new Set<(reason: AnalyticsStopReason) => void>(),
@@ -17,7 +17,7 @@ const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void
 vi.mock('../../privacy/consentStore', () => ({
   analyticsCollectionAllowed: () => consent.allowed,
   consentStore: {
-    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-4' }, requiredScopeVersion: 'analytics-scope-4' } }),
     remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
     transition: () => { consent.allowed = false; consent.stopListeners.forEach(listener => listener('context-change')); consent.listeners.forEach(listener => listener()) },
     refresh: async () => {},

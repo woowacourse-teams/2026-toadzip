@@ -22,7 +22,7 @@
 > 더 나은 서비스 경험을 위해 화면 조회·기능 사용 정보를 통계적으로 분석합니다.\
 > **이름·이메일·회원 ID와 연결하지 않습니다.**
 
-GA client ID와 PostHog distinct ID는 행동을 연결할 수 있다. 프로필을 끈 것만으로 완전히 익명인 집계가 되지 않으므로 “개인을 식별할 수 없는 익명 통계”라고 표시하지 않는다. 세부 항목·도구·저장소·철회는 서버의 현재 원문으로 안내한다. 현재 범위의 유효한 허용 후에만 수집하며 이전 범위의 허용은 자동 승계하지 않는다.
+PostHog distinct ID는 행동을 연결할 수 있다. 프로필을 끈 것만으로 완전히 익명인 집계가 되지 않으므로 “개인을 식별할 수 없는 익명 통계”라고 표시하지 않는다. 세부 항목·도구·저장소·철회는 서버의 현재 원문으로 안내한다. 현재 범위의 유효한 허용 후에만 수집하며 이전 범위의 허용은 자동 승계하지 않는다.
 
 ## 로그인과 가입 고지
 
@@ -65,9 +65,9 @@ OAuth 실패 복귀는 정책 변경으로 단정하지 않고 인증 취소·�
 
 ## 분석과 업무 기록
 
-[GA4](../../../frontend/src/analytics/googleAnalytics.ts), [PostHog](../../../frontend/src/analytics/productAnalytics.ts), [공고 조회](../../../frontend/src/public-housing/api/announcementViews.ts), [알림 노출](../../../frontend/src/public-housing/interest/NotificationInterest.tsx)은 공통 게이트를 검사한다. 허용 전 행동 큐·viewer UUID·알림 session/client UUID를 만들거나 전송하지 않는다. 알림 신청·취소는 계정 업무로 실행하므로 분석 거부와 독립적이다.
+[PostHog](../../../frontend/src/analytics/productAnalytics.ts), [공고 조회](../../../frontend/src/public-housing/api/announcementViews.ts), [알림 노출](../../../frontend/src/public-housing/interest/NotificationInterest.tsx)은 공통 게이트를 검사한다. 허용 전 행동 큐·viewer UUID·알림 session/client UUID를 만들거나 전송하지 않는다. 알림 신청·취소는 계정 업무로 실행하므로 분석 거부와 독립적이다.
 
-PostHog의 지속 저장·사람 프로필·세션 리플레이를 비활성화한다. 중지 시 앱 큐, 분석 저장소·쿠키, GA 대기 명령을 지우고 PostHog opt-out을 호출한다. 인증·CSRF 쿠키와 pending-stop은 지우지 않는다. PostHog opt-out만으로는 기존 배치·재시도 큐가 사라지지 않으므로 실제 전송 경계도 확인한다. SDK가 이미 실행된 환경의 실제 네트워크 중단은 브라우저에서 검증하며 테스트의 SDK mock을 그 증거로 사용하지 않는다. 이미 서버에 도착한 자료의 삭제는 별도 제공자 절차가 필요하다.
+PostHog의 지속 저장·사람 프로필·세션 리플레이를 비활성화한다. 중지 시 앱 큐, 분석 저장소·쿠키를 지우고 PostHog opt-out을 호출한다. 인증·CSRF 쿠키와 pending-stop은 지우지 않는다. PostHog opt-out만으로는 기존 배치·재시도 큐가 사라지지 않으므로 실제 전송 경계도 확인한다. SDK가 이미 실행된 환경의 실제 네트워크 중단은 브라우저에서 검증하며 테스트의 SDK mock을 그 증거로 사용하지 않는다. 이미 서버에 도착한 자료의 삭제는 별도 제공자 절차가 필요하다.
 
 [알림 요청 계약](../notifications/settings.md)에 따라 주체·revision·고지 버전을 보내고 이메일·분석 식별자는 보내지 않는다. 신청 성공 표시에는 현재 대상 상태를 사용한다. 전체 해제는 성공 응답의 revision을 다음 요청에 넘긴다. 응답 유실이면 같은 명령 결과부터 확인하고 다음 대상의 변경을 보류한다. 409는 목록을 갱신하고 나머지 해제를 다시 확인한다.
 
@@ -80,10 +80,9 @@ PostHog의 지속 저장·사람 프로필·세션 리플레이를 비활성화�
 
 ## SDK 설정과 운영 확인
 
-- 로컬 Vite와 Docker 빌드는 루트 `.env`의 `VITE_GA_MEASUREMENT_ID`와 PostHog 공개 설정을 사용할 수 있다. GA는 루트 값이 없을 때 기존 frontend 설정을 유지한다. VITE 공개 설정만 브라우저에 포함하며 서버 비밀값을 넘기지 않는다.
-- 로컬 GA는 `VITE_GA_DEBUG_MODE=true`가 추가로 필요하다. PostHog는 `VITE_ANALYTICS_ENV=dev` 및 `VITE_POSTHOG_LOCAL_ENABLED=true`일 때만 localhost 수집을 허용한다. 환경 설정이 유효해도 동의 전에는 SDK를 로드하지 않는다.
-- GA는 `send_page_view:false`, Google Signals·광고 개인화 비활성화와 정제된 수동 이벤트를 사용한다. `ga-disable-*`는 전송 시점의 동의 상태를 읽고 중지 때 앱/gtag 대기 큐를 비운다. 다시 허용되면 새 이벤트를 보낼 수 있다.
-- GA 데이터 스트림의 **향상된 측정은 관리자에서 별도로 꺼야 한다.** `send_page_view:false`만으로 스크롤·외부 링크·폼 등의 원격 자동 측정까지 비활성화되지는 않는다. 관리자의 Google tag 추가 목적지·자동 이벤트·개인정보 관련 설정도 운영 확인 대상이다.
+- 로컬 Vite와 Docker 빌드는 루트 `.env`의 PostHog 공개 설정을 사용한다. VITE 공개 설정만 브라우저에 포함하며 서버 비밀값을 넘기지 않는다.
+- PostHog는 `VITE_ANALYTICS_ENV=dev` 및 `VITE_POSTHOG_LOCAL_ENABLED=true`일 때만 localhost 수집을 허용한다. 환경 설정이 유효해도 동의 전에는 SDK를 로드하지 않는다.
+- GA4는 2026-11 이후 사용하지 않는다. 이전에 저장된 `_ga*` 쿠키는 분석 중지 시 정리 대상에 남겨 둔다.
 - PostHog는 `opt_in_capturing({captureEventName:false})`로 명시적으로 허용하고, 원격 설정·자동 수집·리플레이·프로필·지속 저장·배치를 끈다. 중지 시 전송 경계를 닫고 진행 중 fetch를 abort한 뒤 SDK 큐를 폐기한다. 재허용 시 새 인스턴스를 사용한다.
 - `posthogTransport.ts`는 **posthog-js 1.438.2**의 공식 no-external 번들과 내부 transport/queue 경계에 의존한다. 패키지 버전 변경 시 설치 SDK 통합 테스트와 실제 브라우저 중지·재허용을 반드시 재검증한다. 다른 번들의 내부 이름이 같다고 가정하지 않는다.
 - HTTP 성공은 수집 엔드포인트 응답의 증거다. 제공자의 대시보드 반영, 보유·삭제 설정과 법적 고지 완결성을 대신하지 않는다.
