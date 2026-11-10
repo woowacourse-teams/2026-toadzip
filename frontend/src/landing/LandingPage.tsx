@@ -192,7 +192,12 @@ export function LandingPage() {
       <footer className={styles.footer}>
         <BrandLink showName className={styles.brand} />
         <p>공공주택을 찾는 당신 곁에, 복덕방</p>
-        <a href="#about">맨 위로 ↑</a>
+        <nav aria-label="사이트 안내" className={styles.footerLinks}>
+          <Link to="/explore">공공주택 지도</Link>
+          <Link to="/feedback">의견 보내기</Link>
+          <Link to="/privacy">개인정보처리방침</Link>
+        </nav>
+        <a className={styles.toTop} href="#about">맨 위로 ↑</a>
         <MobileInstallAction />
       </footer>
     </div>

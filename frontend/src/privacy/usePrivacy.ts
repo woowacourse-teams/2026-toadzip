@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { privacyApi, type Notice } from './api'
 import { consentStore } from './consentStore'
 
-export function usePrivacyConsent() { return useSyncExternalStore(consentStore.subscribe, consentStore.getSnapshot) }
+export function usePrivacyConsent() { return useSyncExternalStore(consentStore.subscribe, consentStore.getSnapshot, consentStore.getSnapshot) }
 export function usePrivacyNotices() {
   const [notices, setNotices] = useState<Notice[]>([])
   const [error, setError] = useState(false)

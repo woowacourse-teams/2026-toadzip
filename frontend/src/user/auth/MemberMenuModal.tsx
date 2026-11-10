@@ -56,7 +56,7 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children, inbox
       </button>
     </header>
     {view !== 'account' ? <>
-      {inboxOnly ? <div className={styles.panel}><NotificationInbox onNavigate={onClose} /></div> : <>
+      {inboxOnly ? <div className={`${styles.panel} ${styles.inboxPanel}`}><NotificationInbox onNavigate={onClose} /></div> : <>
       <div className={styles.tabs} role="tablist" aria-label="알림 구분"
         onKeyDown={(event) => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return

@@ -63,3 +63,10 @@ it('안내에서 설문 모달을 열고 선택한 안내를 같은 세션에서
   act(() => vi.advanceTimersByTime(60_000))
   expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
 })
+
+it('다른 떠 있는 안내가 알린 위치 위에 뜬다', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const css = readFileSync(resolve(process.cwd(), 'src/feedback/FeedbackPrompt.module.css'), 'utf8')
+  expect(css).toMatch(/\.prompt\s*\{[^}]*bottom:\s*var\(--floating-prompt-bottom, 96px\);/)
+})
