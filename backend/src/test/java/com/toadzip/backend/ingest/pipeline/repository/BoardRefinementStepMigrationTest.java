@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -44,6 +45,12 @@ class BoardRefinementStepMigrationTest {
 
                 migrate(connection, "V20261104_06__board_announcement_refinement_steps.sql");
                 migrate(connection, "V20261107_01__board_announcement_collect_refine_steps.sql");
+                migrate(connection, "V20261110_01__async_initial_complex_registration.sql");
+                for (var type : DataPipelineType.values()) {
+                    insert(connection, "data_pipeline_executions", "type", type.name());
+                }
+                assertThatThrownBy(() -> insert(connection, "data_pipeline_executions", "type", "UNKNOWN"))
+                        .isInstanceOf(SQLException.class);
 
                 for (String column : List.of("current_step", "failed_step")) {
                     verifySteps(connection, "data_pipeline_executions", column);

@@ -1,4 +1,4 @@
--- 신청자격 전환 후 읽기 전용 점검. V20261106_01~05 적용 후 primary DB에서 실행한다.
+-- 신청자격 전환 후 읽기 전용 점검. V20261110_04~08 적용 후 primary DB에서 실행한다.
 -- 실행 위치: 저장소 루트. 접속 대상은 운영자가 별도로 선택한다.
 -- psql -X --set ON_ERROR_STOP=1 --file docs/queries/eligibility-status.sql
 -- 프로필·공고·결과 원문과 사용자 ID를 출력하지 않는다.
@@ -28,7 +28,7 @@ LEFT JOIN comparison_notice_rechecks j ON j.announcement_id = a.id
 WHERE a.previous_announcement_id IS NULL AND j.announcement_id IS NULL;
 
 -- JSON 원본과 관계형 투영을 양방향 비교한다. 각 값의 기대값은 0이다.
--- expected는 V20261106_03의 백필 SELECT와 같은 열 순서·기본값을 사용한다.
+-- expected는 V20261110_06의 백필 SELECT와 같은 열 순서·기본값을 사용한다.
 
 WITH expected (rule_set_id, unit_key, label, region_codes, housing_types) AS (
 SELECT r.id, u->>'id', u->>'label',

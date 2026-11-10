@@ -11,7 +11,7 @@ supply_assembly.assemble이 같은 검산을 거쳐 관리자 계약으로 조�
 import re
 from dataclasses import dataclass, field
 
-from ai_worker.tables import SupplyTable, source_row_id, table_column_headers
+from ai_worker.tables import SupplyTable, increase_limit, source_row_id, table_column_headers
 
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
 _AREA_FIELDS = ("exclusiveArea", "commonArea", "supplyArea")
@@ -288,6 +288,9 @@ def _read_rows(tables: list[SupplyTable]) -> list[_SourceRow]:
         for index in range(start, len(table.cells)):
             cells = table.cells[index]
             value = {name: cells[column] if column < len(cells) else None for name, column in columns.items()}
+            if value.get("convertedDeposit") is not None:
+                # 한도액 칸의 증액(+) 한도만 전환보증금이다. 감액(-) 한도 줄은 빈칸으로 읽혀 위 줄 값과 어긋나지 않는다.
+                value["convertedDeposit"] = increase_limit(cells, columns["convertedDeposit"])
             row_id = source_row_id(table.page, table.number, index + 1)
             complex_name, housing, target = value.get("complexName"), value.get("housingType"), value.get("target")
             detail = value.get("targetDetail")

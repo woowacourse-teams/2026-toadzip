@@ -12,18 +12,18 @@
 |---|---|
 | 새 빈 DB | 완성 릴리스로 전체 마이그레이션을 순서대로 적용하고 아래 사후 검증 수행 |
 | Flyway 이력이 있는 기존 DB, 해당 마이그레이션 미적용 | 백업·복제본 검증 후 구 writer 중단을 포함한 아래 전환 수행 |
-| V20261106_01~05 적용 완료 | 재백필하지 않는다. writer 호환과 투영·재판정 상태를 확인하고 후속 릴리스의 적용 조건을 검토 |
+| V20261110_04~08 적용 완료 | 재백필하지 않는다. writer 호환과 투영·재판정 상태를 확인하고 후속 릴리스의 적용 조건을 검토 |
 | 테이블은 있으나 Flyway 이력이 없는 DB | [Flyway 최초 도입](flyway.md)을 먼저 별도로 수행. 이 전환에서 임의 baseline으로 우회하지 않음 |
 
 다음은 마이그레이션의 구분이다. 적용된 파일·checksum을 수정하지 않는다.
 
 | 마이그레이션 | 변환·보존 범위 |
 |---|---|
-| [V20261106_01](../../../backend/src/main/resources/db/migration/V20261106_01__basic_comparison_current_content.sql) | 현재 작성 내용·프로필 테이블 생성. 구 자격 테이블을 자동 변환·삭제하지 않음 |
-| [V20261106_02](../../../backend/src/main/resources/db/migration/V20261106_02__basic_comparison_median_income.sql) | 2026년 중위소득 기준 추가. 이미 있는 종류·연도 값은 덮어쓰지 않음 |
-| [V20261106_03](../../../backend/src/main/resources/db/migration/V20261106_03__comparison_application_structure.sql) | 내용 계약 2/3 허용, 기존 basic_comparison_rule_sets JSON을 관계형 5개 테이블로 한 번 투영. 없는 지역·자격은 추론하지 않음 |
-| [V20261106_04](../../../backend/src/main/resources/db/migration/V20261106_04__comparison_residence_profile.sql) | 입력 계약 2/3 허용. 기존 프로필 JSON·거주 정보를 UPDATE하거나 백필하지 않음 |
-| [V20261106_05](../../../backend/src/main/resources/db/migration/V20261106_05__eligibility_latest_results_and_rechecks.sql) | 최신 결과·발견·작업·변경 트리거 추가. 모든 기존 회원과 최초 공고에 작업 생성. 참조된 소득표 불변성 보호 |
+| [V20261110_04](../../../backend/src/main/resources/db/migration/V20261110_04__basic_comparison_current_content.sql) | 현재 작성 내용·프로필 테이블 생성. 구 자격 테이블을 자동 변환·삭제하지 않음 |
+| [V20261110_05](../../../backend/src/main/resources/db/migration/V20261110_05__basic_comparison_median_income.sql) | 2026년 중위소득 기준 추가. 이미 있는 종류·연도 값은 덮어쓰지 않음 |
+| [V20261110_06](../../../backend/src/main/resources/db/migration/V20261110_06__comparison_application_structure.sql) | 내용 계약 2/3 허용, 기존 basic_comparison_rule_sets JSON을 관계형 5개 테이블로 한 번 투영. 없는 지역·자격은 추론하지 않음 |
+| [V20261110_07](../../../backend/src/main/resources/db/migration/V20261110_07__comparison_residence_profile.sql) | 입력 계약 2/3 허용. 기존 프로필 JSON·거주 정보를 UPDATE하거나 백필하지 않음 |
+| [V20261110_08](../../../backend/src/main/resources/db/migration/V20261110_08__eligibility_latest_results_and_rechecks.sql) | 최신 결과·발견·작업·변경 트리거 추가. 모든 기존 회원과 최초 공고에 작업 생성. 참조된 소득표 불변성 보호 |
 
 프로필 없는 회원의 초기 요청 버전은 0이다. 과거 판정 결과를 옮기는 작업은 없으며 worker가 계산한다.
 구 테이블·API와 현재 저장 계약의 경계는 [호환 문서](../../features/eligibility/compatibility.md#이전-실행-경로와-데이터)를 따른다.
@@ -33,7 +33,7 @@
 1. 승인된 운영자가 대상 환경·DB 식별자·앱 SHA·Flyway 이력과 실행 중인 모든 writer를 확인한다.
    primary DB와 shared DB를 구분한다. application/privacy Flyway는 같은 primary DB·public 스키마에서 별도 이력을 사용한다. 비밀값·프로필·전체 공고 JSON을 기록에 복사하지 않는다.
 2. 전체 DB 백업과 격리 복원을 확인한다. 동일 릴리스의 전체 미적용 마이그레이션과 앱 기동을 복제본에서 검증한다.
-   _03의 PK/FK/NOT NULL에 걸릴 기존 JSON 중복·참조 누락은 실제 데이터 복제본으로 확인해야 한다.
+   _06의 PK/FK/NOT NULL에 걸릴 기존 JSON 중복·참조 누락은 실제 데이터 복제본으로 확인해야 한다.
 3. 기존 계약 버전 분포와 현재 작성 내용·프로필 건수를 기록한다. 복제본에서 새 writer의 초안 저장·복사·
    공개, 입력 계약 2 읽기와 3 저장, 최신/이전 API 계약을 확인한다. 서비스 DB에 임의 시험 공고를 만들지 않는다.
 4. [특별 배포](../deployment.md#db-전환계약-변경이-필요한-특별-배포)에 따라 자동 배포와 별도 자동화를 조정한다.
@@ -63,7 +63,7 @@
 
 ## 사후 검증
 
-[읽기 전용 점검 SQL](../../queries/eligibility-status.sql)은 _01~05 적용 후 실행한다.
+[읽기 전용 점검 SQL](../../queries/eligibility-status.sql)은 _04~08 적용 후 실행한다.
 psql의 연결 대상은 승인된 환경에서 별도로 선택하며 원문·프로필 값 없이 집계만 출력한다.
 대규모 투영 비교는 전체 작성 내용을 읽으므로 먼저 복제본에서 비용을 확인한다.
 
@@ -115,7 +115,7 @@ psql -X --set ON_ERROR_STOP=1 --file docs/queries/eligibility-status.sql
 | 관찰한 문제 | 확인·대응 |
 |---|---|
 | 기동·마이그레이션 실패 | 추가 배포와 쓰기 재개를 멈추고 적용된 버전·현재 스키마·실패 원인을 확인. 뒤 파일 실패가 앞의 성공까지 롤백했다고 가정하지 않음 |
-| JSON과 투영 불일치 | 구 writer 실행·직접 갱신 여부와 영향 작성 단위를 확인. 앱 재시작은 적용된 _03을 다시 실행하지 않음. 검증된 새 writer 재저장 또는 별도 보정안을 복제본에서 검증한 뒤 적용 |
+| JSON과 투영 불일치 | 구 writer 실행·직접 갱신 여부와 영향 작성 단위를 확인. 앱 재시작은 적용된 _06을 다시 실행하지 않음. 검증된 새 writer 재저장 또는 별도 보정안을 복제본에서 검증한 뒤 적용 |
 | 재판정 미시작·정체 | enabled·앱 실행·DB 연결·작업 상태·오류·lease를 확인. 만료 claim은 재선점 가능하며 재활성화 후 커서 진전을 확인 |
 | 반복 오류 | 오류 코드와 개인정보 없는 로그의 errorType으로 원인 확인 후 수정. 작업 삭제·수동 DONE 변경·커서 초기화로 완료처럼 만들지 않음 |
 | 앱 이전 버전 복귀 필요 | 현재 schema3·입력·투영을 해당 버전이 읽고 보존할 수 있는지 먼저 확인. 호환이 검증되지 않은 구 writer는 재개하지 않음 |

@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type DataPipelineType =
+  | 'COMPLEX_REGISTRATION'
   | 'COMPLEX_COLLECTION'
   | 'COMPLEX_REFINEMENT'
   | 'ANNOUNCEMENT_COLLECTION'
@@ -362,6 +363,18 @@ export type InitialRegistrationResponse = {
 }
 const initialRegistrationPath = '/api/admin/ingest/myhome/initial-registration'
 
+export type InitialRegistrationRunResponse = {
+  counts: Record<InitialRegistrationStatus, number>; targetCount: number; uniqueAddressCount: number
+}
+
+export async function registerReadyComplexes(): Promise<DataPipelineExecution> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/register`, {
+    method: 'POST', credentials: 'include', headers: { [token.headerName]: token.token },
+  })
+  return readExecutionResponse(response)
+}
+
 export async function getInitialRegistration(status: InitialRegistrationStatus | '', page: number, size: number): Promise<InitialRegistrationResponse> {
   const query = new URLSearchParams({ page: String(page), size: String(size) })
   if (status) query.set('status', status)
@@ -511,7 +524,7 @@ function isLocationSummaryImportReport(value: unknown): value is LocationSummary
 }
 
 function isDataPipelineType(value: unknown): value is DataPipelineType {
-  return value === 'COMPLEX_COLLECTION'
+  return value === 'COMPLEX_REGISTRATION' || value === 'COMPLEX_COLLECTION'
     || value === 'COMPLEX_REFINEMENT'
     || value === 'ANNOUNCEMENT_COLLECTION'
     || value === 'ANNOUNCEMENT_REFINEMENT'
@@ -538,6 +551,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function pipelinePath(type: DataPipelineType): string {
   const paths: Record<DataPipelineType, string> = {
+    COMPLEX_REGISTRATION: 'complex-registration',
     COMPLEX_COLLECTION: 'complex-collection',
     COMPLEX_REFINEMENT: 'complex-refinement',
     ANNOUNCEMENT_COLLECTION: 'announcement-collection',

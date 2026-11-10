@@ -8,15 +8,16 @@ import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionQuerySer
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -39,12 +40,15 @@ public class DataPipelineController {
      */
     @PostMapping("/{type}")
     public ResponseEntity<DataPipelineExecutionResponse> start(
-            @PathVariable String type, @RequestBody(required = false) String body
+            @PathVariable String type, @RequestBody(required = false) String body, Principal actor
     ) {
         DataPipelineType pipelineType = DataPipelineType.fromPathValue(type);
         if (body != null && !body.isBlank()) {
             throw new InvalidIngestRequestException(
                     "수집 실행은 요청 본문을 받지 않습니다. 공공데이터포털 수집 키는 서버 설정으로만 사용합니다.");
+        }
+        if (pipelineType == DataPipelineType.COMPLEX_REGISTRATION) {
+            return ResponseEntity.accepted().body(executionService.start(pipelineType, actor.getName()));
         }
         return ResponseEntity.accepted().body(executionService.start(pipelineType));
     }

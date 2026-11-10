@@ -47,10 +47,10 @@ erDiagram
     comparison_latest_results ||--o| comparison_discoveries : may_produce
 ```
 
-DDL 원본은 [현재 내용·프로필](../../../backend/src/main/resources/db/migration/V20261106_01__basic_comparison_current_content.sql),
-[관계형 공고](../../../backend/src/main/resources/db/migration/V20261106_03__comparison_application_structure.sql),
-[입력 계약](../../../backend/src/main/resources/db/migration/V20261106_04__comparison_residence_profile.sql),
-[최신 결과·재판정](../../../backend/src/main/resources/db/migration/V20261106_05__eligibility_latest_results_and_rechecks.sql)이다.
+DDL 원본은 [현재 내용·프로필](../../../backend/src/main/resources/db/migration/V20261110_04__basic_comparison_current_content.sql),
+[관계형 공고](../../../backend/src/main/resources/db/migration/V20261110_06__comparison_application_structure.sql),
+[입력 계약](../../../backend/src/main/resources/db/migration/V20261110_07__comparison_residence_profile.sql),
+[최신 결과·재판정](../../../backend/src/main/resources/db/migration/V20261110_08__eligibility_latest_results_and_rechecks.sql)이다.
 서비스 DB 적용 여부는 운영 환경에서 별도로 확인한다.
 
 ## 공고 구조화 테이블

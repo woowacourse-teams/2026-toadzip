@@ -32,7 +32,12 @@ class MyHomeInitialRegistrationAssessment {
         if (linked != null) {
             return existing(linked);
         }
-        List<Product> candidates = index.candidates(sources);
+        String preparedAddress = null;
+        if (target.getLocation() != null
+                && target.getLocation().isAdministratorValueFor(sources.getFirst().getRnAdres())) {
+            preparedAddress = target.getLocation().getAddress();
+        }
+        List<Product> candidates = index.candidates(sources, preparedAddress);
         if (!candidates.isEmpty()) {
             Assessment result = candidate(sources, candidates, index);
             if (result.complexId() == null) {

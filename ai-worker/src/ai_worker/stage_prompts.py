@@ -24,6 +24,17 @@ _SCHEMA_SUFFIX = _prompt_text("schema-suffix.txt")
 _LH_FRAME = _prompt_text("lh-frame.txt")
 
 
+_APPLICATION_CONDITIONS = {
+    "type": "array",
+    "description": "신청자격 요약. target이 null이면 공고 전체 조건, 아니면 그 공급대상에만 해당하는 조건이다.",
+    "items": {
+        "type": "object",
+        "properties": {"target": {"type": ["string", "null"]}, "condition": {"type": "string"}},
+        "required": ["target", "condition"],
+    },
+}
+
+
 def _notice_schema() -> str:
     """관리자 스키마에서 본문 단계가 맡은 필드만 남겨 모델이 동시에 채울 필드를 줄인다."""
     schema = json.loads(json.dumps(_SCHEMA))
@@ -36,7 +47,9 @@ def _notice_schema() -> str:
 
     data["properties"] = {name: data_properties[name] for name in data_names}
     data["properties"]["complexes"] = _project_complex_schema(data_properties["complexes"], complex_fields)
-    data["required"] = [name for name in data["required"] if name in data_names]
+    # 신청자격은 본문 단계만 읽는다. 관리자 계약에는 없고 merge가 대상 신청 조건(applicationCondition)에 합친다.
+    data["properties"]["applicationConditions"] = _APPLICATION_CONDITIONS
+    data["required"] = [name for name in data["required"] if name in data_names] + ["applicationConditions"]
     schema["properties"] = {name: value for name, value in root.items() if name in (*root_names, "data")}
     schema["required"] = [name for name in schema["required"] if name in schema["properties"]]
     return json.dumps(schema, ensure_ascii=False, indent=2)

@@ -312,6 +312,23 @@ describe('관리자 데이터 수집·정제 API', () => {
   })
 })
 
+it('준비된 신규 단지 등록은 CSRF를 보내고 즉시 실행 접수를 읽는다', async () => {
+  const data = { executionId: 'async-1', type: 'COMPLEX_REGISTRATION', status: 'RUNNING', currentStepName: null,
+    currentStepIndex: 0, totalStepCount: 1, completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null }
+  const fetchMock = prepareFetch(data, 202)
+  const { registerReadyComplexes } = await import('./api.ts')
+  await expect(registerReadyComplexes()).resolves.toEqual(data)
+  expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/register', {
+    method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' },
+  })
+})
+
+it('실행 접수 정보가 빠지면 성공으로 표시하지 않는다', async () => {
+  prepareFetch({ counts: { COMPLETED: 2 }, targetCount: 2, uniqueAddressCount: 1 }, 202)
+  const { registerReadyComplexes } = await import('./api.ts')
+  await expect(registerReadyComplexes()).rejects.toThrow()
+})
+
 function refreshReport() {
   return { operation: 'lh-announcement-supply', storedRowCount: 2, failedRequestCount: 0,
     externalApiCallCount: 1, skippedRequestCount: 0, rateLimitedRequestCount: 0,

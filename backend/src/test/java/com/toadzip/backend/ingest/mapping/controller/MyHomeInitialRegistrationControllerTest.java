@@ -11,6 +11,9 @@ import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationRequest;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationResponse;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +34,20 @@ class MyHomeInitialRegistrationControllerTest {
 
     @MockitoBean
     private MyHomeInitialRegistrationService service;
+
+    @MockitoBean
+    private DataPipelineExecutionService execution;
+
+    @Test
+    void 준비된_신규_단지만_최초_등록할_수_있다() throws Exception {
+        when(execution.start(DataPipelineType.COMPLEX_REGISTRATION, "admin"))
+                .thenReturn(DataPipelineExecutionResponse.idle(DataPipelineType.COMPLEX_REGISTRATION));
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/register")
+                        .principal(() -> "admin"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type").value("COMPLEX_REGISTRATION"));
+        verify(execution).start(DataPipelineType.COMPLEX_REGISTRATION, "admin");
+    }
 
     @Test
     void 최초_등록_대상_진행_상태를_조회한다() throws Exception {

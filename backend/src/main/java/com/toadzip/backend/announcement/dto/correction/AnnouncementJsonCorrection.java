@@ -68,7 +68,8 @@ public final class AnnouncementJsonCorrection {
     public record Change(String field, Object before, Object after) { }
     public record EventChange(int inputIndex, Long existingId, ScheduleRequest before, ScheduleRequest after) { }
     public record AttachmentChange(int inputIndex, Long existingId, AttachmentRequest before, AttachmentRequest after) { }
+    /** unchanged는 저장할 변경이 하나도 없다는 뜻이다. 적용해도 아무것도 쓰지 않고 지금 값을 돌려준다. */
     public record Preview(String confirmationToken, List<Change> fields, SupplyCorrection.Preview supply,
             List<EventChange> schedules, List<AttachmentChange> attachments, List<HousingTypeChange> housingTypes,
-            List<String> housingTypeWarnings, List<String> warnings, boolean publishes) { }
+            List<String> housingTypeWarnings, List<String> warnings, boolean publishes, boolean unchanged) { }
 }

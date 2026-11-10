@@ -26,15 +26,18 @@ import com.toadzip.backend.ingest.gh.refinement.service.GhAnnouncementRefinement
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
-import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementSharedRequestCollector;
+import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
+import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationRunResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
-import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationExecutionService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
@@ -88,6 +91,8 @@ class DataPipelineRunnerTest {
     private final GhAnnouncementCollectionService ghAnnouncementCollectionService =
             mock(GhAnnouncementCollectionService.class);
 
+    private final MyHomeInitialRegistrationExecutionService registration =
+            mock(MyHomeInitialRegistrationExecutionService.class);
     private DataPipelineStepResultAdapter resultAdapter;
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
@@ -110,11 +115,25 @@ class DataPipelineRunnerTest {
                         ghAnnouncementCollectionService,
                         mock(ShAnnouncementRefinementService.class),
                         mock(GhAnnouncementRefinementService.class),
-                        mock(DataPipelineExecutionRepository.class)
+                        mock(DataPipelineExecutionRepository.class),
+                        registration
                 ),
                 executionStateService,
                 meterRegistry
         );
+    }
+
+    @Test
+    void 신규_등록은_실행자를_전달하고_단지별_실패를_실행_결과에_남긴다() {
+        var id = UUID.randomUUID();
+        when(registration.register("admin")).thenReturn(new InitialRegistrationRunResponse(
+                Map.of(InitialRegistrationStatus.COMPLETED, 2L,
+                        InitialRegistrationStatus.FAILED, 1L), 3, 2));
+        assertThatThrownBy(() -> runner.registerComplexes(id, "admin"))
+                .isInstanceOf(DataPipelinePartialFailureException.class);
+        verify(registration).register("admin");
+        verify(executionStateService).recordPartialFailure(eq(id), eq(DataPipelineStep.REGISTER_MYHOME_COMPLEXES),
+                org.mockito.ArgumentMatchers.contains("targetCount"));
     }
 
     @Test

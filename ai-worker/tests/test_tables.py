@@ -36,6 +36,77 @@ def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
     assert columns["convertedDeposit"] == 8
 
 
+# 임대조건표의 전환가능 보증금 한도액 칸을 PyMuPDF가 읽은 모양(행 일부만). 옆에 전환 뒤 총액인 최대전환 시 보증금 열이 있다.
+SAMCHEOK_CONVERSION_CELLS = [
+    ["단지명", "주 택 형", "임대조건", None, None, None, "전환가능 보증금 한도액(원)", "최대전환시 임대조건", None],
+    [None, None, "임대보증금(원)", None, None, "월임대료 (원)", None, None, None],
+    [None, None, None, None, None, None, None, "보증금 (원)", "월임대료 (원)"],
+    [None, None, "계", "계약금", "잔금", None, None, None, None],
+    ["삼척도계", "46", "24,546,000", "1,200,000", "23,346,000", "92,720", "(+) 6,000,000", "30,546,000", "62,720"],
+    [None, None, None, None, None, None, "(-) 20,000,000", "4,546,000", "151,050"],
+]
+# 한도액 머리글이 부호 칸과 금액 칸을 함께 덮는 표(광주첨단 행복주택)
+CHEOMDAN_CONVERSION_CELLS = [
+    ["단지명", "공급 형별 (㎡)", "공급대상", None, "임대조건(원)", None, None, None, "전환가능 보증금 한도액 (원)", None,
+     "최대전환시 임대조건(원)", None, "최대 거주 기간 (년)"],
+    [None, None, None, None, "임대보증금", None, None, "월임대료", None, None, None, None, None],
+    [None, None, None, None, "계", "계약금", "잔금", None, None, None, "임대보증금", "월임대료", None],
+    ["첨단 H-1BL", "39(창업인)", "청년 창업인", None, "41,848,000", "2,092,400", "39,755,600", "226,670", "(+)",
+     "27,000,000", "68,848,000", "91,670", "10년(무자녀) 14년(유자녀))"],
+    [None, None, None, None, None, None, None, None, "( - )", "34,000,000", "7,848,000", "325,830", None],
+    [None, None, "청 년", "소득(×)", "35,570,000", "1,778,500", "33,791,500", "192,670", "(+)", "23,000,000",
+     "58,570,000", "77,670", "10년"],
+]
+# 증액·감액 조건을 따로 둔 표(충북혁신4)
+CHUNGBUK_CONVERSION_CELLS = [
+    ["단지명 (블록)", "주택형 (타입)", "임대조건", None, None, None, "증액 (현행 전환요율 5% 적용 시)", None, None,
+     "감액 (현행 전환요율 3.5% 적용 시)", None, None],
+    [None, None, "임대보증금", None, None, "월 임대료", None, None, None, None, None, None],
+    [None, None, "합계", "계약금 (계약 시)", "잔금 (입주 시)", None, "한도액", "보증금", "임대료", "한도액", "보증금", "임대료"],
+    ["충북혁신4 (천년나무4)", "059.9800A (59A)", "33,148,000", "6,600,000", "26,548,000", "292,150", "42,000,000",
+     "75,148,000", "117,150", "-24,000,000", "9,148,000", "362,150"],
+]
+
+
+def test_conversion_limit_column_is_the_converted_deposit_not_the_deposit_after_maximum_conversion():
+    table = tables.SupplyTable.of(2, 3, SAMCHEOK_CONVERSION_CELLS, None, False)
+
+    assert table.columns["convertedDeposit"] == 6
+    assert table.rows[4].values["convertedDeposit"] == "6,000,000"
+    assert table.rows[4].values["convertedDepositUnit"] == "원"
+    # 감액(-) 한도 줄은 전환보증금(증액 한도)이 아니다.
+    assert "convertedDeposit" not in table.rows[5].values
+
+
+@pytest.mark.parametrize(("cell", "expected"), [
+    ("(+) 5,000,000 (-) 26,000,000", "5,000,000"),
+    ("( ) , (+) 4,000", "4,000"),
+    ("27,000,000", "27,000,000"),
+    ("( ) , (- ) 6,000", None),
+    ("( ) , (+) -", None),
+    ("( ) 31000000\n- , ,", None),
+])
+def test_converted_deposit_cell_is_read_as_its_increase_limit_only(cell, expected):
+    rows = [*SAMCHEOK_CONVERSION_CELLS[:4], ["삼척도계", "46", "24,546,000", "1,200,000", "23,346,000", "92,720", cell,
+                                             "30,546,000", "62,720"]]
+
+    assert tables.SupplyTable.of(2, 3, rows, None, False).rows[4].values.get("convertedDeposit") == expected
+
+
+def test_conversion_limit_split_into_sign_and_amount_cells_reads_the_increase_rows():
+    table = tables.SupplyTable.of(3, 2, CHEOMDAN_CONVERSION_CELLS, None, False)
+
+    assert table.columns["convertedDeposit"] == 9
+    assert [row.values.get("convertedDeposit") for row in table.rows[3:]] == ["27,000,000", None, "23,000,000"]
+
+
+def test_increase_limit_column_of_a_table_split_into_increase_and_decrease_is_the_converted_deposit():
+    table = tables.SupplyTable.of(4, 1, CHUNGBUK_CONVERSION_CELLS, None, False)
+
+    assert table.columns["convertedDeposit"] == 6
+    assert table.rows[3].values["convertedDeposit"] == "42,000,000"
+
+
 def test_continued_table_page_reuses_the_previous_page_header_columns():
     headers = [
         ["단지명", "공급형", None, "공급 대상", "모집 호수", "세대 당 계약면적(㎡)", None],
@@ -217,6 +288,39 @@ def test_merged_complex_cell_names_every_row_it_spans():
     table = tables.SupplyTable.of(4, 2, rows, None, False)
 
     assert [row.values.get("complexName") for row in table.rows[1:]] == ["동탄2 A40BL", "동탄2 A40BL", "동탄2 A50BL", None]
+
+
+def test_merged_target_and_rent_cells_belong_to_every_housing_type_row_but_merged_counts_do_not():
+    # 광주선운2: 55A-1·55B-1이 공급대상·임대조건 칸 하나를 함께 쓰고 예비자 수는 형마다 따로다. 전환 한도는 위 행이 증액(+),
+    # 아래 행이 감액(-) 줄이라 아래 행의 증액 한도도 위 행 값이다. 세로로 병합된 수량 칸(55C-1 예비자 수)은 이어받지 않는다.
+    rows = [
+        ["공급형별", "공급대상", "대기중인 예비자수", "금회모집 예비자수", "임대보증금(천원)", "월임대료(원)",
+         "전환가능 보증금 한도액(천원)", None],
+        ["55A-1", "신혼부부·한부모가족", "-", "20", "67,400", "342,610", "(+)", "41,000"],
+        ["55B-1", None, "-", "20", None, None, "(-)", "55,000"],
+        ["55C-1", None, "-", None, None, None, "(-)", "55,000"],
+    ]
+
+    lower, merged_count = tables.SupplyTable.of(4, 2, rows, None, False).rows[2:]
+
+    assert {name: lower.values.get(name) for name in ("target", "reserveCount", "rentalDeposit", "monthlyRent",
+                                                      "convertedDeposit")} == {
+        "target": "신혼부부·한부모가족", "reserveCount": "20", "rentalDeposit": "67,400", "monthlyRent": "342,610",
+        "convertedDeposit": "41,000"}
+    assert "reserveCount" not in merged_count.values
+    assert merged_count.values["target"] == "신혼부부·한부모가족"
+
+
+def test_lower_row_keeps_its_own_increase_limit_when_rent_cells_are_merged():
+    rows = [
+        ["공급형별", "공급대상", "금회모집 예비자수", "임대보증금(천원)", "월임대료(원)", "전환가능 보증금 한도액(천원)", None],
+        ["55A-1", "신혼부부", "20", "67,400", "342,610", "(+)", "41,000"],
+        ["55B-1", None, "20", None, None, "(+)", "39,000"],
+    ]
+
+    lower = tables.SupplyTable.of(4, 2, rows, None, False).rows[2]
+
+    assert lower.values["convertedDeposit"] == "39,000"
 
 
 def test_supply_area_parent_header_over_exclusive_and_common_columns_is_not_the_supply_area():

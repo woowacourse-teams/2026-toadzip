@@ -100,7 +100,7 @@ class EligibilityMigrationTest {
                           "options":[]}')
                     """);
             sql.execute(new ClassPathResource(
-                    "db/migration/V20261106_03__comparison_application_structure.sql")
+                    "db/migration/V20261110_06__comparison_application_structure.sql")
                     .getContentAsString(StandardCharsets.UTF_8));
             assertThat(count(sql, "comparison_supply_units")).isEqualTo(2);
             assertThat(count(sql, "comparison_paths")).isEqualTo(2);
@@ -131,7 +131,7 @@ class EligibilityMigrationTest {
                 }
                 sql.execute(
                         new ClassPathResource(
-                                        "db/migration/V20261106_01__basic_comparison_current_content.sql")
+                                        "db/migration/V20261110_04__basic_comparison_current_content.sql")
                                 .getContentAsString(StandardCharsets.UTF_8));
                 check.run(sql);
             } finally {

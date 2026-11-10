@@ -142,8 +142,8 @@ class LegacyEligibilityMigrationTest {
                 sql.execute("INSERT INTO announcement_complexes VALUES (1)");
                 for (String file :
                         java.util.List.of(
-                                "V20261105_04__eligibility_current_rule_sets.sql",
-                                "V20261105_05__eligibility_reference_data.sql")) {
+                                "V20261110_02__eligibility_current_rule_sets.sql",
+                                "V20261110_03__eligibility_reference_data.sql")) {
                     sql.execute(
                             new ClassPathResource("db/migration/" + file)
                                     .getContentAsString(StandardCharsets.UTF_8));

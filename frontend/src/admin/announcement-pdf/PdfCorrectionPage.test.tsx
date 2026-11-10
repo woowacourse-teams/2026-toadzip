@@ -136,6 +136,17 @@ it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안�
   expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
   expect(within(screen.getByRole('region', { name: '공고로 갱신한 주택타입' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 이름 26A · 공급면적 52.5㎡ · 세대수 120', '26: 관리자가 고친 세대수를 유지합니다.'])
 })
+it('서버가 저장할 변경이 없다고 해도 오류 없이 적용해 공고문 확인을 남기고 변경 없음 결과를 보인다', async () => {
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ unchanged: true }))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('heading', { name: '저장할 변경이 없습니다.' })
+  const result = screen.getByRole('heading', { name: '저장할 변경이 없습니다.' }).closest('section')!
+  expect(result).toHaveTextContent('공고문으로 확인한 것으로 남겼습니다.')
+  expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', api.previewJsonUpdate.mock.calls[0][1], 'confirmed')
+  expect(within(result).getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
 /** GH·SH 원천으로 만든 미확정 공고. 임대·모집 유형이 비어 있고 사용자에게 보이지 않는다. */
 function unconfirmedWorkspace() {
   return { ...workspace, detail: { ...workspace.detail,
@@ -603,28 +614,28 @@ it('적용할 수 없는 값이 있으면 오류를 알리고 그 항목으로 �
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
 })
 
-it('대상들이 함께 쓰는 모집수는 안내만 하고 대상별 모집수는 비워 저장한다', async () => {
+it('대상들이 함께 쓰는 모집수는 대상마다 나누지 않고 공통 모집수 하나로 저장한다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
   extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년' })
   extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'], count: 39, page: 3, quote: '대학생 청년 39' }]
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
-  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 모집수입니다. 대상별 모집수는 비워 둡니다.')).toBeVisible()
+  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 모집수입니다. 대상마다 나누지 않고 공통 모집수로 저장합니다.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.correction).not.toHaveProperty('newGroups')
-  expect(input.correction.rows.find(row => row.typeName === '26A')?.targets.map(target => target.householdCount)).toEqual([null, null])
+  expect(input.correction.rows.find(row => row.typeName === '26A')?.targets.map(target => [target.householdCount, target.householdCountGroup])).toEqual([[null, { key: 'pdf:0', count: 39 }], [null, { key: 'pdf:0', count: 39 }]])
 })
 
-it('대상들이 함께 쓰는 이번 예비자 모집수는 명 단위로 안내하고 대상별 수를 만들지 않는다', async () => {
+it('대상들이 함께 쓰는 이번 예비자 모집수는 명 단위로 안내하고 공통 예비자 모집수로 저장한다고 알린다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
   extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년', reserveCount: null })
   extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '대학생 청년 예비자 20' }]
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   expect(screen.getByText('공통 예비자 모집 20명', { selector: 'strong' })).toBeVisible()
-  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 예비자 모집수입니다. 대상마다 나누지 않고 공통 예비자 모집수로 저장합니다.')).toBeVisible()
 })
 
 it('서로 다른 면적 행의 대상들이 함께 쓰는 예비자 모집수는 그 행들을 한 공급행으로 접고 그 행 이름으로 안내한다', async () => {
@@ -634,7 +645,7 @@ it('서로 다른 면적 행의 대상들이 함께 쓰는 예비자 모집수�
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   // 공고문이 두 면적에 걸쳐 수를 한 번만 적었으면 두 면적은 공급행 하나의 세부 타입이다(결정 1).
-  expect(screen.getByText('26A·26B에서 일반 · 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+  expect(screen.getByText('26A·26B에서 일반 · 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상마다 나누지 않고 공통 예비자 모집수로 저장합니다.')).toBeVisible()
 })
 
 it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요로 한 번 등록해 같은 단지 공급행 전체에 연결한다', async () => {

@@ -118,6 +118,21 @@ class InitialRegistrationTargetRepositoryTest {
     }
 
     @Test
+    void 괄호가_여러_개인_준비_주소도_기존_단지_후보를_누락하지_않는다() {
+        String address = "서울특별시 종로구 테스트로 1 (동명) (단지명)";
+        var complex = HousingComplex.createFromMyHome("PDF 등록", "ADMIN_ENTRY-HOUSING-COMPLEX-address",
+                "HAPPY_HOUSING", Address.create(address, null, "1111010100", "11", "11110",
+                        new BigDecimal("37.5"), new BigDecimal("127")),
+                100, "LH", null, null, null, null, null, 100);
+        entityManager.persist(complex);
+        entityManager.flush();
+
+        assertThat(products.findRegistrationCandidates("123:HAPPY_HOUSING", List.of("다른 PNU"),
+                List.of("다른 이름"), List.of(address))).extracting(InitialRegistrationProductStore.Product::id)
+                .containsExactly(complex.getId());
+    }
+
+    @Test
     void 제품과_연결_기록은_실제_서비스_테이블에서_읽는다() {
         var complex = HousingComplex.createFromMyHome("등록 단지", "123:HAPPY_HOUSING", "HAPPY_HOUSING",
                 Address.create("서울특별시 종로구 테스트로 1", "1111010100100010000", "1111010100", "11", "11110",

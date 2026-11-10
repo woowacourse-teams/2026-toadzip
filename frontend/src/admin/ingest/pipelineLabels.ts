@@ -1,6 +1,7 @@
 import type { DataPipelineType } from './api'
 
 export const pipelineLabels: Record<DataPipelineType, string> = {
+  COMPLEX_REGISTRATION: '신규 단지 등록',
   COMPLEX_COLLECTION: '단지 수집',
   COMPLEX_REFINEMENT: '단지 정제',
   ANNOUNCEMENT_COLLECTION: '공고 수집',

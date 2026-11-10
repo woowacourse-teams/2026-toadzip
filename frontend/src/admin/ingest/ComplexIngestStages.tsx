@@ -11,10 +11,10 @@ import { ComplexStageHelp } from './ComplexStageHelp'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
 import { InitialRegistrationProgress } from './InitialRegistrationProgress'
 
-export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy }: {
+export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy, onShowHistory }: {
   states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; collectionBlocked?: boolean; startingType: DataPipelineType | null
   stopping: Partial<Record<DataPipelineType, boolean>>; onStart: (type: DataPipelineType) => void
-  onStop: (type: DataPipelineType) => void; onRefresh: (type: DataPipelineType) => void; onUploadBusy: (busy: boolean) => void
+  onStop: (type: DataPipelineType) => void; onRefresh: (type: DataPipelineType) => void; onUploadBusy: (busy: boolean) => void; onShowHistory?: () => void
 }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -25,7 +25,7 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
   const steps = [
     { id: 'complex-collection', label: '1 원천 수집' },
     { id: 'complex-location', label: '2 주소·좌표 준비' },
-    { id: 'complex-registration', label: '3 단지 등록' },
+    { id: 'complex-registration', label: '3 신규 단지 등록' },
   ]
   const selected = location.hash === '#complex-refinement' ? 2
     : Math.max(0, steps.findIndex(step => location.hash === `#${step.id}`))
@@ -50,6 +50,7 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
   }
   function isRunning(index: number) {
     if (index === 1) return uploading
+    if (index === 2) return startingType === 'COMPLEX_REGISTRATION' || states.COMPLEX_REGISTRATION.execution.status === 'RUNNING'
     if (index !== 0) return false
     const execution = latest('COMPLEX_COLLECTION')
     return execution.status === 'RUNNING' && (execution.type !== 'COMPLEX_SYNC'
@@ -103,7 +104,11 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
         revision={latest('COMPLEX_COLLECTION').finishedAt ?? ''} onChanged={() => setLocationRevision(value => value + 1)} />
     </section>
     <section id="complex-registration" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
-      <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy}
+      <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy} onShowHistory={onShowHistory}
+        registration={states.COMPLEX_REGISTRATION} starting={startingType === 'COMPLEX_REGISTRATION'}
+        stopControl={<ComplexExecutionStop execution={states.COMPLEX_REGISTRATION.execution} label="등록 중지"
+          stopping={stopping.COMPLEX_REGISTRATION} onStop={() => onStop('COMPLEX_REGISTRATION')} />}
+        onRegister={() => onStart('COMPLEX_REGISTRATION')} onRefreshRegistration={() => onRefresh('COMPLEX_REGISTRATION')}
         revision={`${latest('COMPLEX_COLLECTION').finishedAt ?? ''}-${uploading}-${locationRevision}`} />
     </section>
   </div>

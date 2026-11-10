@@ -11,7 +11,7 @@
 | [관심·신청 지표](notification-interest-metrics.sql) | 노출·클릭과 긍정 응답, 현재 회원 설정을 구분해 집계 |
 | [보유 상태](notification-retention-status.sql) | 오래된 기존 이벤트와 유효 신청이 없는 이메일 자료 확인 |
 | [스키마 상태](notification-schema-status.sql) | 접속 대상·Flyway 이력·필수 스키마 확인. psql의 실행 전제를 파일에서 확인 |
-| [신청자격 전환·재판정 상태](eligibility-status.sql) | V20261106_01~05 적용 후 요청 누락·JSON/관계형 투영 차이·작업 상태·제약·트리거를 읽기 전용으로 확인 |
+| [신청자격 전환·재판정 상태](eligibility-status.sql) | V20261110_04~08 적용 후 요청 누락·JSON/관계형 투영 차이·작업 상태·제약·트리거를 읽기 전용으로 확인 |
 | [기관별 공고 원천 정리 대상](agency-announcement-migration-preflight.sql) | `V20261104_03`·`_04` 적용 전 LH 비건설임대 목록·기존 SH 원천·닫힐 SH 수집 실패 건수를 읽기 전용 트랜잭션에서 조회 |
 
 ## 관련 문서

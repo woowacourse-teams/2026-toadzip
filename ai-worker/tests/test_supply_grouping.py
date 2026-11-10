@@ -291,6 +291,20 @@ def test_converted_deposit_is_read_only_from_an_increase_limit_column():
         "원본 8, 9쪽 전환보증금 열은 증액 한도가 아닌 전환 뒤 금액이라 비워 두었습니다. 필요하면 원본에서 확인해 주세요."]
 
 
+def test_converted_deposit_is_the_increase_limit_beside_the_deposit_after_maximum_conversion():
+    quantity = table(4, [["Alpha", "26B", "청년", "5", "26.73", "13.07"]])
+    # 증액(+)·감액(-) 한도를 위아래 줄로 적은 한도액 열과 전환 뒤 총액 열이 함께 있다(삼척도계 임대조건표 모양).
+    rent = table(8, [["Alpha", "26B", "청년", None, "24,546", "92,720", "(+) 6,000,000", "30,546,000"],
+                     [None, None, None, None, None, None, "(-) 20,000,000", "4,546,000"]],
+                 header=[[*RENT_HEADER[0], "전환가능 보증금 한도액(원)", "최대전환시 임대보증금(원)"]])
+
+    grouped, tree = assemble([quantity, rent])
+
+    assert tree["data"]["supplyRows"][0]["targets"][0]["convertedDeposit"] == 6000000
+    assert not any(path.endswith("convertedDeposit") for path in unresolved_paths(tree))
+    assert not any("전환보증금" in warning for warning in grouped.warnings)
+
+
 def test_uncertain_or_empty_supply_tables_are_left_to_the_model():
     quantity = table(4, [["Alpha", "26B", "청년", "5", "26.73", "13.07"]])
     uncertain = table(5, [["Alpha", "36A", "고령자", "2", "36.9", "18.0"]], ambiguous=True)
