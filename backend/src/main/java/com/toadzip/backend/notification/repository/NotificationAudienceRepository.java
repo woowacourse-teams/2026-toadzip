@@ -2,6 +2,7 @@ package com.toadzip.backend.notification.repository;
 
 import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot;
 import com.toadzip.backend.notification.domain.NotificationContent;
+import com.toadzip.backend.notification.domain.NotificationRecipient;
 import com.toadzip.backend.region.repository.RegionSearchRepository;
 import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot.ComplexTarget;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
@@ -85,64 +86,68 @@ public class NotificationAudienceRepository {
         return jdbc.queryForObject("SELECT COALESCE(max(id),0) FROM users", Long.class);
     }
 
-    public List<Long> findRecipientIds(NotificationAudienceSnapshot snapshot, Instant occurredAt,
+    private List<Long> findScheduleRecipientIds(NotificationAudienceSnapshot snapshot, Instant occurredAt,
+            long afterUserId, long upperUserId, int limit, Instant now) {
+        return jdbc.queryForList("""
+                SELECT user_id FROM notification_subscriptions WHERE active AND expires_at>? AND activated_at<=?
+                    AND target_type='ANNOUNCEMENT' AND target_id=? AND user_id>? AND user_id<=?
+                ORDER BY user_id LIMIT ?
+                """, Long.class, Timestamp.from(now), Timestamp.from(occurredAt),
+                Long.toString(snapshot.schedule().announcementId()), afterUserId, upperUserId, limit);
+    }
+
+    public boolean isSubscribed(long userId, NotificationAudienceSnapshot snapshot, Instant occurredAt, Instant now) {
+        if (snapshot.schedule() != null) {
+            return schedules.isCurrent(snapshot.schedule(), now)
+                    && !findScheduleRecipientIds(snapshot, occurredAt, userId - 1, userId, 1, now).isEmpty();
+        }
+        String[] complexIds = snapshot.complexes().stream().map(value -> Long.toString(value.id())).toArray(String[]::new);
+        if (complexIds.length == 0) {
+            return false;
+        }
+        // 발송마다 실행되므로 대상 목록을 배열 파라미터로 넘겨 SQL 문장을 고정한다(긴 IN 목록의 계획 수립 반복 방지).
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM notification_subscriptions WHERE user_id=? AND active
+                    AND expires_at>? AND activated_at<=?
+                    AND ((target_type='COMPLEX' AND target_id=ANY(?::varchar[]))
+                        OR (target_type='REGION' AND target_id=ANY(?::varchar[]))))
+                """, Boolean.class, userId, Timestamp.from(now), Timestamp.from(occurredAt), complexIds,
+                snapshot.regions().toArray(String[]::new)));
+    }
+    /** 수신자 페이지와 회원별 대표 대상(단지 우선, 더 구체적인 지역 우선)을 한 번에 조회한다. */
+    public List<NotificationRecipient> findRecipients(NotificationAudienceSnapshot snapshot, Instant occurredAt,
             long afterUserId, long upperUserId, int limit, Instant now) {
         if (snapshot.schedule() != null) {
-            return jdbc.queryForList("""
-                    SELECT user_id FROM notification_subscriptions WHERE active AND expires_at>? AND activated_at<=?
-                        AND target_type='ANNOUNCEMENT' AND target_id=? AND user_id>? AND user_id<=?
-                    ORDER BY user_id LIMIT ?
-                    """, Long.class, Timestamp.from(now), Timestamp.from(occurredAt),
-                    Long.toString(snapshot.schedule().announcementId()), afterUserId, upperUserId, limit);
+            var content = NotificationContent.reminder(snapshot.schedule());
+            return findScheduleRecipientIds(snapshot, occurredAt, afterUserId, upperUserId, limit, now).stream()
+                    .map(userId -> new NotificationRecipient(userId, content)).toList();
         }
         List<String> complexIds = snapshot.complexes().stream().map(value -> Long.toString(value.id())).toList();
         if (complexIds.isEmpty()) {
             return List.of();
         }
-        List<String> regionIds = snapshot.regions();
-        if (regionIds.isEmpty()) {
-            regionIds = List.of("");
-        }
-        return new NamedParameterJdbcTemplate(jdbc).queryForList("""
-                SELECT DISTINCT s.user_id FROM notification_subscriptions s
+        var parameters = new MapSqlParameterSource()
+                .addValue("now", Timestamp.from(now)).addValue("occurred", Timestamp.from(occurredAt))
+                .addValue("after", afterUserId).addValue("upper", upperUserId).addValue("limit", limit)
+                .addValue("complexes", complexIds).addValue("regions", nonEmptyTargets(snapshot.regions()));
+        return new NamedParameterJdbcTemplate(jdbc).query("""
+                SELECT DISTINCT ON (s.user_id) s.user_id,s.target_type,s.target_id FROM notification_subscriptions s
                 WHERE s.active AND s.expires_at>:now AND s.activated_at<=:occurred
                     AND s.user_id>:after AND s.user_id<=:upper
                     AND ((s.target_type='COMPLEX' AND s.target_id IN (:complexes))
                         OR (s.target_type='REGION' AND s.target_id IN (:regions)))
-                ORDER BY s.user_id LIMIT :limit
-                """, Map.of("now", Timestamp.from(now), "occurred", Timestamp.from(occurredAt),
-                "after", afterUserId, "upper", upperUserId, "complexes", complexIds, "regions", regionIds,
-                "limit", limit), Long.class);
+                ORDER BY s.user_id,CASE WHEN s.target_type='COMPLEX' THEN 0 ELSE 1 END,length(s.target_id) DESC,s.target_id
+                LIMIT :limit
+                """, parameters, (row, index) -> new NotificationRecipient(row.getLong(1),
+                        announcementContent(row.getString(2), row.getString(3))));
     }
 
-    public boolean isSubscribed(long userId, NotificationAudienceSnapshot snapshot, Instant occurredAt, Instant now) {
-        return (snapshot.schedule() == null || schedules.isCurrent(snapshot.schedule(), now))
-                && !findRecipientIds(snapshot, occurredAt, userId - 1, userId, 1, now).isEmpty();
-    }
-    public Optional<NotificationContent> content(long userId, NotificationAudienceSnapshot snapshot, Instant occurredAt, Instant now) {
-        if (snapshot.schedule() != null) {
-            return Optional.of(NotificationContent.reminder(snapshot.schedule()));
-        }
-        List<String> complexes = snapshot.complexes().stream().map(value -> Long.toString(value.id())).toList();
-        var parameters = new MapSqlParameterSource()
-                .addValue("user", userId).addValue("now", Timestamp.from(now)).addValue("occurred", Timestamp.from(occurredAt))
-                .addValue("complexes", nonEmptyTargets(complexes))
-                .addValue("regions", nonEmptyTargets(snapshot.regions()));
-        var matches = new NamedParameterJdbcTemplate(jdbc).query("""
-                SELECT target_type,target_id FROM notification_subscriptions WHERE user_id=:user AND active
-                    AND expires_at>:now AND activated_at<=:occurred
-                    AND ((target_type='COMPLEX' AND target_id IN (:complexes)) OR (target_type='REGION' AND target_id IN (:regions)))
-                ORDER BY CASE WHEN target_type='COMPLEX' THEN 0 ELSE 1 END,length(target_id) DESC,target_id LIMIT 1
-                """, parameters, (row, index) -> new SubscriptionTarget(row.getString(1), row.getString(2)));
-        if (matches.isEmpty()) {
-            return Optional.empty();
-        }
-        var match = matches.getFirst();
+    private NotificationContent announcementContent(String targetType, String targetId) {
         String name = "관심 단지";
-        if (match.type().equals("REGION")) {
-            name = regionName(match.id());
+        if (targetType.equals("REGION")) {
+            name = regionName(targetId);
         }
-        return Optional.of(NotificationContent.announcement(match.type(), match.id(), name));
+        return NotificationContent.announcement(targetType, targetId, name);
     }
 
     public boolean isSubscribed(long userId, NotificationAudienceSnapshot snapshot, NotificationContent content, Instant occurredAt, Instant now) {
@@ -175,7 +180,5 @@ public class NotificationAudienceRepository {
         }
         return targets;
     }
-
-    private record SubscriptionTarget(String type, String id) { }
 
 }

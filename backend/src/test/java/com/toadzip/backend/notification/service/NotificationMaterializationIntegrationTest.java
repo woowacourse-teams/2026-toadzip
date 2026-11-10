@@ -62,6 +62,32 @@ class NotificationMaterializationIntegrationTest {
     }
 
     @Test
+    void 대표_대상은_단지를_우선하고_지역끼리는_더_구체적인_코드를_고른다() {
+        var announcement = fixtures.announcement();
+        var complex = fixtures.complex("11140", "1114010100");
+        fixtures.link(announcement, complex);
+        fixtures.event(announcement);
+        fixtures.user(131);
+        fixtures.subscribe(131, "REGION", "1114010100", NOW.minusSeconds(60));
+        fixtures.subscribe(131, "COMPLEX", complex.getId().toString(), NOW.minusSeconds(60));
+        fixtures.user(132);
+        fixtures.subscribe(132, "REGION", "11", NOW.minusSeconds(60));
+        fixtures.subscribe(132, "REGION", "11140", NOW.minusSeconds(60));
+        fixtures.subscribe(132, "REGION", "1114010100", NOW.minusSeconds(60));
+        fixtures.user(133);
+        fixtures.subscribe(133, "REGION", "11", NOW.minusSeconds(60));
+        fixtures.subscribe(133, "REGION", "11140", NOW.minusSeconds(60));
+
+        assertThat(service.materializeNextPage(NOW, 200)).isEqualTo(3);
+
+        assertThat(jdbc.queryForList("""
+                SELECT user_id || ':' || (content::jsonb->>'targetType') || ':' || (content::jsonb->>'targetId')
+                FROM user_notifications ORDER BY user_id
+                """, String.class))
+                .containsExactly("131:COMPLEX:" + complex.getId(), "132:REGION:1114010100", "133:REGION:11140");
+    }
+
+    @Test
     void 만료_해제_뒤늦은_구독은_제외하고_시군구와_읍면동을_매칭한다() {
         var announcement = fixtures.announcement();
         fixtures.link(announcement, fixtures.complex("11140", "1114010100"));
