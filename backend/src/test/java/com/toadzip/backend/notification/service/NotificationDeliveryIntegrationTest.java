@@ -153,6 +153,32 @@ class NotificationDeliveryIntegrationTest {
     }
 
     @Test
+    void 선점은_재시도_시각과_만료된_lease를_같은_기준으로_비교해_앞선_작업부터_가져간다() {
+        UUID second = new TransactionTemplate(manager).execute(status ->
+                new NotificationFixtures(entities, jdbc).device(MEMBER));
+        long notificationId = jdbc.queryForObject("SELECT id FROM user_notifications WHERE event_id=?", Long.class, eventId);
+        jdbc.update("""
+                INSERT INTO notification_deliveries(notification_id,device_id,device_binding_version,status,attempts,
+                    next_attempt_at,lease_token,lease_until)
+                VALUES(?,?,1,'SENDING',1,?,?,?)
+                """, notificationId, second, Timestamp.from(NOW.minusSeconds(300)), UUID.randomUUID(),
+                Timestamp.from(NOW.minusSeconds(60)));
+        jdbc.update("UPDATE notification_deliveries SET next_attempt_at=? WHERE device_id=?",
+                Timestamp.from(NOW.minusSeconds(30)), deviceId);
+        var transaction = new TransactionTemplate(manager);
+
+        var first = transaction.execute(status -> deliveries.claimNext(NOW, Duration.ofSeconds(120))).orElseThrow();
+        var next = transaction.execute(status -> deliveries.claimNext(NOW, Duration.ofSeconds(120))).orElseThrow();
+
+        assertThat(first.deviceId()).isEqualTo(second);
+        assertThat(next.deviceId()).isEqualTo(deviceId);
+        assertThat(transaction.<Optional<ClaimedNotificationDelivery>>execute(status ->
+                deliveries.claimNext(NOW, Duration.ofSeconds(120)))).isEmpty();
+        jdbc.update("DELETE FROM notification_deliveries WHERE device_id=?", second);
+        jdbc.update("DELETE FROM notification_push_devices WHERE id=?", second);
+    }
+
+    @Test
     void 접수성공후_결과를_잃어도_보관함은_하나로_유지된다() {
         new TransactionTemplate(manager).execute(status -> deliveries.claimNext(NOW, Duration.ofSeconds(120)))
                 .orElseThrow();
