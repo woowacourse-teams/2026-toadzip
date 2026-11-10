@@ -27,7 +27,7 @@ export function NotificationPushControl({ compact = false }: { readonly compact?
   </section>
 }
 function DeviceControl({ client, retry, compact, onBlocked }: { readonly client: PushClient; readonly retry: () => void; readonly compact: boolean; readonly onBlocked: () => void }) {
-  const state = useSyncExternalStore(client.subscribe, client.getSnapshot)
+  const state = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot)
   const working = state.status === 'loading' || state.status === 'busy'
   const [confirmed, setConfirmed] = useState(state.status === 'on')
   useEffect(() => {

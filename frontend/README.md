@@ -134,7 +134,8 @@ npm run check
 npm run build
 ```
 
-TypeScript 타입 검사 후 프로덕션 파일을 `dist/`에 생성한다.
+TypeScript 타입 검사 후 프로덕션 파일을 `dist/`에 생성한다. 공개 경로의 JS 없는 HTML은
+`dist/prerendered/`에 함께 생성하며 규칙은 [프론트엔드 구조](../docs/development/frontend/architecture.md#공개-페이지-프리렌더와-색인-정책)를 따른다.
 
 프로덕션에서 `VITE_API_BASE_URL`을 생략하면 브라우저는 프론트엔드와 같은 주소의
 `/api`로 요청한다. 별도 API 주소가 필요한 환경에서만 프로토콜과 호스트를 끝
