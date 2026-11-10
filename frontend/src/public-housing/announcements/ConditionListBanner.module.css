@@ -2,8 +2,9 @@
   position: relative;
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: var(--ds-space-3);
-  margin: 0 var(--ds-space-4) var(--ds-space-2);
+  margin: var(--ds-space-3) var(--ds-space-4) var(--ds-space-2);
   padding: var(--ds-space-3) var(--ds-space-3) var(--ds-space-3) var(--ds-space-4);
   border: 1px solid color-mix(in srgb, var(--ds-color-brand) 40%, var(--ds-color-surface));
   border-radius: 12px;

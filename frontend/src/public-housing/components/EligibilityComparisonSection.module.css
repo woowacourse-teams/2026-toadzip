@@ -106,13 +106,9 @@
   display: none;
 }
 
-.invite > .wide:first-of-type {
-  margin-top: 0;
-}
-
 .wide {
   width: 100%;
-  margin-top: 14px;
+  margin-top: var(--ds-space-4);
 }
 
 .chips + .wide {
