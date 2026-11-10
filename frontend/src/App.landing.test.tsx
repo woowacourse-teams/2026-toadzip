@@ -167,3 +167,9 @@ it.each(['/complexes/abc', '/announcements/0', '/regions/2820', '/regions/28200/
   open(path)
   expect(screen.getByRole('heading', { name: '페이지를 찾을 수 없어요.' })).toBeVisible()
 })
+
+it('서버 이동 뒤 상세 주소에 남은 상세 쿼리는 지우고 나머지 조건은 남긴다', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
+  open('/complexes/7?complexId=7&mapZoom=12')
+  expect(screen.getByLabelText('현재 주소').textContent).toBe('/complexes/7?mapZoom=12')
+})

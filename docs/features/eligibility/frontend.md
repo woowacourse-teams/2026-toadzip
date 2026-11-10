@@ -8,7 +8,7 @@
 | 진입점·화면 | 요청·동작 | 표시 범위 |
 |---|---|---|
 | 상세의 내 조건 수정·항목 입력, 마이페이지 `/mypage/conditions` | GET/PUT `/api/v2/me/eligibility-profile`, 입력 계약 3·expectedVersion·CSRF | 공통 사용자 정보. 해당 공고에 필요한 항목만 부분 입력 가능 |
-| 공고 상세 `/explore?announcementId={id}` | GET `/api/v2/announcements/{id}/eligibility` | 공고 결과, 실제 모집 선택지, 경로, 공통·경로별 조건과 근거 |
+| 공고 상세 `/announcements/{id}` | GET `/api/v2/announcements/{id}/eligibility` | 공고 결과, 실제 모집 선택지, 경로, 공통·경로별 조건과 근거 |
 | 정보 저장 이후 | GET `/api/v2/eligibility/processing`와 상세 재조회 | 저장 완료와 현재 정보의 재판정 완료를 구분 |
 | 공고 목록·배너·지원 가능 스위치 | v1 공고 검색 후, 불러온 공고의 최신 판정 조회 | **현재 불러온 목록 안에서만** 개인 판정 필터·건수 제공 |
 | 내 조건 관리의 새 지원 가능 안내 | GET `/api/v2/eligibility/discoveries` | 현재 정보로 새로 확인됐으며 아직 확인 처리하지 않은 공고와 선택지 |

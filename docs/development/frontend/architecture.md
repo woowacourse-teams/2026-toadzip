@@ -81,13 +81,31 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 검색엔진과 AI 크롤러가 JS 없이도 제목·본문·내부 링크를 읽도록 색인 대상 경로를 빌드 시 HTML로 만든다.
 
 - 경로별 정책의 원본은 `src/prerender/siteRoutes.ts` 하나다. 색인 대상(`PUBLIC_ROUTES`), 크롤링을 막는 비공개 경로, 크롤링은 허용하고 색인만 막는 경로를 나눈다. `siteRoutes.test.ts`가 `public/robots.txt`와 `nginx/app.conf`를 이 목록과 맞춘다.
-- `npm run build`는 `src/prerender/renderPage.ts`를 SSR 번들(`.prerender/`)로 만들고, `scripts/prerender.mjs`가 jsdom 전역 위에서 경로별 첫 화면을 렌더링해 `dist/prerendered/<경로>/index.html`에 쓴다. h1 1개, 최소 본문, 내부 링크 중 하나라도 없으면 빌드가 실패한다. 같은 단계에서 색인 대상만 담은 `dist/sitemap.xml`을 만든다. 빌드 환경에 Git 이력이 없어 `lastmod`는 넣지 않는다.
+- `npm run build`는 `src/prerender/renderPage.ts`를 SSR 번들(`.prerender/`)로 만들고, `scripts/prerender.mjs`가 jsdom 전역 위에서 경로별 첫 화면을 렌더링해 `dist/prerendered/<경로>/index.html`에 쓴다. h1 1개, 최소 본문, 내부 링크 중 하나라도 없으면 빌드가 실패한다. 같은 단계에서 사이트맵 인덱스 `dist/sitemap.xml`과 색인 대상만 담은 `dist/sitemaps/static.xml`, 단지·공고·지역 페이지용 공통 head `dist/prerendered/shared-head.html`을 만든다. 빌드 환경에 Git 이력이 없어 정적 사이트맵에는 `lastmod`를 넣지 않는다.
 - `src/prerender/pageHead.ts`가 경로별 제목·설명·`og:url`과 대표 주소(canonical)를 프리렌더 HTML의 head에 넣고, 홈에는 `WebSite`·`Organization` 구조화 데이터를 넣는다. 빈 SPA 셸(`index.html`)은 로그인·관리·없는 주소에도 쓰이므로 canonical을 넣지 않는다. 앱은 이 태그를 런타임에 바꾸지 않는다.
 - 브라우저는 `createRoot`로 화면을 새로 그리므로 프리렌더 HTML은 첫 표시와 크롤러용이다. effect는 실행되지 않아 API 데이터가 필요한 화면은 로딩 상태로 기록된다.
 - `useSyncExternalStore`는 세 번째 인자(서버 스냅샷)를 함께 넘긴다. 없으면 프리렌더가 실패한다.
 - Nginx는 색인 대상에 프리렌더 HTML을, 그 밖의 앱 경로에 빈 SPA 셸(`index.html`)과 `X-Robots-Tag: noindex`를, 앱에 없는 경로에 SPA 셸과 404를 준다. 끝 슬래시와 `/index.html`은 308로 정리한다. 설정은 `nginx/app.conf`가 소유하며 `python3 -B tests/deployment/test_frontend_routes.py`(Docker 필요)로 응답 코드를 확인한다.
 - 단지·공고·지도 쿼리가 붙은 `/` 주소는 Nginx가 `/explore`로 308 이동해 랜딩을 거치지 않는다. 판단 규칙은 `src/landing/explorerState.ts`와 같으며 `explorerState.test.ts`가 둘을 맞춘다.
 - 운영 도메인 외 호스트(개발 서버 등)의 noindex는 Caddy가 담당한다. [Caddy 서버 진입점](../../operations/caddy-ingress.md#도메인-이동과-검색-색인)을 따른다.
+
+## 단지·공고·지역 고유 주소
+
+검색 결과와 공유 링크가 단지·공고·지역마다 다른 주소와 HTML을 갖게 한다.
+
+| 주소 | 사람이 보는 화면 | 크롤러·링크 미리보기가 받는 HTML |
+|---|---|---|
+| `/complexes/{id}` | 단지 상세가 열린 지도 화면 | 백엔드 `GET /api/v1/seo/pages/complexes/{id}` |
+| `/announcements/{id}` | 공고 상세가 열린 지도 화면 | 백엔드 `GET /api/v1/seo/pages/announcements/{id}` |
+| `/regions/{시·도 2자리 또는 시·군·구 5자리}[/{공급 유형}]` | 같은 지역·공급 유형으로 거른 `/explore` | 백엔드 `GET /api/v1/seo/pages/regions/…` |
+| `/sitemaps/{complexes,announcements,regions}.xml` | – | 백엔드 `GET /api/v1/seo/sitemaps/{이름}.xml` |
+
+- 앱 안의 지도 화면은 상세를 계속 `/explore?complexId=…` 쿼리로 다루고, `src/public-housing/navigation/useExplorerLocation.ts`가 주소창에서만 상세 주소로 바꾼다. 변환 규칙은 `navigation/detailLocation.ts`가 소유한다. 상세를 닫으면 `/explore`로 돌아가고 필터·지도 위치 쿼리는 유지한다.
+- 예전 `/explore?complexId=…`·`?announcementId=…` 링크는 Nginx가 상세 주소로 308 이동하고, 앱은 남은 상세 쿼리를 지운다.
+- 동의 배너, PostHog·유입 건수 경로, 로그인 복귀, 의견 보내기 창, 마이페이지 복귀는 `explorerPagePath()`로 상세 주소도 지도 화면(`/explore`)으로 본다. 분석에는 ID 없는 `/explore`로 기록한다.
+- 페이지 HTML은 백엔드 `seo` 패키지가 페이지별 제목·설명·canonical·구조화 데이터와 본문을 만들고, 프론트 Nginx가 SSI(`<!--# include virtual="/__seo-head" -->`)로 이 빌드의 공통 head(스크립트·스타일·대표 이미지)를 끼운다. 블루·그린 프론트는 Edge Nginx(`edge-nginx`)를 거쳐 활성 백엔드에서 받는다(`nginx/api-disabled.conf`).
+- 백엔드의 404·308은 그대로 내보내고, 백엔드 장애(5xx·연결 실패)에는 앱 셸을 준다. 형식이 맞지 않는 주소는 Nginx가 404로 응답한다.
+- 마감 공고와 현재 공고가 없는 단지도 페이지를 연다. 공고 목록에서 빠지는 공고(취소, 후속 공고가 있는 공고)와 공개 단지가 3곳 미만인 지역 페이지는 `noindex`로 응답하고 사이트맵에서 뺀다.
 
 ## 검증 위치
 

@@ -33,7 +33,7 @@ import { LandingPage } from './landing/LandingPage'
 import { hasExplorerState } from './landing/explorerState'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
-import { parseDetailPath, toDetailPathLocation } from './public-housing/navigation/detailLocation'
+import { parseDetailPath, toDetailPathLocation, toExplorerQueryLocation } from './public-housing/navigation/detailLocation'
 import { regionExplorerSearch } from './public-housing/navigation/regionPath'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
@@ -162,9 +162,9 @@ export default function App() {
   if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
-  // 예전 상세 링크(`/explore?complexId=1`)는 상세 주소로 바꿔 연다.
-  const detailPath = pathname === '/explore' ? toDetailPathLocation({ pathname, search }) : null
-  if (detailPath && detailPath.pathname !== pathname) {
+  // 예전 상세 링크(`/explore?complexId=1`)는 상세 주소로 바꿔 열고, 서버 이동 뒤 상세 주소에 남은 상세 쿼리는 지운다.
+  const detailPath = toDetailPathLocation(toExplorerQueryLocation({ pathname, search }))
+  if (detailPath.pathname !== pathname || detailPath.search !== search) {
     return <Navigate to={{ ...detailPath, hash }} state={state} replace />
   }
   return (

@@ -7,8 +7,8 @@ import type { PublicRoute } from './siteRoutes'
 
 export { PUBLIC_ROUTES } from './siteRoutes'
 export { findPrerenderProblems, injectIntoTemplate, prerenderedFilePath } from './prerenderedDocument'
-export { applyPageHead } from './pageHead'
-export { buildSitemap } from './sitemap'
+export { applyPageHead, buildSharedHead } from './pageHead'
+export { STATIC_SITEMAP_PATH, buildSitemap, buildSitemapIndex } from './sitemap'
 
 // 브라우저가 처음 그리는 화면과 같은 마크업을 만든다. effect는 실행되지 않으므로 API 호출은 없다.
 export function renderPage(route: PublicRoute) {
