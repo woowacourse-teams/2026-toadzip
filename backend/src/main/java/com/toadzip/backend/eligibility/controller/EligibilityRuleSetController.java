@@ -1,9 +1,11 @@
 package com.toadzip.backend.eligibility.controller;
 
+import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftVersion;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.SaveDraft;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.RuleSet;
 import com.toadzip.backend.eligibility.repository.EligibilityJsonCodec;
+import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
 import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
 import com.toadzip.backend.global.response.ApiResponse;
 
@@ -24,11 +26,16 @@ import tools.jackson.databind.JsonNode;
 public class EligibilityRuleSetController {
     private final EligibilityRuleSetService ruleSets;
 
+    private final EligibilityExtractionDraftService extractionDrafts;
+
     private final EligibilityJsonCodec codec;
 
     public EligibilityRuleSetController(
-            EligibilityRuleSetService ruleSets, EligibilityJsonCodec codec) {
+            EligibilityRuleSetService ruleSets,
+            EligibilityExtractionDraftService extractionDrafts,
+            EligibilityJsonCodec codec) {
         this.ruleSets = ruleSets;
+        this.extractionDrafts = extractionDrafts;
         this.codec = codec;
     }
 
@@ -48,6 +55,13 @@ public class EligibilityRuleSetController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RuleSet> copy(@PathVariable long announcementId) {
         return new ApiResponse<>(ruleSets.copy(announcementId));
+    }
+
+    @PostMapping("/from-extraction")
+    public ApiResponse<RuleSet> fromExtraction(
+            @PathVariable long announcementId, @RequestBody JsonNode request) {
+        return new ApiResponse<>(
+                extractionDrafts.create(announcementId, codec.request(request, DraftFromExtraction.class)));
     }
 
     @PostMapping("/validation")

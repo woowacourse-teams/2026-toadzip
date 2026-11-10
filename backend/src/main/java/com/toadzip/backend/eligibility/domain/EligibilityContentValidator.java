@@ -239,7 +239,8 @@ public final class EligibilityContentValidator {
                 "비교 한계 안내가 해당 선택지에 적용되지 않습니다.");
     }
 
-    private boolean needsFallback(ProfileRule rule) {
+    /** 자동 판정에 한계가 있어 직접 확인 안내(REQUIRED_CHECK)를 함께 연결해야 하는 조건이다. AI 추출 초안 변환도 같은 기준을 쓴다. */
+    static boolean needsFallback(ProfileRule rule) {
         if (rule.operator() == ProfileRule.Operator.INCOME_CEILING
                 || rule.field() == ProfileField.PARENTS_MONTHLY_INCOME
                 || rule.field() == ProfileField.MARRIAGE_EVENT
@@ -251,7 +252,7 @@ public final class EligibilityContentValidator {
                 && rule.field().flow() != ProfileField.Flow.OPTIONAL_FAMILY) {
             return true;
         }
-        return rule.children().stream().anyMatch(this::needsFallback);
+        return rule.children().stream().anyMatch(EligibilityContentValidator::needsFallback);
     }
 
     private void rule(ProfileRule rule) {
