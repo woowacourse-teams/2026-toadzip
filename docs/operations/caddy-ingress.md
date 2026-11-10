@@ -39,6 +39,22 @@ Caddy의 `/data`·`/config`는 프로젝트별 named volume에 보존하며 admi
 Caddy는 공개 도메인의 인증서 발급·갱신과 HTTP→HTTPS 이동을 담당한다.
 [공식 자동 HTTPS 조건](https://caddyserver.com/docs/automatic-https)에 맞게 DNS, 외부 80·443 접근과 영구 저장소를 준비한다.
 
+## 도메인 이동과 검색 색인
+
+- 운영은 `TOADZIP_CADDY_REDIRECT_DOMAIN=www.bokduckbang.com`을 설정해 www 요청을 기본 도메인으로 308 이동한다. 개발은 비워 둔다. 보조 도메인도 DNS가 이 서버를 가리켜야 인증서를 받는다.
+- 운영 호스트 `bokduckbang.com` 외의 모든 응답(페이지·API·첨부)에는 `X-Robots-Tag: noindex`가 붙는다. 개발 서버가 검색 결과에 남지 않게 하는 규칙이다.
+- 개발 서버의 robots.txt로 크롤링을 막지 않는다. 막으면 검색엔진이 noindex 헤더를 읽지 못해 이미 색인된 주소가 빠지지 않는다.
+
+Caddyfile은 단일 파일로 마운트되고 Blue/Green 배포는 Caddy를 재시작하지 않는다.
+Caddyfile이나 위 환경변수를 바꾼 커밋이 서버 checkout에 반영된 뒤 아래 명령으로 Caddy를 재생성한다. 재생성 중 짧은 연결 끊김이 생길 수 있다.
+
+```shell
+docker compose up -d --no-deps --force-recreate caddy
+curl --head --max-time 10 https://dev.bokduckbang.com/
+```
+
+개발 서버 응답에 `x-robots-tag: noindex`가 있고 운영 응답에는 없는지 확인한다.
+
 ## 최초 전환
 
 **최초 80·443 이동에는 짧은 중단이 발생할 수 있다. 이후 앱 배포는 Blue/Green 도구를 사용한다.**
@@ -82,8 +98,10 @@ Actions는 Caddy·Firebase 인증파일 overlay를 기본으로 전달하므로 
 ```shell
 python3 -B tests/deployment/test_caddy_ingress.py
 python3 -B tests/deployment/test_caddy_ingress_linux.py
+python3 -B tests/deployment/test_caddy_robots.py
 ```
 
 첫 검사는 개발·운영 포트·필수 경로·영구 저장소·기존 TLS 제거를 확인한다.
 두 번째 검사는 localhost의 임시 로컬 CA와 무작위 loopback 포트로 TLS·리다이렉트·프론트/API/정적 파일·헤더·Edge 전환·Caddy 재생성 후 저장소를 확인한다.
+세 번째 검사는 실제 Caddyfile을 Caddy 내부 CA로 실행해 개발 호스트의 noindex, 운영 호스트의 헤더 없음과 www 이동을 확인한다.
 실제 EC2·공개 포트·ACME·외부 DNS 검증을 대신하지 않는다.
