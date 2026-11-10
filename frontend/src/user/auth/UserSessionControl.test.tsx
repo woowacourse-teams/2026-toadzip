@@ -206,3 +206,18 @@ it('마이페이지 진입은 URL에서 소비된 현재 지도 카메라도 보
   fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
   expect(sessionStorage.getItem('toadzip:last-explore-path')).toBe('/explore?boundaryRegionCode=11&mapLat=37.5&mapLng=127&mapZoom=14')
 })
+
+it('알림 보관함의 읽지 않은 수는 아이콘 우상단 배지로 붙인다', async () => {
+  const { NotificationInboxContext } = await import('../../notifications/NotificationInboxContext')
+  const context = { userId: '1', unreadCount: 2, error: null, repository: {} as never, revision: 0, invalidate: vi.fn(), sessionExpired: vi.fn() }
+  render(<MemoryRouter><NotificationInboxContext.Provider value={context}><UserSessionControl presentation="rail" sessionOverride="signed-in" /></NotificationInboxContext.Provider></MemoryRouter>)
+  const badge = await screen.findByLabelText('읽지 않은 알림 2개')
+  const icon = badge.parentElement!
+  expect(icon).toHaveClass('service-notification-inbox__icon')
+  expect(icon.querySelector('svg')).not.toBeNull()
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+  expect(css).toMatch(/\.service-notification-inbox__icon\s*\{[^}]*position:\s*relative;/)
+  expect(css).toMatch(/\.service-notification-inbox__icon > span\s*\{[^}]*position:\s*absolute;[^}]*top:/)
+})
