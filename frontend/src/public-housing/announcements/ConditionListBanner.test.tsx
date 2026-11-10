@@ -1,3 +1,6 @@
+/// <reference types="node" />
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConditionsContext, type ConditionsContextValue } from '../../user/conditions/ConditionsContext'
@@ -95,5 +98,12 @@ describe('ConditionListBanner', () => {
     expect(screen.queryByText('불러온 공고 중 지원 가능 1건')).not.toBeInTheDocument()
     expect(value.notify).toHaveBeenCalledWith('이번 방문 동안 안내를 숨겼어요')
     expect(sessionStorage.getItem('toadzip:condition-banner-hidden')).toBe('true')
+  })
+
+  it('keeps a gap below the list header and does not shrink', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/public-housing/announcements/ConditionListBanner.module.css'), 'utf8')
+    const banner = css.match(/\.banner\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(banner).toMatch(/margin:\s*var\(--ds-space-3\) var\(--ds-space-4\) var\(--ds-space-2\);/)
+    expect(banner).toMatch(/flex:\s*0 0 auto;/)
   })
 })

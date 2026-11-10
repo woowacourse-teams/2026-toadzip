@@ -1,3 +1,6 @@
+/// <reference types="node" />
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConditionsContext, type ConditionsContextValue } from '../../user/conditions/ConditionsContext'
@@ -227,5 +230,11 @@ describe('EligibilityComparisonSection', () => {
   it('renders nothing without the conditions feature', () => {
     const { container } = render(<EligibilityComparisonSection detail={detail()} onOpenEvidence={vi.fn()} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('keeps a gap above the invite button when no type chips are shown', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/public-housing/components/EligibilityComparisonSection.module.css'), 'utf8')
+    expect(css).not.toMatch(/\.invite > \.wide:first-of-type/)
+    expect(css).toMatch(/\.wide\s*\{[^}]*margin-top:\s*var\(--ds-space-4\);/)
   })
 })
