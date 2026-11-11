@@ -11,10 +11,11 @@ import { ComplexStageHelp } from './ComplexStageHelp'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
 import { InitialRegistrationProgress } from './InitialRegistrationProgress'
 
-export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy, onShowHistory }: {
+export function ComplexIngestStages({ states, disabled, collectionBlocked = false, startingType, stopping, onStart, onStop, onRefresh, onUploadBusy, onShowHistory, onRetry }: {
   states: Record<DataPipelineType, PipelineViewState>; disabled: boolean; collectionBlocked?: boolean; startingType: DataPipelineType | null
   stopping: Partial<Record<DataPipelineType, boolean>>; onStart: (type: DataPipelineType) => void
   onStop: (type: DataPipelineType) => void; onRefresh: (type: DataPipelineType) => void; onUploadBusy: (busy: boolean) => void; onShowHistory?: () => void
+  onRetry?: (identifiers: string[]) => void
 }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -105,6 +106,7 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
     </section>
     <section id="complex-registration" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
       <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy} onShowHistory={onShowHistory}
+        onRetry={onRetry}
         registration={states.COMPLEX_REGISTRATION} starting={startingType === 'COMPLEX_REGISTRATION'}
         stopControl={<ComplexExecutionStop execution={states.COMPLEX_REGISTRATION.execution} label="등록 중지"
           stopping={stopping.COMPLEX_REGISTRATION} onStop={() => onStop('COMPLEX_REGISTRATION')} />}

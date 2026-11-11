@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestProperties;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestServiceKeyMissingException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
@@ -14,6 +15,7 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
@@ -79,6 +81,18 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type, String actor) {
+        return start(type, actor, List.of());
+    }
+
+    public DataPipelineExecutionResponse retryComplexRegistration(List<String> identifiers, String actor) {
+        if (identifiers == null || identifiers.isEmpty() || identifiers.size() > 10000) {
+            throw new InvalidIngestRequestException(
+                    "재처리할 단지를 1~10000곳 선택하세요.");
+        }
+        return start(DataPipelineType.COMPLEX_REGISTRATION, actor, identifiers.stream().distinct().sorted().toList());
+    }
+
+    private DataPipelineExecutionResponse start(DataPipelineType type, String actor, List<String> identifiers) {
         type.rejectIfRetired();
         if (type.requiresServiceKey() && !ingestProperties.hasServiceKey()) {
             throw new IngestServiceKeyMissingException();
@@ -108,7 +122,7 @@ public class DataPipelineExecutionService {
         }
         try {
             String traceId = MDC.get("traceId");
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, actor));
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, actor, identifiers));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -129,7 +143,8 @@ public class DataPipelineExecutionService {
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask,
             String traceId,
-            String actor
+            String actor,
+            List<String> identifiers
     ) {
         String previousTraceId = MDC.get("traceId");
         String previousExecutionId = MDC.get("executionId");
@@ -138,7 +153,7 @@ public class DataPipelineExecutionService {
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
         try (lease; var ignored = IngestExecutionScope.open(executionId, lease, monitor)) {
             lease.verifyHeld();
-            runAndRecordOutcome(executionId, type, actor);
+            runAndRecordOutcome(executionId, type, actor, identifiers);
         }
         catch (IngestOwnershipLostException exception) {
             failures.recordAtCurrentStep(executionId, type, exception.getMessage());
@@ -175,10 +190,10 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private void runAndRecordOutcome(UUID executionId, DataPipelineType type, String actor) {
+    private void runAndRecordOutcome(UUID executionId, DataPipelineType type, String actor, List<String> identifiers) {
         try {
             if (type == DataPipelineType.COMPLEX_REGISTRATION) {
-                runner.registerComplexes(executionId, actor);
+                registerComplexes(executionId, actor, identifiers);
             }
             if (type != DataPipelineType.COMPLEX_REGISTRATION) {
                 runner.run(type, executionId);
@@ -189,6 +204,14 @@ public class DataPipelineExecutionService {
             return;
         }
         executionStateService.complete(executionId, Instant.now(clock));
+    }
+
+    private void registerComplexes(UUID executionId, String actor, List<String> identifiers) {
+        if (identifiers.isEmpty()) {
+            runner.registerComplexes(executionId, actor);
+            return;
+        }
+        runner.retryComplexes(executionId, actor, identifiers);
     }
 
     private void setExecutionContext(String key, String value) {

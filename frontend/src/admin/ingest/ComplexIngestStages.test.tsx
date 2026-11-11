@@ -320,6 +320,7 @@ it('등록 완료 뒤 다시 열면 간결한 완료 안내를 복원한다', as
         counts: { EXISTING: 0, LOCATION_REQUIRED: 0, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 2 } } }],
   } : {}))
   render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
-  expect(await screen.findByRole('status', { name: '등록 실행 상태' })).toHaveTextContent('등록이 완료되었습니다.')
+  expect(await screen.findByLabelText('등록 현황')).toBeVisible()
+  expect(screen.queryByRole('status', { name: '등록 실행 상태' })).not.toBeInTheDocument()
   expect(screen.queryByText(/고유 원천 주소/)).not.toBeInTheDocument()
 })
