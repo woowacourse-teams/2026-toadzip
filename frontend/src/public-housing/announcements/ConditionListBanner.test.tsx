@@ -51,6 +51,13 @@ describe('ConditionListBanner', () => {
     expect(value.openNudge).toHaveBeenCalledWith('list')
   })
 
+  it('shows the service logo as the guest banner icon', () => {
+    const { container } = render(<ConditionsContext value={context({ mode: 'guest', hasProfile: false, stored: null })}>
+      <ConditionListBanner items={items} results={new Map()} filtering={false} onToggleFilter={vi.fn()} />
+    </ConditionsContext>)
+    expect(container.querySelector('img')).toHaveAttribute('src', '/logo-bok-search.svg')
+  })
+
   it('offers to resume a member draft', () => {
     const value = context({ hasProfile: false, stored: { version: 0, savedAt: null, profile: EMPTY_PROFILE }, memberDraft: { step: 2 } })
     renderBanner(value, new Map())
