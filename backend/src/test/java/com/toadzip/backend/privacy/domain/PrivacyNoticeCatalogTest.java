@@ -30,9 +30,19 @@ class PrivacyNoticeCatalogTest {
         assertTrue(!catalog.current("PRIVACY_POLICY").content().contains("알림 전달 기능은 준비 중"));
         assertTrue(catalog.find("NOTIFICATION_NOTICE", "notification-2026-10-10-v1").content().contains("준비 중"));
         assertEquals("privacy-scope-1", catalog.current("PRIVACY_POLICY").scopeVersion());
-        assertEquals("privacy-2026-10-15-v1", catalog.currentVersion("PRIVACY_POLICY"));
-        assertEquals("analytics-scope-3", catalog.requiredAnalyticsScope());
-        assertEquals("analytics-2026-10-11-v1", catalog.currentVersion("ANALYTICS_NOTICE"));
+        assertEquals("privacy-2026-11-10-v1", catalog.currentVersion("PRIVACY_POLICY"));
+        assertTrue(catalog.current("PRIVACY_POLICY").content().contains("방문자를 구분하는 식별자 없이 PostHog로 전송합니다"));
+        assertTrue(!catalog.find("PRIVACY_POLICY", "privacy-2026-10-15-v1").content().contains("식별자 없이 PostHog로"));
+        assertEquals("analytics-scope-4", catalog.requiredAnalyticsScope());
+        assertEquals("analytics-2026-11-10-v1", catalog.currentVersion("ANALYTICS_NOTICE"));
+        assertEquals("analytics-scope-3", catalog.find("ANALYTICS_NOTICE", "analytics-2026-10-11-v1").scopeVersion());
+        for (String key : List.of("PRIVACY_POLICY", "ANALYTICS_NOTICE")) {
+            String content = catalog.current(key).content();
+            assertTrue(content.contains("PostHog Inc.(privacy@posthog.com)"));
+            assertTrue(content.contains("이전 국가: 미국"));
+            assertTrue(!content.contains("Google Analytics"));
+            assertTrue(!content.contains("운영 공개 전에"));
+        }
         assertEquals("analytics-scope-1", catalog.find("ANALYTICS_NOTICE", "analytics-2026-10-09-v1").scopeVersion());
         assertEquals("analytics-scope-2", catalog.find("ANALYTICS_NOTICE", "analytics-2026-10-09-v2").scopeVersion());
         assertThrows(PrivacyException.class, () -> catalog.find("PRIVACY_POLICY", "unknown"));
@@ -42,14 +52,17 @@ class PrivacyNoticeCatalogTest {
     void 재동의_범위를_추가해도_과거_범위의_최초_무효화_시점은_연장하지_않는다() {
         PrivacyNoticeCatalog catalog = new PrivacyNoticeCatalog();
         Instant previousInvalidation = Instant.parse("2026-10-09T00:00:01Z");
-        Instant currentInvalidation = Instant.parse("2026-10-10T15:00:00Z");
+        Instant scopeTwoInvalidation = Instant.parse("2026-10-10T15:00:00Z");
+        Instant currentInvalidation = Instant.parse("2026-11-09T15:00:00Z");
 
         assertEquals(previousInvalidation, catalog.scopeInvalidatedAt("analytics-scope-1"));
-        assertEquals(currentInvalidation, catalog.scopeInvalidatedAt("analytics-scope-2"));
+        assertEquals(scopeTwoInvalidation, catalog.scopeInvalidatedAt("analytics-scope-2"));
+        assertEquals(currentInvalidation, catalog.scopeInvalidatedAt("analytics-scope-3"));
         assertEquals(currentInvalidation, catalog.analyticsScopeEffectiveAt());
-        assertEquals(2, catalog.scopeInvalidations().size());
+        assertEquals(3, catalog.scopeInvalidations().size());
         assertEquals(previousInvalidation, catalog.scopeInvalidations().get("analytics-scope-1"));
-        assertEquals(currentInvalidation, catalog.scopeInvalidations().get("analytics-scope-2"));
+        assertEquals(scopeTwoInvalidation, catalog.scopeInvalidations().get("analytics-scope-2"));
+        assertEquals(currentInvalidation, catalog.scopeInvalidations().get("analytics-scope-3"));
     }
 
     @Test

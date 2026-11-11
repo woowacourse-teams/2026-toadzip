@@ -66,9 +66,9 @@ import tools.jackson.databind.ObjectMapper;
 class PrivacyIntegrationTest {
 
     private static final long MEMBER = 840001L;
-    private static final Instant NOW = Instant.parse("2026-10-11T09:00:00Z");
-    private static final String NOTICE = "analytics-2026-10-11-v1";
-    private static final String SCOPE = "analytics-scope-3";
+    private static final Instant NOW = Instant.parse("2026-11-11T09:00:00Z");
+    private static final String NOTICE = "analytics-2026-11-10-v1";
+    private static final String SCOPE = "analytics-scope-4";
     private static final String MEMBER_ENDPOINT = "/api/v1/privacy/analytics/me";
     @Autowired private MockMvc mvc;
     @Autowired private JdbcTemplate jdbc;

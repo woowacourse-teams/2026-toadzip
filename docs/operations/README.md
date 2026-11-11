@@ -12,7 +12,7 @@
 | [HTTPS](https.md) | 개발·운영 인증서 발급·권한·갱신과 문제 대응 |
 | [DB 운영](database/README.md) | DB 서버·Flyway 도입·기존 DB 전환·복구 |
 | [수집 운영](ingest/README.md) | 실행 중지·잠금 복구·품질·성능·좌표 적재 |
-| [제품 분석](analytics/README.md) | GA4·PostHog 환경 연결·이벤트·지표·수신 검증 |
+| [제품 분석](analytics/README.md) | PostHog 환경 연결·이벤트·지표·수신 검증 |
 | [알림 운영](notifications.md) | 알림 스키마·출시 설정·보관·전달 상태 점검 |
 | [개인정보 운영](privacy.md) | 처리 정책·운영 책임과 보유·파기 점검 |
 

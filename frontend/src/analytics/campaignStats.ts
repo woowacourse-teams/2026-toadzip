@@ -1,4 +1,4 @@
-import { campaignEntry, consumeCampaignEntry, safeCampaignSource, type CampaignEntry } from './campaignAttribution'
+import { campaignEntry, consumeCampaignEntry, consumeOrganicEntry, safeCampaignSource, type CampaignEntry } from './campaignAttribution'
 
 const ACTIONS = new Set([
   'landing', 'page_view', 'view_complex', 'view_announcement', 'notification_inbox_viewed', 'notification_opened',
@@ -62,5 +62,5 @@ export function captureCampaignStat(action: string, input: Record<string, unknow
 }
 
 export function initializeCampaignStats(): void {
-  if (consumeCampaignEntry()) captureCampaignStat('landing')
+  if (consumeCampaignEntry() || consumeOrganicEntry()) captureCampaignStat('landing')
 }

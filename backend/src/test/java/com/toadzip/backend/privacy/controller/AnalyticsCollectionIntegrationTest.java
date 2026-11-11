@@ -69,8 +69,8 @@ class AnalyticsCollectionIntegrationTest {
 
     private static final long MEMBER = 841001L;
     private static final Instant NOW = Instant.parse("2026-10-11T09:00:00Z");
-    private static final String NOTICE = "analytics-2026-10-11-v1";
-    private static final String SCOPE = "analytics-scope-3";
+    private static final String NOTICE = "analytics-2026-11-10-v1";
+    private static final String SCOPE = "analytics-scope-4";
     private static final String ENDPOINT = "/api/v1/notification-interest-events";
     @Autowired private MockMvc mvc;
     @Autowired private JdbcTemplate jdbc;
@@ -158,7 +158,8 @@ class AnalyticsCollectionIntegrationTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"analytics-2026-10-09-v1,analytics-scope-1", "analytics-2026-10-09-v2,analytics-scope-2"})
+    @CsvSource({"analytics-2026-10-09-v1,analytics-scope-1", "analytics-2026-10-09-v2,analytics-scope-2",
+            "analytics-2026-10-11-v1,analytics-scope-3"})
     void 과거_안내의_허용은_최신_안내에_다시_동의해야_수집할_수_있다(String notice, String scope) throws Exception {
         seedOldScope(notice, scope);
         assertEquals("RECONSENT_REQUIRED", choices.context(MEMBER, null).consent().effectiveStatus());

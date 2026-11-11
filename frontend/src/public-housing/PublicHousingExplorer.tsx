@@ -36,8 +36,7 @@ import { useStreetView, type StreetViewController } from '../street-view/useStre
 import { StreetViewPanel } from '../street-view/StreetViewPanel'
 import { isMobileViewport, useMobileViewport } from './components/useMobileViewport'
 import { COMPLEX_MARKER_HEIGHT } from '../maps/naver/complexMarkerButton'
-import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
-import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
+import type { DetailEntryPoint } from './analytics/useProductDetailAnalytics'
 import NaverMap, {
   type NaverMapAggregateMarker,
   type NaverMapCameraTarget,
@@ -418,15 +417,6 @@ export function PublicHousingExplorer({
     }
     setIntegratedSearchActive(active)
   }, [closeStreetView, cancelCurrentLocation])
-  const prepareDetailVisit = useHousingAnalytics({
-    detailLocation,
-    readyComplexId: !showingComplexSummary && complexDetail.status === 'ready'
-      && complexDetail.detail?.complexId === complexDetail.complexId
-      ? complexDetail.complexId : null,
-    readyAnnouncementId: announcementDetail.status === 'ready'
-      && announcementDetail.detail?.announcementId === announcementDetail.announcementId
-      ? announcementDetail.announcementId : null,
-  })
   const { prepare: prepareProductDetail, action: trackDetailAction } = useProductDetailAnalytics({
     detailLocation,
     readyComplexId: !showingComplexSummary && complexDetail.status === 'ready'
@@ -931,7 +921,6 @@ export function PublicHousingExplorer({
     const nextSearch = kind === 'complexes'
       ? setComplexIdQuery(currentSearch, id)
       : setAnnouncementIdQuery(currentSearch, id)
-    prepareDetailVisit(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
     prepareProductDetail(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint, hover)
     navigate({
       hash: location.hash,
@@ -949,7 +938,6 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     mypageReturn,
-    prepareDetailVisit,
     prepareProductDetail,
     listPanelMode,
     mobile,
@@ -965,7 +953,6 @@ export function PublicHousingExplorer({
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
-    trackAppliedFilters('complex', currentSearch, nextSearch)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -988,7 +975,6 @@ export function PublicHousingExplorer({
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
-    trackAppliedFilters('announcement', currentSearch, nextSearch)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -1120,13 +1106,12 @@ export function PublicHousingExplorer({
     const nextSearch = previous.kind === 'complex'
       ? setComplexIdQuery(query, previous.id)
       : setAnnouncementIdQuery(query, previous.id)
-    prepareDetailVisit(previous.kind, previous.id, 'history')
     prepareProductDetail(previous.kind, previous.id, 'history')
     navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(nextSearch) }, {
       replace: true,
       state: popDetailHistoryState(location.state),
     })
-  }, [detailReturnFocusStack, location, navigate, prepareDetailVisit, prepareProductDetail, closeStreetView, trackDetailAction])
+  }, [detailReturnFocusStack, location, navigate, prepareProductDetail, closeStreetView, trackDetailAction])
 
   function expandComplexSummary() {
     if (!recentPreview || !showingComplexSummary) return
@@ -1332,15 +1317,6 @@ export function PublicHousingExplorer({
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     cancelCurrentLocation()
-    if (item.type === 'COMPLEX') {
-      trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
-    } else if (item.type === 'ANNOUNCEMENT') {
-      trackEvent('select_search_result', { result_type: 'announcement', announcement_id: item.id })
-    } else if (item.type === 'REGION') {
-      trackEvent('select_search_result', { result_type: 'region' })
-    } else if (item.type === 'SUBWAY_STATION') {
-      trackEvent('select_search_result', { result_type: 'subway_station' })
-    }
     if (item.type === 'SUBWAY_STATION' || (item.type === 'REGION' && item.regionCode === null)) {
       if (item.latitude !== null && item.longitude !== null) {
         pendingDetailCameraRef.current = null

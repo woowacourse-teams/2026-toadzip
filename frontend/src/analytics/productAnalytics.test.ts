@@ -309,7 +309,7 @@ describe('PostHog privacy and identity boundary', () => {
 const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<(reason?: 'pause' | 'reset' | 'context-change') => void>, listeners: [] as Array<() => void> }))
 vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed,
   consentStore: {
-    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-4' }, requiredScopeVersion: 'analytics-scope-4' } }),
     remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
     transition: () => { consentGate.allowed = false; consentGate.stops.forEach(stop => stop('context-change')); consentGate.listeners.forEach(listener => listener()) },
     refresh: async () => {},

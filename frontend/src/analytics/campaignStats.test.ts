@@ -89,3 +89,28 @@ it('제외 설정과 DNT를 따르고 누락된 프로젝트 설정으로 전송
   expect(captureCampaignStat('page_view')).toBe(false)
   expect(network).not.toHaveBeenCalled()
 })
+
+it('검색 유입과 후속 단지 조회를 분류값으로 세고 원시 리퍼러는 보내지 않는다', () => {
+  history.replaceState({}, '', '/')
+  vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://search.naver.com/search.naver?query=private')
+  initializeCampaignStats()
+  initializeCampaignStats()
+  history.replaceState({}, '', '/explore')
+  expect(captureCampaignStat('view_complex', { complex_id: '17' })).toBe(true)
+  expect(network).toHaveBeenCalledTimes(2)
+  expect(payload(0).properties).toMatchObject({ action: 'landing', organic_source: 'search_naver', count: 1 })
+  expect(payload(1).properties).toEqual({
+    action: 'view_complex', count: 1, complex_id: '17', organic_source: 'search_naver',
+    environment: 'dev', schema_version: 1, measurement_kind: 'campaign_counts_v1',
+    $process_person_profile: false, $geoip_disable: true, $ip: null,
+  })
+  expect(JSON.stringify([payload(0), payload(1)])).not.toMatch(/private|naver\.com|referrer|utm_/)
+})
+
+it('UTM 링크로 들어오면 리퍼러가 검색이어도 UTM 출처만 센다', () => {
+  vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://www.google.com/')
+  initializeCampaignStats()
+  expect(network).toHaveBeenCalledOnce()
+  expect(payload(0).properties.utm_source).toBe('community_a')
+  expect(payload(0).properties).not.toHaveProperty('organic_source')
+})
