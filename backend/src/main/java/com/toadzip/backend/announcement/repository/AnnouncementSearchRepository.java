@@ -294,6 +294,17 @@ public class AnnouncementSearchRepository {
     private record DeadlineExpressions(Expression<Integer> priority, Expression<LocalDate> date) {
     }
 
+    /** 공고 한 건이 같은 조건의 공개 목록에 들어가는지. 목록 조회와 같은 조건식을 쓴다. */
+    public boolean isListed(long announcementId, AnnouncementSearchCondition condition) {
+        HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
+        CriteriaQuery<Long> query = criteriaBuilder.createQuery(Long.class);
+        Root<Announcement> announcement = query.from(Announcement.class);
+        List<Predicate> predicates = searchPredicates(criteriaBuilder, query, announcement, condition);
+        predicates.add(criteriaBuilder.equal(announcement.get("id"), announcementId));
+        query.select(criteriaBuilder.count(announcement)).where(predicates.toArray(Predicate[]::new));
+        return entityManager.createQuery(query).getSingleResult() > 0;
+    }
+
     public long countLatestLeaves(AnnouncementSearchCondition condition) {
         HibernateCriteriaBuilder criteriaBuilder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Long> query = criteriaBuilder.createQuery(Long.class);
