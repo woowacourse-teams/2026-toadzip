@@ -10,7 +10,7 @@ it('비로그인 사용자도 헤더에서 의견 보내기로 이동한다', as
   render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
   fireEvent.click(screen.getByRole('link', { name: '의견 보내기' }))
   expect(await screen.findByRole('heading', { name: '의견 보내기' })).toBeVisible()
-  expect(screen.getByRole('textbox', { name: /의견 내용/ })).toBeVisible()
+  expect(screen.getByTitle('의견 설문')).toBeVisible()
 })
 
 it('의견 보내기 주소로 직접 접근할 수 있다', () => {
@@ -47,7 +47,7 @@ it.each([false, true])('배경 클릭은 데스크톱에서만 모달을 닫는�
     addEventListener: vi.fn(), removeEventListener: vi.fn() }))
   render(<MemoryRouter initialEntries={['/feedback']}><App /></MemoryRouter>)
   const dialog = screen.getByRole('dialog', { name: '의견 보내기' })
-  fireEvent.click(screen.getByRole('textbox', { name: /의견 내용/ }))
+  fireEvent.click(screen.getByTitle('의견 설문'))
   expect(dialog).toBeInTheDocument()
   fireEvent.click(dialog, { clientX: -10, clientY: -10 })
   if (mobile) expect(dialog).toBeInTheDocument()
