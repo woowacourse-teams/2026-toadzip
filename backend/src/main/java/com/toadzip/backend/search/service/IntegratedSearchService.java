@@ -246,7 +246,8 @@ public class IntegratedSearchService {
                 coordinate.map(point -> point.longitude()).orElse(null),
                 null,
                 null,
-                region.regionCode()
+                region.regionCode(),
+                false
         );
     }
 
@@ -272,7 +273,8 @@ public class IntegratedSearchService {
                 item.longitude(),
                 item.publishedAt(),
                 item.applicationStatus(),
-                item.regionCode()
+                item.regionCode(),
+                item.pastAnnouncement()
         );
     }
 
@@ -293,9 +295,21 @@ public class IntegratedSearchService {
     private Comparator<RankedItem> resultOrder() {
         return Comparator.comparingInt(RankedItem::rank)
                 .thenComparingInt(item -> item.source().type().ordinal())
+                .thenComparingInt(item -> announcementPhase(item.source()))
                 .thenComparing(this::regionOrder)
                 .thenComparing(item -> item.source().title())
                 .thenComparing(item -> item.source().id());
+    }
+
+    // 저장소 정렬과 같게 공고중·접수중, 접수마감 목록의 공고, 과거 공고 순으로 둔다.
+    private int announcementPhase(SearchSourceItem item) {
+        if (item.pastAnnouncement()) {
+            return 2;
+        }
+        if ("CLOSED".equals(item.applicationStatus()) || "CANCELLED".equals(item.applicationStatus())) {
+            return 1;
+        }
+        return 0;
     }
 
     private Page preview(List<SearchResultItemResponse> ranked) {
@@ -338,7 +352,7 @@ public class IntegratedSearchService {
             return regionCoordinateRepository.findByRegionCode(item.regionCode()).map(point ->
                     new SearchResultItemResponse(item.type(), item.id(), item.title(), item.subtitle(),
                             point.latitude(), point.longitude(), item.publishedAt(), item.applicationStatus(),
-                            item.regionCode())).orElse(item);
+                            item.regionCode(), item.pastAnnouncement())).orElse(item);
         } catch (RuntimeException exception) {
             log.error("읍면동 검색 좌표 조회에 실패했습니다: {}", item.regionCode(), exception);
             if (failures.stream().noneMatch(value -> value.type() == SearchType.REGION)) {

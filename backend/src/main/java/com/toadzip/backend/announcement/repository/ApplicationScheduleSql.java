@@ -66,6 +66,33 @@ public final class ApplicationScheduleSql {
                 """.formatted(announcementAlias, applicable(announcementAlias, complexIdExpression));
     }
 
+    /**
+     * 공고의 진행 단계를 0(공고중·접수중), 1(접수마감 목록에 남은 마감·취소), 2(과거 공고)로 나타낸다.
+     * 마감 공고는 마지막 일정 후 정해진 기간이 지나면 과거 공고다. {@code :today}와 {@code :followUpCutoff}가 필요하다.
+     */
+    public static String phase(String announcementAlias) {
+        return """
+                (CASE %2$s
+                  WHEN 'CLOSED' THEN CASE WHEN %3$s THEN 1 ELSE 2 END
+                  WHEN 'CANCELLED' THEN 1
+                  ELSE 0
+                END)
+                """.formatted(announcementAlias, status(announcementAlias, null),
+                followUpOpen(announcementAlias));
+    }
+
+    // 접수 종료일, 당첨자 발표일, 공고 일정 종료일 중 하나라도 기준일 이후면 마지막 일정이 아직 남아 있다.
+    // 확인된 접수 일정의 마지막 종료일은 공고 접수 종료일에 반영되어 있다.
+    private static String followUpOpen(String announcementAlias) {
+        return """
+                (%1$s.application_end_date >= :followUpCutoff
+                  OR %1$s.winner_announcement_date >= :followUpCutoff
+                  OR EXISTS (SELECT 1 FROM announcement_schedules follow_up_schedule
+                    WHERE follow_up_schedule.announcement_id = %1$s.id
+                      AND follow_up_schedule.end_at >= :followUpCutoff))
+                """.formatted(announcementAlias);
+    }
+
     private static String applicable(String announcementAlias, String complexIdExpression) {
         String applicable = "schedule.announcement_id = " + announcementAlias + ".id";
         if (complexIdExpression != null) {

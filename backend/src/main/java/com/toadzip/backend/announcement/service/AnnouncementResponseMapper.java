@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.dto.response.LhRevisionResponse;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.domain.SupplyTargetCountGroup;
@@ -57,6 +58,7 @@ final class AnnouncementResponseMapper {
             List<Announcement> announcements,
             List<SupplyRow> supplyRows,
             List<AnnouncementApplicationSchedule> applicationSchedules,
+            List<AnnouncementSchedule> schedules,
             LocalDate today
     ) {
         Map<Long, List<SupplyRow>> rowsByAnnouncementId = groupRowsByAnnouncementId(supplyRows);
@@ -66,6 +68,7 @@ final class AnnouncementResponseMapper {
                         rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
                         applicationSchedules.stream().filter(schedule ->
                                 schedule.getAnnouncement().getId().equals(announcement.getId())).toList(),
+                        resultAnnouncementDate(announcement, schedules),
                         today
                 ))
                 .toList();
@@ -144,6 +147,7 @@ final class AnnouncementResponseMapper {
             Announcement announcement,
             List<SupplyRow> supplyRows,
             List<AnnouncementApplicationSchedule> applicationSchedules,
+            LocalDate resultAnnouncementDate,
             LocalDate today
     ) {
         ListAggregate aggregate = aggregateRows(supplyRows);
@@ -166,6 +170,7 @@ final class AnnouncementResponseMapper {
                 start,
                 end,
                 applicationStatusCalculator.calculateDDay(announcement, applicationSchedules, today),
+                resultAnnouncementDate,
                 announcement.getViewCount(),
                 aggregate.supplyComplexCount(),
                 aggregate.supplyHouseholdCount(),
@@ -175,6 +180,22 @@ final class AnnouncementResponseMapper {
                 aggregate.thumbnailImageUrl(),
                 applicationSchedules.stream().map(this::applicationScheduleResponse).toList()
         );
+    }
+
+    // 당첨자 발표 일정이 공고의 발표일보다 늦게 잡혀 있으면 그 일정을 결과 발표일로 본다.
+    private LocalDate resultAnnouncementDate(Announcement announcement, List<AnnouncementSchedule> schedules) {
+        LocalDate result = announcement.getWinnerAnnouncementDate();
+        for (AnnouncementSchedule schedule : schedules) {
+            if (!schedule.getAnnouncement().getId().equals(announcement.getId())
+                    || schedule.getScheduleType() != ScheduleType.WINNER_ANNOUNCEMENT) {
+                continue;
+            }
+            LocalDate scheduled = schedule.getEndAt().toLocalDate();
+            if (result == null || scheduled.isAfter(result)) {
+                result = scheduled;
+            }
+        }
+        return result;
     }
 
     private ApplicationScheduleResponse applicationScheduleResponse(AnnouncementApplicationSchedule schedule) {

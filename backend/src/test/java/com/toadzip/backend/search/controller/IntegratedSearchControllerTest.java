@@ -49,7 +49,8 @@ class IntegratedSearchControllerTest {
                         null,
                         null,
                         null,
-                        "11"
+                        "11",
+                        false
                 )),
                 List.of(),
                 0,
@@ -91,7 +92,7 @@ class IntegratedSearchControllerTest {
         when(service.search(any())).thenReturn(new IntegratedSearchResponse(
                 "수원", List.of(), List.of(), List.of(new SearchResultItemResponse(
                         SearchType.REGION, "41110", "경기도 수원시", "경기도",
-                        new BigDecimal("37.27532584"), new BigDecimal("127.01641895"), null, null, "41110"
+                        new BigDecimal("37.27532584"), new BigDecimal("127.01641895"), null, null, "41110", false
                 )), List.of(), 1, 5, true, 12L
         ));
 

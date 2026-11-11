@@ -35,7 +35,7 @@ public class AnnouncementController {
         if (sort == AnnouncementSort.LATEST_ASC) {
             return new ApiResponse<>(announcementQueryService.getAnnouncements(request, cursor, size, sort));
         }
-        if (sort == AnnouncementSort.DEADLINE_DESC) {
+        if (sort == AnnouncementSort.DEADLINE_DESC || sort == AnnouncementSort.CLOSED_RECENT) {
             return new ApiResponse<>(announcementQueryService.getAnnouncementsByDeadline(request, cursor, size, sort));
         }
         if (sort == AnnouncementSort.DEADLINE) {

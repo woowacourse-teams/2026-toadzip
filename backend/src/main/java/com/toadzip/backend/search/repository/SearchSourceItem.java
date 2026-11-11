@@ -14,6 +14,7 @@ public record SearchSourceItem(
         BigDecimal longitude,
         LocalDate publishedAt,
         String applicationStatus,
-        String regionCode
+        String regionCode,
+        boolean pastAnnouncement
 ) {
 }

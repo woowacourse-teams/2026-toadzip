@@ -5,9 +5,11 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.domain.ClosedAnnouncementFollowUp;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -182,13 +184,18 @@ public class AnnouncementSearchRepository {
             LocalDate cursorPostedDate, Long cursorId, int limit, AnnouncementSort sort
     ) {
         boolean byPublication = sort == AnnouncementSort.LATEST || sort == AnnouncementSort.LATEST_ASC;
-        boolean ascending = sort != AnnouncementSort.DEADLINE_DESC;
+        boolean closedRecent = sort == AnnouncementSort.CLOSED_RECENT;
+        boolean ascending = sort != AnnouncementSort.DEADLINE_DESC && !closedRecent;
         boolean publicationAscending = sort == AnnouncementSort.LATEST_ASC || sort == AnnouncementSort.DEADLINE_DESC;
         HibernateCriteriaBuilder builder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = builder.createTupleQuery();
         Root<Announcement> announcement = query.from(Announcement.class);
         List<Predicate> predicates = searchPredicates(builder, query, announcement, condition);
         DeadlineExpressions order = deadlineExpressions(builder, query, announcement, condition);
+        if (closedRecent) {
+            // 확인된 접수 일정이 있어도 공고의 접수 종료일은 가장 늦은 일정 종료일로 맞춰져 있다.
+            order = new DeadlineExpressions(order.priority(), announcement.get("applicationEndDate"));
+        }
         if (cursorPriority != null && byPublication) {
             Predicate laterDeadline = builder.or(builder.greaterThan(order.priority(), cursorPriority),
                     builder.and(builder.equal(order.priority(), cursorPriority),
@@ -202,9 +209,9 @@ public class AnnouncementSearchRepository {
         }
         if (cursorPriority != null && !byPublication) {
             Predicate laterPublication = builder.or(afterCursor(builder,
-                    announcement.get("postedDate"), cursorPostedDate, !ascending),
+                    announcement.get("postedDate"), cursorPostedDate, publicationAscending),
                     builder.and(builder.equal(announcement.get("postedDate"), cursorPostedDate),
-                            afterCursor(builder, announcement.get("id"), cursorId, !ascending)));
+                            afterCursor(builder, announcement.get("id"), cursorId, publicationAscending)));
             predicates.add(builder.or(builder.greaterThan(order.priority(), cursorPriority),
                     builder.and(builder.equal(order.priority(), cursorPriority),
                             afterCursor(builder, order.date(), cursorSortDate, ascending)),
@@ -477,10 +484,29 @@ public class AnnouncementSearchRepository {
             case CLOSED -> criteriaBuilder.and(criteriaBuilder.not(current), criteriaBuilder.not(future));
             case CANCELLED -> criteriaBuilder.disjunction();
         };
-        return criteriaBuilder.or(
+        Predicate status = criteriaBuilder.or(
                 criteriaBuilder.and(criteriaBuilder.isFalse(announcement.get("applicationScheduleReviewed")), legacy),
                 criteriaBuilder.and(criteriaBuilder.isTrue(announcement.get("applicationScheduleReviewed")), reviewed)
         );
+        if (applicationStatus != ApplicationStatus.CLOSED) {
+            return status;
+        }
+        return criteriaBuilder.and(status, followUpOpen(criteriaBuilder, query, announcement, today));
+    }
+
+    // 접수 종료일, 당첨자 발표일, 공고 일정 종료일 중 하나라도 기준일 이후면 마지막 일정이 아직 남아 있다.
+    // 확인된 접수 일정의 마지막 종료일은 공고 접수 종료일에 반영되어 있다.
+    private Predicate followUpOpen(HibernateCriteriaBuilder builder, CriteriaQuery<?> query,
+            Root<Announcement> announcement, LocalDate today) {
+        LocalDate cutoff = ClosedAnnouncementFollowUp.cutoff(today);
+        Subquery<Long> laterSchedule = query.subquery(Long.class);
+        Root<AnnouncementSchedule> schedule = laterSchedule.from(AnnouncementSchedule.class);
+        laterSchedule.select(schedule.get("id")).where(
+                builder.equal(schedule.get("announcement"), announcement),
+                builder.greaterThanOrEqualTo(schedule.get("endAt"), cutoff.atStartOfDay()));
+        return builder.or(builder.greaterThanOrEqualTo(announcement.get("applicationEndDate"), cutoff),
+                builder.greaterThanOrEqualTo(announcement.get("winnerAnnouncementDate"), cutoff),
+                builder.exists(laterSchedule));
     }
 
     private void addApplicationPeriodPredicates(

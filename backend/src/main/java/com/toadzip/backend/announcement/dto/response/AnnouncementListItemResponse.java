@@ -20,6 +20,7 @@ public record AnnouncementListItemResponse(
         LocalDate applicationStartAt,
         LocalDate applicationEndAt,
         Integer dDay,
+        LocalDate winnerAnnouncementAt,
         long viewCount,
         int supplyComplexCount,
         Integer supplyHouseholdCount,

@@ -1,6 +1,7 @@
 package com.toadzip.backend.search.repository;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.domain.ClosedAnnouncementFollowUp;
 import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -36,6 +37,8 @@ public class InternalSearchRepository {
             )
             """;
 
+    private static final int PAST_ANNOUNCEMENT_PHASE = 2;
+
     private final JdbcClient jdbcClient;
 
     public InternalSearchRepository(JdbcClient jdbcClient) {
@@ -45,6 +48,7 @@ public class InternalSearchRepository {
     public List<SearchSourceItem> findAnnouncements(IntegratedSearchCondition condition, int limit) {
         Map<String, Object> parameters = baseParameters(condition);
         parameters.put("limit", limit);
+        parameters.put("followUpCutoff", ClosedAnnouncementFollowUp.cutoff(condition.today()));
         StringBuilder sql = new StringBuilder("""
                 SELECT announcement.id,
                        announcement.name,
@@ -53,6 +57,7 @@ public class InternalSearchRepository {
                        announcement.application_start_date,
                        announcement.application_end_date,
                        %s AS application_status,
+                       %s AS announcement_phase,
                        COALESCE((
                            SELECT STRING_AGG(DISTINCT complex.road_address, ' ')
                            FROM supply_rows supply_row
@@ -81,7 +86,8 @@ public class InternalSearchRepository {
                        ) AS longitude
                 FROM announcements announcement
                 WHERE
-                """.formatted(ApplicationScheduleSql.status("announcement", null))).append(LATEST_LEAF);
+                """.formatted(ApplicationScheduleSql.status("announcement", null), ApplicationScheduleSql.phase("announcement")))
+                .append(LATEST_LEAF);
         addAnnouncementFilters(sql, parameters, condition);
         addAnnouncementOrder(sql);
         sql.append(", announcement.posted_date DESC, announcement.id DESC LIMIT :limit");
@@ -285,7 +291,8 @@ public class InternalSearchRepository {
                 resultSet.getBigDecimal("longitude"),
                 resultSet.getObject("posted_date", java.time.LocalDate.class),
                 resultSet.getString("application_status"),
-                null
+                null,
+                resultSet.getInt("announcement_phase") == PAST_ANNOUNCEMENT_PHASE
         );
     }
 
@@ -300,7 +307,8 @@ public class InternalSearchRepository {
                 resultSet.getBigDecimal("longitude"),
                 null,
                 null,
-                resultSet.getString("city_county_district_code")
+                resultSet.getString("city_county_district_code"),
+                false
         );
     }
 
@@ -342,6 +350,6 @@ public class InternalSearchRepository {
                 .append(" JOIN housing_complexes prefix_complex ON prefix_complex.id = prefix_row.housing_complex_id")
                 .append(" WHERE prefix_row.admin_excluded = false AND prefix_row.announcement_id = announcement.id")
                 .append(" AND LOWER(prefix_complex.road_address) LIKE :prefixQuery ESCAPE '\\') THEN 1")
-                .append(" ELSE 2 END");
+                .append(" ELSE 2 END, announcement_phase");
     }
 }
