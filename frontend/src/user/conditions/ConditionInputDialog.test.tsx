@@ -37,6 +37,29 @@ describe('ConditionInputDialog full mode', () => {
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent('만 19세 이상부터 이용할 수 있어요.')
   })
 
+  it('moves on once residence months are typed after the missing-answer error', () => {
+    const { CURRENT_REGION_RESIDENCE_MONTHS: _, ...answers } = filled.answers
+    renderDialog({ initialDraft: { ...filled, answers } })
+    next()
+    expect(screen.getByRole('alert')).toHaveTextContent('답을 골라 주세요.')
+    fireEvent.change(screen.getByRole('spinbutton', { name: '현재 지역에서 얼마나 살았나요?' }), { target: { value: '1' } })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    next()
+    expect(screen.getByText('2 / 3 단계')).toBeInTheDocument()
+  })
+
+  it('clears the missing family count error once a count is chosen', () => {
+    const { REGISTERED_FAMILY_COUNT: _, ...answers } = filled.answers
+    renderDialog({ request: { mode: 'full', step: 3, origin: 'detail' }, initialDraft: { ...filled, answers: { ...answers, HOUSEHOLD_MONTHLY_INCOME: 2_300_000 } }, initialMaxStep: 3 })
+    const field = () => within(document.getElementById('condition-field-REGISTERED_FAMILY_COUNT') as HTMLElement)
+    fireEvent.click(screen.getByRole('button', { name: '입력 완료' }))
+    expect(field().getByRole('alert')).toHaveTextContent('답을 골라 주세요.')
+    fireEvent.click(field().getByRole('button', { name: '한 명 늘리기' }))
+    expect(field().queryByRole('alert')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '입력 완료' }))
+    expect(screen.queryByRole('button', { name: '입력 완료' })).not.toBeInTheDocument()
+  })
+
   it('tells that conditions are kept on this device', () => {
     renderDialog({ request: { mode: 'full', step: 4, origin: 'detail' }, initialDraft: filled, member: true, initialMaxStep: 4 })
     expect(screen.getByText(/내 계정에 보관돼요/)).toBeInTheDocument()
