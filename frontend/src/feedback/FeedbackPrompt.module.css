@@ -16,7 +16,7 @@
 }
 
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
-  .prompt { left: var(--explorer-nav-inset, 12px); }
+  .prompt { right: var(--explorer-nav-inset, 12px); left: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
