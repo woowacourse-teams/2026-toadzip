@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router'
 import { feedbackBackground } from './feedbackNavigation'
@@ -17,6 +17,7 @@ export function FeedbackPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const background = feedbackBackground(location.state)
+  const [formLoaded, setFormLoaded] = useState(false)
   function close() {
     if (background) navigate(-1)
     else navigate(lastExplorerPath(), { replace: true })
@@ -52,6 +53,9 @@ export function FeedbackPage() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
       </IconButton>
     </header>
-    <iframe className={styles.form} title="의견 설문" src={`${FEEDBACK_FORM_URL}?embedded=true`} />
+    <div className={styles.body}>
+      {formLoaded ? null : <p className={styles.loading} role="status">설문을 불러오는 중…</p>}
+      <iframe className={styles.form} title="의견 설문" src={`${FEEDBACK_FORM_URL}?embedded=true`} onLoad={() => setFormLoaded(true)} />
+    </div>
   </dialog>, document.body)
 }

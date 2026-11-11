@@ -4,7 +4,9 @@
 .heading { display: flex; flex-shrink: 0; align-items: center; gap: var(--ds-space-3); padding: var(--ds-space-3) var(--ds-space-3) var(--ds-space-3) var(--ds-space-6); border-bottom: 1px solid var(--ds-color-divider); }
 .heading h1 { flex: 1; min-width: 0; margin: 0; font-size: var(--ds-text-title); line-height: 1.4; }
 .external { color: var(--ds-color-label); font-size: var(--ds-text-caption); text-underline-offset: 3px; }
-.form { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ds-color-surface); }
+.body { position: relative; display: flex; flex: 1; min-height: 0; }
+.form { flex: 1; min-height: 0; width: 100%; border: 0; background: transparent; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--ds-color-label); font-size: var(--ds-text-body); pointer-events: none; }
 .dialog :is(a, h1):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 
 @media (max-width: 600px) {
