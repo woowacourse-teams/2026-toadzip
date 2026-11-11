@@ -408,7 +408,11 @@ export interface RawAnnouncementCompetition {
   readonly predictedRate: number | null
 }
 
+/** 공고가 보이는 공고 목록 탭. 백엔드가 목록과 같은 기준으로 판정한다. */
+export type AnnouncementListPhase = 'RECRUITING' | 'CLOSED' | 'NONE'
+
 export interface RawAnnouncementDetail {
+  readonly listPhase?: AnnouncementListPhase
   readonly announcementId: number
   readonly publicationType: string | null
   readonly correctionOrCancellationReason: string | null
@@ -530,5 +534,7 @@ export interface AnnouncementDetail {
   readonly attachments: readonly AnnouncementAttachment[]
   readonly supplyRows: readonly AnnouncementSupplyRow[]
   readonly competition: AnnouncementCompetition | null
+  /** 없으면 어느 탭에도 없는 것으로 본다. */
+  readonly listPhase?: AnnouncementListPhase
   readonly raw: RawAnnouncementDetail
 }

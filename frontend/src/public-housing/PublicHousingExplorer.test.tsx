@@ -3912,8 +3912,9 @@ describe('상세 고유 주소', () => {
     </>
   }
 
-  function renderAddressExplorer(initialEntry: string) {
+  function renderAddressExplorer(initialEntry: string, configure?: (repository: ReturnType<typeof createRepository>) => void) {
     const repository = createRepository()
+    configure?.(repository)
     const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
     render(<MemoryRouter initialEntries={[initialEntry]}><Routes>
       <Route path="/explore" element={explorer} />
@@ -3959,6 +3960,53 @@ describe('상세 고유 주소', () => {
     expect(screen.getByTestId('address-path')).toHaveTextContent('/complexes/17')
     fireEvent.click(screen.getByRole('button', { name: '주소 뒤로' }))
     await waitFor(() => expect(screen.getByTestId('address-path')).toHaveTextContent('/regions/11'))
+  })
+
+  it('데스크톱에서 모집 중 공고 주소로 들어오면 모집 중 목록을 펼치고 그 공고를 선택 표시한다', async () => {
+    const repository = renderAddressExplorer('/announcements/201', (target) => {
+      target.findAnnouncementDetail.mockResolvedValue({ ...announcementDetail(), listPhase: 'RECRUITING' })
+    })
+    const list = await screen.findByRole('region', { name: '공고 목록' })
+    await waitFor(() => expect(list.querySelector('[aria-current="true"]')).not.toBeNull())
+    expect(repository.findAnnouncementPage).toHaveBeenCalledWith(null, 20, expect.anything(),
+      expect.objectContaining({ applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] }))
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/announcements/201')
+    expect(screen.getByTestId('address-search')).not.toHaveTextContent('announcementTab')
+  })
+
+  it('데스크톱에서 접수마감 공고 주소로 들어오면 접수마감 탭을 펼치고 주소에 탭을 남긴다', async () => {
+    const repository = renderAddressExplorer('/announcements/201', (target) => {
+      target.findAnnouncementDetail.mockResolvedValue({ ...announcementDetail(), listPhase: 'CLOSED' })
+    })
+    await screen.findByRole('region', { name: '공고 목록' })
+    await waitFor(() => expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(null, 20, expect.anything(),
+      expect.objectContaining({ applicationStatuses: ['CLOSED'], sort: 'CLOSED_RECENT' })))
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/announcements/201')
+    expect(screen.getByTestId('address-search')).toHaveTextContent('announcementTab=closed')
+    // 모집 중 탭을 먼저 불러왔다가 바꾸지 않는다.
+    expect(repository.findAnnouncementPage).toHaveBeenCalledOnce()
+  })
+
+  it.each(['NONE', undefined])('목록 탭이 %s인 공고 주소로 들어오면 목록을 펼치지 않는다', async (listPhase) => {
+    const repository = renderAddressExplorer('/announcements/201', (target) => {
+      target.findAnnouncementDetail.mockResolvedValue({ ...announcementDetail(), listPhase })
+    })
+    await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })
+    expect(screen.queryByRole('region', { name: '공고 목록' })).not.toBeInTheDocument()
+    expect(repository.findAnnouncementPage).not.toHaveBeenCalled()
+  })
+
+  it('모바일에서는 공고 주소로 들어와도 목록을 펼치지 않고 상세를 먼저 보여 준다', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)' || query === '(max-width: 1023px)' }))
+    try {
+      const repository = renderAddressExplorer('/announcements/201', (target) => {
+        target.findAnnouncementDetail.mockResolvedValue({ ...announcementDetail(), listPhase: 'RECRUITING' })
+      })
+      await screen.findByRole('region', { name: '성남 청년 행복주택 입주자 모집 공고 상세 내용' })
+      expect(repository.findAnnouncementPage).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('공고 상세 주소로 바로 들어오면 공고 상세를 연다', async () => {

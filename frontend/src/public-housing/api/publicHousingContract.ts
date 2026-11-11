@@ -183,6 +183,10 @@ function decodeAnnouncementDetail(
       recordField(detail, 'winnerAnnouncementAt', path),
       `${path}.winnerAnnouncementAt`,
     ),
+    // 값이 없는 이전 응답은 그대로 두고(모델에서 NONE), 모르는 값은 목록 탭이 없는 것으로 읽는다.
+    ...(detail.listPhase === undefined ? {} : {
+      listPhase: detail.listPhase === 'RECRUITING' || detail.listPhase === 'CLOSED' ? detail.listPhase : 'NONE',
+    }),
     viewCount: safeIntegerAt(
       recordField(detail, 'viewCount', path),
       `${path}.viewCount`,
