@@ -175,6 +175,21 @@ describe('AnnouncementFilterPanel', () => {
     })
   })
 
+  it('접수마감 탭에서는 모집상태와 정렬을 숨기고 적용과 초기화 뒤에도 탭을 유지한다', () => {
+    const onApply = vi.fn()
+    renderFilter({ onApply, filters: { closed: true } })
+
+    expect(screen.queryByRole('group', { name: '공고 정렬' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    expect(screen.queryByRole('group', { name: '모집상태' })).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('group', { name: '공급기관' })).getByRole('checkbox', { name: 'LH' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(onApply).toHaveBeenLastCalledWith({ agencyCodes: ['LH'], closed: true })
+
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(onApply).toHaveBeenLastCalledWith({ closed: true })
+  })
+
   it('공고 조건을 함께 선택해 적용하고 초기화한다', () => {
     const onApply = vi.fn()
     renderFilter({ onApply })

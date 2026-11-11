@@ -7,6 +7,7 @@ import {
   decodeComplexPageEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
+import { toAnnouncementPage } from './publicHousingMapper.ts'
 import {
   createHttpPublicHousingRepository,
   PublicHousingHttpError,
@@ -984,6 +985,17 @@ describe('공공주택 응답 계약', () => {
     expect(() => decodeAnnouncementPageEnvelope({ data: {
       items: [], nextCursor: null, hasNext: false, totalCount,
     } })).toThrow(PublicHousingContractError)
+  })
+
+  it('공고 목록 항목의 결과 발표일을 읽고 이전 API처럼 없으면 null로 둔다', () => {
+    const page = { nextCursor: null, hasNext: false }
+    expect(toAnnouncementPage(decodeAnnouncementPageEnvelope({ data: { ...page,
+      items: [{ ...ANNOUNCEMENT_ITEM, winnerAnnouncementAt: '2027-02-24' }] } })).items[0]?.winnerAnnouncementAt)
+      .toBe('2027-02-24')
+    expect(toAnnouncementPage(decodeAnnouncementPageEnvelope({ data: { ...page, items: [ANNOUNCEMENT_ITEM] } }))
+      .items[0]?.winnerAnnouncementAt).toBeNull()
+    expect(() => decodeAnnouncementPageEnvelope({ data: { ...page,
+      items: [{ ...ANNOUNCEMENT_ITEM, winnerAnnouncementAt: '2027.02.24' }] } })).toThrow(PublicHousingContractError)
   })
 
   it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {

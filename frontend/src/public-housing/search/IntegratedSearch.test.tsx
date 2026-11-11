@@ -73,6 +73,16 @@ describe('IntegratedSearch', () => {
     expect(within(within(announcements).getByRole('button', { name: /마감된 공고/ })).getByText('접수마감')).toBeVisible()
   })
 
+  it('접수마감 목록에서 내려간 공고는 과거 공고로 구분해 보여 준다', async () => {
+    const past = { ...item('ANNOUNCEMENT', '3', '작년 공고'), applicationStatus: 'CLOSED', pastAnnouncement: true }
+    render(<IntegratedSearch repository={repositoryWith(response([past], [], []))} onSelect={vi.fn()} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+
+    const result = await screen.findByRole('button', { name: /작년 공고/ })
+    expect(within(result).getByText('과거 공고')).toBeVisible()
+    expect(within(result).queryByText('접수마감')).not.toBeInTheDocument()
+  })
+
   it('결과가 없는 유형은 그룹을 숨기고 결과 아래에 한 줄로 모아 안내한다', async () => {
     render(<IntegratedSearch repository={repositoryWith(response([item('ANNOUNCEMENT', '1', '서울 공고')], [], []))} onSelect={vi.fn()} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })

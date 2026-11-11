@@ -15,6 +15,7 @@ export function toHousingAnnouncementCardData(
     applicationStartAt: announcement.applicationStartAt,
     applicationStatus: announcement.applicationStatus,
     dDay: announcement.dDay,
+    winnerAnnouncementAt: announcement.winnerAnnouncementAt,
     recruitmentTypeLabel: recruitmentTypeLabel(
       announcement.recruitmentType,
     ),

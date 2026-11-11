@@ -253,6 +253,8 @@ export interface RawAnnouncementListItem {
   readonly applicationStartAt: string | null
   readonly applicationEndAt: string | null
   readonly dDay: number | null
+  /** 이 필드가 없던 이전 API 응답을 위해 생략할 수 있다. */
+  readonly winnerAnnouncementAt?: string | null
   readonly viewCount: number
   readonly supplyComplexCount: number
   readonly supplyHouseholdCount: number | null
@@ -281,6 +283,7 @@ export interface AnnouncementListItem {
   readonly applicationStartAt: string | null
   readonly applicationEndAt: string | null
   readonly dDay: number | null
+  readonly winnerAnnouncementAt?: string | null
   readonly viewCount: number
   readonly supplyComplexCount: number
   readonly supplyHouseholdCount: number | null

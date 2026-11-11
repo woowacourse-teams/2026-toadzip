@@ -40,6 +40,19 @@ describe('integratedSearchRepository', () => {
     expect(fetcher.mock.calls[0][1].signal).toBe(signal)
   })
 
+  it('과거 공고 표시를 읽고 이전 응답처럼 값이 없으면 과거 공고가 아닌 것으로 본다', async () => {
+    const announcement = { type: 'ANNOUNCEMENT', id: '7', title: '작년 공고', subtitle: null, latitude: null,
+      longitude: null, publishedAt: '2025-09-01', applicationStatus: 'CLOSED', regionCode: null }
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
+      announcements: [{ ...announcement, pastAnnouncement: true }, { ...announcement, id: '8' }],
+      complexes: [], failures: [], hasNext: false, page: 0, query: '작년', regions: [], size: 8, totalCount: null,
+    } })))
+
+    const result = await createIntegratedSearchRepository(fetcher).search('작년', true, 0, new AbortController().signal)
+
+    expect(result.announcements.map((value) => value.pastAnnouncement)).toEqual([true, false])
+  })
+
   it('지역의 마지막 페이지가 비었더라도 내부 지역 결과가 있으면 외부 검색으로 바꾸지 않는다', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
       announcements: [], complexes: [], failures: [], hasNext: false,

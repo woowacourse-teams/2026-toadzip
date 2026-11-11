@@ -73,6 +73,7 @@ import { readRecentComplexPreview, withRecentComplexPreview } from './navigation
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
 import { ConditionListBanner } from './announcements/ConditionListBanner'
+import { AnnouncementPhaseTabs } from './announcements/AnnouncementPhaseTabs'
 import { useConditionListResults } from './announcements/useConditionListResults'
 import { listResultText } from './presentation/comparisonPresentation'
 import { useConditions } from '../user/conditions/ConditionsContext'
@@ -95,6 +96,7 @@ import { useCurrentLocation } from './map/useCurrentLocation.ts'
 import { CurrentLocationControl } from './map/CurrentLocationControl.tsx'
 import type {
   AnnouncementDetail,
+  AnnouncementListItem,
   ComplexDetail,
   MapComplex,
 } from './model/publicHousing.ts'
@@ -579,10 +581,13 @@ export function PublicHousingExplorer({
     announcementFiltersKey,
   )
   const conditions = useConditions()
-  const conditionList = useConditionListResults(announcementResults.state.items, announcementFilters.regionCode)
+  // 접수마감 공고는 지원할 수 없으니 내 조건과 비교하지 않는다.
+  const announcementClosed = announcementFilters.closed === true
+  const conditionList = useConditionListResults(
+    announcementClosed ? NO_ANNOUNCEMENTS : announcementResults.state.items, announcementFilters.regionCode)
   const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
   const [onlyMatched, setOnlyMatched] = useState(false)
-  const filteringMatched = onlyMatched && conditionsCompared
+  const filteringMatched = onlyMatched && conditionsCompared && !announcementClosed
   const toggleMatched = useCallback(() => {
     if (conditionsCompared) setOnlyMatched((current) => !current)
     else conditions.openNudge('list')
@@ -1764,23 +1769,32 @@ export function PublicHousingExplorer({
               hidden={activeResultTab !== 'announcements'}
             >
               <div className="housing-results__body">
-                <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList} error={conditionList.status === 'error'} onRetry={conditionList.retry}
-                  filtering={filteringMatched} onToggleFilter={toggleMatched} />
+                <AnnouncementPhaseTabs
+                  closed={announcementClosed}
+                  panelId={ANNOUNCEMENT_LIST_PANEL_ID}
+                  onChange={(closed) => applyAnnouncementFilters(withAnnouncementPhase(announcementFilters, closed))}
+                />
+                {!announcementClosed && <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList} error={conditionList.status === 'error'} onRetry={conditionList.retry}
+                  filtering={filteringMatched} onToggleFilter={toggleMatched} />}
                 <AnnouncementFilterPanel
                   filters={announcementFilters}
                   onApply={applyAnnouncementFilters}
                   regionRepository={regionRepository}
                   resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
-                  eligibilityFilter={conditions.mode === 'disabled' ? undefined : { checked: filteringMatched, onToggle: toggleMatched }}
+                  eligibilityFilter={conditions.mode === 'disabled' || announcementClosed ? undefined : { checked: filteringMatched, onToggle: toggleMatched }}
                 />
                 <div
                   ref={announcementResultsScrollRef}
+                  id={ANNOUNCEMENT_LIST_PANEL_ID}
+                  role="tabpanel"
+                  aria-labelledby={`${ANNOUNCEMENT_LIST_PANEL_ID}-tab-${announcementClosed ? 'closed' : 'open'}`}
                   className="housing-results__scroll"
                   aria-busy={announcementResults.state.status === 'loading'
                     || announcementResults.state.status === 'loading-more'}
                 >
                   <AnnouncementResultContent
                     state={announcementResults.state}
+                    closed={announcementClosed}
                     conditionResults={conditionsCompared ? conditionList.results : null}
                     matchedIds={filteringMatched ? conditionList.matchedIds : null}
                     comparing={filteringMatched && comparingList}
@@ -1946,6 +1960,7 @@ function AnnouncementDetailLayer({ returnToMyPage, state, onClose, onOpenComplex
 
 function AnnouncementResultContent({
   state,
+  closed,
   conditionResults,
   matchedIds,
   comparing,
@@ -1957,6 +1972,8 @@ function AnnouncementResultContent({
   onRetry,
 }: {
   state: AnnouncementResultsState
+  /** 접수마감 탭 */
+  closed: boolean
   conditionResults: ReadonlyMap<string, ListConditionResult> | null
   /** 지원 가능 공고만 볼 때 남길 공고 */
   matchedIds: ReadonlySet<string> | null
@@ -1993,7 +2010,12 @@ function AnnouncementResultContent({
   }
 
   if (state.status === 'ready' && state.items.length === 0) {
-    return (
+    return closed ? (
+      <div className="housing-results__state" role="status">
+        <strong>일정이 남은 마감 공고가 없어요.</strong>
+        <span>마지막 일정 후 7일이 지난 공고는 검색에서 찾을 수 있어요.</span>
+      </div>
+    ) : (
       <div className="housing-results__state" role="status">
         <strong>현재 확인되는 공고가 없어요.</strong>
         <span>새 공고가 등록되면 이 목록에서 확인할 수 있어요.</span>
@@ -2034,6 +2056,18 @@ function AnnouncementResultContent({
       )}
     </>
   )
+}
+
+const ANNOUNCEMENT_LIST_PANEL_ID = 'announcement-list'
+const NO_ANNOUNCEMENTS: readonly AnnouncementListItem[] = []
+
+function withAnnouncementPhase(
+  filters: AnnouncementSearchFilters,
+  closed: boolean,
+): AnnouncementSearchFilters {
+  if (closed) return { ...filters, closed: true }
+  const { closed: _closed, ...open } = filters
+  return open
 }
 
 function conditionLineOf(result: ListConditionResult | undefined) {
