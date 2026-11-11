@@ -114,7 +114,7 @@ public class LocationSummaryImportService {
         Set<String> addresses = new HashSet<>();
         for (String roadAddress : sourceRepository.findDistinctRoadAddresses()) {
             try {
-                addresses.add(new NormalizedRoadAddress(roadAddress).withoutReference());
+                addresses.add(new NormalizedRoadAddress(roadAddress).locationKey());
             }
             catch (IllegalArgumentException ignored) {
                 // 주소 누락은 등록 대상별 주소·좌표 준비 결과에서 집계한다.

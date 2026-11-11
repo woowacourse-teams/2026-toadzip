@@ -16,6 +16,7 @@
 .panel h2 { margin: 0; font-size: var(--ds-text-title); font-weight: 700; }
 .refreshButton[class], .pageButton[class] { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: var(--ds-space-2); white-space: nowrap; }
 .refreshButton svg { width: 16px; height: 16px; }
+.refreshButton[data-refreshing='true']:disabled { opacity: 1; color: var(--ds-color-action); border-color: var(--ds-color-action); }
 .dashboard { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-5); margin: var(--ds-space-6) 0; }
 .overview { min-width: 0; }
 .sectionHeading { margin-bottom: var(--ds-space-3); }
@@ -56,7 +57,11 @@
 .listHeading, .targetRow { display: grid; grid-template-columns: minmax(180px, 1fr) 130px minmax(0, 1.5fr) 16px; align-items: center; gap: var(--ds-space-5); padding: var(--ds-space-3) var(--ds-space-4); }
 .listHeading { border-bottom: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control) var(--ds-radius-control) 0 0; color: var(--ds-color-muted); font-size: 12px; }
 .targets { margin: 0; padding: 0; list-style: none; }
+.targets > li { position: relative; }
 .targets > li + li { border-top: 1px solid var(--ds-color-divider); }
+.rowSelection { position: absolute; z-index: 1; top: 25px; left: var(--ds-space-4); display: flex; align-items: center; }
+.targetRow { padding-left: 48px; }
+.listHeading { padding-left: 48px; }
 .targetRow { min-height: 48px; list-style: none; cursor: pointer; }
 .targetRow:hover, .target[open] { background: var(--ds-color-surface-subtle); }
 .identity { min-width: 0; }
@@ -84,6 +89,11 @@
 .pageButton svg { width: 16px; height: 16px; }
 .empty { margin: 0; padding: 40px var(--ds-space-5); border: 1px dashed var(--ds-color-divider); border-radius: var(--ds-radius-control); color: var(--ds-color-muted); text-align: center; }
 .notice { margin: var(--ds-space-4) 0; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.outcomeDialog { box-sizing: border-box; width: min(420px, calc(100vw - 32px)); padding: var(--ds-space-6); border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); color: var(--ds-color-text); }
+.outcomeDialog::backdrop { background: #0006; }
+.outcomeDialog h3 { margin: 0 0 var(--ds-space-3); font-size: var(--ds-text-section); }
+.outcomeDialog p { margin: 0 0 var(--ds-space-5); line-height: 1.6; }
+.outcomeDialog button { display: block; margin-left: auto; }
 .error { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ds-space-3); margin: var(--ds-space-4) 0; padding: var(--ds-space-4); border: 1px solid color-mix(in srgb, var(--ds-color-deadline) 25%, var(--ds-color-divider)); border-radius: var(--ds-radius-control); background: color-mix(in srgb, var(--ds-color-deadline) 4%, var(--ds-color-surface)); color: var(--ds-color-deadline); }
 .error p { margin: 0; font-size: var(--ds-text-caption); }
 @media (max-width: 1100px) {
@@ -108,4 +118,6 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .chevron { transition: transform 120ms ease; }
+  .refreshButton[data-refreshing='true'] svg { animation: refresh-spin 1s linear infinite; }
 }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }

@@ -40,7 +40,8 @@ class MyHomeInitialRegistrationAssessmentTest {
 
     @BeforeEach
     void setUp() {
-        assessment = new MyHomeInitialRegistrationAssessment(new MyHomeComplexSourceMapper(), geocoding);
+        assessment = new MyHomeInitialRegistrationAssessment(new MyHomeComplexSourceMapper(), geocoding,
+                new InitialRegistrationInputs(new tools.jackson.databind.ObjectMapper()));
     }
 
     @Test

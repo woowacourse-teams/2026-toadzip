@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepos
 import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
 import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -49,6 +50,10 @@ class DataPipelineStepExecutor {
 
     DataPipelineStepResult registerComplexes(String actor) {
         return resultAdapter.adapt(initialRegistration.register(actor));
+    }
+
+    DataPipelineStepResult retryComplexes(String actor, List<String> identifiers) {
+        return resultAdapter.adapt(initialRegistration.retry(actor, identifiers));
     }
 
     DataPipelineStepResult execute(DataPipelineStep step) {
