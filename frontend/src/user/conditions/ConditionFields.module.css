@@ -203,6 +203,10 @@
   margin-top: 10px;
 }
 
+.footEnd {
+  justify-content: flex-end;
+}
+
 .checkRow {
   display: flex;
   flex-wrap: wrap;
@@ -278,16 +282,52 @@
   cursor: not-allowed;
 }
 
-.stepper input {
-  width: 64px;
-  border: 0;
-  background: transparent;
-  text-align: center;
+.stepperValue {
+  display: flex;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   border-inline: 1px solid var(--ds-color-divider);
   font-size: 16px;
   font-weight: var(--ds-weight-strong);
-  line-height: 46px;
+}
+
+.stepperValue input {
+  min-width: 1ch;
+  field-sizing: content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-text);
+  font: inherit;
   text-align: center;
+  appearance: textfield;
+}
+
+@supports not (field-sizing: content) {
+  .stepperValue input {
+    width: 4ch;
+  }
+}
+
+.stepperValue input::placeholder {
+  color: var(--ds-color-label);
+  font-weight: 400;
+}
+
+.stepperValue input::-webkit-inner-spin-button,
+.stepperValue input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.stepperValue input:focus-visible {
+  outline: none;
+}
+
+.stepperValue:focus-within {
+  box-shadow: inset 0 0 0 2px var(--ds-color-action);
 }
 
 .region {
