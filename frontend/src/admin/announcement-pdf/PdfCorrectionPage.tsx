@@ -20,6 +20,7 @@ import { applicableCells, assembleReview, fieldNeeds, groupOf, pendingField, pen
 import { ReviewCells } from './ReviewCells'
 import { ReviewReception } from './ReviewReception'
 import { ReviewSupply } from './ReviewSupply'
+import { readExtractedEligibility } from './extractedEligibility'
 import { EligibilityDraftPanel } from './EligibilityDraftPanel'
 import { supplyView } from './supplyView'
 import { SupplyNavigator } from './SupplyNavigator'
@@ -133,6 +134,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   // 긴 응답을 입력마다 다시 읽지 않도록 검토 버튼을 누를 때만 읽는다.
   // 응답은 추출이 끝날 때만 바뀌므로 바로 읽어 추출 요약과 공고 일치 확인에 쓴다.
   const parsed = useMemo(() => readExtraction(text), [text])
+  const extractedEligibility = useMemo(() => readExtractedEligibility(text), [text])
   const checks = useMemo(() => parsed.ok && workspace ? checkAnnouncement(parsed.value, workspace.detail.data) : [], [parsed, workspace])
   const backParams = new URLSearchParams(params); backParams.delete('failureCount'); backParams.delete('failureRow')
   const supplyParams = new URLSearchParams(backParams); supplyParams.set('section', 'relations')
@@ -475,7 +477,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
             onSelectComplex={index => { selectRow(index); scrollReviewTop() }} onSelectRow={stepRow} onJump={goTo} />}
         </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
-          {eligibilityOpen && <EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} onEvidence={item => evidence(item)} />}
+          {eligibilityOpen && <EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} onEvidence={item => evidence(item)} extracted={extractedEligibility} />}
           {!eligibilityOpen && <>
           {section === 'supply' && <ReviewSupply savesHousingTypes={!supplyDraft} warnings={workerWarnings} editorHref={supplyDraft ? undefined : `/admin/announcements/${id}?${supplyParams}`} review={review} workspace={workspace} housing={housing} complexes={complexes} filter={filter} empty={empty} onChange={change} onEvidence={evidence} selected={selectedRow} onSelect={stepRow} onJump={goTo} />}
           {section === 'schedule' && <><h2>일정</h2><p>기존 단지별 일정은 각 ID를 유지하며 같은 보정값으로 갱신합니다.</p>{review.extraction.undatedSchedules.length > 0 && <p className={styles.hint}>날짜 없이 안내한 일정: {review.extraction.undatedSchedules.join(' · ')}</p>}<ReviewSchedules review={review} workspace={workspace} filter={filter} empty={empty} onChange={change} onEvidence={evidence} /></>}
@@ -496,7 +498,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
         {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
     </section>}
     {/* 공급정보를 적용한 바로 뒤가 신청자격 초안을 만들 때라, 적용 결과 아래에 신청자격 패널을 둔다. */}
-    {phase === 'result' && !supplyDraft && <section className={styles.result}><EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} /></section>}
+    {phase === 'result' && !supplyDraft && <section className={styles.result}><EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} autoCreate /></section>}
   </section>
 }
 

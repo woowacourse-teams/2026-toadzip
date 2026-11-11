@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { Evidence } from './extraction'
+import type { ExtractedEligibility } from './extractedEligibility'
 import { createEligibilityDraft, loadEligibilityDraft, moveToDirectCheck, publishEligibilityDraft, ruleText, saveEligibilityDraft, type Check, type Content, type RuleSet } from './eligibilityDraftApi'
 import styles from './PdfCorrection.module.css'
 
@@ -10,8 +11,13 @@ const RECRUITMENT: Record<string, string> = { RECRUITING: '모집', UNKNOWN: '�
  * PDF 보정의 신청자격 탭. 최신 추출의 AI 신청자격과 적용한 공급행으로 만든 초안을 보이고, 잘못 읽힌 조건은 지우지 않고 직접 확인으로 바꾼 뒤
  * 검토 완료로 표시해 공개한다. 조건 숫자 고치기는 이 화면에서 하지 않는다.
  */
-/** onEvidence가 없으면(PDF 창이 없는 적용 결과 화면) 근거 버튼을 두지 않는다. */
-export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void }) {
+/**
+ * onEvidence가 없으면(PDF 창이 없는 적용 결과 화면) 근거 버튼을 두지 않는다.
+ * autoCreate면(보정 적용 직후) 초안이 없을 때 누르지 않아도 최신 PDF 추출로 초안을 만든다. 이미 있는 초안은 덮어쓰지 않는다.
+ * extracted는 보정 적용 전 탭이 넘기는, PDF에서 이미 뽑은 신청자격이다(없으면 null). 초안이 없는 동안 그대로 보인다.
+ * 초안은 저장된 공급행에 경로를 이어 만들므로 적용 전에는 만들기 버튼을 두지 않는다.
+ */
+export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, autoCreate = false, extracted }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void; autoCreate?: boolean; extracted?: ExtractedEligibility | null }) {
   const [draft, setDraft] = useState<RuleSet | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -21,9 +27,11 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   useEffect(() => {
     const controller = new AbortController()
     loadEligibilityDraft(announcementId, controller.signal)
-      .then(value => { setDraft(value); setLoaded(true) })
+      .then(value => { setDraft(value); setLoaded(true); if (!value && autoCreate && pdfSha256) make(pdfSha256, null) })
       .catch(error => { if (!controller.signal.aborted) { setMessage({ kind: 'error', text: errorText(error) }); setLoaded(true) } })
     return () => controller.abort()
+    // 적용 결과 화면은 공고와 PDF가 바뀌지 않는다. 자동 만들기는 첫 조회 때 한 번만 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [announcementId])
 
   async function run(action: () => Promise<RuleSet>, done: string) {
@@ -41,9 +49,13 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   function create() {
     if (!pdfSha256) return
     if (draft && !window.confirm('지금 초안을 버리고 최신 PDF 추출로 다시 만들까요?')) return
+    make(pdfSha256, draft)
+  }
+
+  function make(sha256: string, current: RuleSet | null) {
     setNotices([])
     void run(async () => {
-      const created = await createEligibilityDraft(announcementId, pdfSha256, draft)
+      const created = await createEligibilityDraft(announcementId, sha256, current)
       setNotices(created.notices)
       return created.ruleSet
     }, '최신 PDF 추출로 초안을 만들었어요. 조건을 확인해 주세요.')
@@ -78,16 +90,30 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   const reviewed = content?.metadata.reviewStatus === 'REVIEWED'
   return <section aria-labelledby="eligibility-draft-title">
     <h2 id="eligibility-draft-title">신청자격</h2>
-    <p>최신 PDF 추출의 신청자격과 지금 저장된 공급정보로 초안을 만들어요. 공급정보를 먼저 적용한 뒤 만드세요. 잘못 읽힌 조건은 직접 확인으로 바꾸면 그 신청 경로는 지원 가능으로 확정하지 않아요.</p>
+    {draft && <p>PDF에서 뽑은 신청자격과 저장된 공급정보로 만든 초안이에요. 잘못 읽힌 조건은 직접 확인으로 바꾸면 그 신청 경로는 지원 가능으로 확정하지 않아요.</p>}
     <div className={styles.actions}>
-      <Button onClick={create} disabled={busy || !loaded || !pdfSha256}>{draft ? 'AI 추출로 다시 만들기' : 'AI 추출로 초안 만들기'}</Button>
+      {(draft || autoCreate) && <Button onClick={create} disabled={busy || !loaded || !pdfSha256}>{draft ? '뽑은 신청자격으로 다시 만들기' : '초안 만들기'}</Button>}
       {content && <Button variant="secondary" disabled={busy || reviewed} onClick={() => save({ ...content, metadata: { ...content.metadata, reviewStatus: 'REVIEWED' } }, '검토 완료로 표시했어요. 공개할 수 있어요.')}>검토 완료로 표시</Button>}
       {draft && <Button variant="secondary" disabled={busy || !reviewed} onClick={() => void publish(draft)}>공개</Button>}
     </div>
     {!pdfSha256 && <p className={styles.hint}>PDF를 열면 초안을 만들 수 있어요.</p>}
     {message && <p role={message.kind === 'error' ? 'alert' : 'status'} className={message.kind === 'error' ? styles.warningNote : styles.hint}>{message.text}</p>}
     {notices.length > 0 && <div className={styles.warningNote}><p><strong>검토할 점</strong></p><ul>{notices.map(item => <li key={item}>{item}</li>)}</ul></div>}
-    {loaded && !draft && !message && <p className={styles.hint}>아직 신청자격 초안이 없어요.</p>}
+    {loaded && !draft && !autoCreate && (extracted
+      ? <>
+        <p>보정 내용을 적용하면 아래 내용과 저장된 공급정보로 초안이 만들어져요.</p>
+        {extracted.groups.map((group, index) => <section key={index} aria-label={group.title}>
+          <h3>{group.title}</h3>
+          {group.requirements.length === 0 && group.qualifications.length === 0 && <p className={styles.hint}>뽑은 요건이 없어요.</p>}
+          {group.requirements.length > 0 && <ul>{group.requirements.map((item, row) => <li key={row}>
+            <span>{item.text}</span>{' '}{item.evidence && onEvidence && <Button data-design-system className={styles.quietButton} onClick={() => onEvidence(item.evidence!)}>{`근거 p.${item.evidence.page} 열기`}</Button>}
+          </li>)}</ul>}
+          {group.qualifications.length > 0 && <p>직접 확인 자격: {group.qualifications.join(', ')}</p>}
+        </section>)}
+        {extracted.exclusions.length > 0 && <><h3>신청 제한</h3><ul>{extracted.exclusions.map((item, index) => <li key={index}><strong>{item.title}</strong> {item.body}</li>)}</ul></>}
+      </>
+      : <p className={styles.hint}>{extracted === null ? '이 PDF 추출 결과에는 신청자격이 없어요. PDF를 다시 추출해 주세요.' : '아직 신청자격 초안이 없어요.'}</p>)}
+    {loaded && !draft && autoCreate && !message && !busy && <p className={styles.hint}>아직 신청자격 초안이 없어요.</p>}
     {content && <>
       <p className={styles.hint}>{reviewed ? '검토 완료' : '검토 전'} · 기준일 {content.metadata.referenceDate} · 수정 {draft!.revision}회</p>
       <Scope title="모든 신청자에게 적용" scopeId="common" checks={content.commonChecks} content={content} busy={busy}

@@ -20,6 +20,8 @@ const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), loadLates
 vi.mock('./extractionApi', async original => ({ ...await original<typeof import('./extractionApi')>(), ...extractor }))
 const draftApi = vi.hoisted(() => ({ loadCorrectionDraft: vi.fn(), saveCorrectionDraft: vi.fn(), deleteCorrectionDraft: vi.fn() }))
 vi.mock('./correctionDraftApi', async original => ({ ...await original<typeof import('./correctionDraftApi')>(), ...draftApi }))
+const eligibility = vi.hoisted(() => ({ loadEligibilityDraft: vi.fn(async () => null), createEligibilityDraft: vi.fn(() => new Promise(() => {})) }))
+vi.mock('./eligibilityDraftApi', async original => ({ ...await original<typeof import('./eligibilityDraftApi')>(), ...eligibility }))
 const matchingTypes = vi.hoisted(() => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => matchingTypes)
 vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnouncementAttachment: async () => new Blob(), attachmentErrorMessage: () => 'PDF 열기 실패' }))
@@ -127,6 +129,8 @@ it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안�
     housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] })))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
+  // 적용이 끝나면 누르지 않아도 열린 PDF의 추출로 신청자격 초안을 만든다.
+  await waitFor(() => expect(eligibility.createEligibilityDraft).toHaveBeenCalledExactlyOnceWith('29', expect.stringMatching(/^[0-9a-f]{64}$/), null))
   expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')

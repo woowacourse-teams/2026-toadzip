@@ -102,6 +102,14 @@ def test_a_supply_table_sharing_a_page_with_the_contents_is_kept():
     assert 2 in selection.pages
 
 
+def test_a_numbered_item_in_the_middle_of_a_line_does_not_end_a_section():
+    """줄 가운데의 번호 항목('…안내        1. 서류 제출처는…')은 절 제목이 아니다. 절 제목으로 보면 신청방법 절의 뒤쪽 쪽이 빠진다."""
+    selection = pages.select([COVER, SUPPLY, RENT, "3. 신청방법\n인터넷 신청", "제출 안내" + " " * 20 + "1. 서류 제출처는 관리소",
+                              "방문 신청 시 신분증 지참", "4. 유의사항"])
+
+    assert selection.pages == [1, 2, 3, 4, 5, 6]
+
+
 def test_continuation_above_the_next_section_heading_is_kept():
     selection = pages.select([COVER, SUPPLY, RENT, QUALIFICATION,
                               "고령자 자격의 마지막 문단\n4. 유의사항", "그림 안내"])

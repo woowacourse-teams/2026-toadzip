@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EligibilityDraftPanel } from './EligibilityDraftPanel'
 import { moveToDirectCheck, ruleText, type Content, type RuleSet } from './eligibilityDraftApi'
+import { readExtractedEligibility } from './extractedEligibility'
 
 const api = vi.hoisted(() => ({ load: vi.fn(), create: vi.fn(), save: vi.fn(), publish: vi.fn() }))
 vi.mock('./eligibilityDraftApi', async original => ({
@@ -63,10 +64,8 @@ describe('EligibilityDraftPanel', () => {
     api.load.mockResolvedValue(null)
     api.create.mockResolvedValue({ ruleSet: draft(), notices: ['신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.'] })
     api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
-    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} />)
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} autoCreate />)
 
-    expect(await screen.findByText('아직 신청자격 초안이 없어요.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' }))
     expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
     expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
     expect(screen.getByText('신청 단위: 인천석남 21A (모집)')).toBeInTheDocument()
@@ -100,14 +99,51 @@ describe('EligibilityDraftPanel', () => {
     expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
   })
 
+  it('보정 적용 뒤(autoCreate)에는 초안이 없으면 누르지 않아도 최신 PDF 추출로 초안을 만든다', async () => {
+    api.load.mockResolvedValue(null)
+    api.create.mockResolvedValue({ ruleSet: draft(), notices: ['공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다.'] })
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+
+    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
+    expect(api.create).toHaveBeenCalledTimes(1)
+    expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
+    expect(screen.getByText('공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다.')).toBeInTheDocument()
+  })
+
+  it('보정 적용 뒤에도 이미 있는 초안은 덮어쓰지 않고, 자동 만들기가 실패하면 이유를 보이고 다시 만들 수 있게 둔다', async () => {
+    api.load.mockResolvedValueOnce(draft())
+    const first = render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
+    expect(api.create).not.toHaveBeenCalled()
+    first.unmount()
+
+    api.load.mockResolvedValueOnce(null)
+    api.create.mockRejectedValueOnce(new Error('공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다.'))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('공급대상과 이어지는 신청자격 경로가 없어')
+    expect(api.create).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: '초안 만들기' })).toBeEnabled()
+  })
+
+  it('열린 PDF가 없으면 보정 적용 뒤에도 초안을 자동으로 만들지 않는다', async () => {
+    api.load.mockResolvedValue(null)
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} autoCreate />)
+
+    expect(await screen.findByText('PDF를 열면 초안을 만들 수 있어요.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: '초안 만들기' })).toBeDisabled())
+    expect(api.create).not.toHaveBeenCalled()
+  })
+
   it('첫 조회가 끝나기 전에는 초안을 만들 수 없다', async () => {
     let finish: (value: RuleSet | null) => void = () => {}
     api.load.mockReturnValue(new Promise(resolve => { finish = resolve }))
-    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} />)
+    api.create.mockRejectedValue(new Error('공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다.'))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
 
-    expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '초안 만들기' })).toBeDisabled()
     finish(null)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: '초안 만들기' })).toBeEnabled())
   })
 
   it('검토 완료로 표시한 초안만 공개하고, 공개 뒤에는 초안을 다시 읽는다', async () => {
@@ -119,7 +155,7 @@ describe('EligibilityDraftPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: '검토 완료로 표시' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '공개' })).toBeEnabled())
     expect(api.save.mock.calls[0][2].metadata.reviewStatus).toBe('REVIEWED')
-    expect(screen.getByRole('button', { name: 'AI 추출로 다시 만들기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '뽑은 신청자격으로 다시 만들기' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: '공개' }))
     expect(await screen.findByText('공개했어요. 사용자 판정이 곧 다시 계산돼요.')).toBeInTheDocument()
@@ -127,6 +163,40 @@ describe('EligibilityDraftPanel', () => {
     // 공개본을 초안처럼 들고 있지 않아 다음 작업이 이전 revision으로 409가 나지 않는다.
     expect(api.load).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /만들기/ })).not.toBeInTheDocument()
+  })
+
+  it('보정 적용 전에는 PDF에서 이미 뽑은 신청자격을 그대로 보이고, 초안은 적용할 때 만들어진다고 알린다', async () => {
+    api.load.mockResolvedValue(null)
+    const onEvidence = vi.fn()
+    const extracted = readExtractedEligibility(JSON.stringify({
+      data: { eligibility: {
+        common: { requirements: [{ kind: 'NO_HOUSE', asWritten: '무주택세대구성원' }], qualifications: [], summary: null },
+        targets: [{ target: '청년', requirements: [{ kind: 'AGE', asWritten: '만 19세 이상 39세 이하' }], qualifications: [{ exactName: '주거급여 수급자' }] }],
+        exclusions: [{ title: '재당첨 제한', body: '공공임대 당첨자' }],
+      } },
+      evidence: [{ path: 'eligibility.targets[0].requirements[0]', page: 5, quote: '만 19세 이상 39세 이하' }],
+    }))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={onEvidence} extracted={extracted} />)
+
+    expect(await screen.findByText('보정 내용을 적용하면 아래 내용과 저장된 공급정보로 초안이 만들어져요.')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: '모든 신청자에게 적용' })).getByText('무주택세대구성원')).toBeInTheDocument()
+    const youth = within(screen.getByRole('region', { name: '청년' }))
+    expect(youth.getByText('만 19세 이상 39세 이하')).toBeInTheDocument()
+    expect(youth.getByText('직접 확인 자격: 주거급여 수급자')).toBeInTheDocument()
+    fireEvent.click(youth.getByRole('button', { name: '근거 p.5 열기' }))
+    expect(onEvidence).toHaveBeenCalledWith({ path: 'eligibility.targets[0].requirements[0]', page: 5, quote: '만 19세 이상 39세 이하' })
+    expect(screen.getByText('공공임대 당첨자')).toBeInTheDocument()
+    // 추출은 이미 끝났다. 다시 추출하는 것처럼 보이는 버튼을 두지 않는다.
+    expect(screen.queryByRole('button', { name: /만들기/ })).not.toBeInTheDocument()
+    expect(api.create).not.toHaveBeenCalled()
+  })
+
+  it('추출 결과에 신청자격이 없으면 없다고 알린다', async () => {
+    api.load.mockResolvedValue(null)
+    expect(readExtractedEligibility(JSON.stringify({ data: { eligibility: null }, evidence: [] }))).toBeNull()
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} extracted={null} />)
+
+    expect(await screen.findByText('이 PDF 추출 결과에는 신청자격이 없어요. PDF를 다시 추출해 주세요.')).toBeInTheDocument()
   })
 })

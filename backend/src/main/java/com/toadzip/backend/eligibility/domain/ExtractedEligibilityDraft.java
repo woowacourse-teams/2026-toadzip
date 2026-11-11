@@ -40,12 +40,14 @@ import java.util.function.Function;
  * 자동 판정 조건으로 바꿀 수 없는 요건(기타, 비운 숫자, 없는 소득 기준표, 읽지 못한 지역, 본인·부모 합산 소득, 장애인 등 가산)은
  * 조건으로 만들지 않고 그 범위의 직접 확인 안내 항목으로 남긴다. 조건을 빼서 판정을 넓히지 않는다.
  * 출산자녀·맞벌이 가산이 있는 조건은 해당하지 않는 사람에게만 자동 판정하고, 해당하면 직접 확인으로 넘긴다.
+ * 공급표가 대상을 나누지 않은 공급행(대상이 없거나 "전체"뿐)에는 모든 경로를 잇는다. 워커가 경로에 맞출 대상 이름이 없기 때문이다.
  */
 public final class ExtractedEligibilityDraft {
     private static final String DOCUMENT_ID = "pdf";
     private static final String SCOPE_NOTE = "공고문의 신청자격 장을 바탕으로 구조화했어요. 우선순위·배점·제출서류는 담지 않았어요.";
     private static final long MAXIMUM_AGE = 150;
     private static final long MAXIMUM_MONTHS = 1800;
+    private static final String EVERYONE = "전체";
 
     /** 추출 PDF와 그 공고의 현재 공급행. incomeTables는 "기준표 종류:연도" → 기준표 ID다. */
     public record Source(
@@ -101,7 +103,8 @@ public final class ExtractedEligibilityDraft {
         }
         String classification = evidences.getFirst().id();
         List<String> unmatched = new ArrayList<>();
-        List<Route> routes = routes(unmatched);
+        List<String> openOnly = new ArrayList<>();
+        List<Route> routes = routes(unmatched, openOnly);
         Scope common = new Scope("common", new GuidanceTarget(TargetScope.ANNOUNCEMENT, null, null),
                 source.eligibility().common().evidencePath());
         List<ProfileCheck> commonChecks = checks(source.eligibility().common().requirements(), common);
@@ -124,6 +127,11 @@ public final class ExtractedEligibilityDraft {
                 Scope scope = new Scope(pathId, new GuidanceTarget(TargetScope.PATH, pathId, null),
                         route.group().evidencePath());
                 List<ProfileCheck> checks = checks(route.group().requirements(), scope);
+                if (route.name() != null && checks.isEmpty() && alternative.qualificationIds().isEmpty()
+                        && scope.direct.isEmpty()) {
+                    // 경로 이름이 곧 자격인데 요건을 하나도 못 뽑은 경로다. 공통 조건만으로 지원 가능이 되지 않게 직접 확인을 둔다.
+                    scope.direct.add("신청 대상 '" + route.name() + "'에 해당하는지");
+                }
                 paths.add(new EligibilityPath(pathId, alternative.label(), PathKind.APPLICATION, checks,
                         alternative.qualificationIds()));
                 options.addAll(connected);
@@ -143,6 +151,16 @@ public final class ExtractedEligibilityDraft {
         scopes.forEach(scope -> guidances.addAll(scope.guidances()));
         exclusions();
         List<String> notices = new ArrayList<>();
+        long open = source.units().stream().filter(unit -> usedUnits.contains(unitId(unit)))
+                .filter(ExtractedEligibilityDraft::open).count();
+        if (open > 0 && !source.eligibility().routes().isEmpty()) {
+            notices.add("공급대상 구분이 없는 공급행 " + open + "개에는 모든 신청자격 경로를 이었습니다. "
+                    + "경로마다 신청할 수 있는 공급행이 맞는지 확인해 주세요.");
+        }
+        openOnly.removeAll(unmatched);
+        if (!openOnly.isEmpty()) {
+            notices.add("공급대상을 나눈 공급행에는 잇지 못한 신청자격 경로: " + String.join(", ", openOnly));
+        }
         if (!unmatched.isEmpty()) {
             notices.add("공급대상과 잇지 못한 신청자격 경로: " + String.join(", ", unmatched));
         }
@@ -170,18 +188,25 @@ public final class ExtractedEligibilityDraft {
         }
         return source.units().stream().flatMap(unit -> unit.targets().stream())
                 .filter(target -> target.supplyHouseholdCount() == null || target.supplyHouseholdCount() > 0)
-                .map(Target::name).filter(name -> !covered.contains(compact(name))).distinct().toList();
+                .map(Target::name).filter(name -> !covered.contains(compact(name)) && !EVERYONE.equals(compact(name)))
+                .distinct().toList();
     }
 
     /** 경로가 없으면(공급대상 구분이 없는 공고) 공급표의 모든 대상을 잇는 경로 하나로 본다. */
-    private List<Route> routes(List<String> unmatched) {
+    private List<Route> routes(List<String> unmatched, List<String> openOnly) {
         List<Route> routes = new ArrayList<>();
+        boolean anyOpen = source.units().stream().anyMatch(ExtractedEligibilityDraft::open);
+        boolean anyDivided = source.units().stream().anyMatch(unit -> !open(unit));
         for (Route route : source.eligibility().routes()) {
-            if (route.supplyTargets().isEmpty()) {
+            if (route.supplyTargets().isEmpty() && !anyOpen) {
                 unmatched.add(route.name());
-            } else {
-                routes.add(route);
+                continue;
             }
+            // 워커가 대상을 맞추지 못한 경로는 대상 구분이 없는 행에만 이어진다. 나눈 행이 있으면 빠진 연결을 알린다.
+            if (route.supplyTargets().isEmpty() && anyDivided) {
+                openOnly.add(route.name());
+            }
+            routes.add(route);
         }
         if (source.eligibility().routes().isEmpty()) {
             List<String> all = source.units().stream().flatMap(unit -> unit.targets().stream()).map(Target::name)
@@ -219,13 +244,16 @@ public final class ExtractedEligibilityDraft {
         // 워커가 맞춘 이름과 보정으로 저장한 이름은 공백만 다를 수 있어(가군 (일반) ↔ 가군(일반)) 공백은 무시하고 비교한다.
         Set<String> wanted = new LinkedHashSet<>(supplyTargets.stream().map(ExtractedEligibilityDraft::compact).toList());
         for (Unit unit : source.units()) {
-            List<Target> matched = unit.targets().stream().filter(target -> wanted.contains(compact(target.name()))).toList();
-            if (matched.isEmpty()) {
+            boolean open = open(unit);
+            List<Target> matched = open ? unit.targets()
+                    : unit.targets().stream().filter(target -> wanted.contains(compact(target.name()))).toList();
+            if (matched.isEmpty() && !open) {
                 continue;
             }
             boolean recruiting = matched.stream().anyMatch(target -> target.supplyHouseholdCount() != null
                     && target.supplyHouseholdCount() > 0);
-            boolean unknown = matched.stream().anyMatch(target -> target.supplyHouseholdCount() == null);
+            boolean unknown = matched.isEmpty()
+                    || matched.stream().anyMatch(target -> target.supplyHouseholdCount() == null);
             if (!recruiting && !unknown) {
                 continue;
             }
@@ -233,6 +261,11 @@ public final class ExtractedEligibilityDraft {
                     recruiting ? RecruitmentStatus.RECRUITING : RecruitmentStatus.UNKNOWN));
         }
         return options;
+    }
+
+    /** 공급표가 대상을 나누지 않은 공급행. 신청자격을 갖춘 누구나 신청할 수 있는 행으로 본다. */
+    private static boolean open(Unit unit) {
+        return unit.targets().stream().allMatch(target -> EVERYONE.equals(compact(target.name())));
     }
 
     private SupplyUnit supplyUnit(Unit unit) {

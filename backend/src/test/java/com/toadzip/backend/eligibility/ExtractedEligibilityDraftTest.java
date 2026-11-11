@@ -159,6 +159,82 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 공급대상_구분이_없는_공급행에는_모든_신청자격_경로를_잇고_검토_안내로_알린다() {
+        // 통합공공임대처럼 공급표가 대상을 나누지 않으면 대상이 없거나 "전체" 하나뿐이고, 워커는 경로에 맞춘 대상을 주지 못한다.
+        var units = List.of(
+                new Unit(1, "남양주왕숙", "26A", new BigDecimal("26.00"), 10L, 20L, "통합공공임대", List.of("28237"),
+                        List.of(new Target("전체", 10))),
+                new Unit(2, "남양주왕숙", "37A", new BigDecimal("37.00"), 10L, 21L, "통합공공임대", List.of("28237"), List.of()));
+
+        var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
+
+        assertThat(built.content().paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly(
+                "청년", "신혼부부", "주거급여수급자 · 주거급여 수급자", "주거급여수급자 · 생계급여 수급자", "사라진 대상");
+        assertThat(built.content().options()).filteredOn(option -> option.pathId().equals("path-1"))
+                .extracting(EligibilityContent.ApplicationOption::supplyUnitId,
+                        EligibilityContent.ApplicationOption::recruitmentStatus)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("unit-1", RecruitmentStatus.RECRUITING),
+                        org.assertj.core.groups.Tuple.tuple("unit-2", RecruitmentStatus.UNKNOWN));
+        assertThat(built.notices()).containsExactly(
+                "공급대상 구분이 없는 공급행 2개에는 모든 신청자격 경로를 이었습니다. 경로마다 신청할 수 있는 공급행이 맞는지 확인해 주세요.");
+        assertThat(youth(built.content(), b())).isEqualTo(Status.ELIGIBLE);
+    }
+
+    @Test
+    void 대상을_나눈_공급행에는_그_대상의_경로만_잇는다() {
+        var units = List.of(
+                new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                        List.of(new Target("청년", 10))),
+                new Unit(2, "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
+                        List.of(new Target("전체", 0))));
+
+        var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+
+        // 대상을 나눈 1번 공급행에는 청년만 잇고, 모집수 0인 2번 공급행에는 아무 경로도 잇지 않는다.
+        assertThat(built.content().options()).extracting(EligibilityContent.ApplicationOption::id)
+                .containsExactly("path-1-unit-1");
+    }
+
+    @Test
+    void 대상_구분이_없는_행과_나눈_행이_섞이면_맞춘_대상이_없는_경로는_구분_없는_행에만_잇고_알린다() {
+        var units = List.of(
+                new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                        List.of(new Target("전체", 10))),
+                new Unit(2, "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
+                        List.of(new Target("청년", 10))));
+
+        var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
+
+        var paths = built.content().paths();
+        String youth = paths.stream().filter(path -> path.label().equals("청년")).findFirst().orElseThrow().id();
+        String missing = paths.stream().filter(path -> path.label().equals("사라진 대상")).findFirst().orElseThrow().id();
+        assertThat(built.content().options()).filteredOn(option -> option.pathId().equals(youth))
+                .extracting(EligibilityContent.ApplicationOption::supplyUnitId).containsExactly("unit-1", "unit-2");
+        assertThat(built.content().options()).filteredOn(option -> option.pathId().equals(missing))
+                .extracting(EligibilityContent.ApplicationOption::supplyUnitId).containsExactly("unit-1");
+        assertThat(built.notices()).containsExactly(
+                "공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다. 경로마다 신청할 수 있는 공급행이 맞는지 확인해 주세요.",
+                "공급대상을 나눈 공급행에는 잇지 못한 신청자격 경로: 사라진 대상");
+    }
+
+    @Test
+    void 자기_조건이_없는_경로는_지원_가능으로_확정하지_않는다() {
+        var units = List.of(new Unit(1, "공주옥룡", "26", new BigDecimal("26.00"), 10L, 20L, "영구임대", List.of("28237"),
+                List.of(new Target("전체", 10))));
+
+        EligibilityContent content = ExtractedEligibilityDraft.build(source(evidence(), units, List.of())).content();
+        validate(content);
+
+        // 경로 이름이 곧 자격(65세 이상 직계존속 부양자 등)인데 요건·자격을 하나도 못 뽑은 경로다. 공통 조건만으로 충족이 되면 안 된다.
+        assertThat(status(content, b(), "사라진 대상")).isEqualTo(Status.UNDETERMINED);
+        Guidance direct = content.guidances().stream().filter(guidance -> guidance.id().equals("direct-path-5"))
+                .findFirst().orElseThrow();
+        assertThat(direct.items()).containsExactly("신청 대상 '사라진 대상'에 해당하는지");
+    }
+
+    @Test
     void 신청자격_근거가_없으면_초안을_만들지_않는다() {
         assertThatThrownBy(() -> draft(Map.of())).isInstanceOf(EligibilityDraftUnavailableException.class)
                 .hasMessageContaining("근거가 없어");
@@ -181,6 +257,11 @@ class ExtractedEligibilityDraftTest {
     /** 변환한 초안은 관리자 저장과 같은 검증기를 통과해야 한다. */
     private static EligibilityContent draft(Map<String, Quote> quotes, List<Requirement> youthExtra) {
         EligibilityContent content = ExtractedEligibilityDraft.build(source(quotes, null, youthExtra)).content();
+        validate(content);
+        return content;
+    }
+
+    private static void validate(EligibilityContent content) {
         new EligibilityContentValidator(new RegionMembership() {
             public Match match(Set<String> members, String supplied) {
                 return Match.NO_MATCH;
@@ -190,7 +271,6 @@ class ExtractedEligibilityDraftTest {
                 return code != null;
             }
         }, Set.of(1L)).validate(content, false);
-        return content;
     }
 
     private static ExtractedEligibilityDraft.Draft build(Map<String, Quote> quotes) {

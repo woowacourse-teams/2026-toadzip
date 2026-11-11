@@ -82,6 +82,14 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                 + " '\"kind\":\"NO_HOUSE\"', '\"kind\":\"OTHER\"'))) WHERE announcement_id = ?", nothingJudgeable);
         rejected(nothingJudgeable, SHA, "작성 규칙을 통과하지 못했습니다");
 
+        // 관리자가 공급대상을 모두 뺀 공급행은 대상 구분이 없는 행이 아니다. 아무 경로도 잇지 않는다.
+        long allTargetsExcluded = notice(true);
+        jdbc.update("UPDATE supply_targets SET admin_excluded = true WHERE supply_row_id IN"
+                + " (SELECT id FROM supply_rows WHERE announcement_id = ?)", allTargetsExcluded);
+        rejected(allTargetsExcluded, SHA, "공급대상과 이어지는 신청자격 경로가 없어");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?",
+                Long.class, allTargetsExcluded)).isZero();
+
         mvc.perform(post(admin(otherPdf) + "/from-extraction").with(user(Long.toString(USER)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body(SHA, null, 0)))
                 .andExpect(status().isForbidden());
