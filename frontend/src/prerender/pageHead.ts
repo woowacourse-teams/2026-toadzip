@@ -39,6 +39,20 @@ export function applyPageHead(template: string, route: PublicRoute) {
   return replaceOnce(html, /<\/head>/, `${additions.join('\n    ')}\n  </head>`, '</head>')
 }
 
+// 단지·공고·지역 페이지가 함께 쓰는 head. 백엔드가 만든 페이지 HTML에 Nginx SSI로 끼운다.
+// 페이지별 태그(제목·설명·대표 주소)는 백엔드가 쓰므로 빼고, 문자셋·스크립트·스타일·아이콘·대표 이미지는 남긴다.
+export function buildSharedHead(template: string) {
+  let head = replaceOnce(template, /<title>[^<]*<\/title>\s*/, '', 'title')
+  for (const key of ['description', 'og:title', 'og:description', 'og:url', 'twitter:title', 'twitter:description']) {
+    head = replaceOnce(head, new RegExp(`<meta\\s+(?:name|property)="${key}"\\s+content="[^"]*"\\s*/?>\\s*`), '', key)
+  }
+  const inner = /<head>([\s\S]*)<\/head>/.exec(head)?.[1]
+  if (inner === undefined) throw new Error('빌드 HTML에서 head를 찾지 못했습니다.')
+  // 공통 head는 SSI로 끼워지므로 그 안에 SSI 지시문이 있으면 다시 실행된다. 빌드에서 막는다.
+  if (inner.includes('<!--#')) throw new Error('공통 head에 SSI 지시문이 있습니다.')
+  return `${inner.trim()}\n`
+}
+
 function siteStructuredData() {
   const url = `${SITE_ORIGIN}/`
   return {

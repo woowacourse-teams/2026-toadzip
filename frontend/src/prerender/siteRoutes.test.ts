@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildSitemap } from './sitemap'
+import { buildSitemap, buildSitemapIndex } from './sitemap'
 import { NOINDEX_ROUTE_PREFIXES, PRIVATE_ROUTE_PREFIXES, PUBLIC_ROUTES, SITE_ORIGIN } from './siteRoutes'
 
 function robotsLines(field: string) {
@@ -52,6 +52,16 @@ describe('sitemap.xml', () => {
     const sitemap = buildSitemap()
     expect(sitemap.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true)
     expect(sitemap).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+  })
+})
+
+describe('사이트맵 인덱스', () => {
+  it('공개 경로 사이트맵과 단지·공고·지역 사이트맵을 운영 도메인 주소로 묶는다', () => {
+    const index = buildSitemapIndex()
+    const locations = [...index.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1])
+    expect(index).toContain('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    expect(locations).toEqual(['static', 'complexes', 'announcements', 'regions']
+      .map(name => `https://bokduckbang.com/sitemaps/${name}.xml`))
   })
 })
 

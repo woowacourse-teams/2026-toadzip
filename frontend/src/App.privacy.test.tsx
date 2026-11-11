@@ -41,7 +41,7 @@ it.each(['/explore/', '/EXPLORE///', '/%65xplore', '/explor%65/'])('%s에서도 
   window.history.replaceState({}, '', `${path}?complexId=7#detail`)
   render(<BrowserRouter><App /></BrowserRouter>)
   expect(await screen.findByRole('heading', { name: '서비스 개선을 위한 이용 정보 수집' })).toBeVisible()
-  expect(window.location.pathname + window.location.search + window.location.hash).toBe('/explore?complexId=7#detail')
+  expect(window.location.pathname + window.location.search + window.location.hash).toBe('/complexes/7#detail')
   expect(consentStore.allowed()).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: '동의하기' }))
   await waitFor(() => expect(consentStore.allowed()).toBe(true))

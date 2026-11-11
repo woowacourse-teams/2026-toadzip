@@ -31,7 +31,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useLocation, useNavigate, useNavigationType } from 'react-router'
+import { useNavigationType } from 'react-router'
+import { useExplorerLocation, useExplorerNavigate } from './navigation/useExplorerLocation.ts'
 import { useStreetView, type StreetViewController } from '../street-view/useStreetView'
 import { StreetViewPanel } from '../street-view/StreetViewPanel'
 import { isMobileViewport, useMobileViewport } from './components/useMobileViewport'
@@ -105,6 +106,7 @@ import {
   parseDetailLocation,
   setAnnouncementIdQuery,
   setComplexIdQuery,
+  toDetailPathLocation,
 } from './navigation/detailLocation.ts'
 import {
   clearMapLocationQuery,
@@ -205,10 +207,10 @@ export function PublicHousingExplorer({
   searchRepository,
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
-  const location = useLocation()
+  const location = useExplorerLocation()
   const mypageReturn = myPageReturnPath(location.state)
   const markerHoverAnalytics = useMarkerHoverAnalytics()
-  const navigate = useNavigate()
+  const navigate = useExplorerNavigate()
   const navigationType = useNavigationType()
   const mobile = useMobileViewport()
   const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
@@ -238,7 +240,8 @@ export function PublicHousingExplorer({
     params.set('mapLat', String(viewport?.center.latitude ?? mapCameraTarget.latitude))
     params.set('mapLng', String(viewport?.center.longitude ?? mapCameraTarget.longitude))
     params.set('mapZoom', String(viewport?.zoom ?? mapCameraTarget.zoom))
-    explorerReturn.current = location.pathname + '?' + params.toString() + location.hash
+    const publicLocation = toDetailPathLocation({ pathname: location.pathname, search: `?${params}` })
+    explorerReturn.current = publicLocation.pathname + publicLocation.search + location.hash
   }, [explorerReturn, location.pathname, location.search, location.hash, viewport, mapCameraTarget])
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)

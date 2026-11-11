@@ -2881,10 +2881,11 @@ describe('PublicHousingExplorer', () => {
     const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
     render(<MemoryRouter initialEntries={['/mypage/bookmarks']}><BookmarkProvider repository={bookmarks} loadUser={async () => ({ id: 7, email: null })}><Routes>
       <Route path="/explore" element={explorer} />
+      <Route path="/complexes/:complexId" element={explorer} />
       <Route path="/mypage/:section" element={explorer} />
     </Routes><LocationPath /></BookmarkProvider></MemoryRouter>)
     fireEvent.click((await screen.findByText('서울가람 행복주택')).closest('button')!)
-    expect(screen.getByTestId('location-path')).toHaveTextContent('/explore?complexId=17')
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/complexes/17')
     expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: '마이페이지로 돌아가기' }))
     expect(screen.getByTestId('location-path')).toHaveTextContent('/mypage/bookmarks')
@@ -2909,8 +2910,10 @@ describe('PublicHousingExplorer', () => {
 
   it('마이페이지에서 연 상세끼리 이동하면 이전 상세와 마이페이지 복귀를 함께 제공한다', async () => {
     const repository = createRepository()
-    render(<MemoryRouter initialEntries={[{ pathname: '/explore', search: '?announcementId=201', state: { mypageReturn: '/mypage/notifications?type=ANNOUNCEMENT' } }]}><Routes>
-      <Route path="/explore" element={<PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />} />
+    const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
+    render(<MemoryRouter initialEntries={[{ pathname: '/announcements/201', state: { mypageReturn: '/mypage/notifications?type=ANNOUNCEMENT' } }]}><Routes>
+      <Route path="/announcements/:announcementId" element={explorer} />
+      <Route path="/complexes/:complexId" element={explorer} />
       <Route path="/mypage/notifications" element={<><h1>돌아온 알림 관리</h1><LocationSearch /></>} />
     </Routes></MemoryRouter>)
     await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })
@@ -3897,6 +3900,74 @@ function applyProvinceFilter(provinceCode: string) {
   }))
   fireEvent.keyDown(document, { key: 'Escape' })
 }
+
+describe('상세 고유 주소', () => {
+  function AddressProbe() {
+    const location = useLocation()
+    const navigate = useNavigate()
+    return <>
+      <output data-testid="address-path">{location.pathname}</output>
+      <output data-testid="address-search">{location.search}</output>
+      <button type="button" onClick={() => navigate(-1)}>주소 뒤로</button>
+    </>
+  }
+
+  function renderAddressExplorer(initialEntry: string) {
+    const repository = createRepository()
+    const explorer = <PublicHousingExplorer repository={repository} mapRepository={repository} regionRepository={createRegionRepository()} />
+    render(<MemoryRouter initialEntries={[initialEntry]}><Routes>
+      <Route path="/explore" element={explorer} />
+      <Route path="/complexes/:complexId" element={explorer} />
+      <Route path="/announcements/:announcementId" element={explorer} />
+      <Route path="/regions/:regionCode" element={explorer} />
+    </Routes><AddressProbe /></MemoryRouter>)
+    return repository
+  }
+
+  it('상세를 열면 주소창이 상세 주소로 바뀌고 닫거나 뒤로가면 지도 주소로 돌아가며 필터는 유지한다', async () => {
+    renderAddressExplorer('/explore?boundaryRegionCode=11&complexRentalTypes=HAPPY_HOUSING')
+    const searchbox = screen.getByRole('searchbox')
+    fireEvent.click(await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/complexes/17')
+    const detailSearch = new URLSearchParams(screen.getByTestId('address-search').textContent ?? '')
+    expect(detailSearch.get('complexRentalTypes')).toBe('HAPPY_HOUSING')
+    expect(detailSearch.has('complexId')).toBe(false)
+    // 같은 지도 화면 안의 이동이라 화면을 다시 만들지 않는다.
+    expect(screen.getByRole('searchbox')).toBe(searchbox)
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+    await waitFor(() => expect(screen.getByTestId('address-path')).toHaveTextContent('/explore'))
+    expect(new URLSearchParams(screen.getByTestId('address-search').textContent ?? '').get('complexRentalTypes')).toBe('HAPPY_HOUSING')
+    expect(screen.queryByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).not.toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    fireEvent.click(screen.getByRole('button', { name: '주소 뒤로' }))
+    await waitFor(() => expect(screen.getByTestId('address-path')).toHaveTextContent('/explore'))
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).not.toBeInTheDocument())
+  })
+
+  it('지역 주소로 들어오면 주소를 유지한 채 그 지역 단지를 보여 주고 상세에서 돌아오면 지역 주소로 돌아온다', async () => {
+    renderAddressExplorer('/regions/11')
+    await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' })
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/regions/11')
+    expect(new URLSearchParams(screen.getByTestId('address-search').textContent ?? '').has('boundaryRegionCode')).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/complexes/17')
+    fireEvent.click(screen.getByRole('button', { name: '주소 뒤로' }))
+    await waitFor(() => expect(screen.getByTestId('address-path')).toHaveTextContent('/regions/11'))
+  })
+
+  it('공고 상세 주소로 바로 들어오면 공고 상세를 연다', async () => {
+    const repository = renderAddressExplorer('/announcements/201')
+    await screen.findByRole('complementary', { name: '성남 청년 행복주택 입주자 모집 공고 상세 정보' })
+    expect(repository.findAnnouncementDetail).toHaveBeenCalledWith('201', expect.anything())
+    expect(screen.getByTestId('address-path')).toHaveTextContent('/announcements/201')
+  })
+})
 
 function renderExplorer(
   repository: PublicHousingRepository & HousingMapRepository,

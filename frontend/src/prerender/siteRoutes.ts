@@ -12,4 +12,7 @@ export const PRIVATE_ROUTE_PREFIXES = ['/admin', '/login', '/mypage', '/notifica
 // `/privacy/`는 버전별 방침 고정 주소(/privacy/:key/:version)처럼 그 아래 경로만 뜻한다.
 export const NOINDEX_ROUTE_PREFIXES = ['/feedback', '/privacy/'] as const
 
+// 백엔드가 만드는 단지·공고·지역 페이지 사이트맵(/sitemaps/{이름}.xml). nginx/app.conf의 location과 맞춘다.
+export const DYNAMIC_SITEMAPS = ['complexes', 'announcements', 'regions'] as const
+
 export type PublicRoute = (typeof PUBLIC_ROUTES)[number]

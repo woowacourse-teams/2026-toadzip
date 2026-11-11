@@ -156,7 +156,7 @@ PostHog에서는 `campaign_activity`, `measurement_kind=campaign_counts_v1`, 목
 
 #358의 후속 작업으로 기존 `page_view`와 별도로 `$pageview`를 수동 수집한다. 기존 제품 이벤트와 세 핵심 지표의 정의, `browser_v1` 식별 및 SDK 세션 처리 방식은 유지한다.
 
-- 유효한 동의가 확인된 현재 허용 경로(`/explore`, `/feedback`, `/mypage/notifications`)의 진입·새로고침·SPA pathname 변경마다 한 번 기록한다. 허용 경로로 돌아오는 뒤로가기도 새 방문이다.
+- 유효한 동의가 확인된 현재 허용 경로(`/explore`, `/feedback`, `/mypage/notifications`)의 진입·새로고침·SPA pathname 변경마다 한 번 기록한다. 허용 경로로 돌아오는 뒤로가기도 새 방문이다. 단지·공고 상세 주소(`/complexes/{id}`, `/announcements/{id}`)는 지도 화면 `/explore`로 보고 기록하므로, 상세를 열고 닫아도 새 방문이 아니다.
 - 쿼리·해시 변경, 재렌더링, StrictMode 재실행과 포커스·가시성 재확인은 새 `$pageview`를 만들지 않는다. 제품 `page_view`와 별도 방문 상태·중복 방지 키를 쓰며 기존 제품 이벤트의 발생 방식은 바꾸지 않는다.
 - 동의 전·거부·철회·만료 상태에는 기록하지 않는다. 동의가 유효해지면 현재 페이지만 기록하고 차단 중 방문을 소급 전송하지 않는다. 철회·만료 시 기존 대기 이벤트와 재시도 전송 보호를 그대로 적용한다.
 - `$current_url`은 기존처럼 origin과 `/`만 남긴다. `$pathname`은 허용된 고정 경로만 보존하며 SDK 로딩 중 경로가 바뀌어도 진입 시점의 경로를 사용한다. 기존 속성 allowlist와 URL 정제를 유지해 검색어·토큰·개인정보 및 유입·위치 속성을 추가하지 않는다.

@@ -28,6 +28,8 @@ function Navigation() {
     <button onClick={() => void navigate('/mypage/notifications?tab=settings')}>설정 탭</button>
     <button onClick={() => void navigate('/mypage/private')}>다른 경로</button>
     <button onClick={() => void navigate('/explore')}>탐색</button>
+    <button onClick={() => void navigate('/complexes/17')}>단지 상세</button>
+    <button onClick={() => void navigate('/announcements/201')}>공고 상세</button>
     <button onClick={() => void navigate('/feedback')}>피드백</button>
     <button onClick={() => void navigate(-1)}>뒤로</button>
   </>
@@ -114,4 +116,12 @@ it('creates a new visit on a fresh mount even on the same pathname', () => {
   render(tree)
   expect(captureWebPageView).toHaveBeenCalledTimes(2)
   expect(new Set(vi.mocked(captureWebPageView).mock.calls.map(([id]) => id)).size).toBe(2)
+})
+
+it('상세 주소는 지도 화면과 같은 방문으로 보고 여닫아도 페이지뷰를 다시 세지 않는다', () => {
+  render(<MemoryRouter initialEntries={['/complexes/17']}><ProductAnalyticsBoundary /><Navigation /></MemoryRouter>)
+  expect(setProductPageActive).toHaveBeenLastCalledWith(true)
+  for (const name of ['탐색', '공고 상세', '단지 상세']) fireEvent.click(screen.getByRole('button', { name }))
+  expect(captureWebPageView).toHaveBeenCalledOnce()
+  expect(captureProductEvent).toHaveBeenCalledOnce()
 })

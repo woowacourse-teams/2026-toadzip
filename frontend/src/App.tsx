@@ -33,6 +33,7 @@ import { LandingPage } from './landing/LandingPage'
 import { hasExplorerState } from './landing/explorerState'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
+import { isInvalidExplorerPath, toExplorerQueryLocation, toPublicLocation } from './public-housing/navigation/detailLocation'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
 import { MobileInstallProvider } from './install/MobileInstallProvider'
@@ -45,7 +46,14 @@ function LandingEntry() {
     : <LandingPage />
 }
 
+// `/explore`와 상세·지역 주소는 같은 Home을 써서 상세를 여닫을 때 지도를 다시 만들지 않는다.
 function Home() {
+  const location = useLocation()
+  if (isInvalidExplorerPath(location.pathname)) return <NotFound />
+  return <ExplorerHome />
+}
+
+function ExplorerHome() {
   const location = useLocation()
   useEffect(() => { rememberExplorerPath(location.pathname + location.search + location.hash) }, [location])
   const navigationType = useNavigationType()
@@ -145,6 +153,11 @@ export default function App() {
   if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
+  // 예전 상세 링크(`/explore?complexId=1`)는 상세 주소로 바꿔 열고, 상세·지역 주소에 겹쳐 붙은 쿼리는 지운다.
+  const detailPath = toPublicLocation(toExplorerQueryLocation({ pathname, search }), { pathname, search })
+  if (detailPath.pathname !== pathname || detailPath.search !== search) {
+    return <Navigate to={{ ...detailPath, hash }} state={state} replace />
+  }
   return (
     <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
@@ -154,6 +167,10 @@ export default function App() {
       <Route path="/" element={<LandingEntry />} />
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
+        <Route path="/complexes/:complexId" element={<Home />} />
+        <Route path="/announcements/:announcementId" element={<Home />} />
+        <Route path="/regions/:regionCode" element={<Home />} />
+        <Route path="/regions/:regionCode/:rentalType" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
         <Route path="/mypage" element={<Home />} />
         <Route path="/mypage/:section" element={<Home />} />
