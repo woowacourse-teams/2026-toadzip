@@ -579,6 +579,58 @@ export function PublicHousingExplorer({
   const conditionList = useConditionListResults(
     announcementClosed ? NO_ANNOUNCEMENTS : announcementResults.state.items, announcementFilters.regionCode)
   const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
+
+  // 데스크톱에서 공고 상세 주소로 처음 들어오면 그 공고가 보이는 목록 탭(모집 중·접수마감)을 펼친다.
+  // 탭은 상세 응답의 listPhase(백엔드가 목록과 같은 기준으로 판정)를 따르고, 응답 뒤에 한 번만 적용한다.
+  const entryAnnouncementRef = useRef(initialDetail.kind === 'announcement' && listPanelMode !== 'collapsed'
+    ? initialDetail.announcementId
+    : null)
+  const scrollToSelectedAnnouncementRef = useRef(false)
+  const entryTabAppliedRef = useRef(false)
+  useEffect(() => {
+    const entryId = entryAnnouncementRef.current
+    if (entryId === null) return
+    if (detailLocation.kind !== 'announcement' || detailLocation.announcementId !== entryId) {
+      entryAnnouncementRef.current = null
+      return
+    }
+    if (announcementDetail.announcementId !== entryId || announcementDetail.status === 'loading') return
+    const phase = announcementDetail.detail?.listPhase ?? 'NONE'
+    // 그사이 사용자가 목록을 직접 열었거나 접었으면 건드리지 않는다.
+    if (announcementDetail.status !== 'ready' || phase === 'NONE'
+      || announcementListRequested || listPanelMode === 'collapsed') {
+      entryAnnouncementRef.current = null
+      return
+    }
+    const closed = phase === 'CLOSED'
+    if (announcementClosed !== closed) {
+      // 탭을 주소에 먼저 반영하고 다음 렌더에서 목록을 연다. 다른 탭을 먼저 불러오지 않게 한다.
+      // 반영되지 않으면(다시 이 분기에 오면) 한 번만 시도하고 멈춘다.
+      if (entryTabAppliedRef.current) {
+        entryAnnouncementRef.current = null
+        return
+      }
+      entryTabAppliedRef.current = true
+      const nextSearch = setAnnouncementSearchFilters(new URLSearchParams(location.search),
+        withAnnouncementPhase(announcementFilters, closed))
+      navigate({ hash: location.hash, pathname: location.pathname, search: toSearchString(nextSearch) },
+        { replace: true, state: location.state })
+      return
+    }
+    entryAnnouncementRef.current = null
+    setActiveResultTab('announcements')
+    setAnnouncementListRequested(true)
+    setListPanelMode('open')
+    scrollToSelectedAnnouncementRef.current = true
+  }, [announcementClosed, announcementDetail, announcementFilters, announcementListRequested, detailLocation,
+    listPanelMode, location.hash, location.pathname, location.search, location.state, navigate])
+  // 첫 페이지에 그 공고가 있으면 선택된 카드로 스크롤한다. 뒤 페이지는 이어 불러오지 않는다.
+  useEffect(() => {
+    if (!scrollToSelectedAnnouncementRef.current || announcementResults.state.status !== 'ready') return
+    scrollToSelectedAnnouncementRef.current = false
+    announcementResultsScrollRef.current?.querySelector('[aria-current="true"]')
+      ?.scrollIntoView?.({ block: 'nearest' })
+  }, [announcementResults.state.status, announcementResults.state.items])
   const [onlyMatched, setOnlyMatched] = useState(false)
   const filteringMatched = onlyMatched && conditionsCompared && !announcementClosed
   const toggleMatched = useCallback(() => {

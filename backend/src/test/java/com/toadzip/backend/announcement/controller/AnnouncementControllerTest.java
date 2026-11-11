@@ -607,7 +607,8 @@ class AnnouncementControllerTest {
                     }],
                     "competition": {"actualRate": 2.5000, "predictedRate": null},
                     "applicationSchedules": [],
-                    "revision": null
+                    "revision": null,
+                    "listPhase": "NONE"
                   }
                 }
                 """;

@@ -86,6 +86,7 @@ export function toAnnouncementDetail(
     attachments: raw.attachments.map(toAnnouncementAttachment),
     supplyRows: raw.supplyRows.map(toAnnouncementSupplyRow),
     competition: raw.competition,
+    listPhase: raw.listPhase ?? 'NONE',
     raw,
   }
 }

@@ -296,6 +296,7 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(jsonPath("$.data.correctionOrCancellationReason").value("사업 취소"))
                 .andExpect(jsonPath("$.data.applicationStatus").value("CANCELLED"))
                 .andExpect(jsonPath("$.data.dDay").value(nullValue()))
+                .andExpect(jsonPath("$.data.listPhase").value("NONE"))
                 .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath());
     }
 
@@ -803,6 +804,21 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].announcementId").value(closedEarly.getId()))
                 .andExpect(jsonPath("$.data.items[0].winnerAnnouncementAt").value("2026-08-20"))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 공고_상세는_그_공고가_보이는_공고_목록_탭을_알려준다() throws Exception {
+        Announcement applying = persist(deadlineAnnouncement("phase-applying", 1, 9, 12));
+        Announcement closed = persist(deadlineAnnouncement("phase-closed", 1, 2, 7));
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements/{announcementId}", applying.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.listPhase").value("RECRUITING"));
+        mockMvc.perform(get("/api/v1/announcements/{announcementId}", closed.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.listPhase").value("CLOSED"));
     }
 
     @Test

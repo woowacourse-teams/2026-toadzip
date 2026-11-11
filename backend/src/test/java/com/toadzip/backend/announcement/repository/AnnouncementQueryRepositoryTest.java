@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.repository;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -617,6 +618,28 @@ class AnnouncementQueryRepositoryTest {
 
         assertEquals(Set.of(lastDay.getId(), waiting.getId()), new HashSet<>(ids(search(closed, null, null, 20))));
         assertEquals(2, announcementSearchRepository.countLatestLeaves(closed));
+    }
+
+    @Test
+    void 공고_한_건의_목록_포함_여부는_같은_조건의_목록_조회와_같다() {
+        LocalDate today = LocalDate.of(2026, 11, 11);
+        Announcement lastDay = persist(closedAnnouncement("listed-last-day", today.minusDays(60), today.minusDays(7)));
+        Announcement expired = persist(closedAnnouncement("listed-expired", today.minusDays(60), today.minusDays(8)));
+        Announcement applying = persist(createAnnouncement("listed-applying", today.minusDays(5),
+                today.minusDays(1), today.plusDays(1)));
+        AnnouncementSearchCondition closed = withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today);
+        AnnouncementSearchCondition recruiting = withApplicationStatuses(
+                Set.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.APPLYING), today);
+
+        assertAll(
+                () -> assertTrue(announcementSearchRepository.isListed(lastDay.getId(), closed)),
+                () -> assertFalse(announcementSearchRepository.isListed(expired.getId(), closed)),
+                () -> assertFalse(announcementSearchRepository.isListed(applying.getId(), closed)),
+                () -> assertTrue(announcementSearchRepository.isListed(applying.getId(), recruiting)),
+                () -> assertFalse(announcementSearchRepository.isListed(lastDay.getId(), recruiting)),
+                () -> assertEquals(new HashSet<>(ids(search(closed, null, null, 20))),
+                        Set.of(lastDay.getId()))
+        );
     }
 
     @Test

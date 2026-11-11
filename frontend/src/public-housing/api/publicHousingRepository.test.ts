@@ -434,6 +434,21 @@ describe('공공주택 HTTP repository', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['RECRUITING', 'RECRUITING'],
+    ['CLOSED', 'CLOSED'],
+    ['NONE', 'NONE'],
+    ['UNKNOWN', 'NONE'],
+    [undefined, 'NONE'],
+  ])('공고 상세의 목록 탭 %s를 %s로 읽는다', async (listPhase, expected) => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: { ...ANNOUNCEMENT_DETAIL, listPhase } }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+
+    const detail = await repository.findAnnouncementDetail('42', new AbortController().signal)
+
+    expect(detail.listPhase).toBe(expected)
+  })
+
   it('공고 상세의 full DTO를 보존하고 모든 중첩 ID를 canonical string으로 변환한다', async () => {
     const fetchMock = vi
       .fn()
