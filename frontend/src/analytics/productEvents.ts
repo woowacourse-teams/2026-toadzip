@@ -20,7 +20,6 @@ export const PRODUCT_EVENTS = [
   'notification_cancel_requested', 'notification_cancel_completed', 'notification_cancel_failed',
   'login_modal_opened', 'login_modal_closed', 'login_provider_clicked', 'account_menu_opened',
   'auth_state_changed', 'logout_requested', 'logout_succeeded', 'logout_failed',
-  'feedback_started', 'feedback_submitted', 'feedback_succeeded', 'feedback_failed',
   'street_view_open_requested', 'street_view_blocked', 'street_view_viewed', 'street_view_failed',
   'street_view_retry_clicked', 'street_view_closed', 'street_view_marker_status',
 ] as const
@@ -36,7 +35,7 @@ const CORRELATION_IDS = new Set([
   // These IDs are analytics-only. Notification command/receipt IDs are excluded
   // because the business ledger associates them with member accounts.
   'street_view_open_id', 'attempt_id', 'exposure_id',
-  'request_id', 'login_modal_id', 'feedback_id', 'submission_id',
+  'request_id', 'login_modal_id',
   'document_dialog_id', 'document_download_id',
 ])
 const COUNTS = new Set([

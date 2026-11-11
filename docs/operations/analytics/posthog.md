@@ -255,10 +255,6 @@ PostHog에서는 `campaign_activity`, `measurement_kind=campaign_counts_v1`, 목
 | `logout_requested` | 로그아웃 버튼 클릭 | 공통 속성 |
 | `logout_succeeded` | 로그아웃 API 성공 | 공통 속성 |
 | `logout_failed` | 로그아웃 API 실패 | `failure_reason` |
-| `feedback_started` | 의견 작성의 첫 입력 | `feedback_id` |
-| `feedback_submitted` | 유효한 의견 제출 | `feedback_id`, `submission_id` |
-| `feedback_succeeded` | 응답의 양수 정수 `data.id`까지 확인한 실제 접수 | 위 의견 요청 속성 |
-| `feedback_failed` | 의견 요청 또는 응답 검증 실패 | 위 의견 요청 속성, `failure_reason` |
 
 알림의 `target_type`은 `COMPLEX`, `ANNOUNCEMENT`, `REGION`이며 지금 대시보드의 핵심가치지표는 `COMPLEX`만 선택한다. 현재 신청은 회원만 가능하며 버튼을 누르면 `CONFIRMED`를 보내고 서버가 `ACTIVATED`를 반환한 경우에만 완료를 수집한다. 비회원은 로그인 안내를 표시하며 신청 요청을 보내지 않는다. 이메일 입력 폼이 없어 `notification_form_viewed`, `notification_form_submitted`, `notification_form_dismissed`는 현재 발행하지 않는다. 알림 관리의 개별 해제·전체 해제는 대상별로 `source=SETTING`인 취소 요청과 서버 결과를 수집한다. 전체 해제에서 실제 요청하지 않은 대상과 `UNCHANGED` 응답은 취소 완료로 세지 않는다.
 
