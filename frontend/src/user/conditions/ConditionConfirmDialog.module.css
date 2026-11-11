@@ -1,0 +1,25 @@
+.title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: var(--ds-weight-strong);
+  letter-spacing: -0.03em;
+  outline: none;
+}
+
+.body {
+  margin: 0 0 18px;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-body);
+  word-break: keep-all;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.actions .danger {
+  border-color: var(--ds-color-deadline);
+  color: var(--ds-color-error-text);
+}

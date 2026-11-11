@@ -19,7 +19,7 @@ const POSTHOG_ENVIRONMENT_KEYS = [
 ]
 const GA_ENVIRONMENT_KEYS = ['VITE_GA_MEASUREMENT_ID', 'VITE_GA_DEBUG_MODE']
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command, mode, isSsrBuild }) => {
   const environment = loadEnv(mode, '.', 'VITE_PUBLIC_HOUSING_LOCAL_MOCK')
   const localMockEnabled =
     command === 'serve' &&
@@ -30,6 +30,8 @@ export default defineConfig(({ command, mode }) => {
     define: analyticsEnvironmentDefines(mode),
     plugins: [react(), notificationWorkerPlugin(), ...(localMockEnabled ? [localPublicHousingMockPlugin()] : [])],
     build: {
+      // The SSR build only feeds scripts/prerender.mjs and never serves public files.
+      copyPublicDir: !isSsrBuild,
       rolldownOptions: {
         input: {
           main: fileURLToPath(new URL('./index.html', import.meta.url)),

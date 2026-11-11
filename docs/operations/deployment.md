@@ -189,6 +189,7 @@ python3 -B scripts/rollback-bluegreen.py \
    일반 Blue/Green 배포로 특별 배포를 대신하지 않는다.
 4. 스키마·서비스·로그인 등 해당 기능 확인을 마친 뒤 자동 배포를 재개한다.
 
+신청자격 저장 구조 전환은 [신청자격 DB 전환](database/eligibility-upgrade.md)의 writer 중단·투영 검증·재판정 기동 순서를 따른다.
 알림 스키마의 별도 읽기 전용 점검은 [알림 운영](notifications.md)을 따른다.
 운영 DB에 대한 실행·복구 승인은 문서 수정이나 CI 성공으로 대신하지 않는다.
 

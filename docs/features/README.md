@@ -9,6 +9,7 @@
 | [수집·정제](ingest/README.md) | 공고·단지 원천 수집, 정제·연결과 실행 상태 |
 | [관리자](admin/README.md) | 데이터 조회·수정·비교·검토와 공고 JSON 등록 |
 | [공고](announcements/README.md) | 공고 조회수 집계와 중복·동시성·실패 처리 |
+| [신청자격 판정](eligibility/README.md) | 공고 구조화·공통 입력·개인 판정·저장 설계와 이전 비교 호환 |
 | [검색·지도](search/README.md) | 통합·위치 검색, 지역 데이터·지도·거리뷰 |
 | [인증](authentication/README.md) | 소셜 로그인과 계정 생명주기 |
 | [알림](notifications/README.md) | 알림 설정·생성·전달과 알림함·웹 푸시 |

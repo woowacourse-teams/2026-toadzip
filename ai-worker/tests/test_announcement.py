@@ -14,7 +14,8 @@ from ai_worker import openai
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 from ai_worker.openai import Reply
-from conftest import (COVER, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE, FakeJudge, FakeModel, contract_example,
+from conftest import (COVER, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
+                      FakeJudge, FakeModel, contract_example,
                       grid_page, text_pdf, two_quantity_tables_pdf)
 
 LH_FRAME = (files("ai_worker") / "prompts" / "lh-frame.txt").read_text(encoding="utf-8")
@@ -61,7 +62,7 @@ def test_result_has_contract_keys_and_original_page_numbers():
 
     assert result.keys() == contract_example("result.example.json").keys()
     assert (result["pages"], result["totalPages"], result["usage"]) == (
-        [1, 3, 4], 5, {key: value * 2 for key, value in USAGE.items()})
+        [1, 3, 4], 5, {key: value * 3 for key, value in USAGE.items()})
     tree = json.loads(result["json"])
     # 원천 행이 없는 공고는 sourceRow가 비어 있다.
     assert len(tree["data"]["supplyRows"]) == 1
@@ -69,8 +70,10 @@ def test_result_has_contract_keys_and_original_page_numbers():
     assert tree["data"]["supplyRows"][0]["sourceRow"] is None
     assert tree["data"]["supplyRows"][0]["totalSupplyHouseholdCount"] is None
     assert tree["data"]["supplyRows"][0]["targets"] == []
-    assert {key: value for key, value in tree["data"].items() if key not in ("supplyRows", "unresolvedFields")} == {
+    assert {key: value for key, value in tree["data"].items()
+            if key not in ("supplyRows", "unresolvedFields", "eligibility")} == {
         key: value for key, value in EXTRACTION["data"].items() if key != "supplyRows"}
+    assert tree["data"]["eligibility"] == EMPTY_ELIGIBILITY["data"]["eligibility"]
     # 인식된 원문 표 행은 남지만, 모델 값이 해당 열과 일치하지 않아 미확인으로 둔다.
     assert tree["evidence"] and tree["evidence"][0]["page"] == 3
     assert {item["path"] for item in tree["data"]["unresolvedFields"]} >= {
@@ -83,8 +86,11 @@ def test_result_has_contract_keys_and_original_page_numbers():
     assert "[추출 단계: 공급 표]" in supply_prompt
     assert "[추출 단계: 공고 본문]" in notice_prompt
     assert "[첨부 1쪽 / 원본 1쪽]" + NOTICE not in notice_prompt
-    assert "공급행이나 표 안의 모집수·임대조건은 추출하지 마세요" in notice_prompt
+    assert "공급행, 표 안의 모집수·임대조건, 신청자격은 추출하지 마세요" in notice_prompt
     assert len(model.prompts) == 2
+    # 신청자격 단계는 본문 단계와 같은 쪽을 따로 한 번 읽는다.
+    [eligibility_prompt] = model.eligibility_prompts
+    assert notice_prompt.split("[첨부 1쪽 / 원본 1쪽]", 1)[1] == eligibility_prompt.split("[첨부 1쪽 / 원본 1쪽]", 1)[1]
     assert any("같은 의미의 원문 표 열에서 확인되지 않음" in item["reason"]
                for item in tree["data"]["unresolvedFields"])
 
@@ -227,7 +233,7 @@ def test_model_deadline_counts_from_attempt_start():
 
 
 class StageFailingModel:
-    """공급 단계 호출은 일시 오류, 본문 단계 호출은 영구 오류로 끝나는 모델."""
+    """공급 단계 호출은 일시 오류, 본문·신청자격 단계 호출은 영구 오류로 끝나는 모델."""
 
     def __init__(self):
         self.prompts = []
@@ -247,7 +253,24 @@ def test_supply_call_error_is_raised_before_the_notice_call_error():
         AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT)))
 
     assert error.value.code == "MODEL_TIMEOUT"
-    assert len(model.prompts) == 2
+    assert len(model.prompts) == 3
+
+
+def test_failed_eligibility_stage_keeps_the_supply_result_and_warns():
+    """신청자격은 공급 보정에 없어도 되는 결과라, 그 단계만 실패하면 작업을 실패시키지 않고 경고로 남긴다."""
+
+    class EligibilityFailingModel(FakeModel):
+        def chat(self, prompt, deadline):
+            if ELIGIBILITY_STAGE in prompt:
+                raise PermanentError("MODEL_RESPONSE_TRUNCATED", "AI 모델 응답이 길이 제한으로 잘렸습니다.")
+            return super().chat(prompt, deadline)
+
+    result = AnnouncementPdfExtractor(EligibilityFailingModel()).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
+
+    tree = json.loads(result["json"])
+    assert len(tree["data"]["supplyRows"]) == 1 and tree["data"]["eligibility"] is None
+    assert "신청자격을 읽지 못했습니다: AI 모델 응답이 길이 제한으로 잘렸습니다." in result["warnings"]
+    assert result["usage"] == {key: value * 2 for key, value in USAGE.items()}
 
 
 def test_slow_pdf_fails_before_paid_call(monkeypatch):
@@ -423,7 +446,8 @@ def test_supply_table_the_code_can_read_skips_the_supply_model_call():
             row["targets"][0]["monthlyRent"]) == ("청년", 46920000, 178670)
     assert {"path": "supplyRows[0].targets[0]", "page": 1} in [
         {"path": item["path"], "page": item["page"]} for item in tree["evidence"]]
-    assert result["usage"] == USAGE
+    # 공급표를 코드로 읽어 공급 단계 호출이 없고, 본문·신청자격 단계 두 번만 부른다.
+    assert result["usage"] == {key: value * 2 for key, value in USAGE.items()}
 
 
 def area_table_pdf():
@@ -506,7 +530,7 @@ def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_n
     assert len(tree["sharedCounts"]) == 1
 
 def test_announcement_wide_application_condition_reaches_each_target_with_its_evidence(monkeypatch):
-    """본문 단계의 신청자격(공고 전체 조건)이 원문 대조 검산 뒤에도 모든 대상의 신청 조건과 근거로 남는다."""
+    """신청자격 단계의 공고 전체 요약이 원문 대조 검산 뒤에도 모든 대상의 신청 조건과 근거로 남는다."""
     from test_tables import SACHEON_RENT_CELLS, SACHEON_SUPPLY_CELLS
     cells = {1: SACHEON_SUPPLY_CELLS, 2: SACHEON_RENT_CELLS}
     monkeypatch.setattr(tables, "detected_tables", lambda page: (
@@ -515,11 +539,16 @@ def test_announcement_wide_application_condition_reaches_each_target_with_its_ev
         {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "가군", "reserveCount": 110,
          "rentalDeposit": 2520000, "monthlyRent": 50160},
     ]}, "sharedCounts": []}
-    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": [],
-                       "applicationConditions": [{"target": None, "condition": "영구임대 예비입주자 자격"}]},
-              "notApplicable": [], "evidence": [{"path": "applicationConditions[0]", "page": 1, "quote": "영구임대주택 예비입주자 모집"}]}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
+    eligibility = {"data": {"eligibility": {
+        "common": {"requirements": [{"kind": "NO_HOUSE", "scope": "HOUSEHOLD", "asWritten": "무주택세대구성원"}],
+                   "qualifications": [], "summary": "영구임대 예비입주자 자격"},
+        "targets": [], "exclusions": []}},
+        "evidence": [{"path": "eligibility.common.requirements[0]", "page": 1, "quote": "영구임대주택 예비입주자 모집"}]}
 
-    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(text_pdf(COVER, SUPPLY, RENT), {}))
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice, eligibility)).extract(
+        job(text_pdf(COVER, SUPPLY, RENT), {}))
 
     tree = json.loads(result["json"])
     [row] = tree["data"]["supplyRows"]
@@ -719,11 +748,12 @@ def test_notice_reply_without_a_reception_place_list_is_rejected(reception):
 class StageReplyModel:
     """단계마다 정해 둔 응답 JSON을 그대로 돌려주는 모델."""
 
-    def __init__(self, supply, notice):
-        self.replies = {"supply": supply, "notice": notice}
+    def __init__(self, supply, notice, eligibility=None):
+        self.replies = {"supply": supply, "notice": notice, "eligibility": eligibility or EMPTY_ELIGIBILITY}
 
     def chat(self, prompt, deadline):
-        stage = "supply" if "[추출 단계: 공급 표]" in prompt else "notice"
+        stage = "supply" if "[추출 단계: 공급 표]" in prompt else (
+            "eligibility" if ELIGIBILITY_STAGE in prompt else "notice")
         return Reply(json.dumps(self.replies[stage], ensure_ascii=False), USAGE)
 
 
@@ -772,6 +802,7 @@ SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
                                        'convertedDeposit': None,
                                        'applicationCondition': None}]}],
           'schedules': [],
+          'eligibility': EMPTY_ELIGIBILITY['data']['eligibility'],
           'unresolvedFields': [{'path': 'supplyRows[0].complexReference.sourceComplexName',
                                 'reason': '추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음'},
                                {'path': 'supplyRows[0].sourceHousingTypeName',

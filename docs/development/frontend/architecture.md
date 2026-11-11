@@ -76,6 +76,19 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 `components/useDocumentSearchShortcuts.ts`는 PDF·HWP 모달 내부의 검색 열기·닫기 단축키와 이벤트 정리만 공유한다.
 문서별 검색 상태, IME·debounce 처리, Blob·worker·객체 URL 수명주기는 기존 뷰어가 계속 소유한다.
 
+## 공개 페이지 프리렌더와 색인 정책
+
+검색엔진과 AI 크롤러가 JS 없이도 제목·본문·내부 링크를 읽도록 색인 대상 경로를 빌드 시 HTML로 만든다.
+
+- 경로별 정책의 원본은 `src/prerender/siteRoutes.ts` 하나다. 색인 대상(`PUBLIC_ROUTES`), 크롤링을 막는 비공개 경로, 크롤링은 허용하고 색인만 막는 경로를 나눈다. `siteRoutes.test.ts`가 `public/robots.txt`와 `nginx/app.conf`를 이 목록과 맞춘다.
+- `npm run build`는 `src/prerender/renderPage.ts`를 SSR 번들(`.prerender/`)로 만들고, `scripts/prerender.mjs`가 jsdom 전역 위에서 경로별 첫 화면을 렌더링해 `dist/prerendered/<경로>/index.html`에 쓴다. h1 1개, 최소 본문, 내부 링크 중 하나라도 없으면 빌드가 실패한다. 같은 단계에서 색인 대상만 담은 `dist/sitemap.xml`을 만든다. 빌드 환경에 Git 이력이 없어 `lastmod`는 넣지 않는다.
+- `src/prerender/pageHead.ts`가 경로별 제목·설명·`og:url`과 대표 주소(canonical)를 프리렌더 HTML의 head에 넣고, 홈에는 `WebSite`·`Organization` 구조화 데이터를 넣는다. 빈 SPA 셸(`index.html`)은 로그인·관리·없는 주소에도 쓰이므로 canonical을 넣지 않는다. 앱은 이 태그를 런타임에 바꾸지 않는다.
+- 브라우저는 `createRoot`로 화면을 새로 그리므로 프리렌더 HTML은 첫 표시와 크롤러용이다. effect는 실행되지 않아 API 데이터가 필요한 화면은 로딩 상태로 기록된다.
+- `useSyncExternalStore`는 세 번째 인자(서버 스냅샷)를 함께 넘긴다. 없으면 프리렌더가 실패한다.
+- Nginx는 색인 대상에 프리렌더 HTML을, 그 밖의 앱 경로에 빈 SPA 셸(`index.html`)과 `X-Robots-Tag: noindex`를, 앱에 없는 경로에 SPA 셸과 404를 준다. 끝 슬래시와 `/index.html`은 308로 정리한다. 설정은 `nginx/app.conf`가 소유하며 `python3 -B tests/deployment/test_frontend_routes.py`(Docker 필요)로 응답 코드를 확인한다.
+- 단지·공고·지도 쿼리가 붙은 `/` 주소는 Nginx가 `/explore`로 308 이동해 랜딩을 거치지 않는다. 판단 규칙은 `src/landing/explorerState.ts`와 같으며 `explorerState.test.ts`가 둘을 맞춘다.
+- 운영 도메인 외 호스트(개발 서버 등)의 noindex는 Caddy가 담당한다. [Caddy 서버 진입점](../../operations/caddy-ingress.md#도메인-이동과-검색-색인)을 따른다.
+
 ## 검증 위치
 
 각 모듈 옆의 `*.test.ts(x)`가 가장 가까운 계약을 검증한다. 통합 연결은 `PublicHousingExplorer.test.tsx`,

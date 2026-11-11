@@ -37,6 +37,17 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('AnnouncementFilterPanel', () => {
+  it('renders the 지원 가능 switch with the same look as the sort button', () => {
+    const onToggle = vi.fn()
+    render(<AnnouncementFilterPanel filters={{}} onApply={vi.fn()} regionRepository={{ search: vi.fn().mockResolvedValue([]) }}
+      eligibilityFilter={{ checked: true, onToggle }} />)
+    const toggle = screen.getByRole('switch', { name: '불러온 공고 중 지원 가능한 공고' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(toggle.className).toBe(screen.getByRole('button', { name: /최신순/ }).className)
+    fireEvent.click(toggle)
+    expect(onToggle).toHaveBeenCalled()
+  })
+
   it('기본 마감임박순에서 최신순만 양방향으로 전환하고 적용된 지역을 유지한다', () => {
     const onApply = vi.fn()
     function SortedFilters() {
@@ -230,7 +241,7 @@ describe('AnnouncementFilterPanel', () => {
       .toBeInTheDocument()
     expect(within(districtSelect).queryByRole('option', {
       name: '수원시 장안구',
-    })).not.toBeInTheDocument()
+    })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })

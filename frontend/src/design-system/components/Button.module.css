@@ -18,6 +18,12 @@
   white-space: nowrap;
 }
 
+.sm {
+  min-height: var(--ds-control-height-sm);
+  padding: 0 var(--ds-space-3);
+  font-size: var(--ds-text-caption);
+}
+
 .md {
   min-height: var(--ds-control-height-md);
   font-size: var(--ds-text-body);

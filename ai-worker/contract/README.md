@@ -21,6 +21,14 @@ Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파�
 - PDF 모집수가 LH 모집수와 달라도 그 필드를 `unresolvedFields`에 넣지 않고 `warnings`로만 알린다. 워커는 값을 고치지 않고, 공급행마다 그 행의 전용면적(세부 주택형 포함) 가운데 하나와 면적이 같은 같은 단지 LH 행의 모집수 합계가 PDF 모집수와 다를 때만 `warnings`에 남긴다. 면적이 없는 LH 행, PDF 모집수가 빈 행, LH 모집수를 모르는(0) 줄이 붙은 행, 단지를 하나로 맞추지 못한 행은 비교하지 않는다.
 - GH 틀과 맞추지 못한 것도 `warnings`로만 알린다: 같은 지구·주택형 틀 행이 없거나 여럿인 공급행, 여러 공급행이 맞은 틀 행, 맞는 공급행이 없는 틀 행. GH 모집수는 비교하지 않는다.
 
+### 신청자격 (`data.eligibility`)
+
+- 워커의 신청자격 단계가 신청자격·입주자격 장에서 뽑은 요건이다. 서버는 이것을 신청자격 초안(`EligibilityContent`)으로 바꾸고, 관리자가 검토해 공개한다. 그 단계가 실패하면 `null`이고 `warnings`에 이유가 남는다. 필드를 모르는 이전 결과도 그대로 읽을 수 있어야 한다.
+- `common`은 공고의 모든 신청자에게, `targets[n]`은 공급 표의 대상 이름(`target`)이 같은 공급대상에만 적용한다. 묶음마다 `requirements`(판정 요건), `qualifications`(증명서로 확인하는 법정 자격: `exactName`·`legalBasis`·`conditionsAsWritten`), `summary`(120자 요약)를 둔다. `exclusions`는 재당첨 제한 같은 신청 제한(`title`·`body`)이다. `targets[n]`은 신청 자격 경로 하나이고 `supplyTarget`은 그 경로가 속한 공급대상 이름이다(대학생 계층의 취업준비생 경로는 `supplyTarget` 대학생). 대상마다 `supplyTargets`에 `supplyTarget`을 공급대상 신청 조건과 같은 규칙으로 맞춘 공급표 대상 이름(`supplyRows[].targets[].target`)을 원문 그대로 싣고, 서버는 이 이름과 정확히 같은 공급대상만 잇는다. 한 묶음의 `qualifications`는 그중 하나만 갖추면 되는 자격이다.
+- 요건 `kind`는 닫힌 목록이다: `AGE`(`scope` APPLICANT·YOUNGEST_CHILD, `minimum`·`maximum` 만 나이), `NO_HOUSE`(`scope` APPLICANT·HOUSEHOLD), `INCOME`(`scope` APPLICANT·HOUSEHOLD·APPLICANT_AND_PARENTS, `incomeStandard`, `incomeBaseYear`, `percent`, `householdSizeExtraPercent`, `adjustments`), `ASSETS`·`CAR_VALUE`(`scope`, `amountAsWritten`, `maximumKrw`, `adjustments`), `NO_CAR`(`scope`), `RESIDENCE`(`regions` 원문 이름, `minimumMonths`), `MARRIAGE_PERIOD`(`maximum` 년), `FAMILY_TYPE`(`familyTypes`), `UNIVERSITY_STUDENT`, `JOB_SEEKER`, `ANY_OF`(`options`, 한 단계만), `OTHER`. 모든 요건에 원문 `asWritten`이 있다. 가산 `adjustments[].kind`는 CHILDBIRTH·DUAL_INCOME·DISABILITY·OTHER다.
+- 숫자는 근거 인용에 있는 값만 남는다. 나이·비율·혼인기간이 그 요건 근거(`evidence`의 `eligibility...requirements[n]`) 인용에 없거나 금액 표기를 원으로 읽지 못하면 값을 비우고 `warnings`에 남긴다. `maximumKrw`는 `amountAsWritten`(10,800만원·3억 3,700만원·37,080천원)을 코드가 바꾼 값이고, `incomeBaseYear`는 원문 연도 표현(전년도 등)을 모집공고일로 코드가 정한 값이다. 빈 값은 판정하지 않고 직접 확인으로 남긴다.
+- 묶음 `summary`는 같은 대상의 `supplyRows[n].targets[m].applicationCondition`에 합쳐진다(공고 전체는 모든 대상에, 대상 요약은 핵심 이름이 같은 대상에).
+
 ## 큐 상태 전이 (워커가 지킬 것)
 
 DB 제약(`V20261103_01__ai_jobs.sql`)이 아래 상태별 열 규칙을 강제하므로 어기면 UPDATE가 거절된다. 시도 횟수와 마감은 워커가 지킨다.

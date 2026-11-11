@@ -1,0 +1,126 @@
+.banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--ds-space-3);
+  margin: var(--ds-space-3) var(--ds-space-4) var(--ds-space-2);
+  padding: var(--ds-space-3) var(--ds-space-3) var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid color-mix(in srgb, var(--ds-color-brand) 40%, var(--ds-color-surface));
+  border-radius: 12px;
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-family-ui);
+}
+
+.banner[data-closable] {
+  padding-right: 34px;
+}
+
+.icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ds-color-surface);
+}
+
+.mark[data-mark='ok'] { color: var(--ds-color-action); }
+.mark[data-mark='tri'] { color: var(--ds-color-status-upcoming); }
+
+.text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.text b {
+  font-size: var(--ds-text-body);
+  line-height: 1.45;
+}
+
+.sub {
+  color: var(--ds-color-label);
+  font-size: 12.5px;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.subLink {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ds-color-action);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 배너의 행동 버튼은 모두 같은 모양(작은 버튼, 8px 모서리) */
+.action {
+  min-height: var(--ds-control-height-sm);
+  flex: 0 0 auto;
+  padding: 0 var(--ds-space-3);
+  border: 0;
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+  font: inherit;
+  font-size: var(--ds-text-caption);
+  font-weight: var(--ds-weight-strong);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--ds-color-brand-hover);
+}
+
+.action[data-variant='secondary'] {
+  border: 1px solid var(--ds-color-border-base);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+}
+
+.action[data-variant='secondary']:hover {
+  border-color: var(--ds-color-label);
+  background: var(--ds-color-surface-subtle);
+}
+
+.close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--ds-radius-icon-control);
+  background: transparent;
+  color: var(--ds-color-muted);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--ds-color-control-hover);
+  color: var(--ds-color-text);
+}
+
+.action:focus-visible,
+.subLink:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}

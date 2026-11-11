@@ -10,6 +10,7 @@ DB 서버를 준비하고 Flyway를 도입·전환하거나 기존 스키마와 
 | [Flyway 도입](flyway.md) | 빈 DB와 기존 DB의 적용 경로·baseline·사전 확인 |
 | [기존 수집 DB 전환](ingest-upgrade.md) | 기존 ingest 브랜치 DB의 통합 업그레이드 조건·검증 |
 | [개인정보 DB 배포](privacy-deployment.md) | 완성 릴리스, writer 중지·검사·기동·사후 확인과 복구 |
+| [신청자격 DB 전환](eligibility-upgrade.md) | 구 writer 중단·투영 백필·재판정 기동·검증·실패 대응 |
 | [과거 스키마 점검](legacy-schema-notes.md) | 당시 스키마 대조 기록. 현재 환경 적용 여부는 별도 확인 |
 
 ## 관련 문서

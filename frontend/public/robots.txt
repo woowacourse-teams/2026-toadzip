@@ -5,3 +5,5 @@ Disallow: /mypage
 Disallow: /notifications
 Disallow: /privacy/settings
 Allow: /
+
+Sitemap: https://bokduckbang.com/sitemap.xml

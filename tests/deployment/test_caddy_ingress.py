@@ -42,6 +42,19 @@ class CaddyIngressTests(unittest.TestCase):
                 for name in ('backend-blue', 'backend-green'):
                     self.assertEqual(services[name]['environment']['SPRING_PROFILES_ACTIVE'], profile)
 
+    def test_redirect_domain_is_optional_and_passed_to_caddy(self):
+        services = json.loads(configuration().stdout)['services']
+        self.assertEqual(services['caddy']['environment']['TOADZIP_CADDY_REDIRECT_DOMAIN'], '')
+        services = json.loads(configuration({'TOADZIP_CADDY_DOMAIN': 'bokduckbang.com',
+                                             'TOADZIP_CADDY_REDIRECT_DOMAIN': 'www.bokduckbang.com'}).stdout)['services']
+        self.assertEqual(services['caddy']['environment']['TOADZIP_CADDY_REDIRECT_DOMAIN'], 'www.bokduckbang.com')
+
+    def test_only_production_host_is_indexable(self):
+        # The runtime behavior is checked by test_caddy_robots.py; this keeps the rule from disappearing.
+        caddyfile = (ROOT / 'infra/caddy/Caddyfile').read_text()
+        self.assertIn('@notProduction not host bokduckbang.com', caddyfile)
+        self.assertIn('header @notProduction X-Robots-Tag "noindex"', caddyfile)
+
     def test_server_requires_domain_and_existing_runtime_paths(self):
         self.assertNotEqual(configuration({'TOADZIP_CADDY_DOMAIN': ''}, check=False).returncode, 0)
         services = json.loads(configuration().stdout)['services']

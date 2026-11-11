@@ -49,6 +49,15 @@ it('기술 소개 메뉴 없이 마지막 시작하기 영역 다음에 상세 �
   expect(closing.nextElementSibling).toBe(screen.getByRole('region', { name: /정확하고 빠르게 잇는 기술/ }))
 })
 
+it('푸터에서 지도·의견 보내기·개인정보처리방침으로 이동할 수 있다', () => {
+  vi.stubGlobal('fetch', vi.fn())
+  open()
+  const footerLinks = within(screen.getByRole('navigation', { name: '사이트 안내' })).getAllByRole('link')
+  expect(footerLinks.map(link => [link.textContent, link.getAttribute('href')])).toEqual([
+    ['공공주택 지도', '/explore'], ['의견 보내기', '/feedback'], ['개인정보처리방침', '/privacy'],
+  ])
+})
+
 it('기술 소개는 사례별 제목과 그림 자료, 측정 조건을 보여준다', () => {
   vi.stubGlobal('fetch', vi.fn())
   open()

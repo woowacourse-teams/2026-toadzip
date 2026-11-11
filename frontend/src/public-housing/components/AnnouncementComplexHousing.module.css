@@ -1,0 +1,475 @@
+.empty {
+  margin: 0;
+  color: var(--ds-color-muted);
+}
+
+.chips {
+  display: grid;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-3);
+}
+
+.chips p {
+  margin: 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  font-weight: 600;
+}
+
+.chips [role='group'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 999px;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chips button[aria-pressed='true'] {
+  border-color: var(--ds-color-action);
+  background: var(--ds-color-action-selected);
+  box-shadow: inset 0 0 0 0.5px var(--ds-color-action);
+  color: var(--ds-color-text);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .chips button:hover:not([aria-pressed='true']) {
+    background: var(--ds-color-action-soft);
+  }
+}
+
+.cards {
+  display: grid;
+  gap: var(--ds-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card > article {
+  display: grid;
+  min-width: 0;
+  gap: var(--ds-space-3);
+  padding: 14px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 16px;
+  background: var(--ds-color-surface);
+}
+
+.card[data-unavailable='true'] > article {
+  border-style: dashed;
+  background: var(--ds-color-surface-subtle);
+}
+
+.card[data-unavailable='true'] .unavailable {
+  background: var(--ds-color-surface);
+}
+
+.image {
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.cardHeading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ds-space-3);
+}
+
+.cardHeading h4 {
+  margin: 0;
+  font-size: var(--ds-text-section);
+  font-weight: var(--ds-weight-strong);
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.countTile {
+  display: flex;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.countTile b {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--ds-weight-strong);
+}
+
+.countTile span {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.address {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--ds-color-text);
+  font-weight: 500;
+}
+
+.address svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--ds-color-label);
+}
+
+.address span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.address[data-missing='true'] {
+  color: var(--ds-color-muted);
+  font-weight: 400;
+}
+
+/* 열 폭을 고정해 단지 카드끼리, 대상을 바꿔도 같은 열이 같은 자리에 선다. */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--ds-text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.table thead th {
+  padding: 7px 4px;
+  background: var(--ds-color-table-heading);
+  color: var(--ds-color-label);
+  font-weight: 500;
+  text-align: right;
+}
+
+.table thead th:nth-child(1) { width: 24%; }
+.table thead th:nth-child(2) { width: 12%; }
+.table thead th:nth-child(3) { width: 35%; }
+
+.table thead th:first-child {
+  padding-left: 8px;
+  border-radius: 8px 0 0 8px;
+  text-align: left;
+}
+
+.table thead th:last-child {
+  padding-right: 8px;
+  border-radius: 0 8px 8px 0;
+}
+
+.table tbody tr + tr {
+  border-top: 1px solid var(--ds-color-divider);
+}
+
+.table tbody :is(th, td) {
+  padding: 10px 4px;
+  vertical-align: top;
+}
+
+.table tbody th {
+  padding-left: 8px;
+  font-weight: var(--ds-weight-strong);
+  text-align: left;
+  word-break: keep-all;
+}
+
+.table tbody th .area {
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.table tbody th span {
+  display: block;
+  overflow: hidden;
+  color: var(--ds-color-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 좁은 화면에서는 금액이 '만' 단위 띄어쓰기에서 줄을 바꿔 표가 카드 폭 안에 머문다. */
+.table tbody td {
+  font-weight: var(--ds-weight-strong);
+  text-align: right;
+  word-break: keep-all;
+}
+
+.table tbody td:nth-child(2) {
+  color: var(--ds-color-label);
+  font-weight: 500;
+}
+
+.table tbody td:last-child {
+  padding-right: 8px;
+}
+
+.table tbody td[data-missing='true'] {
+  color: var(--ds-color-muted);
+  font-weight: 500;
+}
+
+.unavailable {
+  margin: 0;
+  padding: var(--ds-space-3);
+  border-radius: 10px;
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+}
+
+.actions {
+  display: grid;
+  gap: var(--ds-space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.actions[data-single='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.complexButton,
+.toggleButton {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 var(--ds-space-2);
+  border: 0;
+  border-radius: var(--ds-radius-control);
+  font-size: var(--ds-text-body);
+  cursor: pointer;
+}
+
+.complexButton svg,
+.toggleButton svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.complexButton {
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
+  font-weight: var(--ds-weight-strong);
+}
+
+.toggleButton {
+  background: var(--ds-color-section-divider);
+  color: var(--ds-color-text);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .complexButton:hover { background: var(--ds-color-action-selected); }
+  .toggleButton:hover { background: var(--ds-color-divider); }
+}
+
+.detail {
+  display: grid;
+  gap: var(--ds-space-2);
+  padding-top: var(--ds-space-3);
+  border-top: 1px solid var(--ds-color-divider);
+}
+
+.detail[hidden] {
+  display: none;
+}
+
+.housingType {
+  /* 머리글과 각 대상 행이 같은 열 폭을 써야 '보증금'·'월 임대료'가 값 바로 위에 선다. */
+  --target-columns: minmax(0, 1fr) calc(var(--ds-text-caption) * 7.5) calc(var(--ds-text-caption) * 6.5);
+  display: grid;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border-radius: 12px;
+  background: var(--ds-color-surface-subtle);
+}
+
+.housingType > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+}
+
+.housingType > header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.housingType > header strong {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--ds-weight-strong);
+}
+
+.housingType > header strong span,
+.housingType > header > div > span {
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  font-weight: 500;
+}
+
+.housingType > header button {
+  flex: none;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--ds-color-table-line);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.housingFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--ds-space-3);
+  margin: 0;
+  font-size: var(--ds-text-caption);
+}
+
+.housingFacts div {
+  display: flex;
+  gap: 6px;
+}
+
+.housingFacts dt {
+  color: var(--ds-color-label);
+}
+
+.housingFacts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.note {
+  margin: 0;
+  color: var(--ds-color-muted);
+  font-size: 12px;
+}
+
+.targetHead {
+  display: grid;
+  gap: var(--ds-space-3);
+  color: var(--ds-color-muted);
+  font-size: 12px;
+  grid-template-columns: var(--target-columns);
+}
+
+.targetHead span + span {
+  text-align: right;
+}
+
+.targets {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.targets li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.targets li + li {
+  border-top: 1px solid var(--ds-color-divider);
+}
+
+.targetMain {
+  display: grid;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  font-size: var(--ds-text-caption);
+  font-variant-numeric: tabular-nums;
+  grid-template-columns: var(--target-columns);
+}
+
+.targetMain strong {
+  color: var(--ds-color-label);
+  font-weight: 500;
+}
+
+.targetMain strong span {
+  font-weight: 400;
+}
+
+.targetMain > span {
+  font-weight: var(--ds-weight-strong);
+  text-align: right;
+  word-break: keep-all;
+}
+
+.targets li[data-chosen='true'] .targetMain strong {
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-strong);
+}
+
+.targetMeta {
+  margin: 0;
+  color: var(--ds-color-muted);
+  font-size: 12px;
+}
+
+/* 모바일에서는 보이는 크기를 유지한 채 칩과 평면도 버튼의 터치 높이를 44px로 넓힌다. */
+@media (max-width: 767px) {
+  .chips [role='group'] {
+    row-gap: 12px;
+  }
+
+  .chips button {
+    position: relative;
+  }
+
+  .chips button::before {
+    position: absolute;
+    inset: -6px 0;
+    content: '';
+  }
+
+  .housingType > header button {
+    min-height: 44px;
+  }
+}

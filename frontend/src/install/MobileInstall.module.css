@@ -5,7 +5,7 @@
 .copy > span { color: var(--ds-color-muted); }
 .card svg { width: 16px; height: 16px; }
 .add { align-self: flex-start; margin-top: 4px; min-height: 36px; padding: 6px 12px; background: var(--ds-color-action); color: white; border-color: transparent; font-size: 12px; }
-.floating { position: absolute; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 110; margin: 0; }
+.floating { position: absolute; left: 12px; right: 12px; bottom: calc(var(--explorer-map-control-bottom, 12px) + env(safe-area-inset-bottom, 0px)); z-index: 110; margin: 0; }
 .action > button { display: flex; justify-content: space-between; width: 100%; padding: 12px 0; border: 0; background: none; color: var(--ds-color-action); font: inherit; cursor: pointer; text-align: left; }
 .action p { font-size: 12px; }
 .stepHeading { margin: 18px 0 12px; }

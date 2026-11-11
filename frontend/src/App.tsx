@@ -30,6 +30,7 @@ import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { CampaignStatsBoundary } from './analytics/CampaignStatsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
+import { hasExplorerState } from './landing/explorerState'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
 import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
@@ -38,13 +39,8 @@ import { MobileInstallProvider } from './install/MobileInstallProvider'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
-  const params = new URLSearchParams(search)
   // Keep existing detail, filter, map and authentication links usable.
-  const hasExplorerState = Array.from(params.keys()).some((key) =>
-    /^(complex|announcement|map)/.test(key)
-    || key === 'boundaryRegionCode' || key === 'login' || key === 'tab' || key === 'inbox',
-  )
-  return hasExplorerState
+  return hasExplorerState(search)
     ? <Navigate to={{ pathname: '/explore', search, hash }} replace />
     : <LandingPage />
 }

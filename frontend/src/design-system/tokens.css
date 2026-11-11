@@ -43,6 +43,8 @@
   --ds-color-status-neutral: #646971;
   --ds-color-status-neutral-surface: #f2f3f5;
   --ds-color-deadline: #d34f3e;
+  --ds-color-error-text: #ac3325;
+  --ds-color-error-container: #ffedea;
   --ds-color-agency-lh: #acca10;
   --ds-color-agency-sh: #5db544;
   --ds-color-agency-gh: #004c9d;
@@ -63,6 +65,7 @@
   --ds-weight-strong: 700;
   --ds-radius-control: 8px;
   --ds-radius-icon-control: 6px;
+  --ds-control-height-sm: 36px;
   --ds-control-height-md: 44px;
   --ds-control-height-lg: 50px;
   --ds-icon-control-md: 40px;
@@ -95,6 +98,7 @@
   --ds-space-5: calc(var(--explorer-ui-unit) * 1.25);
   --ds-space-6: calc(var(--explorer-ui-unit) * 1.5);
   --ds-space-7: calc(var(--explorer-ui-unit) * 1.75);
+  --ds-control-height-sm: calc(var(--explorer-ui-unit) * 2.25);
   --ds-control-height-md: calc(var(--explorer-ui-unit) * 2.75);
   --ds-control-height-lg: calc(var(--explorer-ui-unit) * 3.125);
   --ds-status-badge-font-size: calc(var(--explorer-ui-unit) * 0.75);

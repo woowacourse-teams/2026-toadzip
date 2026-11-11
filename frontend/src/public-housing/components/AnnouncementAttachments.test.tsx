@@ -11,9 +11,9 @@ vi.mock('../../analytics/productAnalytics', async (importOriginal) => ({
 }))
 
 vi.mock('./PdfDocumentPreview.tsx', () => ({
-  default: ({ name, url }: { name: string; url: string }) => {
+  default: ({ name, url, focus }: { name: string; url: string; focus?: { page: number; query: string } | null }) => {
     if (name === '깨진.pdf') throw new Error('Viewer failed')
-    return <div title={`${name} 미리보기`} data-url={url} />
+    return <div title={`${name} 미리보기`} data-url={url} data-focus-page={focus?.page} data-focus-query={focus?.query} />
   },
 }))
 // Its core is replaced above, so the dependent web viewer is also an SDK boundary double.
@@ -56,6 +56,14 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 
 describe('첨부파일', () => {
+  it('opens the chosen PDF at the evidence page', async () => {
+    render(<AttachmentDialog announcementId="10" attachments={[pdf, reference]} initialAttachmentId="1"
+      focus={{ page: 6, query: '소득표', nonce: 1 }} onClose={vi.fn()} />)
+    const preview = await screen.findByTitle('모집공고.pdf 미리보기')
+    expect(preview).toHaveAttribute('data-focus-page', '6')
+    expect(preview).toHaveAttribute('data-focus-query', '소득표')
+  })
+
   it('하나면 곧바로 PDF를 불러오고 닫힐 때 요청과 URL을 정리하고 포커스를 돌려준다', async () => {
     const trigger = document.createElement('button')
     document.body.append(trigger)

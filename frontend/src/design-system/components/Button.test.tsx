@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Button } from './Button'
+import styles from './Button.module.css'
 
 describe('Button', () => {
   it('기본 버튼은 제출하지 않고 명시적 submit만 폼을 제출한다', () => {
@@ -29,6 +30,12 @@ describe('Button', () => {
     expect(button).toHaveAccessibleDescription('조건을 확인해 주세요.')
     fireEvent.click(button)
     expect(clicked).not.toHaveBeenCalled()
+  })
+
+  it('밀집 영역용 작은 크기를 고를 수 있다', () => {
+    render(<Button size="sm" variant="secondary">수정</Button>)
+    expect(styles.sm).toBeTruthy()
+    expect(screen.getByRole('button', { name: '수정' })).toHaveClass(styles.sm, styles.secondary)
   })
 
   it('ref로 실제 버튼에 포커스를 옮길 수 있다', () => {

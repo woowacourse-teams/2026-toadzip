@@ -265,3 +265,25 @@
   font-size: var(--ds-text-caption);
   font-weight: 700;
 }
+
+/* 내 조건 비교 결과 한 줄 */
+.conditionLine {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: var(--ds-space-2) 0 0;
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-caption);
+  font-weight: var(--ds-weight-strong);
+  line-height: var(--ds-line-height-caption);
+}
+
+.conditionLine[data-condition-status='NOT_EVALUATED'] {
+  color: var(--ds-color-muted);
+  font-weight: 600;
+}
+
+.conditionMark[data-mark='ok'] { color: var(--ds-color-action); }
+.conditionMark[data-mark='no'] { color: var(--ds-color-deadline); }
+.conditionMark[data-mark='tri'] { color: var(--ds-color-status-upcoming); }
+.conditionMark[data-mark='na'] { color: var(--ds-color-muted); }

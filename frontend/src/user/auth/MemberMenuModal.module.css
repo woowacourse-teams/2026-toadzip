@@ -14,8 +14,10 @@
 .tabs { flex-shrink: 0; display: flex; gap: 4px; margin: 4px 28px 0; padding: 4px; background: var(--ds-color-surface-subtle); border-radius: 12px; }
 .tabs button { flex: 1; min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .tabs button[aria-selected='true'] { background: var(--ds-color-brand); color: var(--ds-color-on-brand); }
-.panel { box-sizing: border-box; flex: 1 1 auto; min-height: 0; height: min(480px, 55dvh); overflow-y: auto; overscroll-behavior: contain; padding: 24px 28px; }
+.panel { box-sizing: border-box; flex: 1 1 auto; min-height: 0; height: min(480px, 55dvh); overflow-y: auto; overscroll-behavior: contain; --inbox-scroll-padding: 24px; padding: var(--inbox-scroll-padding) 28px; }
 .panel[hidden] { display: none; }
+/* 보관함만 여는 창은 탭이 없어 제목 바로 아래에 목록 도구가 오므로 위 여백을 줄인다. */
+.panel.inboxPanel { --inbox-scroll-padding: 8px; }
 .preparation { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: min(260px, 35dvh); text-align: center; word-break: keep-all; }
 .illustration { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px; color: var(--ds-color-brand); }
 .illustration svg { width: 36px; height: 36px; }
