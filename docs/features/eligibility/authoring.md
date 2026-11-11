@@ -101,12 +101,12 @@ guidance의 대상은 `ANNOUNCEMENT`, `PATH`, `UNIT`, `OPTION`이다. OPTION 대
 
 ## AI 추출 초안
 
-`/from-extraction`은 PDF 보정 화면이 본 PDF(`pdfSha256`)가 최신 성공 추출과 같을 때만 만든다. 추출한 PDF가 공고 첨부에 있어야 원문 주소를 쓸 수 있고, 기준일은 모집공고일이다. 추출 결과 형식은 [워커 계약](../../../ai-worker/contract/README.md)의 `data.eligibility`다.
+전체 흐름과 설계 원칙은 [공고 PDF 신청자격 추출](extraction.md)에 있다. PDF 보정 화면은 보정 적용이 끝나면 초안이 없을 때 이 API를 바로 부른다. `/from-extraction`은 PDF 보정 화면이 본 PDF(`pdfSha256`)가 최신 성공 추출과 같을 때만 만든다. 추출한 PDF가 공고 첨부에 있어야 원문 주소를 쓸 수 있고, 기준일은 모집공고일이다. 추출 결과 형식은 [워커 계약](../../../ai-worker/contract/README.md)의 `data.eligibility`다.
 
 | 추출 결과 | 초안 |
 |---|---|
-| 공급행(관리자가 뺀 행·대상 제외) | supplyUnits. 모집수(공통 모집수 묶음이면 묶음 수)가 0보다 크면 RECRUITING, 모르면 UNKNOWN, 0이면 선택지를 만들지 않음 |
-| `targets[]`와 `supplyTargets` | paths. 워커가 맞춘 공급대상 이름과 공백만 무시하고 같은 대상만 잇는다. 잇지 못한 경로와 경로가 없는 공급대상은 공개 내용이 아니라 응답 notices로 관리자에게 알림 |
+| 공급행(관리자가 뺀 행·대상, 대상을 모두 뺀 행 제외) | supplyUnits. 모집수(공통 모집수 묶음이면 묶음 수)가 0보다 크면 RECRUITING, 모르면 UNKNOWN, 0이면 선택지를 만들지 않음 |
+| `targets[]`와 `supplyTargets` | paths. 워커가 맞춘 공급대상 이름과 공백만 무시하고 같은 대상만 잇는다. 공급표가 대상을 나누지 않은 공급행(대상이 없거나 `전체`뿐)에는 모든 경로를 잇고 notices로 알린다. 워커가 대상을 맞추지 못한 경로가 나눈 공급행에 이어지지 못하면 그 이름도 notices로 알린다. 요건·자격을 하나도 뽑지 못한 경로에는 '신청 대상 …에 해당하는지' 직접 확인을 두어 공통 조건만으로 지원 가능이 되지 않게 한다. 잇지 못한 경로와 경로가 없는 공급대상은 공개 내용이 아니라 응답 notices로 관리자에게 알림 |
 | 묶음의 `qualifications` | 그중 하나만 갖추면 되는 자격이라 자격마다 경로를 나눔 |
 | 요건 | commonChecks·paths[].checks. 무주택세대구성원은 FAMILY_OWNS_HOUSE, 세대 소득은 HOUSEHOLD_MONTHLY_INCOME과 REGISTERED_FAMILY_COUNT. 출산자녀 가산은 미혼이거나 자녀·임신이 없는 사람, 맞벌이 가산은 미혼·한부모이거나 맞벌이가 아닌 사람만 자동 판정 |
 | 조건으로 바꾸지 못한 요건 | REQUIRED_QUALIFICATION 안내 항목. 기타 요건, 워커가 비운 숫자, 없는 소득 기준표, 읽지 못하거나 시·도가 모호한 지역, 본인 소득·본인과 부모 합산 소득(몇 인 가구 기준인지 없음), 장애인 등 가산, 근거 없는 요건이 해당하며 그 범위의 선택지를 지원 가능으로 확정하지 않음 |

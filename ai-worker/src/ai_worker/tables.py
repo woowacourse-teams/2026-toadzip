@@ -446,13 +446,21 @@ class SupplyContinuation:
 
 
 @dataclass(frozen=True)
+class NoticeTable:
+    """공급표가 아니거나 공급표인지 불확실해 본문과 함께 읽히는 표. text는 탭으로 칸을 나눈 글이다."""
+
+    bbox: tuple[float, float, float, float]
+    text: str
+
+
+@dataclass(frozen=True)
 class PageTables:
     # 칸을 하나라도 읽지 못해 쪽 전체를 구조화하지 못했다. 이때 표는 하나도 없다.
     failed: bool
     # 쪽에서 찾은 표마다의 경계. 본문 단계 글에서 표 안 글자를 뺄 때 쓴다.
     table_boxes: list[tuple[float, float, float, float]]
-    # 본문 단계에 함께 보낼 표(공급표가 아니거나 공급표인지 불확실한 표)를 글로 옮긴 것
-    notice_rendered: list[str]
+    # 본문·신청자격 단계에 함께 보낼 표(공급표가 아니거나 공급표인지 불확실한 표)
+    notice_tables: list[NoticeTable]
     supply_tables: list[SupplyTable]
     complex_candidates: list[str]
     rental_keys: set[tuple[str, str]]
@@ -484,8 +492,8 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
     return PageTables(
         failed=failed,
         table_boxes=[table.bbox for table in detected],
-        notice_rendered=[_render_table(table.cells, index) for index, table in enumerate(detected, 1)
-                         if not table.supply or table.ambiguous],
+        notice_tables=[NoticeTable(table.bbox, _render_table(table.cells, index))
+                       for index, table in enumerate(detected, 1) if not table.supply or table.ambiguous],
         supply_tables=supply_tables,
         complex_candidates=candidates,
         rental_keys=rental,

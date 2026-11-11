@@ -37,7 +37,7 @@ public class EligibilityDraftSourceRepository {
                 .params(announcementId, fileName).query(String.class).optional();
     }
 
-    /** 관리자가 빼지 않은 공급행과 공급대상. 공통 모집수 묶음에 든 대상은 묶음의 모집수를 쓴다. 단지 지역은 주소의 시군구 코드다. */
+    /** 관리자가 빼지 않은 공급행과 공급대상. 공급대상을 모두 뺀 공급행은 신청할 대상이 없으므로 함께 뺀다(대상이 처음부터 없는 행은 남긴다). 공통 모집수 묶음에 든 대상은 묶음의 모집수를 쓴다. 단지 지역은 주소의 시군구 코드다. */
     public List<Unit> units(long announcementId) {
         Map<Long, UnitRow> rows = new LinkedHashMap<>();
         jdbc.sql("""
@@ -56,6 +56,8 @@ public class EligibilityDraftSourceRepository {
                         LEFT JOIN supply_targets t ON t.supply_row_id = r.id AND NOT t.admin_excluded
                         LEFT JOIN supply_target_count_groups g ON g.id = t.supply_count_group_id
                         WHERE r.announcement_id = ? AND NOT r.admin_excluded
+                            AND (t.id IS NOT NULL
+                                OR NOT EXISTS (SELECT 1 FROM supply_targets x WHERE x.supply_row_id = r.id))
                         ORDER BY r.display_order, r.id, t.display_order, t.id
                         """)
                 .param(announcementId)

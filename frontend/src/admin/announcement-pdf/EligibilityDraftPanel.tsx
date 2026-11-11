@@ -10,8 +10,11 @@ const RECRUITMENT: Record<string, string> = { RECRUITING: '모집', UNKNOWN: '�
  * PDF 보정의 신청자격 탭. 최신 추출의 AI 신청자격과 적용한 공급행으로 만든 초안을 보이고, 잘못 읽힌 조건은 지우지 않고 직접 확인으로 바꾼 뒤
  * 검토 완료로 표시해 공개한다. 조건 숫자 고치기는 이 화면에서 하지 않는다.
  */
-/** onEvidence가 없으면(PDF 창이 없는 적용 결과 화면) 근거 버튼을 두지 않는다. */
-export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void }) {
+/**
+ * onEvidence가 없으면(PDF 창이 없는 적용 결과 화면) 근거 버튼을 두지 않는다.
+ * autoCreate면(보정 적용 직후) 초안이 없을 때 누르지 않아도 최신 PDF 추출로 초안을 만든다. 이미 있는 초안은 덮어쓰지 않는다.
+ */
+export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, autoCreate = false }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void; autoCreate?: boolean }) {
   const [draft, setDraft] = useState<RuleSet | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -21,9 +24,11 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   useEffect(() => {
     const controller = new AbortController()
     loadEligibilityDraft(announcementId, controller.signal)
-      .then(value => { setDraft(value); setLoaded(true) })
+      .then(value => { setDraft(value); setLoaded(true); if (!value && autoCreate && pdfSha256) make(pdfSha256, null) })
       .catch(error => { if (!controller.signal.aborted) { setMessage({ kind: 'error', text: errorText(error) }); setLoaded(true) } })
     return () => controller.abort()
+    // 적용 결과 화면은 공고와 PDF가 바뀌지 않는다. 자동 만들기는 첫 조회 때 한 번만 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [announcementId])
 
   async function run(action: () => Promise<RuleSet>, done: string) {
@@ -41,9 +46,13 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence }:
   function create() {
     if (!pdfSha256) return
     if (draft && !window.confirm('지금 초안을 버리고 최신 PDF 추출로 다시 만들까요?')) return
+    make(pdfSha256, draft)
+  }
+
+  function make(sha256: string, current: RuleSet | null) {
     setNotices([])
     void run(async () => {
-      const created = await createEligibilityDraft(announcementId, pdfSha256, draft)
+      const created = await createEligibilityDraft(announcementId, sha256, current)
       setNotices(created.notices)
       return created.ruleSet
     }, '최신 PDF 추출로 초안을 만들었어요. 조건을 확인해 주세요.')

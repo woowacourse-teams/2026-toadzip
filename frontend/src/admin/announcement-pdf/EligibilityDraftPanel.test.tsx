@@ -100,6 +100,42 @@ describe('EligibilityDraftPanel', () => {
     expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
   })
 
+  it('보정 적용 뒤(autoCreate)에는 초안이 없으면 누르지 않아도 최신 PDF 추출로 초안을 만든다', async () => {
+    api.load.mockResolvedValue(null)
+    api.create.mockResolvedValue({ ruleSet: draft(), notices: ['공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다.'] })
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+
+    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
+    expect(api.create).toHaveBeenCalledTimes(1)
+    expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
+    expect(screen.getByText('공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다.')).toBeInTheDocument()
+  })
+
+  it('보정 적용 뒤에도 이미 있는 초안은 덮어쓰지 않고, 자동 만들기가 실패하면 이유를 보이고 다시 만들 수 있게 둔다', async () => {
+    api.load.mockResolvedValueOnce(draft())
+    const first = render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
+    expect(api.create).not.toHaveBeenCalled()
+    first.unmount()
+
+    api.load.mockResolvedValueOnce(null)
+    api.create.mockRejectedValueOnce(new Error('공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다.'))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('공급대상과 이어지는 신청자격 경로가 없어')
+    expect(api.create).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeEnabled()
+  })
+
+  it('열린 PDF가 없으면 보정 적용 뒤에도 초안을 자동으로 만들지 않는다', async () => {
+    api.load.mockResolvedValue(null)
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} autoCreate />)
+
+    expect(await screen.findByText('PDF를 열면 초안을 만들 수 있어요.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'AI 추출로 초안 만들기' })).toBeDisabled())
+    expect(api.create).not.toHaveBeenCalled()
+  })
+
   it('첫 조회가 끝나기 전에는 초안을 만들 수 없다', async () => {
     let finish: (value: RuleSet | null) => void = () => {}
     api.load.mockReturnValue(new Promise(resolve => { finish = resolve }))

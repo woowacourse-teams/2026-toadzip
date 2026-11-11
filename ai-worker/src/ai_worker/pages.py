@@ -23,6 +23,8 @@ _WHITESPACE = re.compile(r"\s+")
 _LEADING_PAGE_NUMBER = re.compile(r"^-\d+-")
 _FORM_PREFIXES = ("[별지", "[붙임", "[서식")
 _HEADING = re.compile(r"(?m)^\s*\d{1,2}\.\s*([가-힣][^\n]{0,100})")
+# 가로 한 장에 두 쪽을 모아 찍은 공고는 오른쪽 쪽의 제목이 왼쪽 쪽 글과 같은 줄에 넓은 공백을 두고 이어진다. 제목은 넓은 공백 앞에서 끝난다.
+_HEADING_ACROSS_COLUMNS = re.compile(r"(?m)(?:^\s*|[ \t]{8,})\d{1,2}\.\s*([가-힣](?:(?![ \t]{8,})[^\n]){0,100})")
 _SECTION_TITLE = re.compile(
     r"^(?:공급대상|공급계획|임대대상|임대조건|신청자격|입주자격|입주자선정|공급일정|신청방법|"
     r"신청서류|제출서류|서류|예비입주자|당첨자|계약|무주택|유의사항|기타|문의처|임대센터|단지|거주기간)"
@@ -145,15 +147,35 @@ def select(texts: list[str]) -> PageSelection:
 
 
 def _section_heading(text: str) -> tuple[bool, bool] | None:
-    """번호 절의 추출 여부와 제목 앞에 이전 절 본문이 있는지를 읽는다. 목차 항목은 절이 아니다."""
-    for match in _HEADING.finditer(_REPEATED.sub(r"\1", text)):
+    """번호 절의 추출 여부와 제목 앞에 이전 절 본문이 있는지를 읽는다."""
+    for title, continued in numbered_headings(text):
+        if is_section_title(title):
+            return bool(_EXTRACTION_TITLE.match(title)), continued
+    return None
+
+
+def numbered_headings(text: str, across_columns: bool = False) -> list[tuple[str, bool]]:
+    """쪽에서 '3. 신청자격'처럼 번호로 시작하는 줄의 제목(공백 없이)과 그 줄 앞에 다른 글이 있는지를 순서대로 돌려준다.
+    목차 항목은 절이 아니라 뺀다. 본문의 번호 목록도 들어 있으므로 절인지는 제목 낱말로 가린다.
+    across_columns이면 줄 가운데에서 넓은 공백 뒤에 시작하는 제목(모아 찍은 쪽의 오른쪽 쪽 제목)도 읽는다."""
+    collapsed = _REPEATED.sub(r"\1", text)
+    headings = []
+    for match in (_HEADING_ACROSS_COLUMNS if across_columns else _HEADING).finditer(collapsed):
         if re.search(r"[·.]{5,}", match[1]):
             continue
-        title = _WHITESPACE.sub("", match[1])
-        if _SECTION_TITLE.match(title):
-            prefix = _LEADING_PAGE_NUMBER.sub("", _PageText.of(text[:match.start()]).compact, count=1)
-            return bool(_EXTRACTION_TITLE.match(title)), bool(prefix)
-    return None
+        prefix = _LEADING_PAGE_NUMBER.sub("", _PageText.of(collapsed[:match.start()]).compact, count=1)
+        headings.append((_WHITESPACE.sub("", match[1]), bool(prefix)))
+    return headings
+
+
+def is_section_title(title: str) -> bool:
+    """공고문의 절 제목으로 쓰이는 낱말로 시작하는지. title은 공백을 지운 글이다."""
+    return bool(_SECTION_TITLE.match(title))
+
+
+def is_body_page(text: str) -> bool:
+    """서식(별지·붙임)이나 목차가 아닌 본문 쪽인지."""
+    return _PageText.of(text).selectable()
 
 
 def open_pdf(content: bytes) -> pymupdf.Document:
@@ -178,11 +200,11 @@ def page_texts(document: pymupdf.Document, deadline: float) -> list[str]:
     for page in document:
         # 제목보다 먼저 저장된 표·꼬리말이 있어도 시각적 읽기 순서로 절을 찾는다.
         texts.append(page.get_text("text", sort=True))
-        _check_deadline(deadline)
+        check_deadline(deadline)
     return texts
 
 
-def _check_deadline(deadline: float) -> None:
+def check_deadline(deadline: float) -> None:
     """같은 PDF는 다시 해도 느리므로 PermanentError다."""
     if time.monotonic() > deadline:
         raise PermanentError(_SLOW_CODE, _SLOW_MESSAGE)
@@ -218,6 +240,12 @@ class PromptPages:
     # 공급표 행마다 같은 쪽에서 그 표 위에 있는 글. 단지명 열 없이 블록 제목(■ 광주선운2 A-1블록) 아래 표를 둔 공고에서
     # 모델이 낸 단지명을 표 위의 가장 가까운 제목과 대조한다(source_check).
     supply_row_headings: dict[str, str] = field(default_factory=dict)
+    # 고른 쪽마다의 표 인식 결과. 신청자격 단계가 같은 쪽의 표를 다시 찾지 않게 넘긴다(표 찾기가 쪽마다 1초 안팎).
+    page_tables: dict[int, tables.PageTables] = field(default_factory=dict)
+
+    def applicant_groups(self) -> list[str]:
+        """공급표가 금액 열을 나눈 신청자 묶음 이름(가군(…), 나군(…))을 표 순서대로 돌려준다."""
+        return list(dict.fromkeys(name for groups in self.supply_row_target_values.values() for name in groups))
 
 
 def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) -> PromptPages:
@@ -230,11 +258,12 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
     supply_tables, tableless_supply_pages = [], []
     previous_supply: tables.SupplyContinuation | None = None
     ambiguous_table = False
+    page_tables = {}
 
     for number in pages:
         page = document[number - 1]
         text = page.get_text("text")
-        found = tables.page_tables(page, number, previous_supply)
+        found = page_tables[number] = tables.page_tables(page, number, previous_supply)
         if found.failed:
             fallback_pages.append(number)
             notice_body = text
@@ -245,7 +274,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
             if not found.table_boxes and _has_supply_table_text(text):
                 tableless_supply_pages.append(number)
 
-        notice_content = "\n".join([notice_body, *found.notice_rendered]).strip()
+        notice_content = "\n".join([notice_body, *(table.text for table in found.notice_tables)]).strip()
         if notice_content:
             notice_pages.append(number)
             notice_parts.append(f"[첨부 {len(notice_pages)}쪽 / 원본 {number}쪽]\n{notice_content}")
@@ -275,7 +304,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
             candidates.extend(found.complex_candidates)
         previous_supply = found.continuation
         rental |= found.rental_keys
-        _check_deadline(deadline)
+        check_deadline(deadline)
 
     fallback = bool(fallback_pages)
     if not supply_row_ids:
@@ -311,6 +340,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
         supply_tables=supply_tables,
         tableless_supply_pages=tableless_supply_pages,
         supply_row_headings=supply_row_headings,
+        page_tables=page_tables,
     )
 
 

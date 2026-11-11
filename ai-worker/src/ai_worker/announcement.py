@@ -1,7 +1,7 @@
 """공고문 PDF 추출기. 고른 쪽의 텍스트와 표를 OpenAI Luna에 보내고, 결과를 PDF 보정 화면이 읽는 형식(result.example.json)으로 만든다.
 
-이 모듈은 실행 흐름만 맡는다. 쪽 선택은 pages, 공급표를 코드와 모델 중 어디서 읽을지는 supply_sources,
-본문·신청자격 단계 프롬프트는 stage_prompts, 신청자격 응답 정리는 eligibility, 단계 결과 합치기는 merge가 한다.
+이 모듈은 실행 흐름만 맡는다. 쪽 선택은 pages, 신청자격 절의 쪽과 글은 eligibility_pages, 공급표를 코드와 모델 중 어디서 읽을지는
+supply_sources, 본문·신청자격 단계 프롬프트는 stage_prompts, 신청자격 응답 정리는 eligibility, 단계 결과 합치기는 merge가 한다.
 LH 공고는 이미 수집한 LH 행을 참고 목록·검산에, GH 공고는 공급행 틀을 식별자 맞추기에 쓴다(source_frame). 모델·문구·쪽 입력을 바꾸면 대표 PDF로 정확도를 다시 확인한다.
 """
 
@@ -10,7 +10,8 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import checks, eligibility, merge, openai, pages, source_frame, stage_prompts, supply_sources
+from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
+                       supply_sources)
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 
@@ -22,6 +23,8 @@ PDF_TEXT_MISSING = "PDF_TEXT_MISSING"
 # 쪽 처리가 이만큼도 남기지 않으면 모델을 부르지 않는다. 쪽마다 확인해 남은 쪽을 읽지 않고 바로 실패로 끝낸다.
 # 모델 호출과 응답 뒤 검산을 위한 최소 시간 여유다.
 MIN_MODEL_TIME = 240
+# 신청자격 단계를 다시 부르려면 모델 마감까지 이만큼은 남아야 한다(신청자격 단계 한 번이 20~40초).
+ELIGIBILITY_RETRY_MIN_TIME = 60
 
 
 class AnnouncementPdfExtractor:
@@ -50,25 +53,32 @@ class AnnouncementPdfExtractor:
                 )
             selection = pages.select(texts)
             selected = pages.prompt_pages(document, selection.pages, model_cutoff)
-        if selected.unstructured_supply_pages:
-            numbers = ", ".join(str(number) for number in selected.unstructured_supply_pages)
-            raise PermanentError(
-                SUPPLY_TABLE_UNSTRUCTURED,
-                f"공급·임대 표 구조를 읽지 못해 추출을 중단했습니다. 원본 PDF {numbers}쪽을 확인해 주세요.",
-            )
+            if selected.unstructured_supply_pages:
+                numbers = ", ".join(str(number) for number in selected.unstructured_supply_pages)
+                raise PermanentError(
+                    SUPPLY_TABLE_UNSTRUCTURED,
+                    f"공급·임대 표 구조를 읽지 못해 추출을 중단했습니다. 원본 PDF {numbers}쪽을 확인해 주세요.",
+                )
+            # 신청자격은 없어도 되는 결과다. 그 쪽을 읽다 시간이 모자라면 공급·본문은 살리고 신청자격 단계만 건너뛴다.
+            try:
+                eligibility_source, eligibility_error = eligibility_pages.read(document, texts, selected, model_cutoff), None
+            except PermanentError as unread:
+                eligibility_source, eligibility_error = eligibility_pages.EligibilityPages([], [], [], False), unread.message
         notice_prompt = stage_prompts.notice_prompt(selected)
-        eligibility_prompt = stage_prompts.eligibility_prompt(selected)
         plan = supply_sources.SupplyPlan(self.model, self.column_judge, rows, selected, texts[:2])
         # 세 역할은 서로 의존하지 않는다. 같은 남은 마감 안에서 병렬 호출해 분리 비용이 순차 지연으로 누적되지 않게 한다.
         model_deadline = deadline - openai.READ_TIMEOUT
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="announcement-extraction") as pool:
             # 본문·신청자격 단계는 공급표와 상관없이 늘 부르므로 먼저 보내고, 그동안 공급표를 읽을 곳을 정한다.
             notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
-            eligibility_future = pool.submit(self.model.chat, eligibility_prompt, model_deadline)
+            eligibility_future = None if eligibility_error else pool.submit(
+                _eligibility_reply, self.model, stage_prompts.eligibility_prompt(eligibility_source), model_deadline)
             source = plan.start(model_cutoff, model_deadline, pool)
             source.wait()
             notice_reply = notice_future.result()
-            eligibility_reply, eligibility_error = _optional_reply(eligibility_future)
+            eligibility_reply = None
+            if eligibility_future:
+                eligibility_reply, eligibility_error = _optional_reply(eligibility_future)
         supply = source.read()
         notice_tree = checks.first_json_object(notice_reply.content, {
             "announcement": dict, "receptionPlaces": list, "complexes": list, "schedules": list,
@@ -78,18 +88,22 @@ class AnnouncementPdfExtractor:
         warnings += supply.warnings
         # 공급 근거는 원문 행 ID에서 원본 쪽을 복원하므로 첨부 쪽 번호 변환을 하지 않는다.
         warnings += _remap_stage_pages(notice_tree, selected.notice_pages)
-        extracted = _eligibility(eligibility_reply, eligibility_error, notice_tree, selected.notice_pages, texts)
+        # 신청자격 단계는 쪽 글을 읽는 순서로 다시 만들어 보냈다. 요건 근거와 마지막 근거 검사가 그 쪽은 같은 글에서 찾는다.
+        read_texts = eligibility_source.source_texts(texts)
+        extracted = _eligibility(eligibility_reply, eligibility_error, notice_tree, eligibility_source.pages, read_texts)
         warnings += extracted.warnings
         # merge는 페이지 변환 전에 tree를 만들므로, 최종 결과의 근거를 원본 PDF 쪽 번호로 변환한다.
         tree, merge_warnings = merge.merge(supply.tree, notice_tree, extracted)
         warnings += merge_warnings
-        warnings += checks.review(tree, list(range(1, len(texts) + 1)), texts, rows, selected.rental_rows)
+        quote_texts = [read_texts.get(number, text) for number, text in enumerate(texts, 1)]
+        warnings += checks.review(tree, list(range(1, len(texts) + 1)), quote_texts, rows, selected.rental_rows)
         warnings += frame.link(tree)
         checks.normalize_note_paths(tree, warnings)
         usage = _combined_usage(*supply.usage, notice_reply.usage, *([eligibility_reply.usage] if eligibility_reply else []))
-        log.info("작업 %d 추출 완료 pages=%d/%d tableRows=%d frameRows=%d warnings=%d supply=%s usage=%s", job.id,
-                 len(selection.pages), len(texts), len(selected.supply_row_ids), len(frame), len(warnings),
-                 supply.kind, usage)
+        log.info("작업 %d 추출 완료 pages=%d/%d eligibilityPages=%d%s tableRows=%d frameRows=%d warnings=%d supply=%s "
+                 "usage=%s", job.id, len(selection.pages), len(texts), len(eligibility_source.pages),
+                 "" if eligibility_source.section_found else "(절 제목 없음)", len(selected.supply_row_ids), len(frame),
+                 len(warnings), supply.kind, usage)
         return {
             "json": json.dumps(tree, ensure_ascii=False),
             "pages": selection.pages,
@@ -97,6 +111,17 @@ class AnnouncementPdfExtractor:
             "warnings": warnings,
             "usage": usage,
         }
+
+
+def _eligibility_reply(model: supply_sources.Model, prompt: str, deadline: float) -> openai.Reply:
+    """신청자격 단계는 일시 오류(연결 실패, 429, 5xx)로 실패하면 한 번 다시 부른다. 이 단계만 실패해도 작업은 성공으로 끝나
+    워커의 작업 재시도가 일어나지 않기 때문이다. 마감까지 한 번 부를 시간이 남지 않았으면(시간 초과 포함) 다시 부르지 않는다."""
+    try:
+        return model.chat(prompt, deadline)
+    except TransientError:
+        if deadline - time.monotonic() < ELIGIBILITY_RETRY_MIN_TIME:
+            raise
+        return model.chat(prompt, deadline)
 
 
 def _optional_reply(future) -> tuple[openai.Reply | None, str | None]:
@@ -108,20 +133,15 @@ def _optional_reply(future) -> tuple[openai.Reply | None, str | None]:
 
 
 def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dict,
-                 source_pages: list[int], texts: list[str]) -> eligibility.Extracted:
+                 source_pages: list[int], page_texts: dict[int, str]) -> eligibility.Extracted:
     if reply is None:
         return eligibility.failed(error or "응답 없음")
     try:
-        tree = checks.first_json_object(reply.content, {"eligibility": dict})
+        answer = checks.json_object(reply.content)
     except PermanentError as invalid:
         return eligibility.failed(invalid.message)
-    # 모델이 근거를 data 안에 두면 쪽 번호 변환을 지나지 않으므로, 변환 전에 최상위 근거로 옮긴다.
-    tree["evidence"] = [*checks.objects(tree.get("evidence")), *checks.objects(tree["data"].pop("evidence", None))]
-    warnings = _remap_stage_pages(tree, source_pages)
     posted_date = (notice_tree.get("data", {}).get("announcement") or {}).get("postedDate")
-    extracted = eligibility.normalize(tree, posted_date, {index + 1: text for index, text in enumerate(texts)})
-    return eligibility.Extracted(extracted.data, extracted.evidence, extracted.conditions,
-                                 extracted.condition_evidence, warnings + extracted.warnings)
+    return eligibility.normalize(answer, posted_date, source_pages, page_texts)
 
 
 def _remap_stage_pages(tree: dict, source_pages: list[int]) -> list[str]:
