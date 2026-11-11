@@ -16,7 +16,7 @@ beforeEach(async () => {
   const inheritedViteKeys = Object.keys(process.env).filter((key) => key.startsWith('VITE_'))
   const isolatedKeys = [
     ...inheritedViteKeys, ...posthogKeys, 'VITE_API_BASE_URL', 'VITE_GA_MEASUREMENT_ID',
-    'VITE_GA_DEBUG_MODE', 'VITE_NAVER_MAPS_CLIENT_ID', 'VITE_USER_NODE_ENV', 'BROWSER', 'BROWSER_ARGS',
+    'VITE_NAVER_MAPS_CLIENT_ID', 'VITE_USER_NODE_ENV', 'BROWSER', 'BROWSER_ARGS',
   ]
   for (const key of new Set(isolatedKeys)) {
     vi.stubEnv(key, undefined)
@@ -50,20 +50,13 @@ function fixtureConfig(mode: string) {
 }
 
 describe('PostHog root environment boundary', () => {
-  it('uses explicit GA root settings alongside PostHog without exposing other root values', async () => {
-    await writeFile(join(rootDirectory, '.env'), [
-      'VITE_GA_MEASUREMENT_ID=G-PUBLICFIXTURE',
-      'VITE_GA_DEBUG_MODE=true',
-      'VITE_GA_MEASUREMENT_ID_EXTRA=must-not-load',
-      'SERVER_SECRET=must-not-load',
-    ].join('\n'))
-    await writeFile(join(frontendDirectory, '.env'), 'VITE_GA_MEASUREMENT_ID=G-STALEFIXTURE')
+  it('no longer injects a GA measurement ID left in the root settings', async () => {
+    await writeFile(join(rootDirectory, '.env'), 'VITE_GA_MEASUREMENT_ID=G-REMOVEDFIXTURE\nSERVER_SECRET=must-not-load')
     server = await createServer(fixtureConfig('development'))
     const transformed = await server.transformRequest('/probe.ts')
-    expect(server.config.define['import.meta.env.VITE_GA_MEASUREMENT_ID']).toBe('"G-PUBLICFIXTURE"')
-    expect(server.config.define['import.meta.env.VITE_GA_DEBUG_MODE']).toBe('"true"')
+    expect(server.config.define).not.toHaveProperty('import.meta.env.VITE_GA_MEASUREMENT_ID')
+    expect(transformed?.code).not.toContain('G-REMOVEDFIXTURE')
     expect(transformed?.code).not.toContain('must-not-load')
-    expect(transformed?.code).not.toContain('G-STALEFIXTURE')
   })
   it('loads only the four root values in development while retaining frontend settings', async () => {
     await writeFile(join(rootDirectory, '.env'), [
@@ -83,7 +76,7 @@ describe('PostHog root environment boundary', () => {
     await writeFile(join(frontendDirectory, '.env'), [
       'VITE_POSTHOG_KEY=stale-frontend-key',
       'VITE_API_BASE_URL=frontend-api-kept',
-      'VITE_GA_MEASUREMENT_ID=frontend-ga-kept',
+      'VITE_FRONTEND_PUBLIC=frontend-public-kept',
       'VITE_NAVER_MAPS_CLIENT_ID=frontend-map-kept',
     ].join('\n'))
 
@@ -91,7 +84,7 @@ describe('PostHog root environment boundary', () => {
     const transformed = await server.transformRequest('/probe.ts')
     expect(resolve(server.config.envDir)).toBe(frontendDirectory)
     expect(Object.keys(server.config.define)).toEqual(posthogKeys.map((key) => `import.meta.env.${key}`))
-    for (const value of ['phc_rootpublicfixture', 'https://us.i.posthog.com', 'frontend-api-kept', 'frontend-ga-kept', 'frontend-map-kept']) {
+    for (const value of ['phc_rootpublicfixture', 'https://us.i.posthog.com', 'frontend-api-kept', 'frontend-public-kept', 'frontend-map-kept']) {
       expect(transformed?.code).toContain(value)
     }
     expect(server.config.define['import.meta.env.VITE_POSTHOG_LOCAL_ENABLED']).toBe('"true"')

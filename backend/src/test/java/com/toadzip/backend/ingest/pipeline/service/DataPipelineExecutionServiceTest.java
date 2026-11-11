@@ -628,6 +628,54 @@ class DataPipelineExecutionServiceTest {
         verify(heartbeatTask).cancel(false);
     }
 
+    @Test
+    void 재처리는_선택한_식별자와_실행자를_작업_스레드로_전달하고_전체_등록을_호출하지_않는다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set, null);
+        var identifiers = new java.util.ArrayList<>(List.of("2:HAPPY_HOUSING", "1:HAPPY_HOUSING", "1:HAPPY_HOUSING"));
+
+        var accepted = service.retryComplexRegistration(identifiers, "retry-admin");
+        identifiers.clear();
+        verify(lease, never()).close();
+        doAnswer(invocation -> {
+            assertThat(IngestExecutionScope.current()).contains(lease);
+            return null;
+        }).when(runner).retryComplexes(accepted.executionId(), "retry-admin",
+                List.of("1:HAPPY_HOUSING", "2:HAPPY_HOUSING"));
+        queued.get().run();
+
+        verify(runner).retryComplexes(accepted.executionId(), "retry-admin",
+                List.of("1:HAPPY_HOUSING", "2:HAPPY_HOUSING"));
+        verify(runner, never()).registerComplexes(any(), any());
+        verify(executionStateService).complete(eq(accepted.executionId()), any());
+        verify(lease).close();
+    }
+
+    @Test
+    void 재처리는_이백곳을_초과해도_하나의_실행으로_전달한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set, null);
+        var identifiers = java.util.stream.IntStream.rangeClosed(1, 201)
+                .mapToObj(id -> id + ":HAPPY_HOUSING").toList();
+
+        var accepted = service.retryComplexRegistration(identifiers, "retry-admin");
+        queued.get().run();
+
+        verify(runner).retryComplexes(accepted.executionId(), "retry-admin", identifiers.stream().sorted().toList());
+    }
+
+    @Test
+    void 재처리_만곳_초과는_실행_잠금_전에_거부한다() {
+        var identifiers = java.util.Collections.nCopies(10001, "1:HAPPY_HOUSING");
+        assertThatThrownBy(() -> service.retryComplexRegistration(identifiers, "admin"))
+                .isInstanceOf(InvalidIngestRequestException.class);
+        verify(executionLock, never()).tryAcquire(any());
+    }
+
     private void configureStoredExecution() {
         AtomicReference<DataPipelineExecution> savedExecution = new AtomicReference<>();
         lenient().when(executionStateService.create(any(), any(), any()))

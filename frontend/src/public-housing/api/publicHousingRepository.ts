@@ -70,7 +70,9 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
 }
 
 export interface AnnouncementSearchFilters extends SharedSearchFilters {
-  readonly sort?: 'DEADLINE' | 'DEADLINE_DESC' | 'LATEST' | 'LATEST_ASC'
+  readonly sort?: 'DEADLINE' | 'DEADLINE_DESC' | 'LATEST' | 'LATEST_ASC' | 'CLOSED_RECENT'
+  /** 접수마감 탭. 마지막 일정 후 7일이 지나지 않은 마감 공고만 본다. */
+  readonly closed?: boolean
 }
 export interface PublicHousingRepository {
   findComplexPage(

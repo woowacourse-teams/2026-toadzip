@@ -17,7 +17,6 @@ const POSTHOG_ENVIRONMENT_KEYS = [
   'VITE_ANALYTICS_ENV',
   'VITE_POSTHOG_LOCAL_ENABLED',
 ]
-const GA_ENVIRONMENT_KEYS = ['VITE_GA_MEASUREMENT_ID', 'VITE_GA_DEBUG_MODE']
 
 export default defineConfig(({ command, mode, isSsrBuild }) => {
   const environment = loadEnv(mode, '.', 'VITE_PUBLIC_HOUSING_LOCAL_MOCK')
@@ -54,10 +53,9 @@ function analyticsEnvironmentDefines(mode: string) {
   const previousValues = preservedKeys.map((key) => [key, process.env[key]] as const)
   try {
     const rootDirectory = fileURLToPath(new URL('../', import.meta.url))
-    const environment = loadEnv(mode, rootDirectory, [...POSTHOG_ENVIRONMENT_KEYS, ...GA_ENVIRONMENT_KEYS])
+    const environment = loadEnv(mode, rootDirectory, POSTHOG_ENVIRONMENT_KEYS)
     // loadEnv matches prefixes, so pick exact names instead of spreading its result.
-    const keys = [...POSTHOG_ENVIRONMENT_KEYS, ...GA_ENVIRONMENT_KEYS.filter(key => !!environment[key])]
-    return Object.fromEntries(keys.map((key) => [
+    return Object.fromEntries(POSTHOG_ENVIRONMENT_KEYS.map((key) => [
       `import.meta.env.${key}`,
       JSON.stringify(environment[key] ?? ''),
     ]))

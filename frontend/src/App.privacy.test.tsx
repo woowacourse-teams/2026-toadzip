@@ -8,7 +8,7 @@ import type { ConsentContext } from './privacy/api'
 // The SDK-backed map is independent of routing and privacy choices.
 vi.mock('./public-housing/DefaultPublicHousingExplorer', () => ({ DefaultPublicHousingExplorer: () => null }))
 
-const notice = { key: 'ANALYTICS_NOTICE', version: 'analytics-v3', scopeVersion: 'analytics-scope-3', effectiveAt: '2026-10-09T00:00:00Z', contentHash: 'hash', documentUrl: '/api/v1/privacy/notices/ANALYTICS_NOTICE/analytics-v3' }
+const notice = { key: 'ANALYTICS_NOTICE', version: 'analytics-v3', scopeVersion: 'analytics-scope-4', effectiveAt: '2026-10-09T00:00:00Z', contentHash: 'hash', documentUrl: '/api/v1/privacy/notices/ANALYTICS_NOTICE/analytics-v3' }
 const policy = { ...notice, key: 'PRIVACY_POLICY', version: 'privacy-v3', scopeVersion: null }
 let current: ConsentContext
 

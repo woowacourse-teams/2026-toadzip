@@ -14,7 +14,7 @@ from ai_worker import openai
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 from ai_worker.openai import Reply
-from conftest import (COVER, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
+from conftest import (COVER, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EMPTY_ELIGIBILITY_DATA, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
                       FakeJudge, FakeModel, contract_example,
                       grid_page, text_pdf, two_quantity_tables_pdf)
 
@@ -73,7 +73,7 @@ def test_result_has_contract_keys_and_original_page_numbers():
     assert {key: value for key, value in tree["data"].items()
             if key not in ("supplyRows", "unresolvedFields", "eligibility")} == {
         key: value for key, value in EXTRACTION["data"].items() if key != "supplyRows"}
-    assert tree["data"]["eligibility"] == EMPTY_ELIGIBILITY["data"]["eligibility"]
+    assert tree["data"]["eligibility"] == EMPTY_ELIGIBILITY_DATA
     # 인식된 원문 표 행은 남지만, 모델 값이 해당 열과 일치하지 않아 미확인으로 둔다.
     assert tree["evidence"] and tree["evidence"][0]["page"] == 3
     assert {item["path"] for item in tree["data"]["unresolvedFields"]} >= {
@@ -88,9 +88,10 @@ def test_result_has_contract_keys_and_original_page_numbers():
     assert "[첨부 1쪽 / 원본 1쪽]" + NOTICE not in notice_prompt
     assert "공급행, 표 안의 모집수·임대조건, 신청자격은 추출하지 마세요" in notice_prompt
     assert len(model.prompts) == 2
-    # 신청자격 단계는 본문 단계와 같은 쪽을 따로 한 번 읽는다.
+    # 신청자격 절 제목이 없는 공고는 신청자격 단계가 본문 단계가 고른 쪽을 따로 한 번 읽는다.
     [eligibility_prompt] = model.eligibility_prompts
-    assert notice_prompt.split("[첨부 1쪽 / 원본 1쪽]", 1)[1] == eligibility_prompt.split("[첨부 1쪽 / 원본 1쪽]", 1)[1]
+    assert [line for line in eligibility_prompt.splitlines() if line.startswith("[첨부 ")] == [
+        line for line in notice_prompt.splitlines() if line.startswith("[첨부 ")]
     assert any("같은 의미의 원문 표 열에서 확인되지 않음" in item["reason"]
                for item in tree["data"]["unresolvedFields"])
 
@@ -254,6 +255,23 @@ def test_supply_call_error_is_raised_before_the_notice_call_error():
 
     assert error.value.code == "MODEL_TIMEOUT"
     assert len(model.prompts) == 3
+
+
+def test_eligibility_pages_that_cannot_be_read_in_time_keep_the_supply_result_and_warn(monkeypatch):
+    """신청자격 쪽을 다시 읽다 시간이 모자라도 공급·본문 결과는 살리고 신청자격 단계만 건너뛴다."""
+
+    def too_slow(*_):
+        raise PermanentError("PDF_TOO_SLOW", "PDF 쪽 처리가 오래 걸려 추출을 중단했습니다.")
+
+    monkeypatch.setattr("ai_worker.announcement.eligibility_pages.read", too_slow)
+    model = FakeModel()
+
+    result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
+
+    tree = json.loads(result["json"])
+    assert len(tree["data"]["supplyRows"]) == 1 and tree["data"]["eligibility"] is None
+    assert "신청자격을 읽지 못했습니다: PDF 쪽 처리가 오래 걸려 추출을 중단했습니다." in result["warnings"]
+    assert not any(ELIGIBILITY_STAGE in prompt for prompt in model.prompts)
 
 
 def test_failed_eligibility_stage_keeps_the_supply_result_and_warns():
@@ -541,11 +559,9 @@ def test_announcement_wide_application_condition_reaches_each_target_with_its_ev
     ]}, "sharedCounts": []}
     notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
               "notApplicable": [], "evidence": []}
-    eligibility = {"data": {"eligibility": {
-        "common": {"requirements": [{"kind": "NO_HOUSE", "scope": "HOUSEHOLD", "asWritten": "무주택세대구성원"}],
-                   "qualifications": [], "summary": "영구임대 예비입주자 자격"},
-        "targets": [], "exclusions": []}},
-        "evidence": [{"path": "eligibility.common.requirements[0]", "page": 1, "quote": "영구임대주택 예비입주자 모집"}]}
+    eligibility = {
+        "requirements": [{"id": "r1", "kind": "OTHER", "text": "영구임대주택 예비입주자 모집", "page": 1}],
+        "routes": [{"requires": ["r1"], "summary": "영구임대 예비입주자 자격"}]}
 
     result = AnnouncementPdfExtractor(StageReplyModel(supply, notice, eligibility)).extract(
         job(text_pdf(COVER, SUPPLY, RENT), {}))
@@ -750,10 +766,13 @@ class StageReplyModel:
 
     def __init__(self, supply, notice, eligibility=None):
         self.replies = {"supply": supply, "notice": notice, "eligibility": eligibility or EMPTY_ELIGIBILITY}
+        self.eligibility_prompts = []
 
     def chat(self, prompt, deadline):
         stage = "supply" if "[추출 단계: 공급 표]" in prompt else (
             "eligibility" if ELIGIBILITY_STAGE in prompt else "notice")
+        if stage == "eligibility":
+            self.eligibility_prompts.append(prompt)
         return Reply(json.dumps(self.replies[stage], ensure_ascii=False), USAGE)
 
 
@@ -802,7 +821,7 @@ SOURCE_CHECKED_TREE = {'data': {'announcement': {'name': 'Sample Notice'},
                                        'convertedDeposit': None,
                                        'applicationCondition': None}]}],
           'schedules': [],
-          'eligibility': EMPTY_ELIGIBILITY['data']['eligibility'],
+          'eligibility': EMPTY_ELIGIBILITY_DATA,
           'unresolvedFields': [{'path': 'supplyRows[0].complexReference.sourceComplexName',
                                 'reason': '추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음'},
                                {'path': 'supplyRows[0].sourceHousingTypeName',
@@ -960,3 +979,152 @@ def test_block_heading_complex_names_are_checked_against_the_nearest_heading(nam
     if names == ("광주선운2 A-1블록", "광주선운2 A-3블록"):
         # 두 블록의 55B-1이 공급행 하나로 합쳐지지 않고 따로 남는다.
         assert [row["complexReference"]["sourceComplexName"] for row in tree["data"]["supplyRows"]] == list(names)
+
+
+def with_text_pages(content: bytes, *texts: str) -> bytes:
+    document = pymupdf.open(stream=content, filetype="pdf")
+    for text in texts:
+        document.new_page().insert_text((20, 72), text, fontname="korea", fontsize=6)
+    return document.tobytes()
+
+
+ELIGIBILITY_PAGES = (
+    "2. 신청자격\n무주택세대구성원으로서 아래 요건을 모두 갖춘 자",
+    "전년도 도시근로자 가구원수별 가구당 월평균소득의 100% 이하\n1인 가구 120%, 2인 가구 110%\n출산자녀 1인 10% 가산\n총자산 3억 3,700만원 이하",
+    "소득·자산 산정방법 안내",
+    "청년: 만 19세 이상 39세 이하인 사람\n혼인 중이 아닐 것\n고령자: 만 65세 이상인 사람",
+    "공공임대주택 불법 양도·전대\n적발 후 4년이 지나지 않은 세대구성원은 신청할 수 없음",
+)
+# 모델은 요건을 한 번씩만 쓰고 경로가 id로 가리킨다. 쪽 번호는 신청자격 단계에 첨부한 순번이다(원본 2~6쪽이 첨부 1~5쪽).
+ELIGIBILITY_REPLY = {
+    "requirements": [
+        {"id": "r1", "kind": "NO_HOUSE", "scope": "HOUSEHOLD", "text": "무주택세대구성원", "page": 1},
+        {"id": "r2", "kind": "INCOME", "scope": "HOUSEHOLD", "standard": "URBAN_WORKER_MONTHLY_INCOME", "year": "전년도",
+         "percent": 100, "percentBySize": [{"size": 1, "percent": 120}, {"size": 2, "percent": 110}],
+         "adjustments": [{"kind": "CHILDBIRTH", "text": "출산자녀 1인 10% 가산"}],
+         "text": "전년도 도시근로자 가구원수별 가구당 월평균소득의 100% 이하", "page": 2},
+        {"id": "r3", "kind": "ASSETS", "scope": "HOUSEHOLD", "amount": "3억 3,700만원", "text": "총자산 3억 3,700만원 이하", "page": 2},
+        {"id": "r4", "kind": "AGE", "scope": "APPLICANT", "minimum": 19, "maximum": 39, "text": "만 19세 이상 39세 이하", "page": 4},
+        {"id": "r5", "kind": "FAMILY_TYPE", "familyTypes": ["UNMARRIED"], "text": "혼인 중이 아닐 것", "page": 4},
+        {"id": "r6", "kind": "AGE", "scope": "APPLICANT", "minimum": 65, "text": "만 65세 이상", "page": 4}],
+    "routes": [
+        {"name": "청년", "supplyTarget": "청년", "requires": ["r1", "r2", "r3", "r4", "r5"],
+         "summary": "무주택세대구성원인 만 19~39세 미혼 청년"},
+        {"name": "고령자", "supplyTarget": "고령자", "requires": ["r1", "r2", "r3", "r6"],
+         "summary": "무주택세대구성원인 만 65세 이상 고령자"}],
+    "exclusions": [{"title": "공공임대주택 불법 양도·전대", "body": "적발 후 4년이 지나지 않은 세대구성원은 신청할 수 없음", "page": 5}],
+}
+NOTICE_REPLY = {"data": {"announcement": {"name": "Sample Notice", "postedDate": "2026-09-30"}, "receptionPlaces": [],
+                         "complexes": [], "schedules": [], "unresolvedFields": []}, "notApplicable": [], "evidence": []}
+
+
+def test_eligibility_reply_becomes_the_contract_example_through_extract():
+    """모델 응답이 extract를 지나 서버가 읽는 계약 예시(result.example.json)의 신청자격·근거와 정확히 같아진다.
+    서버 리더는 이름이 틀린 칸을 조용히 비우므로, 칸 이름·파생 값(연도, 원 단위 금액, 공급대상 연결)·근거 쪽이 어긋나면 여기서 잡는다."""
+    example = json.loads(contract_example("result.example.json")["json"])
+    model = StageReplyModel(None, NOTICE_REPLY, ELIGIBILITY_REPLY)
+
+    result = AnnouncementPdfExtractor(model, FakeJudge()).extract(
+        job(with_text_pages(structured_table_pdf(), *ELIGIBILITY_PAGES)))
+
+    tree = json.loads(result["json"])
+    assert tree["data"]["eligibility"] == example["data"]["eligibility"]
+    assert [item for item in tree["evidence"] if item["path"].startswith("eligibility.")] == [
+        item for item in example["evidence"] if item["path"].startswith("eligibility.")]
+    assert not [warning for warning in result["warnings"] if "eligibility" in warning or "신청자격" in warning]
+    # 경로 요약은 그 경로의 공급대상 신청 조건이 되고, 근거는 그 경로 첫 요건의 원본 쪽이다.
+    [row] = tree["data"]["supplyRows"]
+    assert [target["applicationCondition"] for target in row["targets"]] == ["무주택세대구성원인 만 19~39세 미혼 청년"]
+    assert [item["page"] for item in tree["evidence"] if item["path"].endswith(".applicationCondition")] == [5]
+
+
+def test_eligibility_stage_reads_only_the_eligibility_section_pages():
+    """신청자격 단계에는 신청자격 절의 쪽만 간다(공급표 쪽과 절 밖의 쪽은 가지 않는다). 첨부 순번은 그 쪽들 안에서 새로 매긴다."""
+    model = StageReplyModel(None, NOTICE_REPLY, ELIGIBILITY_REPLY)
+
+    AnnouncementPdfExtractor(model, FakeJudge()).extract(job(with_text_pages(
+        structured_table_pdf(), *ELIGIBILITY_PAGES, "3. 신청방법 및 일정\n인터넷 신청", "신청 접수처 안내")))
+
+    [prompt] = model.eligibility_prompts
+    assert [line for line in prompt.splitlines() if line.startswith("[첨부 ")] == [
+        f"[첨부 {index}쪽 / 원본 {index + 1}쪽]" for index in range(1, 6)]
+    assert "Sample Notice" not in prompt and "인터넷 신청" not in prompt and "접수처" not in prompt
+    # 응답 형식은 지시문이 설명한다. 관리자 계약의 JSON 스키마는 보내지 않는다.
+    assert '"$schema"' not in prompt and '"properties"' not in prompt
+
+
+class FlakyEligibilityModel(FakeModel):
+    """신청자격 단계에서만 정해 둔 오류를 차례로 내고, 다 내면 정상 응답을 준다."""
+
+    def __init__(self, *errors):
+        super().__init__()
+        self.errors = list(errors)
+        self.eligibility_calls = 0
+        self.eligibility_deadlines = []
+
+    def chat(self, prompt, deadline):
+        if ELIGIBILITY_STAGE in prompt:
+            self.eligibility_deadlines.append(deadline)
+            self.eligibility_calls += 1
+            if self.errors:
+                raise self.errors.pop(0)
+        return super().chat(prompt, deadline)
+
+
+def _unavailable():
+    return TransientError("MODEL_UNAVAILABLE", "AI 모델이 잠시 요청을 받지 못합니다.")
+
+
+def test_eligibility_stage_is_called_again_once_after_a_transient_error():
+    model = FlakyEligibilityModel(_unavailable())
+
+    result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
+
+    assert json.loads(result["json"])["data"]["eligibility"] == EMPTY_ELIGIBILITY_DATA
+    assert model.eligibility_calls == 2 and not [warning for warning in result["warnings"] if "신청자격" in warning]
+    # 다시 부를 때도 처음과 같은 마감을 쓴다(공급·본문 단계와 같은 마감). 새 마감을 잡으면 시도 예산을 넘는다.
+    assert model.eligibility_deadlines == [model.deadlines[0]] * 2
+    # 실패한 호출은 토큰을 쓰지 않았다. 공급·본문·신청자격 한 번씩이다.
+    assert result["usage"] == {key: value * 3 for key, value in USAGE.items()}
+
+
+def test_eligibility_stage_that_fails_twice_leaves_a_warning_and_the_job_succeeds():
+    model = FlakyEligibilityModel(_unavailable(), _unavailable())
+
+    result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
+
+    tree = json.loads(result["json"])
+    assert len(tree["data"]["supplyRows"]) == 1 and tree["data"]["eligibility"] is None
+    assert model.eligibility_calls == 2
+    assert "신청자격을 읽지 못했습니다: AI 모델이 잠시 요청을 받지 못합니다." in result["warnings"]
+
+
+def test_eligibility_stage_is_not_called_again_after_a_permanent_error_or_without_time_left(monkeypatch):
+    rejected = FlakyEligibilityModel(PermanentError("MODEL_REJECTED", "AI 모델이 요청을 거절했습니다(HTTP 400)."))
+    AnnouncementPdfExtractor(rejected).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
+    assert rejected.eligibility_calls == 1
+
+    # 마감까지 한 번 더 부를 시간이 남지 않으면 일시 오류여도 다시 부르지 않는다.
+    monkeypatch.setattr(announcement, "ELIGIBILITY_RETRY_MIN_TIME", ATTEMPT_BUDGET.total_seconds())
+    late = FlakyEligibilityModel(_unavailable())
+    result = AnnouncementPdfExtractor(late).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
+    assert late.eligibility_calls == 1 and json.loads(result["json"])["data"]["eligibility"] is None
+
+
+def test_eligibility_quote_read_across_the_columns_of_a_two_up_page_is_not_warned_again():
+    """두 쪽을 모아 찍은 쪽은 원문 글이 좌우 단을 줄마다 섞어, 단 안에서 줄을 넘는 낱말('보호/하는')이 끊긴다. 신청자격 단계는
+    읽는 순서로 만든 글에서 근거를 확인했으므로, 마지막 근거 검사도 같은 글에서 찾아 '원문에 없음' 경고를 다시 내지 않는다."""
+    document = pymupdf.open(stream=structured_table_pdf(), filetype="pdf")
+    page = document.new_page(width=842, height=595)
+    for x, y, text in [(40, 60, "2. 신청자격"), (460, 60, "소득 기준 안내"), (40, 80, "성폭력피해자를 보호"),
+                       (460, 80, "자산 기준 안내"), (40, 100, "하는 가족으로서 무주택세대구성원")]:
+        page.insert_text((x, y), text, fontname="korea", fontsize=8)
+    reply = {"requirements": [{"id": "r1", "kind": "NO_HOUSE", "scope": "HOUSEHOLD",
+                               "text": "보호하는 가족으로서 무주택세대구성원", "page": 1}],
+             "routes": [{"requires": ["r1"]}]}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(None, NOTICE_REPLY, reply), FakeJudge()).extract(job(document.tobytes()))
+
+    tree = json.loads(result["json"])
+    assert [item["page"] for item in tree["evidence"] if item["path"] == "eligibility.common.requirements[0]"] == [2]
+    assert not [warning for warning in result["warnings"] if "근거 인용문" in warning]

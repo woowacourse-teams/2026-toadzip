@@ -19,7 +19,7 @@ const MARKER_HOVER_EVENT_NAMES = new Set(['map_marker_hover_available', 'map_mar
 const CORE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
-const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-3'
+const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-4'
 const MAX_TIMEOUT = 2_147_483_647
 const PUBLIC_PATHS = new Set(['/explore', '/feedback', '/mypage/notifications'])
 // 상세 주소(`/complexes/1`)는 지도 화면 `/explore`로 기록해 ID가 담긴 경로를 보내지 않고 기존 경로 기준 지표를 유지한다.

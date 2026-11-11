@@ -155,6 +155,7 @@ function toAnnouncementListItem(
     applicationStartAt: raw.applicationStartAt,
     applicationEndAt: raw.applicationEndAt,
     dDay: raw.dDay,
+    winnerAnnouncementAt: raw.winnerAnnouncementAt ?? null,
     viewCount: raw.viewCount,
     supplyComplexCount: raw.supplyComplexCount,
     supplyHouseholdCount: raw.supplyHouseholdCount,

@@ -48,6 +48,7 @@ public class IngestExecutionLockInterceptor implements HandlerInterceptor {
             return true;
         }
         return request.getRequestURI().startsWith(PIPELINE_PATH)
-                || request.getRequestURI().equals("/api/admin/ingest/myhome/initial-registration/register");
+                || request.getRequestURI().equals("/api/admin/ingest/myhome/initial-registration/register")
+                || request.getRequestURI().equals("/api/admin/ingest/myhome/initial-registration/retry");
     }
 }

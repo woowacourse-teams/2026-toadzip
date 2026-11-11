@@ -16,6 +16,7 @@ import com.toadzip.backend.global.security.JsonAuthenticationEntryPoint;
 import com.toadzip.backend.global.security.SecurityConfiguration;
 import com.toadzip.backend.global.security.SecurityErrorResponseWriter;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationSupplementService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
@@ -34,8 +35,28 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({AdminSecurityConfiguration.class, SecurityConfiguration.class, ClockConfig.class,
         JsonAuthenticationEntryPoint.class, JsonAccessDeniedHandler.class, SecurityErrorResponseWriter.class})
 class MyHomeInitialRegistrationSecurityTest {
+    @MockitoBean private MyHomeInitialRegistrationSupplementService supplements;
 
     private static final String PATH = "/api/admin/ingest/myhome/initial-registration";
+
+    @Test
+    void 재처리와_정보_보완은_관리자와_CSRF가_필요하다() throws Exception {
+        for (String operation : java.util.List.of("retry", "information")) {
+            mvc.perform(post(PATH + "/" + operation).with(user("admin").roles("ADMIN"))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            when(users.existsById(1L)).thenReturn(true);
+            mvc.perform(post(PATH + "/" + operation).with(user("1").roles("USER")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+        }
+        verifyNoInteractions(execution, supplements);
+        mvc.perform(post(PATH + "/retry").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceComplexIdentifiers\":[\"123:PERMANENT_RENTAL\"]}"))
+                .andExpect(status().isAccepted());
+        verify(execution).retryComplexRegistration(java.util.List.of("123:PERMANENT_RENTAL"), "admin");
+    }
     @Autowired private MockMvc mvc;
     @MockitoBean private MyHomeInitialRegistrationService service;
     @MockitoBean private DataPipelineExecutionService execution;

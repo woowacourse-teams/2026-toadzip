@@ -25,7 +25,7 @@ class Reply:
 
 class OpenAI:
     def __init__(self, api_key: str, base_url: str = BASE_URL, transport: httpx.BaseTransport | None = None,
-                 reasoning_effort: str = "none"):
+                 reasoning_effort: str = "medium"):
         if reasoning_effort not in {"none", "low", "medium", "high", "xhigh", "max"}:
             raise ValueError("지원하지 않는 Luna reasoning effort입니다.")
         self.reasoning_effort = reasoning_effort

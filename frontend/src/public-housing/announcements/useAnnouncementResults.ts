@@ -234,8 +234,12 @@ export function useAnnouncementResults(
 }
 
 function activeAnnouncementFilters(
-  filters: AnnouncementSearchFilters,
+  { closed, ...filters }: AnnouncementSearchFilters,
 ): AnnouncementSearchFilters {
+  if (closed) {
+    // 접수마감 탭은 이후 일정이 남은 마감 공고를 방금 마감된 것부터 보여 준다.
+    return { ...filters, applicationStatuses: ['CLOSED'], sort: 'CLOSED_RECENT' }
+  }
   const selectedStatuses = filters.applicationStatuses?.filter(
     (status) => status !== 'CLOSED',
   )

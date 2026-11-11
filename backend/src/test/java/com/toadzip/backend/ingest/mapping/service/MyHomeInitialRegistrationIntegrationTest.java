@@ -70,6 +70,7 @@ import tools.jackson.databind.ObjectMapper;
 @Import({MyHomeInitialRegistrationExecutionService.class, MyHomeInitialRegistrationWriter.class,
         MyHomeInitialRegistrationService.class, MyHomeInitialRegistrationAssessment.class,
         MyHomeComplexSourceMapper.class, InitialRegistrationProductStore.class,
+        InitialRegistrationInputs.class, MyHomeInitialRegistrationSupplementService.class,
         IngestWriteOwnershipConfiguration.class, IngestWriteOwnershipGuard.class,
         IngestExecutionOwnershipRepository.class, DataPipelineExecutionLock.class,
         IngestExecutionOwnershipService.class,
@@ -81,6 +82,8 @@ class MyHomeInitialRegistrationIntegrationTest {
     @Autowired private MyHomeInitialRegistrationExecutionService execution;
     @Autowired private MyHomeInitialRegistrationService preparation;
     @Autowired private MyHomeInitialRegistrationWriter writer;
+    @Autowired private MyHomeInitialRegistrationSupplementService supplements;
+    @Autowired private com.toadzip.backend.ingest.mapping.repository.InitialRegistrationFailureRepository failures;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
     @Autowired private MyHomeComplexLinkRepository links;
@@ -103,6 +106,7 @@ class MyHomeInitialRegistrationIntegrationTest {
     void clean() {
         try {
             jdbc.sql("ALTER TABLE housing_types DROP CONSTRAINT IF EXISTS registration_test_failure").update();
+            failures.deleteAll();
             changes.deleteAll();
             links.deleteAll();
             types.deleteAll();
@@ -131,7 +135,7 @@ class MyHomeInitialRegistrationIntegrationTest {
                     return DataPipelineExecutionResponse.idle(DataPipelineType.COMPLEX_REGISTRATION);
                 });
         var mvc = MockMvcBuilders.standaloneSetup(
-                new MyHomeInitialRegistrationController(preparation, scheduler)).build();
+                new MyHomeInitialRegistrationController(preparation, scheduler, supplements)).build();
 
         mvc.perform(post("/api/admin/ingest/myhome/initial-registration/register").principal(() -> "admin"))
                 .andExpect(status().isAccepted());
@@ -310,6 +314,112 @@ class MyHomeInitialRegistrationIntegrationTest {
         target.prepareLocation(InitialRegistrationLocation.prepared(ADDRESS, ADDRESS,
                 new BigDecimal("36.35"), new BigDecimal("127.38"), true, "admin", Instant.EPOCH));
         targets.saveAndFlush(target);
+    }
+
+    @Test
+    void 여러_페이지에서_선택한_이백곳_초과_대상을_모두_재평가한다() {
+        rows(List.of());
+        var identifiers = java.util.stream.LongStream.rangeClosed(1, 201)
+                .mapToObj(id -> id + ":PERMANENT_RENTAL").toList();
+        for (long id = 1; id <= 201; id++) {
+            ready(id);
+        }
+
+        var result = execution.retry("admin", identifiers);
+
+        assertThat(result.targetCount()).isEqualTo(201);
+        assertThat(result.counts().get(InitialRegistrationStatus.INFORMATION_REQUIRED)).isEqualTo(201);
+        assertThat(failures.count()).isEqualTo(201);
+        assertThat(complexes.count()).isZero();
+    }
+
+    @Test
+    void 정보_부족으로_재처리가_보류되면_사유를_이력에_남긴다() {
+        rows(List.of(source(123, null)));
+        preparation.refresh();
+
+        var result = execution.retry("retry-admin", List.of("123:PERMANENT_RENTAL"));
+
+        assertThat(result.counts().get(InitialRegistrationStatus.INFORMATION_REQUIRED)).isEqualTo(1);
+        assertThat(supplements.failures("123:PERMANENT_RENTAL", 0).failures())
+                .extracting(com.toadzip.backend.ingest.mapping.dto.InitialRegistrationFailuresResponse.Failure::detail)
+                .singleElement().asString().contains("재처리 보류", "주택형명");
+        assertThat(complexes.count()).isZero();
+    }
+
+    @Test
+    void 저장_실패한_선택_대상만_재처리하고_성공_후에도_실패_이력은_유지한다() {
+        rows(List.of(source(123, "26A"), source(456, "26B")));
+        preparation.refresh();
+        writer.recordFailure("123:PERMANENT_RENTAL", "admin");
+
+        assertThat(execution.register("admin").counts().get(InitialRegistrationStatus.COMPLETED)).isEqualTo(1);
+        assertThat(targets.findById("123:PERMANENT_RENTAL").orElseThrow().getStatus())
+                .isEqualTo(InitialRegistrationStatus.FAILED);
+        var result = execution.retry("admin", List.of("123:PERMANENT_RENTAL", "456:PERMANENT_RENTAL"));
+        assertThat(result.targetCount()).isEqualTo(1);
+        assertThat(result.counts().get(InitialRegistrationStatus.COMPLETED)).isEqualTo(1);
+        assertThat(complexes.count()).isEqualTo(2);
+        assertThat(supplements.failures("123:PERMANENT_RENTAL", 0).totalElements()).isEqualTo(1);
+        assertThat(execution.retry("admin", List.of("123:PERMANENT_RENTAL")).targetCount()).isZero();
+        assertThat(complexes.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 재시도_저장도_롤백하며_이전과_현재_실패를_각각_기록한다() {
+        rows(List.of(source(123, "26A")));
+        preparation.refresh();
+        writer.recordFailure("123:PERMANENT_RENTAL", "first-admin");
+        jdbc.sql("ALTER TABLE housing_types ADD CONSTRAINT registration_test_failure CHECK (name <> '26A')").update();
+
+        var result = execution.retry("retry-admin", List.of("123:PERMANENT_RENTAL"));
+        assertThat(result.counts().get(InitialRegistrationStatus.FAILED)).isEqualTo(1);
+        assertThat(complexes.count()).isZero();
+        assertThat(types.count()).isZero();
+        assertThat(links.count()).isZero();
+        assertThat(changes.count()).isZero();
+        assertThat(supplements.failures("123:PERMANENT_RENTAL", 0).failures())
+                .extracting(com.toadzip.backend.ingest.mapping.dto.InitialRegistrationFailuresResponse.Failure::actor)
+                .containsExactly("retry-admin", "first-admin");
+    }
+
+    @Test
+    void 주택형명을_근거로_보완해_원천을_유지한_채_선택_등록한다() {
+        var source = source(123, null);
+        rows(List.of(source));
+        preparation.refresh();
+        var information = supplements.find("123:PERMANENT_RENTAL");
+        supplements.supplement(new com.toadzip.backend.ingest.mapping.dto.InitialRegistrationInformationRequest(
+                "123:PERMANENT_RENTAL", information.fingerprint(), null,
+                java.util.Map.of(source.getSourceKey(), "26A"), "공식 공고문 3쪽"), "admin");
+        assertThat(targets.findById("123:PERMANENT_RENTAL").orElseThrow().getStatus())
+                .isEqualTo(InitialRegistrationStatus.READY);
+
+        execution.retry("admin", List.of("123:PERMANENT_RENTAL"));
+        assertThat(types.findAll()).extracting(HousingType::getName).containsExactly("26A");
+        assertThat(source.getStyleNm()).isNull();
+        assertThat(changes.findAll().getFirst().getAfterValue()).contains("공식 공고문 3쪽");
+    }
+
+    @Test
+    void 보완_후_원천이_변경되면_이전_보완값으로_등록하지_않는다() {
+        var source = source(123, null);
+        rows(List.of(source));
+        preparation.refresh();
+        var information = supplements.find("123:PERMANENT_RENTAL");
+        var request = new com.toadzip.backend.ingest.mapping.dto.InitialRegistrationInformationRequest(
+                "123:PERMANENT_RENTAL", information.fingerprint(), null,
+                java.util.Map.of(source.getSourceKey(), "26A"), "공식 공고문 3쪽");
+        supplements.supplement(request, "admin");
+        rows(List.of(sourceAt(123, null, ADDRESS, PNU, "변경된 단지명")));
+        assertThatThrownBy(() -> supplements.supplement(request, "admin"))
+                .isInstanceOf(com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException.class)
+                .hasMessageContaining("변경");
+        execution.retry("admin", List.of("123:PERMANENT_RENTAL"));
+        assertThat(complexes.count()).isZero();
+        assertThat(targets.findById("123:PERMANENT_RENTAL").orElseThrow().getStatus())
+                .isEqualTo(InitialRegistrationStatus.INFORMATION_REQUIRED);
+        assertThat(supplements.find("123:PERMANENT_RENTAL").supplement().current()).isFalse();
     }
 
     private HousingComplex existing(String identifier) {

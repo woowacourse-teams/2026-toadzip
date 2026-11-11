@@ -454,6 +454,7 @@ class AnnouncementQueryServiceTest {
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.any(LocalDate.class)
         )).thenReturn(List.of());
         AnnouncementQueryService service = searchService(
@@ -483,6 +484,7 @@ class AnnouncementQueryServiceTest {
         );
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),
+                org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 mapperTodayCaptor.capture()

@@ -50,7 +50,7 @@ public record LocationSummaryRecord(
     }
 
     public String normalizedRoadAddress() {
-        return new NormalizedRoadAddress(roadAddress()).withoutReference();
+        return new NormalizedRoadAddress(roadAddress()).locationKey();
     }
 
     private String buildingNumber() {

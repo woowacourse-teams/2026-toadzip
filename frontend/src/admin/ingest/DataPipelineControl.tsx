@@ -6,6 +6,7 @@ import {
   getDataPipelineReadiness,
   getDataPipelineStatus,
   startDataPipeline,
+  retryInitialRegistration,
   stopDataPipeline,
   type DataPipelineExecution,
   type DataPipelineType as SharedDataPipelineType,
@@ -159,7 +160,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     }
   }
 
-  async function execute(type: DataPipelineType) {
+  async function execute(type: DataPipelineType, identifiers?: string[]) {
     if (starting.current || isAnyPipelineRunning) return
     starting.current = type
     setStartingType(type)
@@ -172,7 +173,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
       errorResponse: null,
     })
     try {
-      const execution = await startDataPipeline(type)
+      const execution = identifiers ? await retryInitialRegistration(identifiers) : await startDataPipeline(type)
       if (mounted.current && isLatestGeneration(type, generation)) {
         applyExecution(type, execution)
       }
@@ -313,7 +314,8 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     </p>)}
     <ComplexIngestStages states={pipelineStates} disabled={isAnyPipelineRunning} collectionBlocked={serviceKeyMissing}
       startingType={startingType} stopping={stopping}
-      onStart={type => handleRun(type)} onStop={type => void stop(type)}
+      onStart={type => handleRun(type)} onRetry={identifiers => void execute('COMPLEX_REGISTRATION', identifiers)}
+      onStop={type => void stop(type)}
       onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} onShowHistory={onShowHistory} />
   </section>
   function recent(source: typeof agencySources[number]) {

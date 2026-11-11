@@ -18,9 +18,10 @@ manifest는 현재 문서의 버전과 모든 발행 원문의 키·시행일·s
 버전 누락·변경으로 로그인을 막지 않는다. 가입 시 확인 가능한 선택적 버전만 별도로 기록하고
 읽음·동의를 추정하지 않는다. OAuth 10분 만료와 state 검증은 [로그인 계약](../authentication/social-login.md)을 따른다.
 
-현재 분석 안내는 [analytics-2026-10-11-v1](../../../backend/src/main/resources/privacy/analytics-2026-10-11-v1.md),
-처리 범위는 `analytics-scope-3`다. 익명 통계·미수집 또는 메모리 식별자를 전제로 한 기존 허용은
-브라우저 저장에 대한 동의로 사용하지 않는다. 기존 `analytics-scope-1`·`analytics-scope-2` 허용은
+현재 분석 안내는 [analytics-2026-11-10-v1](../../../backend/src/main/resources/privacy/analytics-2026-11-10-v1.md),
+처리 범위는 `analytics-scope-4`다. 이 범위는 PostHog로의 국외 이전 항목(이전받는 자·국가·항목·시기와 방법·
+목적과 보유기간·거부 방법)을 동의 전에 알리고 GA4를 제외한다. 익명 통계·미수집 또는 메모리 식별자를 전제로 한
+기존 허용과 국외 이전 고지 없이 받은 허용은 사용하지 않는다. 기존 `analytics-scope-1`~`analytics-scope-3` 허용은
 `RECONSENT_REQUIRED`이며 최신 안내에 명시적으로 다시 동의해야 한다. 새 범위의 시행일은 이전
 범위보다 늦게 기록하여 과거 동의의 최초 무효화 시각과 증빙 파기 기산점을 유지한다.
 
@@ -29,7 +30,7 @@ PostHog의 브라우저 분석 식별자는 회원과 연결하지 않으며, �
 새 허용 선택으로 기존 식별자의 기간을 연장하지 않는다. 동의 철회·만료·재동의 필요 또는 현재
 범위의 유효한 허용이 없음을 확인하면 폐기한다. 닫힌 브라우저의 만료 식별자는 다음 실행 때
 삭제하며 재사용하지 않는다. 공개 전체 안내는
-[privacy-2026-10-11-v1](../../../backend/src/main/resources/privacy/privacy-2026-10-11-v1.md)을 따른다.
+[privacy-2026-11-10-v1](../../../backend/src/main/resources/privacy/privacy-2026-11-10-v1.md)을 따른다.
 
 `AnalyticsCollectionPolicy`는 현재 범위와 일치하고 만료되지 않은 `GRANTED`만 허용한다.
 전면 수집 차단이나 이를 해제하는 별도 환경 플래그는 없다. 현재 유효한 동의가 있으면

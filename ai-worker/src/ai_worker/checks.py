@@ -6,6 +6,7 @@
 
 import json
 import re
+from functools import lru_cache
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -20,10 +21,12 @@ _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _AREA_ONLY = re.compile(r"\d+\.\d+")
 _TARGET_NOTATION = re.compile(r"「|\s\(")
 _WHITESPACE = re.compile(r"\s+")
+# PDF 글꼴에 따라 가운뎃점이 여러 글자로 뽑힌다. 모델이 그중 하나로 옮겨도 같은 글로 본다.
+_MIDDLE_DOTS = re.compile(r"[ㆍ․‧•∙・]")
 _DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
 
 
-def first_json_object(reply: str, expected_data: dict[str, type] | None = None) -> dict:
+def json_object(reply: str) -> dict:
     """응답 뒤에 글이 더 붙는 경우가 있어(평가의 Extra data 실패) 첫 JSON 객체만 읽는다.
     NaN·Infinity는 JSON이 아니어서 화면이 결과를 읽지 못하므로 받지 않는다."""
     start = reply.find("{")
@@ -33,6 +36,12 @@ def first_json_object(reply: str, expected_data: dict[str, type] | None = None) 
         tree, _ = json.JSONDecoder(parse_constant=_reject_constant).raw_decode(reply, start)
     except (json.JSONDecodeError, ValueError) as error:
         raise PermanentError(INVALID_CODE, "AI 모델 응답을 JSON으로 읽지 못했습니다.") from error
+    return tree
+
+
+def first_json_object(reply: str, expected_data: dict[str, type] | None = None) -> dict:
+    """본문·공급 단계 응답처럼 추출 결과를 data 아래에 두는 응답을 읽고, 그 단계가 맡은 칸이 있는지 확인한다."""
+    tree = json_object(reply)
     data = tree.get("data")
     if not isinstance(data, dict):
         raise PermanentError(INVALID_CODE, "AI 모델 응답에 추출 결과(data)가 없습니다.")
@@ -50,7 +59,7 @@ def _reject_constant(name: str):
 def review(tree: dict, pages: list[int], texts: list[str], lh_rows: list["SourceSupplyRow"],
            rental_rows: int) -> list[str]:
     """tree의 쪽 번호를 원본 기준으로 바꾸고 경고를 돌려준다.
-    texts는 원본 PDF 전체 쪽 텍스트, lh_rows는 참고 목록으로 준 LH API 행,
+    texts는 원본 PDF 쪽마다 근거 인용문을 찾을 글(단계가 그 쪽을 다른 순서로 읽었으면 그 글도 이어 붙인 것), lh_rows는 참고 목록으로 준 LH API 행,
     rental_rows는 임대조건표에서 센 (주택형, 공급계층) 줄 수다."""
     lh_types = [row.type_name for row in lh_rows]
     warnings: list[str] = []
@@ -94,13 +103,24 @@ def remap_pages(items: list[dict], pages: list[int], warnings: list[str]) -> lis
     return remapped
 
 
+def missing_words(quote: str, page_text: str) -> list[str]:
+    """quote의 낱말 가운데 쪽 글에 없는 것. 모델은 표 한 줄을 칸 순서대로 이어 인용하는데 PDF 글은 칸을 다른 순서로 뽑기도 해서,
+    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈은 무시한다."""
+    compact = compact_text(page_text)
+    return [word for word in _MIDDLE_DOTS.sub("·", quote).split() if word not in compact]
+
+
+# 같은 쪽 글을 요건마다 다시 줄이지 않게 기억한다. 워커는 오래 떠 있으므로 한 공고의 쪽 수만큼만 기억한다.
+@lru_cache(maxsize=256)
+def compact_text(text: str) -> str:
+    return _MIDDLE_DOTS.sub("·", _WHITESPACE.sub("", text))
+
+
 def _check_quotes(evidence: list[dict], texts: list[str], warnings: list[str]) -> None:
-    """근거 인용문의 낱말이 모두 그 쪽 원문에 있는지 본다. 없으면 값이 다른 쪽에서 왔거나 지어낸 것일 수 있다.
-    모델은 표 한 줄을 칸 순서대로 이어 인용하는데 PDF 텍스트는 칸을 다른 순서로 뽑기도 해서, 인용문 전체가 아니라 낱말마다 찾는다."""
-    compacts = [_WHITESPACE.sub("", page) for page in texts]
+    """근거 인용문의 낱말이 모두 그 쪽 원문에 있는지 본다. 없으면 값이 다른 쪽에서 왔거나 지어낸 것일 수 있다."""
     for item in evidence:
         page = item["page"]
-        missing = [word for word in _text(item.get("quote")).split() if word not in compacts[page - 1]]
+        missing = missing_words(_text(item.get("quote")), texts[page - 1])
         if missing:
             warnings.append(f"{_label(item)}: 근거 인용문의 {', '.join(missing[:3])}이(가) {page}쪽 원문에 없음")
 

@@ -7,6 +7,7 @@ import type {
 import {
   parseAnnouncementSearchFilters,
   parseComplexSearchFilters,
+  searchFiltersSignature,
   setAnnouncementSearchFilters,
   setComplexSearchFilters,
 } from './searchFilterLocation.ts'
@@ -36,6 +37,16 @@ describe('검색 필터 URL namespace', () => {
     expect(written.get('announcementSort')).toBe(sort)
     expect(written.get('announcementId')).toBe('42')
     expect(written.get('mapZoom')).toBe('14')
+  })
+
+  it('접수마감 탭을 URL로 저장하고 복원하며 다른 탭과 구분한다', () => {
+    const filters = parseAnnouncementSearchFilters(new URLSearchParams('announcementTab=closed&announcementRegionCode=11'))
+    expect(filters).toEqual({ closed: true, regionCode: '11' })
+    expect(setAnnouncementSearchFilters(new URLSearchParams('mapZoom=14'), filters).get('announcementTab')).toBe('closed')
+    expect(setAnnouncementSearchFilters(new URLSearchParams('announcementTab=closed'), { regionCode: '11' }).has('announcementTab'))
+      .toBe(false)
+    expect(searchFiltersSignature(filters)).not.toBe(searchFiltersSignature({ regionCode: '11' }))
+    expect(parseAnnouncementSearchFilters(new URLSearchParams('announcementTab=unknown'))).toEqual({})
   })
 
   it('알 수 없는 공고 정렬은 기본값을 쓰도록 무시한다', () => {

@@ -1,4 +1,4 @@
-import { campaignEntry, consumeCampaignEntry, safeCampaignSource, type CampaignEntry } from './campaignAttribution'
+import { campaignEntry, consumeCampaignEntry, consumeOrganicEntry, safeCampaignSource, type CampaignEntry } from './campaignAttribution'
 import { explorerPagePath } from '../public-housing/navigation/detailLocation'
 
 const ACTIONS = new Set([
@@ -63,5 +63,5 @@ export function captureCampaignStat(action: string, input: Record<string, unknow
 }
 
 export function initializeCampaignStats(): void {
-  if (consumeCampaignEntry()) captureCampaignStat('landing')
+  if (consumeCampaignEntry() || consumeOrganicEntry()) captureCampaignStat('landing')
 }

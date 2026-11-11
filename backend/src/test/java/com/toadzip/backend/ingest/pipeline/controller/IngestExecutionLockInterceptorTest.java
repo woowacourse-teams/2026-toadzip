@@ -72,6 +72,9 @@ class IngestExecutionLockInterceptorTest {
         var registration = request("POST", "/api/admin/ingest/myhome/initial-registration/register");
         assertThat(interceptor.preHandle(registration, response(), new Object())).isTrue();
         interceptor.afterCompletion(registration, response(), new Object(), null);
+        var retry = request("POST", "/api/admin/ingest/myhome/initial-registration/retry");
+        assertThat(interceptor.preHandle(retry, response(), new Object())).isTrue();
+        interceptor.afterCompletion(retry, response(), new Object(), null);
         verify(executionLock, never()).tryAcquire();
         when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
         var refresh = request("POST", "/api/admin/ingest/myhome/initial-registration/refresh");

@@ -9,7 +9,7 @@
 | [환경 설정](../docs/setup/README.md) | 컨테이너로 로컬·개발·운영 환경을 준비하는 방법 |
 | [프론트 개발 기준](../docs/development/frontend/README.md) | 구조·상태·외부 경계·디자인·검증 기준 |
 | [기능 명세](../docs/features/README.md) | 지도·공고·알림·관리자와 문서 뷰어의 현재 동작 |
-| [분석 운영](../docs/operations/analytics/README.md) | GA4·PostHog 환경 연결·측정·수신 확인 |
+| [분석 운영](../docs/operations/analytics/README.md) | PostHog 환경 연결·측정·수신 확인 |
 | [HTTPS 운영](../docs/operations/https.md) | EC2 인증서 발급·갱신과 Nginx 반영 |
 | [AI 작업 지침](AGENTS.md) | 프론트 변경 시 필수 문서·제약과 완료 판단 |
 
@@ -101,10 +101,6 @@ snapshot에 포함되지 않는다.
 ## 지역·지도 기능
 
 검색·위치 권한·환경별 지도 설정은 [공개 지도와 검색](../docs/features/search/map.md)을 따른다.
-
-## GA4 측정
-
-설정·이벤트 계약·지표·팀원 제외와 실제 수집 검증은 [GA4 운영 안내](../docs/operations/analytics/ga4.md)를 따른다.
 
 ## 코드 검사
 

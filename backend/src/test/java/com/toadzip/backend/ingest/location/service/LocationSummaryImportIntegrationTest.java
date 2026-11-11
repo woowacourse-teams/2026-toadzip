@@ -57,6 +57,53 @@ class LocationSummaryImportIntegrationTest {
     }
 
     @Test
+    void 원천_부번_0을_ZIP_주소와_일치시켜_저장하고_원천_주소로_좌표를_조회한다() throws IOException {
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("서울특별시 종로구 테스트로 1-0 (테스트동)"));
+
+        var report = service.importMatches("full.zip", nationwideZip());
+
+        assertThat(report.matchedRoadAddressCount()).isOne();
+        assertThat(report.preparedRoadAddressCount()).isOne();
+        assertThat(locationRepository.count()).isOne();
+        assertThat(geocodingService.geocode("서울특별시 종로구 테스트로 1-0").roadAddress())
+                .isEqualTo("서울특별시 종로구 테스트로 1");
+        assertThat(targets.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getRoadAddress()).isEqualTo("서울특별시 종로구 테스트로 1-0 (테스트동)");
+            assertThat(target.getLocation().getOrigin()).isEqualTo("ZIP");
+        });
+    }
+
+    @Test
+    void 실제_부번이_있는_주소는_ZIP의_부번_없는_주소와_연결하지_않는다() throws IOException {
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("서울특별시 종로구 테스트로 1-1"));
+
+        var report = service.importMatches("full.zip", nationwideZip());
+
+        assertThat(report.matchedRoadAddressCount()).isZero();
+        assertThat(locationRepository.count()).isZero();
+        assertThat(registration.findLocations(0, 20).counts()).containsEntry("ADDRESS_NOT_FOUND", 1L);
+    }
+
+    @Test
+    void 부번_0_주소의_관리자_보완값은_ZIP_재업로드에도_보존한다() throws IOException {
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("서울특별시 종로구 테스트로 1-0"));
+        registration.refresh();
+        String identifier = targets.findAll().getFirst().getSourceComplexIdentifier();
+        registration.supplementLocation(new InitialRegistrationLocationRequest(identifier,
+                "서울특별시 종로구 테스트로 1", new BigDecimal("37.6"), new BigDecimal("127.1")), "test-admin");
+
+        assertThat(service.importMatches("full.zip", nationwideZip()).matchedRoadAddressCount()).isOne();
+        var restored = targets.findById(identifier).orElseThrow();
+        assertThat(restored.getRoadAddress()).isEqualTo("서울특별시 종로구 테스트로 1-0");
+        assertThat(restored.getLocation().getOrigin()).isEqualTo("ADMIN");
+        assertThat(restored.getLocation().getLatitude()).isEqualByComparingTo("37.6");
+        assertThat(restored.getLocation().getLongitude()).isEqualByComparingTo("127.1");
+    }
+
+    @Test
     void 전국_전체분을_스캔하고_단지_주소와_일치한_행만_적재한다() throws IOException {
         var report = service.importMatches("202607_위치정보요약DB_전체분.zip", nationwideZip());
 

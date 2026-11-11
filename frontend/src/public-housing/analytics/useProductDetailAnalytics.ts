@@ -5,7 +5,8 @@ import type { MarkerHoverAttribution } from '../../analytics/markerHoverAnalytic
 import { useAnalyticsConsent } from '../../analytics/useAnalyticsConsent'
 import { consentStore } from '../../privacy/consentStore'
 import { captureCampaignStat } from '../../analytics/campaignStats'
-import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
+// 상세를 연 경로. 분석 속성 entry_point의 허용 값이다.
+export type DetailEntryPoint = 'map' | 'list' | 'search' | 'recent' | 'detail' | 'direct' | 'history'
 import type { DetailLocationResult } from '../navigation/detailLocation'
 
 interface Visit { key: string | null; id: string; entry: DetailEntryPoint; sent: boolean; counted?: boolean; hover?: MarkerHoverAttribution }

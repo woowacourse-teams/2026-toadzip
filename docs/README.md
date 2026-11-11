@@ -23,7 +23,7 @@ docs/
 │   ├── privacy/                # 동의·수집 제어·저장·제거 경계
 │   └── search/                 # 검색·지도·지역 데이터·거리뷰
 ├── operations/                 # 배포·관측·점검·복구 절차
-│   ├── analytics/              # GA4·PostHog 설정·이벤트·지표
+│   ├── analytics/              # PostHog 설정·이벤트·지표
 │   ├── database/               # DB 서버·Flyway·전환·복구
 │   └── ingest/                 # 수집 중지·잠금 복구·품질·성능 점검
 ├── fixtures/                   # 문서·테스트가 사용하는 공고 JSON 예시
