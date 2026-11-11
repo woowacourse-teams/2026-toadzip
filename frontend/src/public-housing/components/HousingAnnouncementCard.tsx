@@ -17,6 +17,8 @@ export interface HousingAnnouncementCardData {
   readonly applicationStartAt: string | null
   readonly applicationEndAt: string | null
   readonly dDay: number | null
+  /** 접수마감 공고에서 접수기간 아래에 보여 준다. */
+  readonly winnerAnnouncementAt?: string | null
   readonly viewCount: number | null
   readonly supplyHouseholdCount: number | null
 }
@@ -165,6 +167,9 @@ function ApplicationPeriod({
   const omitEndYear = startDate !== null
     && endDate !== null
     && startDate.year === endDate.year
+  const resultDate = announcement.applicationStatus === 'CLOSED'
+    ? parseDate(announcement.winnerAnnouncementAt ?? null)
+    : null
 
   return (
     <dl className={styles.period} data-summary-group="period">
@@ -180,6 +185,12 @@ function ApplicationPeriod({
           </>}
         </dd>
       </div>
+      {resultDate !== null && <div className={styles.periodRow}>
+        <dt>결과 발표</dt>
+        <dd className={styles.periodValues}>
+          <DateValue date={resultDate} omitYear={false} />
+        </dd>
+      </div>}
     </dl>
   )
 }

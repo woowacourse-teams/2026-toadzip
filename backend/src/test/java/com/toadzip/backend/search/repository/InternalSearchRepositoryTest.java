@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.housing.domain.Address;
@@ -17,6 +19,7 @@ import com.toadzip.backend.search.domain.SearchMatch;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -176,6 +179,66 @@ class InternalSearchRepositoryTest {
                 .isZero();
         assertThat(repository.countComplexes(new IntegratedSearchCondition(
                 SearchMatch.from("서울 행복"), Set.of(), Set.of(), true, today))).isZero();
+    }
+
+    @Test
+    void 같은_일치도의_공고는_진행_중_접수마감_과거_공고_순으로_보여주고_과거_공고를_표시한다() {
+        HousingComplex complex = persistComplex("서울 순서 단지", "37.5", "126.9");
+        Announcement past = persistAnnouncement("서울 순서 과거", "order-past", LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 6, 10), LocalDate.of(2026, 8, 24));
+        Announcement closed = persistAnnouncement("서울 순서 마감", "order-closed", LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 25));
+        Announcement applying = persistAnnouncement("서울 순서 접수", "order-applying", LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 9, 5), LocalDate.of(2026, 9, 20));
+        persistSupplyRow(past, complex, "order-past-row");
+        persistSupplyRow(closed, complex, "order-closed-row");
+        persistSupplyRow(applying, complex, "order-applying-row");
+        entityManager.flush();
+
+        var results = repository.findAnnouncements(condition("서울 순서", Set.of()), 20);
+
+        assertThat(results).extracting(SearchSourceItem::id).containsExactly(applying.getId().toString(),
+                closed.getId().toString(), past.getId().toString());
+        assertThat(results).extracting(SearchSourceItem::pastAnnouncement).containsExactly(false, false, true);
+    }
+
+    @Test
+    void 당첨자_발표_뒤_입주_일정이_7일_안에_끝났으면_과거_공고로_표시하지_않는다() {
+        HousingComplex complex = persistComplex("서울 입주 단지", "37.5", "126.9");
+        Announcement moveIn = persistAnnouncement("서울 입주 마감", "move-in-closed", LocalDate.of(2026, 6, 1),
+                LocalDate.of(2026, 6, 20), LocalDate.of(2026, 8, 20));
+        entityManager.persist(AnnouncementSchedule.create(moveIn, ScheduleType.MOVE_IN, "입주 예정",
+                LocalDateTime.of(2026, 8, 21, 10, 0), LocalDateTime.of(2026, 8, 25, 18, 0), 0));
+        persistSupplyRow(moveIn, complex, "move-in-closed-row");
+        entityManager.flush();
+
+        var results = repository.findAnnouncements(condition("서울 입주", Set.of()), 20);
+
+        assertThat(results).extracting(SearchSourceItem::pastAnnouncement).containsExactly(false);
+    }
+
+    private Announcement persistAnnouncement(String name, String suffix, LocalDate postedDate,
+            LocalDate applicationEndDate, LocalDate winnerAnnouncementDate) {
+        Announcement announcement = Announcement.create(
+                "source-" + suffix,
+                null,
+                null,
+                name,
+                "ORIGINAL",
+                "행복주택",
+                "신규모집",
+                "LH",
+                postedDate,
+                applicationEndDate.minusDays(5),
+                applicationEndDate,
+                winnerAnnouncementDate,
+                "https://example.com/" + suffix,
+                null,
+                0,
+                List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, null, null))
+        );
+        entityManager.persist(announcement);
+        return announcement;
     }
 
     private IntegratedSearchCondition condition(String query, Set<ApplicationStatus> statuses) {

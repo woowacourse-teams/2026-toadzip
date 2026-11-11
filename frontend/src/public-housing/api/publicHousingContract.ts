@@ -1002,6 +1002,9 @@ function decodeAnnouncementListItem(
       recordField(item, 'dDay', path),
       `${path}.dDay`,
     ),
+    ...(Object.hasOwn(item, 'winnerAnnouncementAt') ? {
+      winnerAnnouncementAt: nullableDateStringAt(item.winnerAnnouncementAt, `${path}.winnerAnnouncementAt`),
+    } : {}),
     viewCount: safeIntegerAt(
       recordField(item, 'viewCount', path),
       `${path}.viewCount`,

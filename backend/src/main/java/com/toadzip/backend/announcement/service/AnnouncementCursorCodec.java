@@ -95,6 +95,7 @@ public class AnnouncementCursorCodec {
             case LATEST_ASC -> "v1-asc";
             case DEADLINE -> "v2";
             case DEADLINE_DESC -> "v2-desc";
+            case CLOSED_RECENT -> "v1-closed";
         };
     }
 
@@ -108,6 +109,7 @@ public class AnnouncementCursorCodec {
             case LATEST_ASC -> "v3-asc";
             case DEADLINE -> "v2";
             case DEADLINE_DESC -> "v2-desc";
+            case CLOSED_RECENT -> "v4-closed";
         };
     }
 

@@ -104,6 +104,22 @@ describe('HousingAnnouncementCard', () => {
       .not.toBeInTheDocument()
   })
 
+  it('접수마감 공고는 접수기간 아래에 결과 발표일을 함께 보여 준다', () => {
+    const { card } = renderCard(announcementWith({
+      applicationStatus: 'CLOSED', dDay: null, winnerAnnouncementAt: '2027-02-24',
+    }))
+
+    const schedule = requiredRow(card, 'schedule')
+    expect(within(schedule).getByText('결과 발표')).toBeVisible()
+    expect(within(schedule).getByText('2027.02.24')).toHaveAttribute('dateTime', '2027-02-24')
+  })
+
+  it('접수가 끝나지 않은 공고에는 결과 발표일을 보여 주지 않는다', () => {
+    const { card } = renderCard(announcementWith({ winnerAnnouncementAt: '2027-02-24' }))
+
+    expect(within(requiredRow(card, 'schedule')).queryByText('결과 발표')).not.toBeInTheDocument()
+  })
+
   it('같은 연도의 종료일만 연도를 생략한다', () => {
     const { card } = renderCard(announcementWith({
       applicationStartAt: '2026-09-18',

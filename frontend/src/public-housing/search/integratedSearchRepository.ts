@@ -6,6 +6,8 @@ export interface SearchResultItem {
   readonly id: string
   readonly latitude: number | null
   readonly longitude: number | null
+  /** 접수마감 목록에서도 내려간 공고 */
+  readonly pastAnnouncement?: boolean
   readonly publishedAt: string | null
   readonly regionCode: string | null
   readonly subtitle: string | null
@@ -143,6 +145,7 @@ function decodeItem(value: unknown, index: number): SearchResultItem {
     id: string(item.id, 'item.id'),
     latitude: nullableNumber(item.latitude),
     longitude: nullableNumber(item.longitude),
+    pastAnnouncement: item.pastAnnouncement === true,
     publishedAt: nullableString(item.publishedAt),
     regionCode: nullableString(item.regionCode),
     subtitle: nullableString(item.subtitle),

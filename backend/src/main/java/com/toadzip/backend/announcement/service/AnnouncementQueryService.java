@@ -153,14 +153,16 @@ public class AnnouncementQueryService {
 
     private List<AnnouncementListItemResponse> listItems(List<Announcement> announcements,
             AnnouncementSearchCondition condition, LocalDate today) {
-        List<SupplyRow> supplyRows = findSupplyRows(announcementIds(announcements));
+        List<Long> announcementIds = announcementIds(announcements);
+        List<SupplyRow> supplyRows = findSupplyRows(announcementIds);
         return announcementResponseMapper.toListItemResponses(
                 announcements,
                 supplyRows,
-                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
+                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds).stream()
                         .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
                                 || matchesRegion(condition.regionCodes(), schedule.getHousingComplex().getAddress()))
                         .toList(),
+                findSchedules(announcementIds),
                 today
         );
     }
@@ -320,6 +322,13 @@ public class AnnouncementQueryService {
             return List.of();
         }
         return supplyRowRepository.findAllByAnnouncementIdIn(announcementIds);
+    }
+
+    private List<AnnouncementSchedule> findSchedules(Collection<Long> announcementIds) {
+        if (announcementIds.isEmpty()) {
+            return List.of();
+        }
+        return announcementScheduleRepository.findAllByAnnouncementIdIn(announcementIds);
     }
 
     private List<SupplyTarget> findSupplyTargets(Collection<Long> supplyRowIds) {

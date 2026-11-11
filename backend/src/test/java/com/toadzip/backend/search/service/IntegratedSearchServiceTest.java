@@ -99,6 +99,22 @@ class IntegratedSearchServiceTest {
     }
 
     @Test
+    void 입력중_결과는_같은_일치도에서_진행_중_접수마감_과거_공고_순으로_보여주고_과거_공고를_표시한다() {
+        when(internalRepository.findAnnouncements(any(), anyInt())).thenReturn(List.of(
+                announcement("1", "서울 가 공고", "CLOSED", true),
+                announcement("2", "서울 나 공고", "CLOSED", false),
+                announcement("3", "서울 다 공고", "APPLYING", false)
+        ));
+        when(internalRepository.findComplexes(any(), anyInt())).thenReturn(List.of());
+
+        IntegratedSearchResponse response = service.search(request("서울"));
+
+        assertEquals(List.of("3", "2", "1"), response.announcements().stream().map(item -> item.id()).toList());
+        assertEquals(List.of(false, false, true),
+                response.announcements().stream().map(item -> item.pastAnnouncement()).toList());
+    }
+
+    @Test
     void 지역_검색만_실패하면_주택_결과와_실패_유형을_함께_반환한다() {
         when(internalRepository.findAnnouncements(any(), anyInt()))
                 .thenReturn(List.of(item(SearchType.ANNOUNCEMENT, "1", "서울 공고")));
@@ -345,8 +361,13 @@ class IntegratedSearchServiceTest {
 
     private SearchSourceItem item(SearchType type, String id, String title) {
         return new SearchSourceItem(
-                type, id, title, "대한민국", "대한민국", null, null, null, null, null
+                type, id, title, "대한민국", "대한민국", null, null, null, null, null, false
         );
+    }
+
+    private SearchSourceItem announcement(String id, String title, String status, boolean pastAnnouncement) {
+        return new SearchSourceItem(SearchType.ANNOUNCEMENT, id, title, "대한민국", "대한민국",
+                null, null, null, status, null, pastAnnouncement);
     }
 
     private RegionSearchResult region(String code, String displayName) {

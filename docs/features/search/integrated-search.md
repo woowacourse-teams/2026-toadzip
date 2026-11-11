@@ -16,6 +16,7 @@
 
 응답은 `data.announcements`, `data.complexes`, `data.regions`에 유형별 결과를 담는다.
 일부 유형만 실패하면 성공 결과를 유지하고 `data.failures`에 실패 유형과 재시도 메시지를 담는다.
+같은 일치도의 공고는 공고중·접수중, 접수마감, 과거 공고 순이고 과거 공고는 `pastAnnouncement: true`다. 기준은 [접수마감 공고](../announcements/closed-announcements.md)를 따른다.
 잘못된 검색 요청은 `400 INVALID_SEARCH_REQUEST`를 반환한다.
 
 ## 지역 단지 조회
