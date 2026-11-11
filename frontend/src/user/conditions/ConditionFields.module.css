@@ -203,6 +203,10 @@
   margin-top: 10px;
 }
 
+.footEnd {
+  justify-content: flex-end;
+}
+
 .checkRow {
   display: flex;
   flex-wrap: wrap;
@@ -251,7 +255,7 @@
 .stepper {
   display: grid;
   width: 100%;
-  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  grid-template-columns: minmax(0, 1fr) 56px 56px;
   align-items: center;
   overflow: hidden;
   border: 1px solid var(--ds-color-border-base);
@@ -262,6 +266,7 @@
 .stepper button {
   height: 46px;
   border: 0;
+  border-left: 1px solid var(--ds-color-divider);
   background: var(--ds-color-surface-subtle);
   color: var(--ds-color-text);
   font: inherit;
@@ -278,16 +283,52 @@
   cursor: not-allowed;
 }
 
-.stepper input {
-  width: 64px;
-  border: 0;
-  background: transparent;
-  text-align: center;
-  border-inline: 1px solid var(--ds-color-divider);
+.stepperValue {
+  display: flex;
+  height: 46px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding-inline: 16px;
   font-size: 16px;
   font-weight: var(--ds-weight-strong);
-  line-height: 46px;
-  text-align: center;
+}
+
+.stepperValue input {
+  min-width: 1ch;
+  field-sizing: content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-text);
+  font: inherit;
+  text-align: left;
+  appearance: textfield;
+}
+
+@supports not (field-sizing: content) {
+  .stepperValue input {
+    width: 4ch;
+  }
+}
+
+.stepperValue input::placeholder {
+  color: var(--ds-color-label);
+  font-weight: 400;
+}
+
+.stepperValue input::-webkit-inner-spin-button,
+.stepperValue input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.stepperValue input:focus-visible {
+  outline: none;
+}
+
+.stepperValue:focus-within {
+  box-shadow: inset 0 0 0 2px var(--ds-color-action);
 }
 
 .region {

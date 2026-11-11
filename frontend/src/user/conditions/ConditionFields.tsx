@@ -168,9 +168,10 @@ function MoneyControl({ field, draft, questionId, partial = false, onChange, onF
   </>
 }
 
-function CountControl({ field, draft, questionId, partial = false, onChange }: ControlProps) {
+function CountControl({ field, draft, questionId, partial = false, onChange, onFieldError }: ControlProps) {
   const min = FIELD_COPY[field].min ?? 1
   const value = draft.answers[field]
+  const set = (next: number | typeof LATER | undefined) => { onFieldError(field, null); onChange(setAnswer(draft, field, next)) }
   if (field === 'CURRENT_REGION_RESIDENCE_MONTHS') {
     const laterOn = value === LATER
     return <>
@@ -178,18 +179,20 @@ function CountControl({ field, draft, questionId, partial = false, onChange }: C
       value={typeof value === 'number' ? value : ''} disabled={laterOn} onChange={(event) => {
         const raw = event.target.value
         const next = raw === '' ? undefined : Number(raw)
-        onChange(setAnswer(draft, field, next === undefined || Number.isInteger(next) && next >= 0 && next <= 1800 ? next : undefined))
+        set(next === undefined || Number.isInteger(next) && next >= 0 && next <= 1800 ? next : undefined)
       }} />
-      {FIELD_COPY[field].skippable && !partial && <Checkbox checked={laterOn} onToggle={() => onChange(setAnswer(draft, field, laterOn ? undefined : LATER))}>나중에 입력할게요</Checkbox>}
+      {FIELD_COPY[field].skippable && !partial && <div className={`${styles.foot} ${styles.footEnd}`}><Checkbox checked={laterOn} onToggle={() => set(laterOn ? undefined : LATER)}>나중에 입력할게요</Checkbox></div>}
     </>
   }
   const count = typeof value === 'number' ? value : null
   return <div className={styles.stepper} role="group" aria-labelledby={questionId}>
-    <button type="button" aria-label="한 명 줄이기" disabled={count === null || count <= min} onClick={() => onChange(setAnswer(draft, field, Math.max(min, (count ?? min) - 1)))}>−</button>
-    <input type="number" inputMode="numeric" min={min} aria-labelledby={questionId} placeholder="인원" value={count ?? ''}
-      onChange={(event) => { const raw = event.target.value; const next = Number(raw); onChange(setAnswer(draft, field, raw !== '' && Number.isInteger(next) && next >= min ? next : undefined)) }} />
-    <span>명</span>
-    <button type="button" aria-label="한 명 늘리기" onClick={() => onChange(setAnswer(draft, field, count === null ? min : count + 1))}>+</button>
+    <div className={styles.stepperValue}>
+      <input type="number" inputMode="numeric" min={min} aria-labelledby={questionId} placeholder="인원" value={count ?? ''}
+        onChange={(event) => { const raw = event.target.value; const next = Number(raw); set(raw !== '' && Number.isInteger(next) && next >= min ? next : undefined) }} />
+      {count !== null && <span>명</span>}
+    </div>
+    <button type="button" aria-label="한 명 줄이기" disabled={count === null || count <= min} onClick={() => set(Math.max(min, (count ?? min) - 1))}>−</button>
+    <button type="button" aria-label="한 명 늘리기" onClick={() => set(count === null ? min : count + 1)}>+</button>
   </div>
 }
 
