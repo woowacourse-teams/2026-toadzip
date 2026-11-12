@@ -29,6 +29,7 @@ import java.time.LocalDate;
 import java.time.Period;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -162,7 +163,7 @@ public final class ExtractedEligibilityDraft {
         for (Route route : routes) {
             for (Alternative alternative : alternatives(route, routes.size() == 1 && route.name() == null)) {
                 String pathId = "path-" + (paths.size() + 1);
-                List<ApplicationOption> connected = options(pathId, route.supplyTargets());
+                List<ApplicationOption> connected = options(pathId, targetNames(route));
                 if (connected.isEmpty()) {
                     unmatched.add(alternative.label());
                     continue;
@@ -229,11 +230,11 @@ public final class ExtractedEligibilityDraft {
     private List<String> uncoveredTargets(List<Route> routes, List<EligibilityPath> paths) {
         Set<String> covered = new LinkedHashSet<>();
         if (!paths.isEmpty()) {
-            routes.forEach(route -> route.supplyTargets().forEach(name -> covered.add(compact(name))));
+            routes.forEach(route -> covered.addAll(targetNames(route)));
         }
         return source.units().stream().flatMap(unit -> unit.targets().stream())
                 .filter(target -> target.supplyHouseholdCount() == null || target.supplyHouseholdCount() > 0)
-                .map(Target::name).filter(name -> !covered.contains(compact(name)) && !EVERYONE.equals(compact(name)))
+                .map(Target::name).filter(name -> !sameTarget(covered, name) && !EVERYONE.equals(compact(name)))
                 .distinct().toList();
     }
 
@@ -243,12 +244,13 @@ public final class ExtractedEligibilityDraft {
         boolean anyOpen = source.units().stream().anyMatch(ExtractedEligibilityDraft::open);
         boolean anyDivided = source.units().stream().anyMatch(unit -> !open(unit));
         for (Route route : source.eligibility().routes()) {
-            if (route.supplyTargets().isEmpty() && !anyOpen) {
+            if (route.supplyTargets().isEmpty() && !anyOpen && route.name() == null) {
                 unmatched.add(route.name());
                 continue;
             }
-            // 워커가 대상을 맞추지 못한 경로는 대상 구분이 없는 행에만 이어진다. 나눈 행이 있으면 빠진 연결을 알린다.
-            if (route.supplyTargets().isEmpty() && anyDivided) {
+            // 워커가 대상을 맞추지 못한 경로는 대상 구분이 없는 행과 경로 이름이 맞는 대상에만 이어진다. 둘 다 없으면 빠진 연결을 알린다.
+            if (route.supplyTargets().isEmpty() && anyDivided && source.units().stream().filter(unit -> !open(unit))
+                    .flatMap(unit -> unit.targets().stream()).noneMatch(target -> sameTarget(targetNames(route), target.name()))) {
                 openOnly.add(route.name());
             }
             routes.add(route);
@@ -289,14 +291,12 @@ public final class ExtractedEligibilityDraft {
         return result;
     }
 
-    private List<ApplicationOption> options(String pathId, List<String> supplyTargets) {
+    private List<ApplicationOption> options(String pathId, Collection<String> wanted) {
         List<ApplicationOption> options = new ArrayList<>();
-        // 워커가 맞춘 이름과 보정으로 저장한 이름은 공백만 다를 수 있어(가군 (일반) ↔ 가군(일반)) 공백은 무시하고 비교한다.
-        Set<String> wanted = new LinkedHashSet<>(supplyTargets.stream().map(ExtractedEligibilityDraft::compact).toList());
         for (Unit unit : source.units()) {
             boolean open = open(unit);
             List<Target> matched = open ? unit.targets()
-                    : unit.targets().stream().filter(target -> wanted.contains(compact(target.name()))).toList();
+                    : unit.targets().stream().filter(target -> sameTarget(wanted, target.name())).toList();
             if (matched.isEmpty() && !open) {
                 continue;
             }
@@ -312,6 +312,46 @@ public final class ExtractedEligibilityDraft {
         }
         return options;
     }
+
+    /** 경로를 이을 공급대상 이름. 워커가 맞춘 이름이 없으면 경로 이름(목차 기호를 뗀)으로 맞춘다. */
+    private static List<String> targetNames(Route route) {
+        if (!route.supplyTargets().isEmpty() || route.name() == null) {
+            return route.supplyTargets();
+        }
+        return List.of(displayName(route.name()));
+    }
+
+    /**
+     * 워커가 공고문 공급표로 맞춘 이름과 수집·보정으로 저장한 이름은 표기가 다를 수 있다(공백, '신혼부부·한부모가족' ↔ '신혼부부·한부모').
+     * 공백을 무시해 같거나, · 로 묶은 대상의 한 이름이 같으면(끝의 '가족'·'가구'·'계층'은 떼고 비교) 같은 대상으로 본다.
+     * 앞머리만 같은 이름(신혼부부 ↔ 예비신혼부부)이나 괄호로 나눈 다른 대상(가군(일반) ↔ 가군(우선))은 잇지 않는다.
+     */
+    private static boolean sameTarget(Collection<String> wanted, String stored) {
+        Set<String> keys = targetKeys(stored);
+        return wanted.stream().anyMatch(name -> targetKeys(name).stream().anyMatch(keys::contains));
+    }
+
+    private static Set<String> targetKeys(String name) {
+        Set<String> keys = new LinkedHashSet<>();
+        if (name == null || name.isBlank()) {
+            return keys;
+        }
+        keys.add(compact(name));
+        for (String part : TARGET_SEPARATOR.split(displayName(name))) {
+            String key = compact(part);
+            if (!key.isEmpty()) {
+                keys.add(key);
+                String core = TARGET_SUFFIX.matcher(key).replaceFirst("");
+                if (core.length() >= 2) {
+                    keys.add(core);
+                }
+            }
+        }
+        return keys;
+    }
+
+    private static final Pattern TARGET_SEPARATOR = Pattern.compile("[·ㆍ・,/]");
+    private static final Pattern TARGET_SUFFIX = Pattern.compile("(?:가족|가구|계층)$");
 
     /** 공급표가 대상을 나누지 않은 공급행. 신청자격을 갖춘 누구나 신청할 수 있는 행으로 본다. */
     private static boolean open(Unit unit) {

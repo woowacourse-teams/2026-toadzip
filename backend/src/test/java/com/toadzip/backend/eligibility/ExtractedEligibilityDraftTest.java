@@ -282,6 +282,39 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 저장된_공급대상_이름이_공고문_표기와_달라도_묶은_대상의_한_이름이_같으면_잇는다() {
+        // 공고문 공급표는 '신혼부부·한부모가족', 수집·정제로 저장한 대상은 '신혼부부·한부모'인 공고(인천산곡 A1 행복주택).
+        Route couple = new Route("신혼부부", List.of("신혼부부·한부모가족"), new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+        Route single = new Route("한부모가족", List.of("신혼부부·한부모가족"), new Group(WELFARE, List.of(), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(couple, single), List.of(new Target("신혼부부·한부모", null)));
+
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly("신혼부부", "한부모가족");
+        assertThat(content.options()).extracting(EligibilityContent.ApplicationOption::pathId).containsExactly("path-1", "path-2");
+    }
+
+    @Test
+    void 워커가_공급대상을_맞추지_못한_경로는_경로_이름으로_묶은_대상에_잇는다() {
+        Route couple = new Route("신혼부부", List.of(), new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(couple), List.of(new Target("신혼부부·한부모", 30)));
+
+        assertThat(content.options()).extracting(EligibilityContent.ApplicationOption::pathId).containsExactly("path-1");
+    }
+
+    @Test
+    void 괄호로_나눈_다른_대상이나_앞머리만_같은_대상에는_잇지_않는다() {
+        Route general = new Route("가군(일반)", List.of("가군(일반)"), new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+        Route couple = new Route("신혼부부", List.of("신혼부부"), new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(general, couple),
+                List.of(new Target("가군(우선)", 3), new Target("예비신혼부부", 2), new Target("신혼부부", 1)));
+
+        // 공급행은 하나라 가군(일반)·신혼부부 경로 모두 이 행의 대상과 맞아야 이어진다: 신혼부부만 맞는다.
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly("신혼부부");
+    }
+
+    @Test
     void 같은_자격이_여러_경로에_있으면_그_경로들만_경로_이름을_앞에_붙여_구분한다() {
         Function<String, Route> route = name -> new Route(name, List.of(name), new Group(WELFARE, List.of(), List.of(
                 new Qualification("주거급여 수급자", null, "수급자", WELFARE + ".qualifications[0]"),

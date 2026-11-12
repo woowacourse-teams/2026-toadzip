@@ -101,6 +101,36 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     }
 
     @Test
+    void 워커가_공급대상을_맞추지_못해도_자격_본문의_대상_이름으로_공급표_대상에_잇는다() throws Exception {
+        // 공고문 공급표는 '신혼부부·한부모', 자격 본문은 '신혼부부·한부모가족'이라 워커가 supplyTargets를 비워 둔 추출(인천산곡 A1).
+        long announcement = notice(true);
+        jdbc.update("UPDATE supply_targets SET target = '신혼부부·한부모' WHERE supply_row_id IN"
+                + " (SELECT id FROM supply_rows WHERE announcement_id = ?) AND display_order = 0", announcement);
+        List<Map<String, Object>> targets = new java.util.ArrayList<>();
+        for (String route : List.of("신혼부부", "예비신혼부부", "한부모가족")) {
+            targets.add(Map.of("target", route, "supplyTarget", "신혼부부·한부모가족", "supplyTargets", List.of(),
+                    "requirements", List.of(Map.of("kind", "OTHER", "asWritten", "입주 전까지 청약통장 가입")),
+                    "qualifications", List.of(), "summary", route));
+        }
+        String extraction = json.writeValueAsString(Map.of("data", Map.of(
+                "announcement", Map.of("name", "인천산곡 행복주택"),
+                "eligibility", Map.of("common", Map.of("requirements", List.of(Map.of("kind", "NO_HOUSE",
+                                "scope", "HOUSEHOLD", "asWritten", "무주택세대구성원")), "qualifications", List.of(),
+                                "summary", "무주택세대구성원"), "targets", targets, "exclusions", List.of())),
+                "evidence", List.of(Map.of("path", "eligibility.common.requirements[0]", "page", 5, "quote", "무주택세대구성원"))));
+        jdbc.update("UPDATE ai_jobs SET result = jsonb_set(result, '{json}', to_jsonb(?::text)) WHERE announcement_id = ?",
+                extraction, announcement);
+
+        JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
+
+        JsonNode content = created.path("ruleSet").path("content");
+        assertThat(created.path("published").asBoolean()).isTrue();
+        assertThat(texts(content.path("paths"), "label")).containsExactly("신혼부부", "예비신혼부부", "한부모가족");
+        assertThat(texts(content.path("options"), "recruitmentStatus")).containsOnly("RECRUITING").hasSize(3);
+        assertThat(texts(created.path("notices"))).noneMatch(notice -> notice.contains("잇지 못한"));
+    }
+
+    @Test
     void 자동_판정할_조건이_하나도_없어도_직접_확인으로_초안을_남긴다() throws Exception {
         // 공통 요건을 하나도 자동 판정할 수 없으면 모두 직접 확인 안내가 되고, 경로는 신청 가능으로 확정되지 않는다.
         long nothingJudgeable = notice(true);
