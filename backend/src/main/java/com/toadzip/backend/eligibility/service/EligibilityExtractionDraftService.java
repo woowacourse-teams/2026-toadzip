@@ -128,7 +128,7 @@ public class EligibilityExtractionDraftService {
     private Unit normalized(Unit unit) {
         return new Unit(unit.rowId(), unit.complexLabel(), unit.typeLabel(), unit.exclusiveArea(), unit.housingComplexId(),
                 unit.housingTypeId(), rentalLabel(unit.rentalType()),
-                unit.regionCodes().stream().filter(regions::isKnown).toList(), unit.targets());
+                unit.regionCodes().stream().filter(regions::isKnown).toList(), unit.targets(), unit.supplyHouseholdCount());
     }
 
     private static String rentalLabel(String stored) {
