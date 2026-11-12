@@ -562,6 +562,19 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.queryByText('D-3')).not.toBeInTheDocument()
   })
 
+  it('공고문으로 보정하지 않은 세대수는 예비 입주자가 포함될 수 있다고 알린다', () => {
+    const { unmount } = render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow({ corrected: false })],
+      supplyComplexCount: 1, supplyHouseholdCount: 12 })} onClose={vi.fn()} />)
+    expect(screen.getByText('12세대 · 예비 포함 가능')).toBeVisible()
+    expect(screen.getByText('세대수는 공고 기관이 제공한 수치라 예비 입주자가 포함될 수 있어요. 정확한 수는 공고문에서 확인해 주세요.')).toBeVisible()
+    unmount()
+
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow({ corrected: true })],
+      supplyComplexCount: 1, supplyHouseholdCount: 12 })} onClose={vi.fn()} />)
+    expect(screen.getByText('공급 세대').nextElementSibling).toHaveTextContent(/^12세대$/)
+    expect(screen.queryByText(/예비 입주자가 포함될 수 있어요/)).not.toBeInTheDocument()
+  })
+
   it('단지가 하나면 주택형 표와 대상별 상세를 처음부터 펼쳐 보인다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow()], supplyComplexCount: 1 })} onClose={vi.fn()} />)
     const complex = screen.getByRole('article', { name: '새솔마을 단지' })
