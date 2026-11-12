@@ -192,7 +192,7 @@ export function MyPageView({ onOpenComplex, onOpenAnnouncement, onBrowseAnnounce
             <Link className={styles.back} to="/mypage" aria-label="마이페이지로 돌아가기"><Chevron back /></Link>
             <h2 id="mypage-conditions-title">내 조건 관리</h2>
           </header>
-          <ConditionManagement />
+          <div className={styles.subBody}><ConditionManagement /></div>
         </section>}
       </main>
     </div>
