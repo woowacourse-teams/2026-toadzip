@@ -71,7 +71,7 @@ export function UserListPage() {
           <thead><tr><th scope="col">회원 ID</th><th scope="col">로그인 이메일</th><th scope="col">로그인 방식</th><th scope="col">가입일</th></tr></thead>
           <tbody>{data.items.map(user => <tr key={user.id}><th scope="row"><Link aria-label={`회원 ${user.id} 상세 보기`}
             to={`/admin/users/${user.id}?returnTo=${encodeURIComponent(returnTo)}`}>{user.id}</Link></th>
-            <td>{user.email || '미제공'}</td><td>{providerLabels[user.provider]}</td><td><time dateTime={user.createdAt}>{joinedAt(user.createdAt)}</time></td>
+            <td>{user.email || '미제공'}{user.admin ? <span className={styles.badge}>관리자</span> : null}</td><td>{providerLabels[user.provider]}</td><td><time dateTime={user.createdAt}>{joinedAt(user.createdAt)}</time></td>
           </tr>)}</tbody>
         </table> : data ? <div className={styles.empty}><h2>표시할 회원이 없습니다.</h2><p>검색 조건을 바꿔 주세요.</p></div> : null}
       </div>

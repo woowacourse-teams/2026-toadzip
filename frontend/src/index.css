@@ -121,6 +121,12 @@ body,
   margin: 0;
 }
 
+/* 지도 앱 화면은 문서가 스크롤되지 않는다. 트랙패드 바운스가 루트에 걸리면
+   absolute인 레일 로고·하단 메뉴만 튀고 fixed인 탭·패널은 그대로라 레일이 어긋나 보인다. */
+html:has(.app-shell) {
+  overscroll-behavior: none;
+}
+
 button,
 a {
   font: inherit;
@@ -1657,6 +1663,12 @@ button {
   margin-bottom: 4px;
 }
 
+.admin-login-social {
+  justify-self: center;
+  color: var(--ds-color-action);
+  font-weight: 600;
+}
+
 .admin-login-form label {
   display: grid;
   gap: 8px;
@@ -2775,6 +2787,9 @@ button {
   border: 0; background: transparent; cursor: pointer; font-family: inherit; border-radius: 10px; color: var(--ds-color-label); font-size: 10px; text-decoration: none; white-space: nowrap;
 }
 .service-notification-inbox svg { width: 20px; height: 20px; }
+.service-notification-inbox__icon { position: relative; display: inline-flex; }
+/* 읽지 않은 수는 아이콘 우상단에 겹쳐 붙인다. */
+.service-notification-inbox__icon > span { position: absolute; top: -7px; left: calc(100% - 7px); }
 .service-notification-inbox:hover { background: var(--ds-color-action-soft); }
 .service-notification-inbox:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .service-notification-management { display: block; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }

@@ -38,6 +38,15 @@ public class InitialRegistrationTarget {
     private boolean sourcePresent = true;
     @Embedded
     private InitialRegistrationLocation location;
+    @Embedded
+    private InitialRegistrationInformation information;
+
+    public void supplementInformation(InitialRegistrationInformation information) {
+        if (isCompleted() || status == InitialRegistrationStatus.EXISTING || housingComplexId != null) {
+            throw new IllegalStateException("기존 단지와 등록 완료 대상은 보완할 수 없습니다.");
+        }
+        this.information = information;
+    }
 
     public void prepareLocation(InitialRegistrationLocation location) {
         if (isCompleted()) {
@@ -66,7 +75,7 @@ public class InitialRegistrationTarget {
             return;
         }
         assess(name, roadAddress, InitialRegistrationStatus.INFORMATION_REQUIRED,
-                "현재 수집 원천에서 찾을 수 없습니다. 원천 누락 또는 등록 대상 제외 여부를 확인하세요.",
+                "현재 수집 원천에서 찾을 수 없습니다. 원천 누락 또는 대상 제외 여부와 수집 이력의 실패한 지역·요청을 확인하세요.",
                 housingComplexId, checkedAt);
         sourcePresent = false;
     }
@@ -82,12 +91,18 @@ public class InitialRegistrationTarget {
     }
 
     public void fail(String detail, Instant failedAt) {
-        if (status != InitialRegistrationStatus.READY || detail == null || detail.isBlank()) {
+        if (isCompleted() || status == InitialRegistrationStatus.EXISTING || detail == null || detail.isBlank()) {
             throw new IllegalStateException("등록 가능한 대상의 저장 실패 사유가 필요합니다.");
         }
         status = InitialRegistrationStatus.FAILED;
         this.detail = detail;
         checkedAt = failedAt;
+    }
+
+    public void prepareRetry() {
+        if (status == InitialRegistrationStatus.FAILED) {
+            status = InitialRegistrationStatus.READY;
+        }
     }
 
     public void assess(String name, String roadAddress, InitialRegistrationStatus status,

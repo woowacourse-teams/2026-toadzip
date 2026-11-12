@@ -1,0 +1,116 @@
+.content {
+  padding: 8px 24px 24px;
+  overflow-y: auto;
+}
+
+.close {
+  display: flex;
+  justify-content: flex-end;
+  margin-right: -14px;
+}
+
+.content h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.35;
+  outline: none;
+  word-break: keep-all;
+}
+
+.content h2 em {
+  color: var(--ds-color-action);
+  font-style: normal;
+}
+
+.line {
+  display: block;
+}
+
+.preview {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 12px;
+  background: var(--ds-color-surface-subtle);
+}
+
+.preview small {
+  color: var(--ds-color-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.preview ul {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preview li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: var(--ds-weight-strong);
+}
+
+.mark[data-mark='ok'] { color: var(--ds-color-action); }
+.mark[data-mark='tri'] { color: var(--ds-color-status-upcoming); }
+.mark[data-mark='no'] { color: var(--ds-color-deadline); }
+
+.pill {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: var(--ds-weight-strong);
+}
+
+.pill[data-status='ok'] { background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+.pill[data-status='tri'] { background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); }
+.pill[data-status='no'] { background: var(--ds-color-error-container); color: var(--ds-color-error-text); }
+
+.actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.later {
+  justify-self: center;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ds-color-muted);
+  font: inherit;
+  font-size: var(--ds-text-caption);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.later:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.fine {
+  margin: 10px 0 0;
+  color: var(--ds-color-muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .content {
+    padding-bottom: calc(30px + env(safe-area-inset-bottom));
+  }
+}

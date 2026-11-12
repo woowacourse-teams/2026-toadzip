@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationInformation;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -26,7 +27,13 @@ public class MyHomeComplexSourceMapper {
 
     MyHomeComplexMappingData map(String sourceComplexIdentifier, List<MyHomeComplexSourceView> sources,
             String preparedAddress) {
-        String name = parser.requiredText(sources, MyHomeComplexSourceView::getHsmpNm, "단지명");
+        return map(sourceComplexIdentifier, sources, preparedAddress, null);
+    }
+
+    MyHomeComplexMappingData map(String sourceComplexIdentifier, List<MyHomeComplexSourceView> sources,
+            String preparedAddress, InitialRegistrationInformation information) {
+        String name = parser.requiredText(sources, source -> supplemented(source.getHsmpNm(),
+                complexName(information)), "단지명");
         String supplyType = classification.supplyType(
                 parser.requiredText(sources, MyHomeComplexSourceView::getSuplyTyNm, "공급유형")
         );
@@ -78,7 +85,7 @@ public class MyHomeComplexSourceMapper {
                 districtCode
         );
         List<MyHomeHousingTypeMappingData> housingTypes = sources.stream()
-                .map(this::housingTypeOf)
+                .map(source -> housingTypeOf(source, information))
                 .toList();
         return new MyHomeComplexMappingData(
                 sourceComplexIdentifier,
@@ -114,8 +121,10 @@ public class MyHomeComplexSourceMapper {
         return "장기전세".equals(supplyType) && "다가구주택".equals(parser.normalizedText(source.getHouseTyNm()));
     }
 
-    private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSourceView source) {
-        String name = parser.requiredText(source.getStyleNm(), "주택형명");
+    private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSourceView source,
+            InitialRegistrationInformation information) {
+        String name = parser.requiredText(supplemented(source.getStyleNm(),
+                housingTypeName(information, source.getSourceKey())), "주택형명");
         BigDecimal exclusiveArea = parser.requiredArea(source.getSuplyPrvuseAr(), "전용면적");
         BigDecimal commonArea = parser.optionalArea(source.getSuplyCmnuseAr(), "공용면적");
         BigDecimal supplyArea = null;
@@ -132,6 +141,27 @@ public class MyHomeComplexSourceMapper {
                         nonNegativeAmount(source.getBassMtRntchrg()),
                         source.getCollectedAt())
         );
+    }
+
+    private String supplemented(String source, String supplement) {
+        if (parser.normalizedText(source) == null) {
+            return supplement;
+        }
+        return source;
+    }
+
+    private String complexName(InitialRegistrationInformation information) {
+        if (information == null) {
+            return null;
+        }
+        return information.getComplexName();
+    }
+
+    private String housingTypeName(InitialRegistrationInformation information, String sourceKey) {
+        if (information == null) {
+            return null;
+        }
+        return information.getHousingTypeNames().get(sourceKey);
     }
 
     private Long nonNegativeAmount(Long amount) {

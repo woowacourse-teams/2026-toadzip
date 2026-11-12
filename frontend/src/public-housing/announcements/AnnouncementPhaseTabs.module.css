@@ -1,0 +1,65 @@
+.tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--ds-space-1);
+  padding: 0 var(--list-inset, 20px);
+  padding-left: var(--list-start-inset, var(--list-inset, 20px));
+  border-bottom: 1px solid var(--ds-color-divider);
+  background: var(--ds-color-surface);
+  font-family: var(--ds-font-family-ui);
+}
+
+.tab {
+  position: relative;
+  min-height: var(--ds-control-height-md);
+  padding: 0 var(--ds-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-label);
+  font: inherit;
+  font-size: var(--ds-text-section);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.tab:hover {
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-text);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--ds-color-text);
+  font-weight: 700;
+}
+
+.tab[aria-selected='true']::after {
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 3px;
+  background: var(--ds-color-brand);
+  content: '';
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .tab[aria-selected='true']::after {
+    background: Highlight;
+  }
+}
+
+@media (max-width: 767px) {
+  .tab {
+    flex: 1;
+  }
+}

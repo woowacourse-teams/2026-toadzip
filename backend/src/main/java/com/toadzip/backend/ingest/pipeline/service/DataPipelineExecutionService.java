@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestProperties;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestServiceKeyMissingException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
@@ -14,6 +15,7 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +77,22 @@ public class DataPipelineExecutionService {
 
     /** 공공데이터포털을 호출하는 실행은 서버의 수집 키가 없으면 실행 기록을 만들기 전에 거절한다. */
     public DataPipelineExecutionResponse start(DataPipelineType type) {
+        return start(type, "SYSTEM");
+    }
+
+    public DataPipelineExecutionResponse start(DataPipelineType type, String actor) {
+        return start(type, actor, List.of());
+    }
+
+    public DataPipelineExecutionResponse retryComplexRegistration(List<String> identifiers, String actor) {
+        if (identifiers == null || identifiers.isEmpty() || identifiers.size() > 10000) {
+            throw new InvalidIngestRequestException(
+                    "재처리할 단지를 1~10000곳 선택하세요.");
+        }
+        return start(DataPipelineType.COMPLEX_REGISTRATION, actor, identifiers.stream().distinct().sorted().toList());
+    }
+
+    private DataPipelineExecutionResponse start(DataPipelineType type, String actor, List<String> identifiers) {
         type.rejectIfRetired();
         if (type.requiresServiceKey() && !ingestProperties.hasServiceKey()) {
             throw new IngestServiceKeyMissingException();
@@ -104,7 +122,7 @@ public class DataPipelineExecutionService {
         }
         try {
             String traceId = MDC.get("traceId");
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId));
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, actor, identifiers));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -124,7 +142,9 @@ public class DataPipelineExecutionService {
             DataPipelineType type,
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask,
-            String traceId
+            String traceId,
+            String actor,
+            List<String> identifiers
     ) {
         String previousTraceId = MDC.get("traceId");
         String previousExecutionId = MDC.get("executionId");
@@ -133,7 +153,7 @@ public class DataPipelineExecutionService {
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
         try (lease; var ignored = IngestExecutionScope.open(executionId, lease, monitor)) {
             lease.verifyHeld();
-            runAndRecordOutcome(executionId, type);
+            runAndRecordOutcome(executionId, type, actor, identifiers);
         }
         catch (IngestOwnershipLostException exception) {
             failures.recordAtCurrentStep(executionId, type, exception.getMessage());
@@ -170,15 +190,28 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private void runAndRecordOutcome(UUID executionId, DataPipelineType type) {
+    private void runAndRecordOutcome(UUID executionId, DataPipelineType type, String actor, List<String> identifiers) {
         try {
-            runner.run(type, executionId);
+            if (type == DataPipelineType.COMPLEX_REGISTRATION) {
+                registerComplexes(executionId, actor, identifiers);
+            }
+            if (type != DataPipelineType.COMPLEX_REGISTRATION) {
+                runner.run(type, executionId);
+            }
         }
         catch (DataPipelineStoppedException exception) {
             executionStateService.stop(executionId, Instant.now(clock));
             return;
         }
         executionStateService.complete(executionId, Instant.now(clock));
+    }
+
+    private void registerComplexes(UUID executionId, String actor, List<String> identifiers) {
+        if (identifiers.isEmpty()) {
+            runner.registerComplexes(executionId, actor);
+            return;
+        }
+        runner.retryComplexes(executionId, actor, identifiers);
     }
 
     private void setExecutionContext(String key, String value) {

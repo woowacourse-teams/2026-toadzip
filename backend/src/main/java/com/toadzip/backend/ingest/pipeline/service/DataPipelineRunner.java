@@ -5,6 +5,8 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.UUID;
+import java.util.List;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -28,6 +30,24 @@ public class DataPipelineRunner {
     private final DataPipelineStepExecutor stepExecutor;
     private final DataPipelineExecutionStateService executionStateService;
     private final MeterRegistry meterRegistry;
+
+    public void retryComplexes(UUID executionId, String actor, List<String> identifiers) {
+        StepOutcome outcome = runStep(executionId, DataPipelineStep.REGISTER_MYHOME_COMPLEXES, null, null,
+                () -> stepExecutor.retryComplexes(actor, identifiers));
+        if (outcome.partialFailure() != null) {
+            throw new DataPipelinePartialFailureException(DataPipelineStep.REGISTER_MYHOME_COMPLEXES,
+                    outcome.partialFailure().serverResponse());
+        }
+    }
+
+    public void registerComplexes(UUID executionId, String actor) {
+        StepOutcome outcome = runStep(executionId, DataPipelineStep.REGISTER_MYHOME_COMPLEXES, null, null,
+                () -> stepExecutor.registerComplexes(actor));
+        if (outcome.partialFailure() != null) {
+            throw new DataPipelinePartialFailureException(DataPipelineStep.REGISTER_MYHOME_COMPLEXES,
+                    outcome.partialFailure().serverResponse());
+        }
+    }
 
     public void run(DataPipelineType type, UUID executionId) {
         DataPipelinePartialFailureException firstReportedPartialFailure = null;
@@ -67,6 +87,11 @@ public class DataPipelineRunner {
             DataPipelineStep previousPartiallyFailedStep,
             String skipReason
     ) {
+        return runStep(executionId, step, previousPartiallyFailedStep, skipReason, () -> stepExecutor.execute(step));
+    }
+
+    private StepOutcome runStep(UUID executionId, DataPipelineStep step,
+            DataPipelineStep previousPartiallyFailedStep, String skipReason, Supplier<DataPipelineStepResult> action) {
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "failed";
         try {
@@ -81,7 +106,7 @@ public class DataPipelineRunner {
                 }
                 return new StepOutcome(false, null);
             }
-            DataPipelineStepResult result = stepExecutor.execute(step);
+            DataPipelineStepResult result = action.get();
             if (result.failedOnlyByRateLimit()) {
                 executionStateService.skipStep(executionId, step, rateLimitSkipReason(step), result.serverResponse());
                 outcome = "rate_limited";

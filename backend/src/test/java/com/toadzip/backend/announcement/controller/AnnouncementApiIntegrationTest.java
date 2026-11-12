@@ -296,6 +296,7 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(jsonPath("$.data.correctionOrCancellationReason").value("사업 취소"))
                 .andExpect(jsonPath("$.data.applicationStatus").value("CANCELLED"))
                 .andExpect(jsonPath("$.data.dDay").value(nullValue()))
+                .andExpect(jsonPath("$.data.listPhase").value("NONE"))
                 .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath());
     }
 
@@ -778,6 +779,46 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(jsonPath("$.data.hasNext").value(false));
         mockMvc.perform(get("/api/v1/announcements").param("sort", "DEADLINE").param("cursor", cursor))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 최근_마감순은_접수_종료일이_늦은_마감_공고부터_결과_발표일과_함께_보여준다() throws Exception {
+        Announcement closedEarly = persist(deadlineAnnouncement("closed-recent-early", 1, 1, 3));
+        Announcement closedLate = persist(deadlineAnnouncement("closed-recent-late", 1, 2, 7));
+        persist(AnnouncementSchedule.create(closedLate, ScheduleType.WINNER_ANNOUNCEMENT, "당첨자 발표",
+                LocalDateTime.of(2026, 8, 27, 10, 0), LocalDateTime.of(2026, 8, 27, 10, 0), 0));
+        persist(deadlineAnnouncement("closed-recent-applying", 1, 9, 12));
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult first = mockMvc.perform(get("/api/v1/announcements").param("keyword", "closed-recent-")
+                        .param("applicationStatuses", "CLOSED").param("sort", "CLOSED_RECENT").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(closedLate.getId()))
+                .andExpect(jsonPath("$.data.items[0].winnerAnnouncementAt").value("2026-08-27")).andReturn();
+        mockMvc.perform(get("/api/v1/announcements").param("keyword", "closed-recent-")
+                        .param("applicationStatuses", "CLOSED").param("sort", "CLOSED_RECENT")
+                        .param("cursor", nextCursor(first)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(closedEarly.getId()))
+                .andExpect(jsonPath("$.data.items[0].winnerAnnouncementAt").value("2026-08-20"))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 공고_상세는_그_공고가_보이는_공고_목록_탭을_알려준다() throws Exception {
+        Announcement applying = persist(deadlineAnnouncement("phase-applying", 1, 9, 12));
+        Announcement closed = persist(deadlineAnnouncement("phase-closed", 1, 2, 7));
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements/{announcementId}", applying.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.listPhase").value("RECRUITING"));
+        mockMvc.perform(get("/api/v1/announcements/{announcementId}", closed.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.listPhase").value("CLOSED"));
     }
 
     @Test

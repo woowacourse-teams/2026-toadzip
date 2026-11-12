@@ -4,6 +4,7 @@ import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { PipelineNextActions } from './PipelineNextActions'
+import { InitialRegistrationResultNotice } from './InitialRegistrationReport'
 
 export type PipelineViewState = {
   execution: DataPipelineExecution
@@ -97,7 +98,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
           {execution.partiallyFailedSteps.map((step) => (
             <li key={step.step}>
               <strong>{step.stepName} 원천 행 확인</strong>
-              <PipelineReport report={step.report} />
+              <PipelineReport report={step.report} type={type} />
               {step.report !== null && step.report !== undefined ? (
                 <details><summary>원본 보고서</summary><StoredDataTable data={step.report} label={`${step.stepName} 누락 보고서`} /></details>
               ) : null}
@@ -109,7 +110,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
         <div className="data-pipeline-error">
           <strong>{failureMessage}</strong>
           {serverResponse !== null && serverResponse !== undefined ? (
-            <div><PipelineReport report={serverResponse} />
+            <div><PipelineReport report={serverResponse} type={type} />
               <details><summary>서버 응답 상세</summary><StoredDataTable data={serverResponse} label="서버 응답" /></details>
             </div>
           ) : null}
@@ -118,11 +119,11 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
       {(execution.completedStepResults ?? []).filter((step) =>
         !execution.partiallyFailedSteps.some((warning) => warning.step === step.step),
       ).map((step) => <details className="pipeline-completed-report" key={step.step}>
-        <summary>{step.stepName} 처리 결과</summary><PipelineReport report={step.report} />
+        <summary>{step.stepName} 처리 결과</summary><PipelineReport report={step.report} type={type} />
       </details>)}
       </details>
       {failureMessage ? <p role="alert" className="data-pipeline-error">{failureMessage}</p> : null}
-      {type.endsWith('_SYNC') ? (
+      {type === 'COMPLEX_REGISTRATION' ? <InitialRegistrationResultNotice /> : type.endsWith('_SYNC') ? (
         <div>
           <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=collection&executionId=${execution.executionId ?? ''}`}>{label} 수집 실패 요청 보기</Link>{' · '}
           <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_SYNC' ? 'complex' : 'announcement'}&executionId=${execution.executionId ?? ''}`}>{label} 정제 실패 행 보기</Link>

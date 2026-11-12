@@ -57,7 +57,7 @@ class DataPipelineSecurityTest {
     private PrivacyNoticeCatalog notices;
 
     private String existingMemberId() {
-        when(users.existsById(1L)).thenReturn(true);
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
         return "1";
     }
 

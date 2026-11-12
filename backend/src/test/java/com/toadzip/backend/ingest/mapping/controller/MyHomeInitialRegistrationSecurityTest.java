@@ -16,6 +16,9 @@ import com.toadzip.backend.global.security.JsonAuthenticationEntryPoint;
 import com.toadzip.backend.global.security.SecurityConfiguration;
 import com.toadzip.backend.global.security.SecurityErrorResponseWriter;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationSupplementService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import com.toadzip.backend.user.repository.UserRepository;
 import com.toadzip.backend.user.service.SocialLoginFailureHandler;
@@ -32,14 +35,48 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({AdminSecurityConfiguration.class, SecurityConfiguration.class, ClockConfig.class,
         JsonAuthenticationEntryPoint.class, JsonAccessDeniedHandler.class, SecurityErrorResponseWriter.class})
 class MyHomeInitialRegistrationSecurityTest {
+    @MockitoBean private MyHomeInitialRegistrationSupplementService supplements;
 
     private static final String PATH = "/api/admin/ingest/myhome/initial-registration";
+
+    @Test
+    void 재처리와_정보_보완은_관리자와_CSRF가_필요하다() throws Exception {
+        for (String operation : java.util.List.of("retry", "information")) {
+            mvc.perform(post(PATH + "/" + operation).with(user("admin").roles("ADMIN"))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
+            mvc.perform(post(PATH + "/" + operation).with(user("1").roles("USER")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+        }
+        verifyNoInteractions(execution, supplements);
+        mvc.perform(post(PATH + "/retry").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceComplexIdentifiers\":[\"123:PERMANENT_RENTAL\"]}"))
+                .andExpect(status().isAccepted());
+        verify(execution).retryComplexRegistration(java.util.List.of("123:PERMANENT_RENTAL"), "admin");
+    }
     @Autowired private MockMvc mvc;
     @MockitoBean private MyHomeInitialRegistrationService service;
+    @MockitoBean private DataPipelineExecutionService execution;
     @MockitoBean private UserRepository users;
     @MockitoBean private SocialLoginSuccessHandler socialLoginSuccessHandler;
     @MockitoBean private SocialLoginFailureHandler socialLoginFailureHandler;
     @MockitoBean private PrivacyNoticeCatalog notices;
+
+    @Test
+    void 등록은_관리자와_CSRF가_필요하다() throws Exception {
+        mvc.perform(post(PATH + "/register").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
+        mvc.perform(post(PATH + "/register").with(user("1").roles("USER")).with(csrf()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(execution);
+        mvc.perform(post(PATH + "/register").with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isAccepted());
+        verify(execution).start(DataPipelineType.COMPLEX_REGISTRATION, "admin");
+    }
 
     @Test
     void 비로그인_사용자는_진행_상태를_읽을_수_없다() throws Exception {
@@ -49,7 +86,7 @@ class MyHomeInitialRegistrationSecurityTest {
 
     @Test
     void 일반_사용자는_상태를_갱신할_수_없다() throws Exception {
-        when(users.existsById(1L)).thenReturn(true);
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
         mvc.perform(post(PATH + "/refresh").with(user("1").roles("USER")).with(csrf()))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
@@ -72,7 +109,7 @@ class MyHomeInitialRegistrationSecurityTest {
 
     @Test
     void 일반_사용자는_주소_좌표를_보완할_수_없다() throws Exception {
-        when(users.existsById(1L)).thenReturn(true);
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
         mvc.perform(post(PATH + "/locations").with(user("1").roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden());

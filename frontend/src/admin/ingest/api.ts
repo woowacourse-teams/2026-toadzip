@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type DataPipelineType =
+  | 'COMPLEX_REGISTRATION'
   | 'COMPLEX_COLLECTION'
   | 'COMPLEX_REFINEMENT'
   | 'ANNOUNCEMENT_COLLECTION'
@@ -362,6 +363,89 @@ export type InitialRegistrationResponse = {
 }
 const initialRegistrationPath = '/api/admin/ingest/myhome/initial-registration'
 
+export type InitialRegistrationRunResponse = {
+  counts: Record<InitialRegistrationStatus, number>; targetCount: number; uniqueAddressCount: number
+}
+
+export async function registerReadyComplexes(): Promise<DataPipelineExecution> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/register`, {
+    method: 'POST', credentials: 'include', headers: { [token.headerName]: token.token },
+  })
+  return readExecutionResponse(response)
+}
+
+export async function retryInitialRegistration(sourceComplexIdentifiers: string[]): Promise<DataPipelineExecution> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/retry`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [token.headerName]: token.token },
+    body: JSON.stringify({ sourceComplexIdentifiers }),
+  })
+  return readExecutionResponse(response)
+}
+
+export type RegistrationInformation = {
+  fingerprint: string; complexName: string | null
+  housingTypes: { sourceKey: string; name: string | null; exclusiveArea: number | null }[]
+  supplement: { complexName: string | null; housingTypeNames: Record<string, string>; evidence: string
+    checkedBy: string; checkedAt: string; current: boolean } | null
+}
+export type RegistrationFailures = {
+  failures: { detail: string; failedAt: string; actor: string | null; executionId: string | null }[]
+  totalElements: number; totalPages: number
+}
+
+export async function getRegistrationInformation(sourceComplexIdentifier: string): Promise<RegistrationInformation> {
+  const query = new URLSearchParams({ sourceComplexIdentifier })
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/information?${query}`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isRecord(body) || typeof body.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(body.fingerprint)
+    || !(body.complexName === null || typeof body.complexName === 'string')
+    || !Array.isArray(body.housingTypes) || !body.housingTypes.every(row => isRecord(row)
+      && typeof row.sourceKey === 'string' && (row.name === null || typeof row.name === 'string')
+      && (row.exclusiveArea === null || typeof row.exclusiveArea === 'number' && Number.isFinite(row.exclusiveArea)))
+    || !(body.supplement === null || isRegistrationSupplement(body.supplement))) {
+    throw new Error('등록 정보 보완 응답 형식이 올바르지 않습니다.')
+  }
+  return body as RegistrationInformation
+}
+
+function isRegistrationSupplement(value: unknown): boolean {
+  return isRecord(value) && (value.complexName === null || typeof value.complexName === 'string')
+    && isRecord(value.housingTypeNames) && Object.values(value.housingTypeNames).every(name => typeof name === 'string')
+    && typeof value.evidence === 'string' && typeof value.checkedBy === 'string'
+    && typeof value.checkedAt === 'string' && Number.isFinite(Date.parse(value.checkedAt)) && typeof value.current === 'boolean'
+}
+
+export async function supplementRegistrationInformation(request: {
+  sourceComplexIdentifier: string; fingerprint: string; complexName: string | null
+  housingTypeNames: Record<string, string>; evidence: string
+}): Promise<void> {
+  const token = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/information`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', [token.headerName]: token.token },
+    body: JSON.stringify(request),
+  })
+  if (!response.ok) throw apiError(response.status, await readJson(response))
+}
+
+export async function getRegistrationFailures(sourceComplexIdentifier: string, page: number): Promise<RegistrationFailures> {
+  const query = new URLSearchParams({ sourceComplexIdentifier, page: String(page) })
+  const response = await fetch(`${apiBaseUrl}${initialRegistrationPath}/failures?${query}`, { credentials: 'include' })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isRecord(body) || !isCount(body.totalElements) || !isCount(body.totalPages)
+    || !Array.isArray(body.failures) || !body.failures.every(value => isRecord(value)
+      && typeof value.detail === 'string' && typeof value.failedAt === 'string' && Number.isFinite(Date.parse(value.failedAt))
+      && (value.actor === null || typeof value.actor === 'string')
+      && (value.executionId === null || typeof value.executionId === 'string'))) {
+    throw new Error('등록 실패 이력 응답 형식이 올바르지 않습니다.')
+  }
+  return body as RegistrationFailures
+}
+
 export async function getInitialRegistration(status: InitialRegistrationStatus | '', page: number, size: number): Promise<InitialRegistrationResponse> {
   const query = new URLSearchParams({ page: String(page), size: String(size) })
   if (status) query.set('status', status)
@@ -511,7 +595,7 @@ function isLocationSummaryImportReport(value: unknown): value is LocationSummary
 }
 
 function isDataPipelineType(value: unknown): value is DataPipelineType {
-  return value === 'COMPLEX_COLLECTION'
+  return value === 'COMPLEX_REGISTRATION' || value === 'COMPLEX_COLLECTION'
     || value === 'COMPLEX_REFINEMENT'
     || value === 'ANNOUNCEMENT_COLLECTION'
     || value === 'ANNOUNCEMENT_REFINEMENT'
@@ -538,6 +622,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function pipelinePath(type: DataPipelineType): string {
   const paths: Record<DataPipelineType, string> = {
+    COMPLEX_REGISTRATION: 'complex-registration',
     COMPLEX_COLLECTION: 'complex-collection',
     COMPLEX_REFINEMENT: 'complex-refinement',
     ANNOUNCEMENT_COLLECTION: 'announcement-collection',

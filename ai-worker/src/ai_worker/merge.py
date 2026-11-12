@@ -1,4 +1,4 @@
-"""공급 단계와 본문 단계의 부분 결과를 관리자 계약 하나로 합친다. 두 단계의 단지를 이름으로 맞추고
+"""공급·본문·신청자격 단계의 부분 결과를 관리자 계약 하나로 합친다. 두 단계의 단지를 이름으로 맞추고
 단지 경로(complexes[N])를 합친 순번으로 고친다. 공급행 값의 원문 대조는 조립(supply_assembly)에서 이미 끝났다."""
 
 import json
@@ -6,11 +6,13 @@ import re
 
 from ai_worker import checks
 from ai_worker.checks import deduplicate
+from ai_worker.eligibility import Extracted
 from ai_worker.supply_assembly import add_complex_name, address_key, complex_key, normalize_address
 
 
-def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
-    """두 단계의 부분 결과를 관리자 계약으로 합친다. 경고는 두 단계의 단지 값이 서로 다른 경우다."""
+def merge(supply: dict, notice: dict, eligibility: Extracted | None = None) -> tuple[dict, list[str]]:
+    """단계별 부분 결과를 관리자 계약으로 합친다. 경고는 두 단계의 단지 값이 서로 다른 경우다.
+    신청자격은 data.eligibility로 두고, 묶음 요약은 공급대상 신청 조건(applicationCondition)에 합친다."""
     supply_data, notice_data = supply["data"], notice["data"]
     supply_rows = checks.objects(supply_data.get("supplyRows"))
     supply_complexes = checks.objects(supply_data.get("complexes"))
@@ -45,6 +47,10 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
                 item.get("path") == path for item in unresolved
             ):
                 unresolved.append({"path": path, "reason": "공급 표와 본문에서 확인하지 못함"})
+    if eligibility is not None:
+        evidence += eligibility.evidence
+        evidence += _apply_conditions(supply_rows, eligibility.conditions, eligibility.condition_evidence)
+        _link_supply_targets(eligibility.data, supply_rows)
     tree = {
         "data": {
             "announcement": notice_data["announcement"],
@@ -52,6 +58,7 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
             "complexes": complexes,
             "supplyRows": supply_rows,
             "schedules": notice_data["schedules"],
+            "eligibility": eligibility.data if eligibility is not None else None,
             "unresolvedFields": deduplicate(unresolved),
         },
         "sharedCounts": deduplicate(shared_counts),
@@ -60,6 +67,81 @@ def merge(supply: dict, notice: dict) -> tuple[dict, list[str]]:
     }
     checks.first_json_object(json.dumps(tree, ensure_ascii=False))
     return tree, complex_warnings
+
+
+_CONDITION_LIMIT = 255
+_CONDITION_SEPARATOR = " · "
+
+
+def _apply_conditions(supply_rows: list[dict], conditions, notice_evidence: list[dict]) -> list[dict]:
+    """본문 신청자격을 대상 신청 조건에 합친다. 공고 전체 조건(target 없음)은 모든 대상에, 대상 조건은 이름이 같거나 한쪽이 다른 쪽을
+    품는 대상(고령자 ↔ 고령자(주거약자))에 붙이고, 표에 적힌 조건은 뒤에 둔다. 대상 이름은 바꾸지 않는다(PDF 보정이 기존 대상과 짝짓는 이름).
+    255자(저장 칸 길이)를 넘으면 조건 단위로 자른다. 근거는 처음 붙인 본문 조건의 근거를 그 대상 칸에 옮긴다."""
+    items = [item for item in checks.objects(conditions) if _present(item.get("condition"))]
+    if not items:
+        return []
+    quotes = {item.get("path"): item for item in notice_evidence}
+    added = []
+    for row_index, row in enumerate(supply_rows):
+        for target_index, target in enumerate(checks.objects(row.get("targets"))):
+            matched = [(index, item) for index, item in enumerate(items) if _condition_applies(item.get("target"), target.get("target"))]
+            if not matched:
+                continue
+            own = target.get("applicationCondition")
+            notice_parts = [item["condition"].strip() for _, item in matched]
+            target["applicationCondition"] = _joined_within_limit(list(dict.fromkeys(notice_parts)),
+                                                                  own.strip() if _present(own) else None)
+            source = quotes.get(f"applicationConditions[{conditions.index(matched[0][1])}]")
+            if source:
+                added.append({**source, "path": f"supplyRows[{row_index}].targets[{target_index}].applicationCondition"})
+    return added
+
+
+def _link_supply_targets(data: dict | None, supply_rows: list[dict]) -> None:
+    """신청자격 대상마다 그 대상이 속한 공급 표 대상(supplyTarget)과 같은 규칙(_condition_applies)으로 맞은 공급표 대상 이름을
+    원문 그대로 싣는다(supplyTargets).
+    서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다."""
+    if data is None:
+        return
+    names = list(dict.fromkeys(target.get("target") for row in supply_rows for target in checks.objects(row.get("targets"))
+                               if isinstance(target.get("target"), str) and target["target"].strip()))
+    for target in data["targets"]:
+        target["supplyTargets"] = [name for name in names if _condition_applies(target["supplyTarget"], name)]
+
+
+def _condition_applies(condition_target, target_name) -> bool:
+    """공고 전체 조건은 모든 대상에, 대상 조건은 괄호 앞 핵심 이름이 같은 대상(고령자 ↔ 고령자(주거약자))이나 · 로 묶은 대상의
+    한 이름(신혼부부 ↔ 신혼부부·한부모가족)에만 붙인다. 부분 문자열로 맞추면 '신혼부부'가 '예비신혼부부'에, '청년 창업인'이 '청년'에 붙는다."""
+    if not _present(condition_target):
+        return True
+    wanted = _core(condition_target)
+    names = {_core(part) for part in re.split(r"[·,/]", target_name)} | {_core(target_name)} if isinstance(target_name, str) else set()
+    return bool(wanted) and wanted in names
+
+
+def _core(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", re.split(r"[(\[]", value, maxsplit=1)[0])
+
+
+def _joined_within_limit(parts: list[str], own: str | None) -> str:
+    """본문 조건을 앞에, 표에 적힌 대상 조건을 맨 뒤에 둔다. 255자(저장 칸 길이)를 넘으면 표 조건은 남기고 본문 조건을 조건 단위로 자른다."""
+    tail = [own] if own and own not in parts else []
+    budget = _CONDITION_LIMIT - (len(own) + len(_CONDITION_SEPARATOR) if tail else 0)
+    kept: list[str] = []
+    for part in parts:
+        candidate = _CONDITION_SEPARATOR.join([*kept, part])
+        if len(candidate) > budget:
+            break
+        kept.append(part)
+    if not kept and not tail and parts:
+        return parts[0][:_CONDITION_LIMIT]
+    return _CONDITION_SEPARATOR.join([*kept, *tail])[:_CONDITION_LIMIT]
+
+
+def _present(value) -> bool:
+    return isinstance(value, str) and value.strip() != ""
 
 
 def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[dict]):

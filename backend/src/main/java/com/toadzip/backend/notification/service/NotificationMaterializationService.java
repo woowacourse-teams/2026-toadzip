@@ -1,6 +1,7 @@
 package com.toadzip.backend.notification.service;
 
 import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot;
+import com.toadzip.backend.notification.domain.NotificationRecipient;
 import com.toadzip.backend.notification.domain.PendingNotificationEvent;
 import com.toadzip.backend.notification.repository.NotificationAudienceRepository;
 import com.toadzip.backend.notification.repository.NotificationDeliveryRepository;
@@ -61,22 +62,14 @@ public class NotificationMaterializationService {
             upper = audience.upperUserId();
             outbox.saveSnapshot(event.id(), snapshot, upper, now);
         }
-        List<Long> recipients = audience.findRecipientIds(snapshot, event.occurredAt(),
+        List<NotificationRecipient> recipients = audience.findRecipients(snapshot, event.occurredAt(),
                 event.recipientCursor(), upper, pageSize, now);
+        List<Long> created = notifications.insertAllIfAbsent(event.id(), event.announcementId(), snapshot.title(),
+                recipients, now);
+        deliveries.enqueueForCurrentDevices(created, now);
         long cursor = event.recipientCursor();
-        for (long userId : recipients) {
-            var content = audience.content(userId, snapshot, event.occurredAt(), now);
-            if (content.isEmpty()) {
-                cursor = userId;
-                continue;
-            }
-            var inserted = notifications.insertIfAbsent(userId, event.id(), event.announcementId(),
-                    snapshot.title(), now);
-            if (inserted.created()) {
-                notifications.setContent(inserted.id(), content.get());
-                deliveries.enqueueForCurrentDevices(inserted.id(), now);
-            }
-            cursor = userId;
+        if (!recipients.isEmpty()) {
+            cursor = recipients.getLast().userId();
         }
         outbox.advance(event.id(), cursor, recipients.size() < pageSize);
         return recipients.size();

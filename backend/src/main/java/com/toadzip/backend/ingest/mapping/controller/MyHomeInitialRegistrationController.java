@@ -4,7 +4,15 @@ import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationRequest;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationsResponse;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationResponse;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationRetryRequest;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationInformationRequest;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationInformationResponse;
+import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationFailuresResponse;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationSupplementService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -25,6 +33,39 @@ import org.springframework.web.bind.annotation.RestController;
 public class MyHomeInitialRegistrationController {
 
     private final MyHomeInitialRegistrationService service;
+    private final DataPipelineExecutionService execution;
+    private final MyHomeInitialRegistrationSupplementService supplements;
+
+    @GetMapping("/information")
+    public InitialRegistrationInformationResponse information(@RequestParam String sourceComplexIdentifier) {
+        return supplements.find(sourceComplexIdentifier);
+    }
+
+    @PostMapping("/information")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void supplementInformation(@RequestBody @Valid InitialRegistrationInformationRequest request,
+            Principal actor) {
+        supplements.supplement(request, actor.getName());
+    }
+
+    @GetMapping("/failures")
+    public InitialRegistrationFailuresResponse failures(@RequestParam String sourceComplexIdentifier,
+            @RequestParam(defaultValue = "0") @Min(0) int page) {
+        return supplements.failures(sourceComplexIdentifier, page);
+    }
+
+    @PostMapping("/retry")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DataPipelineExecutionResponse retry(@RequestBody @Valid InitialRegistrationRetryRequest request,
+            Principal actor) {
+        return execution.retryComplexRegistration(request.sourceComplexIdentifiers(), actor.getName());
+    }
+
+    @PostMapping("/register")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DataPipelineExecutionResponse register(Principal actor) {
+        return execution.start(DataPipelineType.COMPLEX_REGISTRATION, actor.getName());
+    }
 
     @GetMapping
     public InitialRegistrationResponse find(@RequestParam(required = false) InitialRegistrationStatus status,

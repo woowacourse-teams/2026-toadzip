@@ -3,7 +3,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { DataPipelineExecution } from './api'
 
 afterEach(() => vi.useRealTimers())
-import { DataPipelineProgress } from './DataPipelineProgress'
+import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
+
+it('공고 보고서의 대상 수는 계속 대상 공고로 표시한다', () => {
+  render(<PipelineReport report={{ targetCount: 3, created: 2 }} type="ANNOUNCEMENT_REFINEMENT" />)
+  expect(screen.getByText('대상 공고').nextSibling).toHaveTextContent('3')
+  expect(screen.getByText('신규 공고').nextSibling).toHaveTextContent('2')
+})
 
 it('진행 중인 단계를 완료로 세지 않고 실제 종료된 단계로 진행률을 계산한다', () => {
   render(<DataPipelineProgress label="공고 수집" execution={{

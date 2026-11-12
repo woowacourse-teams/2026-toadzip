@@ -1,0 +1,96 @@
+.progress {
+  margin-top: 10px;
+}
+
+.count {
+  margin: 0 0 6px;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+}
+
+.count b {
+  color: var(--ds-color-text);
+}
+
+.bars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bars li {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ds-color-muted);
+  font-size: 12px;
+}
+
+.bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ds-color-divider);
+}
+
+.bars li[data-state='done'] .bar,
+.bars li[data-state='current'] .bar {
+  background: var(--ds-color-brand);
+}
+
+.bars li[data-state='ahead'] .bar {
+  background: var(--ds-color-brand-tint);
+}
+
+.bars li[data-state='current'] {
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-strong);
+}
+
+.segment {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ds-color-label);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.label svg {
+  color: var(--ds-color-action);
+}
+
+.segment:hover .label {
+  color: var(--ds-color-text);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .bars li[data-state='done'] .bar,
+  .bars li[data-state='current'] .bar,
+  .bars li[data-state='ahead'] .bar {
+    background: Highlight;
+  }
+}

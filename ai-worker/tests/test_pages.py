@@ -102,6 +102,14 @@ def test_a_supply_table_sharing_a_page_with_the_contents_is_kept():
     assert 2 in selection.pages
 
 
+def test_a_numbered_item_in_the_middle_of_a_line_does_not_end_a_section():
+    """줄 가운데의 번호 항목('…안내        1. 서류 제출처는…')은 절 제목이 아니다. 절 제목으로 보면 신청방법 절의 뒤쪽 쪽이 빠진다."""
+    selection = pages.select([COVER, SUPPLY, RENT, "3. 신청방법\n인터넷 신청", "제출 안내" + " " * 20 + "1. 서류 제출처는 관리소",
+                              "방문 신청 시 신분증 지참", "4. 유의사항"])
+
+    assert selection.pages == [1, 2, 3, 4, 5, 6]
+
+
 def test_continuation_above_the_next_section_heading_is_kept():
     selection = pages.select([COVER, SUPPLY, RENT, QUALIFICATION,
                               "고령자 자격의 마지막 문단\n4. 유의사항", "그림 안내"])
@@ -164,6 +172,36 @@ def alternative_supply_table_pdf():
         for column, value in enumerate(row):
             page.insert_text((xs[column] + 3, ys[row_index] + 18), value, fontname="korea", fontsize=7)
     return document.tobytes()
+
+
+def block_heading_tables_pdf():
+    """블록 제목 아래 공급표를 두고, 그 아래 다른 블록 제목과 공급표를 둔 쪽(광주선운2 A-1·A-3블록)."""
+    document = pymupdf.open()
+    page = document.new_page()
+    xs = [20, 120, 240, 340, 440, 560]
+    for heading, top in (("■ 광주선운2 A-1블록 (총 336세대)", 60), ("■ 광주선운2 A-3블록 (총 147세대)", 220)):
+        page.insert_text((20, top - 14), heading, fontname="korea", fontsize=8)
+        ys = [top, top + 30, top + 60]
+        for x in xs:
+            page.draw_line((x, ys[0]), (x, ys[-1]))
+        for y in ys:
+            page.draw_line((xs[0], y), (xs[-1], y))
+        for row_index, row in enumerate([["공급형별", "공급대상", "금회모집 예비자수", "임대보증금(천원)", "월임대료(원)"],
+                                          ["55B-1", "신혼부부", "20", "67,400", "342,610"]]):
+            for column, value in enumerate(row):
+                page.insert_text((xs[column] + 3, ys[row_index] + 18), value, fontname="korea", fontsize=7)
+    return document.tobytes()
+
+
+def test_each_supply_row_remembers_the_text_above_its_table_on_the_page():
+    with pages.open_pdf(block_heading_tables_pdf()) as document:
+        split = pages.prompt_pages(document, [1], later())
+
+    first, second = split.supply_tables
+    above_first, above_second = (split.supply_row_headings[table.rows[1].id] for table in (first, second))
+    assert "광주선운2 A-1블록" in above_first and "A-3블록" not in above_first
+    # 아래 표 위의 글에는 두 제목이 다 있고, 표에 가까운 제목이 뒤에 온다(source_check.nearest_heading이 고른다).
+    assert above_second.index("A-1블록") < above_second.index("A-3블록")
 
 
 def test_real_table_keeps_decimal_amount_units_and_merged_cells():

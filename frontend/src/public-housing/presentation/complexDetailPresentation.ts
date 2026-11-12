@@ -13,6 +13,11 @@ export function formatRentalConditionCollectedDate(value: string | null): string
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(date).replaceAll('-', '.')
 }
 
+/** 좁은 비교표의 업데이트일 열에 쓰는 짧은 날짜(YY.MM.DD). 기준 시각은 수집일과 같은 한국 시간이다. */
+export function formatRentalConditionUpdatedDate(value: string | null): string | null {
+  return formatRentalConditionCollectedDate(value)?.slice(2) ?? null
+}
+
 type LabeledHousingType = Pick<HousingComplexDetailHousingType, 'housingTypeId' | 'name' | 'exclusiveArea' | 'supplyArea'>
 
 /**

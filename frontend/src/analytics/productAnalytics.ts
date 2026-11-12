@@ -9,6 +9,7 @@ export { maskReplayAttribute } from './replayPrivacy'
 import { isProductEvent, sanitizeProductProperties, type ProductProperties, type SafeProperties } from './productEvents'
 import { captureCampaignStat } from './campaignStats'
 import { campaignEntry } from './campaignAttribution'
+import { explorerPagePath } from '../public-housing/navigation/detailLocation'
 
 const EXCLUSION_KEY = 'toadzip.analytics.disabled'
 const DEDUPLICATION_KEY = 'toadzip.posthog.sent-actions.v1'
@@ -18,9 +19,11 @@ const MARKER_HOVER_EVENT_NAMES = new Set(['map_marker_hover_available', 'map_mar
 const CORE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
-const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-3'
+const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-4'
 const MAX_TIMEOUT = 2_147_483_647
 const PUBLIC_PATHS = new Set(['/explore', '/feedback', '/mypage/notifications'])
+// 상세 주소(`/complexes/1`)는 지도 화면 `/explore`로 기록해 ID가 담긴 경로를 보내지 않고 기존 경로 기준 지표를 유지한다.
+const currentPagePath = () => explorerPagePath(window.location.pathname)
 type AuthState = 'member' | 'guest' | 'unknown'
 export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'notification_settings' }
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
@@ -80,7 +83,7 @@ function collectionAllowed(): boolean {
   return analyticsCollectionAllowed() && context?.consent.scopeVersion === REQUIRED_ANALYTICS_SCOPE
     && context.requiredScopeVersion === REQUIRED_ANALYTICS_SCOPE
     && (!browserIdentity || identityCurrent())
-    && !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
+    && !failed && routeActive && PUBLIC_PATHS.has(currentPagePath()) && !browserExcluded()
 }
 
 function identityCurrent(): boolean {
@@ -122,8 +125,8 @@ function scheduleIdentityExpiry(): void {
 }
 
 function safePageName(): NonNullable<CaptureOptions['pageName']> {
-  if (window.location.pathname === '/feedback') return 'feedback'
-  if (window.location.pathname === '/mypage/notifications') return 'notification_settings'
+  if (currentPagePath() === '/feedback') return 'feedback'
+  if (currentPagePath() === '/mypage/notifications') return 'notification_settings'
   return 'explorer'
 }
 
@@ -163,7 +166,7 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   // Keep only the allowlisted pathname captured at entry, never a raw URL.
   const pathname = MARKER_HOVER_EVENT_NAMES.has(event.event) ? '/explore'
     : event.event === '$pageview' && PUBLIC_PATHS.has(event.properties.$pathname)
-      ? event.properties.$pathname : window.location.pathname
+      ? event.properties.$pathname : currentPagePath()
   properties.$pathname = PUBLIC_PATHS.has(pathname) ? pathname : '/'
   properties.$referrer = safeAnalyticsUrl(document.referrer)
   properties.$host = window.location.host
@@ -346,7 +349,7 @@ function preparedEvent(name: string, properties: ProductProperties, options: Cap
   safeProperties.event_id ??= createAnalyticsId()
   safeProperties.auth_state = options.authState ?? authState
   safeProperties.page_name = options.pageName ?? safePageName()
-  if (name === '$pageview') safeProperties.$pathname = window.location.pathname
+  if (name === '$pageview') safeProperties.$pathname = currentPagePath()
   const occurredAt = safeProperties.occurred_at
   return { name, properties: safeProperties, timestamp: typeof occurredAt === 'string' ? new Date(occurredAt) : new Date() }
 }
@@ -461,7 +464,7 @@ export function prepareMarkerHoverCompletion(): PreparedMarkerHoverCompletion | 
     const current = configuration()
     return expected === corePermissionGeneration && Date.now() < expiresAt
       && current?.key === config.key && current.environment === config.environment
-      && !browserExcluded() && PUBLIC_PATHS.has(window.location.pathname)
+      && !browserExcluded() && PUBLIC_PATHS.has(currentPagePath())
   }
   return { isCurrent, complete: properties => {
     try {
@@ -489,7 +492,7 @@ export function prepareNotificationCompletion(): (properties: ProductProperties,
       const current = configuration()
       if (!permitted || expected !== corePermissionGeneration || Date.now() >= expiresAt
         || !current || current.key !== config?.key || current.environment !== config.environment
-        || browserExcluded() || !PUBLIC_PATHS.has(window.location.pathname)) return false
+        || browserExcluded() || !PUBLIC_PATHS.has(currentPagePath())) return false
       return queueCoreEvent(preparedEvent('notification_preregistration_completed', properties,
         { ...options, authState: options.authState ?? originalAuthState, pageName: options.pageName ?? originalPage }), options)
     } catch { return false }
@@ -500,7 +503,7 @@ export function setProductPageActive(active: boolean): void {
   routeActive = active
   // StrictMode temporarily deactivates the boundary without leaving the page.
   // Do not discard already deduplicated safe events during that cleanup.
-  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) stopCollection('context-change')
+  if (!PUBLIC_PATHS.has(currentPagePath()) || browserExcluded()) stopCollection('context-change')
   if (active && collectionAllowed()) { initialize(); flushCoreEvents() }
   syncReplay()
 }

@@ -9,6 +9,7 @@ import type { HousingAnnouncementDetailAttachment } from './HousingAnnouncementD
 import { DetailCloseButton } from './DetailPrimitives.tsx'
 import { PdfPreviewBoundary } from './PdfPreviewBoundary.tsx'
 import styles from './AnnouncementAttachments.module.css'
+import type { PdfFocus } from './PdfDocumentPreview.tsx'
 
 const HwpDocumentPreview = lazy(() => import('./HwpDocumentPreview.tsx'))
 const PdfDocumentPreview = lazy(loadPdfDocumentPreview)
@@ -61,13 +62,17 @@ export function AttachmentList({ announcementId, attachments }: AttachmentsProps
   )
 }
 
-export function AttachmentDialog({ announcementId, attachments, onClose, initialSelectionMethod = 'automatic' }: AttachmentsProps & {
+export function AttachmentDialog({ announcementId, attachments, onClose, initialSelectionMethod = 'automatic', initialAttachmentId, focus = null }: AttachmentsProps & {
   readonly onClose: () => void
   readonly initialSelectionMethod?: 'automatic' | 'manual'
+  /** 처음 열 첨부. 없으면 하나일 때만 바로 연다. */
+  readonly initialAttachmentId?: string
+  /** PDF를 열 때 이동할 쪽과 찾을 낱말 */
+  readonly focus?: PdfFocus | null
 }) {
   const [dialogId] = useState(createAnalyticsId)
-  const [initialSelection] = useState(() => attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
-  const [selectedId, setSelectedId] = useState(attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
+  const [initialSelection] = useState(() => initialAttachmentId ?? (attachments.length === 1 ? attachments[0]?.attachmentId : undefined))
+  const [selectedId, setSelectedId] = useState(initialSelection)
   const selected = attachments.find((attachment) => attachment.attachmentId === selectedId)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleId = useId()
@@ -101,7 +106,7 @@ export function AttachmentDialog({ announcementId, attachments, onClose, initial
       </header>
       {selected ? <SelectedAttachment
         key={JSON.stringify([announcementId, selected.attachmentId, selected.fileUrl, selected.fileName])}
-        announcementId={announcementId} attachment={selected}
+        announcementId={announcementId} attachment={selected} focus={selected.attachmentId === initialSelection ? focus : null}
         onBack={attachments.length > 1 ? () => {
           setSelectedId(undefined)
           dialogRef.current?.querySelector<HTMLButtonElement>('header button')?.focus()
@@ -125,10 +130,11 @@ export function AttachmentDialog({ announcementId, attachments, onClose, initial
 }
 
 // This selection owns the original Blob; changing files drops it with the preview.
-function SelectedAttachment({ announcementId, attachment, onBack }: {
+function SelectedAttachment({ announcementId, attachment, onBack, focus }: {
   readonly announcementId: string
   readonly attachment: HousingAnnouncementDetailAttachment
   readonly onBack?: () => void
+  readonly focus: PdfFocus | null
 }) {
   const [documentOpenId] = useState(createAnalyticsId)
   const [originalBlob, setOriginalBlob] = useState<Blob | null>(null)
@@ -138,14 +144,15 @@ function SelectedAttachment({ announcementId, attachment, onBack }: {
       <span>{attachment.fileTypeLabel}</span>
       <DownloadButton announcementId={announcementId} attachment={attachment} originalBlob={originalBlob} />
     </div>
-    <AttachmentPreview announcementId={announcementId} attachment={attachment} onLoad={setOriginalBlob} documentOpenId={documentOpenId} />
+    <AttachmentPreview announcementId={announcementId} attachment={attachment} onLoad={setOriginalBlob} documentOpenId={documentOpenId} focus={focus} />
   </>
 }
 
 type PreviewState = { readonly type: 'loading' } | { readonly type: 'ready'; readonly url: string }
   | { readonly type: 'error'; readonly message: string }
 
-function AttachmentPreview({ announcementId, attachment, onLoad, documentOpenId }: {
+function AttachmentPreview({ announcementId, attachment, onLoad, documentOpenId, focus }: {
+  readonly focus: PdfFocus | null
   readonly documentOpenId: string
   readonly onLoad: (blob: Blob) => void
   readonly announcementId: string
@@ -205,7 +212,7 @@ function AttachmentPreview({ announcementId, attachment, onLoad, documentOpenId 
     <PdfPreviewBoundary key={state.url} onFailure={() => telemetry.failed('viewer_failed')} label={hwp ? '한글' : 'PDF'}>
       <Suspense fallback={<p role="status" className={styles.message}>{hwp ? '한글 뷰어를 준비하는 중…' : 'PDF 뷰어를 준비하는 중…'}</p>}>
         {hwp ? <HwpDocumentPreview telemetry={telemetry} onRetry={retry} url={state.url} name={attachment.fileName ?? '첨부파일'} />
-          : <PdfDocumentPreview telemetry={telemetry} url={state.url} name={attachment.fileName ?? '첨부파일'} />}
+          : <PdfDocumentPreview telemetry={telemetry} url={state.url} name={attachment.fileName ?? '첨부파일'} focus={focus} />}
       </Suspense>
     </PdfPreviewBoundary>
   </div>

@@ -110,6 +110,27 @@ export async function extractAnnouncementPdf(id: string, file: Blob, fileName: s
     job = joined
   }
   options.onJob?.(job.jobId)
+  return waitForJob(path, job, file, signal, options)
+}
+
+/** 이어 붙으려던 작업이 지금 고른 PDF로 만든 것이 아니다. 관리자가 고른 것이 없으므로 실패로 알리지 않고 추출 전으로 둔다. */
+export class OtherPdfJobError extends Error {
+  constructor() { super('이어서 기다리던 추출이 지금 고른 PDF와 다른 파일입니다.') }
+}
+
+/**
+ * 화면을 떠났다 돌아왔을 때 앞서 넣은 작업에 다시 이어 붙는다. 그사이 끝났으면 그 결과를, 아직이면 끝날 때까지 기다린다.
+ * 작업이 지금 고른 PDF로 만든 것이 아니면 결과를 쓰지 않는다.
+ */
+export async function resumeExtraction(id: string, jobId: number, file: Blob, signal?: AbortSignal, options: ExtractionOptions = {}): Promise<PdfExtraction> {
+  const path = `/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions`
+  const job = parseJob(await requestManagementApi(`${path}/jobs/${jobId}`, 'GET', undefined, signal))
+  if (job.pdfSha256 !== await pdfSha256(file)) throw new OtherPdfJobError()
+  options.onJob?.(job.jobId)
+  return waitForJob(path, job, file, signal, options)
+}
+
+async function waitForJob(path: string, job: ExtractionJob, file: Blob, signal: AbortSignal | undefined, options: ExtractionOptions): Promise<PdfExtraction> {
   const waitStart = Date.now()
   const deadline = waitStart + JOB_WAIT_LIMIT_MS
   let notice: string | null = null
@@ -169,6 +190,20 @@ function upload(file: Blob, fileName: string) {
 export async function cancelExtraction(id: string, jobId: number): Promise<string | null> {
   const job = parseJob(await requestManagementApi(`/api/admin/announcements/${encodeURIComponent(id)}/pdf-extractions/jobs/${jobId}/cancel`, 'POST'))
   return job.status === 'FAILED' ? job.failure?.message ?? '추출을 취소했습니다.' : null
+}
+
+const jobKey = (id: string) => `pdf-extraction-job:${id}`
+
+/**
+ * 기다리던 추출 작업 번호를 탭에 남겨, 화면을 떠났다 돌아와도 그 작업에 이어 붙게 한다.
+ * 저장소를 쓸 수 없는 브라우저(사생활 보호 모드 등)에서는 남기지 않고, 돌아오면 다시 추출을 누르게 된다.
+ */
+export const rememberedJob = {
+  get(id: string): number | null {
+    try { const value = Number(window.sessionStorage.getItem(jobKey(id))); return Number.isInteger(value) && value > 0 ? value : null } catch { return null }
+  },
+  set(id: string, jobId: number) { try { window.sessionStorage.setItem(jobKey(id), String(jobId)) } catch { /* 남기지 못해도 지금 기다리기는 이어진다 */ } },
+  clear(id: string) { try { window.sessionStorage.removeItem(jobKey(id)) } catch { /* 지울 것이 없다 */ } },
 }
 
 /** 공고에 가장 최근에 저장한 추출 결과. 없으면 null이다. 모델을 다시 부르지 않는다. */

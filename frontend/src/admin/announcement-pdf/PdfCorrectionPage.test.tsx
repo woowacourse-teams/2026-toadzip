@@ -16,10 +16,12 @@ const lookup = vi.hoisted(() => ({ lookupAddresses: vi.fn(async () => []) }))
 vi.mock('./addressLookupApi', () => lookup)
 const pdfTypes = vi.hoisted(() => ({ createPdfHousingTypes: vi.fn(async () => {}) }))
 vi.mock('./pdfHousingTypes', () => pdfTypes)
-const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), loadLatestExtraction: vi.fn(), cancelExtraction: vi.fn() }))
+const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), resumeExtraction: vi.fn(), loadLatestExtraction: vi.fn(), cancelExtraction: vi.fn() }))
 vi.mock('./extractionApi', async original => ({ ...await original<typeof import('./extractionApi')>(), ...extractor }))
 const draftApi = vi.hoisted(() => ({ loadCorrectionDraft: vi.fn(), saveCorrectionDraft: vi.fn(), deleteCorrectionDraft: vi.fn() }))
 vi.mock('./correctionDraftApi', async original => ({ ...await original<typeof import('./correctionDraftApi')>(), ...draftApi }))
+const eligibility = vi.hoisted(() => ({ loadEligibility: vi.fn(async () => null), createEligibilityDraft: vi.fn(() => new Promise(() => {})) }))
+vi.mock('./eligibilityDraftApi', async original => ({ ...await original<typeof import('./eligibilityDraftApi')>(), ...eligibility }))
 const matchingTypes = vi.hoisted(() => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => matchingTypes)
 vi.mock('../../public-housing/api/announcementAttachments', () => ({ loadAnnouncementAttachment: async () => new Blob(), attachmentErrorMessage: () => 'PDF 열기 실패' }))
@@ -31,6 +33,7 @@ const base = scenario('hansville').workspace
 const workspace = { ...base, detail: { ...base.detail, data: { ...base.detail.data, name: '익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고(2026.10.08)', postedDate: '2026-10-08' }, attachments: [{ attachmentId: 68, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } }
 beforeEach(() => {
   vi.clearAllMocks()
+  window.sessionStorage.clear()
   matchingTypes.getMatchingHousingTypes.mockImplementation(async (id: number) => fixtures.hansville.complexes.find(item => item.id === id)?.housingTypes ?? [])
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:pdf'; static revokeObjectURL = vi.fn() })
   api.loadJsonWorkspace.mockResolvedValue(workspace)
@@ -127,6 +130,8 @@ it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안�
     housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] })))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
+  // 적용이 끝나면 누르지 않아도 열린 PDF의 추출로 신청자격을 만들어 반영한다.
+  await waitFor(() => expect(eligibility.createEligibilityDraft).toHaveBeenCalledExactlyOnceWith('29', expect.stringMatching(/^[0-9a-f]{64}$/), null))
   expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', input, 'confirmed')
   expect(screen.queryByRole('heading', { name: '적용할 변경' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
@@ -136,20 +141,31 @@ it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안�
   expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
   expect(within(screen.getByRole('region', { name: '공고로 갱신한 주택타입' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 이름 26A · 공급면적 52.5㎡ · 세대수 120', '26: 관리자가 고친 세대수를 유지합니다.'])
 })
+it('서버가 저장할 변경이 없다고 해도 오류 없이 적용해 공고문 확인을 남기고 변경 없음 결과를 보인다', async () => {
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ unchanged: true }))
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  await screen.findByRole('heading', { name: '저장할 변경이 없습니다.' })
+  const result = screen.getByRole('heading', { name: '저장할 변경이 없습니다.' }).closest('section')!
+  expect(result).toHaveTextContent('공고문으로 확인한 것으로 남겼습니다.')
+  expect(api.applyJsonUpdate).toHaveBeenCalledExactlyOnceWith('29', api.previewJsonUpdate.mock.calls[0][1], 'confirmed')
+  expect(within(result).getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
 /** GH·SH 원천으로 만든 미확정 공고. 임대·모집 유형이 비어 있고 사용자에게 보이지 않는다. */
 function unconfirmedWorkspace() {
   return { ...workspace, detail: { ...workspace.detail,
     summary: { ...workspace.detail.summary, announcement: { ...(workspace.detail.summary as { announcement?: object }).announcement, releaseStatus: 'UNCONFIRMED' } },
     data: { ...workspace.detail.data, rentalType: null, recruitmentType: null } } }
 }
-it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했다고 공개를 요청해야 공개 요청을 보내고 결과에 공개를 알린다', async () => {
+it('미확정 공고는 임대·모집 유형을 고르고 보정을 적용하면 따로 공개를 요청하지 않아도 공개 요청을 보내고 결과에 공개를 알린다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
   api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true, warnings: ['미확정 공고를 공개합니다. 적용하면 사용자에게 보이고 신규 공고 알림이 나갑니다.'] }))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  fireEvent.click(within(release).getByRole('checkbox', { name: /단지를 확인했고 이 보정과 함께 공개합니다/ }))
+  expect(within(release).queryByRole('checkbox')).not.toBeInTheDocument()
 
   await applyCorrection()
 
@@ -159,22 +175,22 @@ it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했�
   expect(input.document.announcement).toEqual(expect.objectContaining({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' }))
   expect(await screen.findByRole('heading', { name: '공고를 공개했습니다.' })).toBeInTheDocument()
 })
-it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보내지 않고 아직 보이지 않는다고 알린다', async () => {
+it('미확정 공고의 공급행이 단지에 연결되지 않아 공개가 거절되면 저장된 것으로 보지 않고 이유를 알린다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
+  api.previewJsonUpdate.mockRejectedValue(new ManagementError('공개하려면 제외하지 않은 공급행을 삭제되지 않은 단지에 연결해야 합니다.', 400, {}, 'INVALID_REQUEST'))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  expect(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox')).not.toBeChecked()
 
   await applyCorrection()
 
-  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
-  expect(input.publish).toBeFalsy()
-  expect(input.document.announcement).toMatchObject({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' })
-  const result = (await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).closest('section')!
-  expect(result).toHaveTextContent('아직 미확정이라 사용자에게 보이지 않습니다')
+  expect(await screen.findByRole('alert')).toHaveTextContent('공개하려면 제외하지 않은 공급행을 삭제되지 않은 단지에 연결해야 합니다.')
+  expect((api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).publish).toBe(true)
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  expect(eligibility.createEligibilityDraft).not.toHaveBeenCalled()
+  expect(screen.queryByRole('heading', { name: '공고를 공개했습니다.' })).not.toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: '공개 전 확인' })).getByLabelText('공급 유형')).toHaveValue('NATIONAL_RENTAL')
 })
 it('공개된 공고에는 공개 전 확인을 보이지 않는다', async () => {
   await open()
@@ -299,6 +315,48 @@ it('기다리는 동안 추출 취소를 누르면 서버에서 작업을 끝내
   expect(signal?.aborted).toBe(true)
   expect(screen.getByRole('button', { name: '다시 추출' })).toBeVisible()
   expect(screen.getByText('추출하지 못했습니다')).toBeVisible()
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
+})
+it('돌아왔을 때 남긴 작업이 지금 PDF와 다른 파일이면 실패로 알리지 않고 추출 전으로 둔다', async () => {
+  window.sessionStorage.setItem('pdf-extraction-job:29', '31')
+  const { OtherPdfJobError } = await vi.importActual<typeof import('./extractionApi')>('./extractionApi')
+  extractor.resumeExtraction.mockRejectedValue(new OtherPdfJobError())
+  renderPage()
+  await waitFor(() => expect(extractor.resumeExtraction).toHaveBeenCalledOnce())
+  expect(await screen.findByRole('button', { name: 'PDF에서 값 추출' })).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
+})
+it('추출을 기다리다 화면을 떠났다 돌아오면 그 작업에 이어 붙어 끝난 결과를 넣고, 끝난 뒤에는 다시 이어 붙지 않는다', async () => {
+  let signal: AbortSignal | undefined
+  extractor.extractAnnouncementPdf.mockImplementation((_id: string, _file: Blob, _name: string, given: AbortSignal, options: { onJob?: (jobId: number) => void }) => {
+    signal = given; options.onJob?.(31)
+    return new Promise(() => {})
+  })
+  extractor.resumeExtraction.mockResolvedValue({ json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: [], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
+  renderPage()
+  await startExtraction()
+  expect(await screen.findByText('추출 중입니다')).toBeVisible()
+  cleanup()
+  expect(signal?.aborted).toBe(true)
+
+  renderPage()
+  expect(await screen.findByText('추출을 마쳤습니다')).toBeVisible()
+  expect(extractor.resumeExtraction).toHaveBeenCalledWith('29', 31, expect.any(Blob), expect.any(AbortSignal), expect.objectContaining({ attachmentId: '68' }))
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce()
+  cleanup()
+
+  renderPage()
+  expect(await screen.findByRole('button', { name: 'PDF에서 값 추출' })).toBeVisible()
+  expect(extractor.resumeExtraction).toHaveBeenCalledOnce()
+})
+it('떠난 사이 작업이 실패했으면 돌아왔을 때 그 사유를 알리고 다시 추출하게 한다', async () => {
+  window.sessionStorage.setItem('pdf-extraction-job:29', '31')
+  extractor.resumeExtraction.mockRejectedValue(new Error('추출 서비스 응답이 늦습니다.'))
+  renderPage()
+  expect(await screen.findByText('추출 서비스 응답이 늦습니다.')).toBeVisible()
+  expect(screen.getByRole('button', { name: '다시 추출' })).toBeVisible()
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
 })
 it('서버가 칸 경로로 거절하면 화면 칸 이름으로 알리고 그 칸이 있는 접수처·기본정보로 옮긴다', async () => {
   api.previewJsonUpdate.mockRejectedValue(new ManagementError('receptionPlaces[0].name: 필수 값입니다.', 400, {}, 'INVALID_REQUEST'))
@@ -603,28 +661,28 @@ it('적용할 수 없는 값이 있으면 오류를 알리고 그 항목으로 �
   expect(api.previewJsonUpdate).not.toHaveBeenCalled()
 })
 
-it('대상들이 함께 쓰는 모집수는 안내만 하고 대상별 모집수는 비워 저장한다', async () => {
+it('대상들이 함께 쓰는 모집수는 대상마다 나누지 않고 공통 모집수 하나로 저장한다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
   extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년' })
   extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'], count: 39, page: 3, quote: '대학생 청년 39' }]
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
-  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 모집수입니다. 대상별 모집수는 비워 둡니다.')).toBeVisible()
+  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 모집수입니다. 대상마다 나누지 않고 공통 모집수로 저장합니다.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
   await waitFor(() => expect(api.previewJsonUpdate).toHaveBeenCalled())
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.correction).not.toHaveProperty('newGroups')
-  expect(input.correction.rows.find(row => row.typeName === '26A')?.targets.map(target => target.householdCount)).toEqual([null, null])
+  expect(input.correction.rows.find(row => row.typeName === '26A')?.targets.map(target => [target.householdCount, target.householdCountGroup])).toEqual([[null, { key: 'pdf:0', count: 39 }], [null, { key: 'pdf:0', count: 39 }]])
 })
 
-it('대상들이 함께 쓰는 이번 예비자 모집수는 명 단위로 안내하고 대상별 수를 만들지 않는다', async () => {
+it('대상들이 함께 쓰는 이번 예비자 모집수는 명 단위로 안내하고 공통 예비자 모집수로 저장한다고 알린다', async () => {
   const extraction = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
   extraction.data.supplyRows[0].targets.push({ ...extraction.data.supplyRows[0].targets[0], target: '청년', reserveCount: null })
   extraction.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '대학생 청년 예비자 20' }]
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   expect(screen.getByText('공통 예비자 모집 20명', { selector: 'strong' })).toBeVisible()
-  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+  expect(screen.getByText('26A에서 일반 · 청년 대상이 함께 쓰는 예비자 모집수입니다. 대상마다 나누지 않고 공통 예비자 모집수로 저장합니다.')).toBeVisible()
 })
 
 it('서로 다른 면적 행의 대상들이 함께 쓰는 예비자 모집수는 그 행들을 한 공급행으로 접고 그 행 이름으로 안내한다', async () => {
@@ -634,7 +692,7 @@ it('서로 다른 면적 행의 대상들이 함께 쓰는 예비자 모집수�
   await open(JSON.stringify(extraction))
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   // 공고문이 두 면적에 걸쳐 수를 한 번만 적었으면 두 면적은 공급행 하나의 세부 타입이다(결정 1).
-  expect(screen.getByText('26A·26B에서 일반 · 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상별 예비자 수는 비워 둡니다.')).toBeVisible()
+  expect(screen.getByText('26A·26B에서 일반 · 일반 대상이 함께 쓰는 예비자 모집수입니다. 대상마다 나누지 않고 공통 예비자 모집수로 저장합니다.')).toBeVisible()
 })
 
 it('공고에는 있지만 단지 DB에 없는 단지는 공고문 단지 개요로 한 번 등록해 같은 단지 공급행 전체에 연결한다', async () => {
@@ -809,6 +867,19 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
 })
 
+it('돌아와 이어 기다리는 중에 임시저장본을 복원하면 기다리기를 멈춰 늦게 온 추출 결과가 복원한 초안을 덮지 않는다', async () => {
+  window.sessionStorage.setItem('pdf-extraction-job:29', '31')
+  let signal: AbortSignal | undefined
+  extractor.resumeExtraction.mockImplementation((_id: string, _jobId: number, _file: Blob, given: AbortSignal) => { signal = given; return new Promise(() => {}) })
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft())
+  renderPage()
+  await waitFor(() => expect(extractor.resumeExtraction).toHaveBeenCalledOnce())
+  fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 복원' }))
+  expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
+  expect(signal?.aborted).toBe(true)
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
+})
+
 it('LH 행 기준으로 나누던 이전 방식의 임시저장은 복원하지 않고 다시 시작한다고 알리며, 새 검토의 첫 임시저장이 그 초안을 덮어쓴다', async () => {
   draftApi.loadCorrectionDraft.mockResolvedValue({ outdated: true, revision: 4 })
   renderPage()
@@ -886,14 +957,13 @@ it('409(ADMIN_DATA_CONFLICT) 뒤 최신값에 이 변경이 없으면 반영되�
   expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
 })
 
-it.each([true, false])('미확정 공고 저장이 충돌하고 공급행만 같으면 완료 처리하거나 초안을 지우지 않는다 (공개 요청 %s)', async publish => {
+it('미확정 공고 저장(공개)이 충돌하고 공급행만 같으면 완료 처리하거나 초안을 지우지 않는다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true }))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  if (publish) fireEvent.click(within(release).getByRole('checkbox'))
   let sent: JsonUpdateInput | undefined
   api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
     sent = input
@@ -910,14 +980,13 @@ it.each([true, false])('미확정 공고 저장이 충돌하고 공급행만 같
   expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
 })
 
-it.each([true, false])('미확정 공고 저장 응답을 잃고 공급행만 같으면 재조회 뒤에도 성공을 추정하지 않는다 (공개 요청 %s)', async publish => {
+it('미확정 공고 저장(공개) 응답을 잃고 공급행만 같으면 재조회 뒤에도 성공을 추정하지 않는다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true }))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  if (publish) fireEvent.click(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox'))
   let sent: JsonUpdateInput | undefined
   api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
     sent = input
@@ -955,10 +1024,10 @@ it('공급행 목록은 행마다 저장할 곳과 상태를 요약하고, 단�
   expect(screen.getByRole('combobox', { name: '공급행 1 연결 주택타입 수정' })).toHaveValue('10352')
 })
 
-it('검토 탭은 공급정보·일정·접수처 세 영역만 두고, 공급정보의 단지는 고정 막대에서 확인 수와 함께 고르며 이전·다음과 미해결 이동이 그 행의 단지를 연다', async () => {
+it('검토 탭은 공급정보·일정·접수처와 신청자격 초안만 두고, 공급정보의 단지는 고정 막대에서 확인 수와 함께 고르며 이전·다음과 미해결 이동이 그 행의 단지를 연다', async () => {
   await open(JSON.stringify(fixtures.gwangju.extraction))
   const tabs = within(screen.getByRole('tablist', { name: 'PDF 보정 영역' })).getAllByRole('tab')
-  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['공급정보', '일정', '접수처·기본정보'])
+  expect(tabs.map(tab => tab.textContent?.split(' · ')[0])).toEqual(['공급정보', '일정', '접수처·기본정보', '신청자격'])
   expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('tabpanel')).toHaveAccessibleName(tabs[0].textContent!)
   const select = screen.getByRole('combobox', { name: '단지' }) as HTMLSelectElement

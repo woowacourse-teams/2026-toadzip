@@ -29,6 +29,7 @@ export interface PublicHousingRegion {
 export function districtRegionOptionsForProvince(
   regions: readonly PublicHousingRegion[],
   provinceCode: string,
+  includeSubdistricts = false,
 ): readonly PublicHousingRegion[] {
   const provinceDistricts = regions.filter((region) =>
     region.regionCode.length === 5
@@ -36,7 +37,7 @@ export function districtRegionOptionsForProvince(
   )
 
   return provinceDistricts.filter((candidate) =>
-    !provinceDistricts.some((parent) => isParentCity(parent, candidate)),
+    includeSubdistricts || !provinceDistricts.some((parent) => isParentCity(parent, candidate)),
   ).sort((left, right) => compareRegionCodes(left.regionCode, right.regionCode))
 }
 

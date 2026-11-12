@@ -55,15 +55,15 @@ it('가로 탭에 선택한 단계만 표시하고 각 실행 버튼은 한 곳�
   expect(screen.getByRole('tab', { name: '1 원천 수집' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getAllByRole('button', { name: '단지 원천 수집 실행', hidden: true })).toHaveLength(1)
   expect(screen.queryByRole('button', { name: '단지 정제·저장 실행', hidden: true })).not.toBeInTheDocument()
-  expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
   expect(screen.getByText('등록 확인 단지')).not.toBeVisible()
   expect(screen.getAllByRole('button', { name: '좌표 데이터 업로드', hidden: true })).toHaveLength(1)
   expect(screen.queryByRole('button', { name: '단지 수집·정제' })).not.toBeInTheDocument()
   select('2 주소·좌표 준비')
   expect(within(screen.getByRole('tabpanel')).queryByRole('button', { name: /정제/ })).not.toBeInTheDocument()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   expect(screen.queryByText(/현재 저장된 단지 원본 전체/)).not.toBeInTheDocument()
-  expect(within(screen.getByRole('tabpanel')).getByRole('heading', { name: '단지 등록' })).toBeVisible()
+  expect(within(screen.getByRole('tabpanel')).getByRole('heading', { name: '신규 단지 등록' })).toBeVisible()
   expect(screen.getByText('등록 확인 단지')).toBeVisible()
   select('1 원천 수집')
   expect(screen.getByText('등록 확인 단지')).not.toBeVisible()
@@ -73,7 +73,7 @@ it('세 단계의 안내를 호버·포커스·클릭으로 열고 Escape나 영
   for (const [tab, stage, text] of [
     ['1 원천 수집', '단지 원천 수집', '마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.'],
     ['2 주소·좌표 준비', '주소·좌표 준비', '위치정보요약DB ZIP으로 주소와 지도용 좌표를 확인하고, 보완할 단지는 주소 검색 또는 직접 입력으로 준비합니다.'],
-    ['3 단지 등록', '단지 등록', '단지별 등록 여부와 다음에 필요한 작업을 확인하세요.'],
+    ['3 신규 단지 등록', '신규 단지 등록', '등록 가능한 단지 전체를 처리합니다. 목록 필터는 실행 범위를 제한하지 않습니다. 기존 단지와 관리자 보정값은 유지하며, 실패한 단지는 별도로 기록합니다. 화면을 이동해도 실행은 계속됩니다.'],
   ]) {
     select(tab)
     const button = screen.getByRole('button', { name: `${stage} 안내` })
@@ -106,7 +106,7 @@ it('키를 입력받지 않고 서버 설정으로 수집을 접수하며 탭을
   assertStages()
   expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_COLLECTION')
   expect(screen.getByText(/실행 접수를 확인/)).toBeVisible()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   expect(screen.getByRole('button', { name: '대상 상태 확인' })).toBeDisabled()
   await act(async () => resolve(execution('COMPLEX_COLLECTION', { executionId: 'collect-1', status: 'RUNNING', currentStepName: '마이홈 단지 수집' })))
   select('1 원천 수집')
@@ -121,7 +121,7 @@ it('방향키·Home·End로 탭을 선택하고 포커스를 옮긴다', async (
   expect(second).toHaveFocus()
   expect(second).toHaveAttribute('aria-selected', 'true')
   fireEvent.keyDown(second, { key: 'End' })
-  const third = screen.getByRole('tab', { name: '3 단지 등록' })
+  const third = screen.getByRole('tab', { name: '3 신규 단지 등록' })
   expect(third).toHaveFocus()
   fireEvent.keyDown(third, { key: 'ArrowRight' })
   expect(first).toHaveFocus()
@@ -144,7 +144,7 @@ it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지한다', async (
   select('1 원천 수집')
   expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeDisabled()
   expect(screen.getByRole('tab', { name: '2 주소·좌표 준비' })).toHaveAccessibleDescription('진행 중')
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   expect(screen.getByRole('button', { name: '대상 상태 확인' })).toBeDisabled()
   select('2 주소·좌표 준비')
   expect(screen.getByText(/좌표 파일을 처리하고 있습니다/)).toBeVisible()
@@ -154,15 +154,15 @@ it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지한다', async (
   await screen.findByRole('region', { name: '좌표 적재 결과' })
   expect(uploadLocationSummary).toHaveBeenCalledExactlyOnceWith(zip)
   expect(startDataPipeline).not.toHaveBeenCalled()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   select('2 주소·좌표 준비')
   expect(screen.getByRole('region', { name: '좌표 적재 결과' })).toBeVisible()
 })
 it.each(['complex-registration', 'complex-refinement'])('직접 연결된 %s는 단지 등록을 열고 쓰기 작업을 자동 실행하지 않는다', async hash => {
   render(<MemoryRouter initialEntries={[`/admin/ingest/complexes#${hash}`]}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
   await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행', hidden: true })).toBeEnabled())
-  expect(screen.getByRole('tab', { name: '3 단지 등록' })).toHaveAttribute('aria-selected', 'true')
-  expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
+  expect(screen.getByRole('tab', { name: '3 신규 단지 등록' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('heading', { name: '신규 단지 등록' })).toBeVisible()
   expect(screen.queryByRole('button', { name: '단지 정제·저장 실행' })).not.toBeInTheDocument()
   expect(startDataPipeline).not.toHaveBeenCalled()
   expect(refreshInitialRegistration).not.toHaveBeenCalled()
@@ -176,7 +176,7 @@ it('재진입 시 진행 중 수집을 복구하고 과거 정제 결과를 등�
   await screen.findByRole('button', { name: '수집 중지' })
   assertStages()
   expect(screen.getByText(/20 \/ 250 개 지역/)).toBeVisible()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   expect(within(screen.getByRole('tabpanel')).getByText('등록 확인 단지')).toBeVisible()
   expect(within(screen.getByRole('tabpanel')).queryByRole('group', { name: '실행 상태' })).not.toBeInTheDocument()
   select('2 주소·좌표 준비')
@@ -188,7 +188,7 @@ it('지난 정제 결과와 지원 종료된 실행 버튼을 단지 등록에 �
       completedStepResults: [{ step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } }] }
     : {}))
   await show()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   expect(screen.queryByRole('button', { name: '단지 정제·저장 실행' })).not.toBeInTheDocument()
   expect(startDataPipeline).not.toHaveBeenCalled()
   expect(screen.queryByText('신규 단지')).not.toBeInTheDocument()
@@ -214,9 +214,9 @@ it('진행 중인 이전 통합 정제는 별도 안내에서 복구하고 모�
   render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
   const legacy = await screen.findByRole('region', { name: '이전 정제 실행' })
   expect(within(legacy).getByRole('group', { name: '실행 상태' })).toHaveTextContent('진행 중')
-  expect(within(screen.getByRole('tab', { name: '3 단지 등록' })).queryByText('진행 중')).not.toBeInTheDocument()
+  expect(within(screen.getByRole('tab', { name: '3 신규 단지 등록' })).queryByText('진행 중')).not.toBeInTheDocument()
   expect(within(screen.getByRole('tab', { name: '1 원천 수집' })).queryByText('진행 중')).not.toBeInTheDocument()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   await screen.findByRole('button', { name: '정제 중지' })
   expect(screen.getAllByRole('button', { name: '정제 중지' })).toHaveLength(1)
   select('1 원천 수집')
@@ -242,15 +242,15 @@ it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과�
 
 it('단계 탭을 오가도 등록 상태 필터·표시 건수·페이지를 유지한다', async () => {
   await show()
-  select('3 단지 등록')
+  select('3 신규 단지 등록')
   fireEvent.change(screen.getByLabelText('진행 상태'), { target: { value: 'READY' } })
   fireEvent.change(screen.getByLabelText('표시 건수'), { target: { value: '10' } })
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 0, 10))
   fireEvent.click(screen.getByRole('button', { name: '다음 대상' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 1, 10))
   select('2 주소·좌표 준비')
-  expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
-  select('3 단지 등록')
+  expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
+  select('3 신규 단지 등록')
   expect(screen.getByLabelText('진행 상태')).toHaveValue('READY')
   expect(screen.getByLabelText('표시 건수')).toHaveValue('10')
   expect(screen.getByRole('navigation', { name: '등록 대상 페이지' })).toHaveTextContent('2 / 2')
@@ -260,7 +260,7 @@ it('단계 탭을 오가도 등록 상태 필터·표시 건수·페이지를 �
 it.each([
   ['COMPLEX_COLLECTION', '1 원천 수집', '단지 원천 수집', '수집 중지', '마이홈 단지 수집', true],
   // 지원 종료 전에 시작한 정제는 멈출 수 있지만 다시 시작할 수는 없다.
-  ['COMPLEX_REFINEMENT', '3 단지 등록', '단지 정제·저장', '정제 중지', '마이홈 단지 정제', false],
+  ['COMPLEX_REFINEMENT', '3 신규 단지 등록', '단지 정제·저장', '정제 중지', '마이홈 단지 정제', false],
 ] as const)('%s의 중지 버튼은 실행 버튼 옆에 하나만 두고 요청 중에는 다시 누를 수 없다', async (type, tab, stage, label, step, restartable) => {
   const running = execution(type, { executionId: 'active-run', status: 'RUNNING', currentStepName: step })
   vi.mocked(getDataPipelineStatus).mockImplementation(async value => value === type ? running : execution(value))
@@ -287,4 +287,40 @@ it.each([
   if (restartable) expect(start).toBeEnabled()
   else expect(screen.queryByRole('region', { name: '이전 정제 실행' })).not.toBeInTheDocument()
   view.unmount()
+})
+
+
+it('등록을 즉시 접수하고 중복 실행을 막으며 재방문해도 진행과 중지 요청을 복원한다', async () => {
+  const view = await show()
+  select('3 신규 단지 등록')
+  const running = execution('COMPLEX_REGISTRATION', { executionId: 'registration-1', status: 'RUNNING' })
+  vi.mocked(startDataPipeline).mockResolvedValue(running)
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => type === 'COMPLEX_REGISTRATION' ? running : execution(type))
+  const register = await screen.findByRole('button', { name: '준비된 신규 단지 등록' })
+  fireEvent.click(register); fireEvent.click(register)
+  await waitFor(() => expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_REGISTRATION'))
+  expect(register).toBeDisabled()
+  expect(screen.getByText('등록 준비 중…')).toBeVisible()
+  vi.mocked(stopDataPipeline).mockResolvedValue({ ...running, stopRequested: true })
+  fireEvent.click(screen.getByRole('button', { name: '등록 중지' }))
+  await waitFor(() => expect(stopDataPipeline).toHaveBeenCalledWith('registration-1'))
+  expect(await screen.findByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
+  view.unmount()
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => type === 'COMPLEX_REGISTRATION'
+    ? { ...running, stopRequested: true } : execution(type))
+  render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  expect(await screen.findByText(/이미 저장한 데이터는 유지됩니다/)).toBeVisible()
+  expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
+})
+
+it('등록 완료 뒤 다시 열면 간결한 완료 안내를 복원한다', async () => {
+  vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_REGISTRATION' ? {
+    executionId: 'registration-2', status: 'COMPLETED', completedStepResults: [{ step: 'REGISTER_MYHOME_COMPLEXES',
+      stepName: '준비된 신규 단지 등록', report: { targetCount: 2, uniqueAddressCount: 1,
+        counts: { EXISTING: 0, LOCATION_REQUIRED: 0, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 2 } } }],
+  } : {}))
+  render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  expect(await screen.findByLabelText('등록 현황')).toBeVisible()
+  expect(screen.queryByRole('status', { name: '등록 실행 상태' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/고유 원천 주소/)).not.toBeInTheDocument()
 })

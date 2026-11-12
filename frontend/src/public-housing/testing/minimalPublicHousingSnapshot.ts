@@ -87,6 +87,7 @@ export const MINIMAL_PUBLIC_HOUSING_SNAPSHOT = {
               deposit: 0,
               monthlyRent: null,
               convertibleDeposit: null,
+              postedDate: null,
             },
           ],
         },

@@ -30,7 +30,7 @@ public class RoadAddressGeocodingService {
     public GeocodedRoadAddress geocode(String rawRoadAddress) {
         NormalizedRoadAddress address = normalize(rawRoadAddress);
         List<RoadAddressLocation> locations = locationRepository
-                .findAllByNormalizedRoadAddressOrderByIdEntranceSerialAsc(address.withoutReference());
+                .findAllByNormalizedRoadAddressOrderByIdEntranceSerialAsc(address.locationKey());
         if (locations.isEmpty()) {
             throw new RoadAddressGeocodingException(
                     ADDRESS_NOT_FOUND,

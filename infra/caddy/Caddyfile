@@ -1,3 +1,11 @@
-{$TOADZIP_CADDY_DOMAIN:localhost} {
+{$TOADZIP_CADDY_DOMAIN:localhost} {$TOADZIP_CADDY_REDIRECT_DOMAIN} {
+	# 보조 도메인(예: www)은 기본 도메인으로 영구 이동한다. 값이 없는 서버에는 적용되지 않는다.
+	@redirectDomain not host {$TOADZIP_CADDY_DOMAIN:localhost}
+	redir @redirectDomain https://{$TOADZIP_CADDY_DOMAIN:localhost}{uri} 308
+
+	# 운영 도메인 외(dev 등)의 모든 응답은 검색 색인에서 제외한다.
+	@notProduction not host bokduckbang.com
+	header @notProduction X-Robots-Tag "noindex"
+
 	reverse_proxy edge-nginx:81
 }

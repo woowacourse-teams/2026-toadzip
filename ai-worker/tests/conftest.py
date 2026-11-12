@@ -138,6 +138,10 @@ RENT_CELLS = [
 
 
 USAGE = {"promptTokens": 9000, "outputTokens": 3000, "thinkingTokens": 500}
+ELIGIBILITY_STAGE = "[추출 단계: 신청자격]"
+# 신청자격을 따로 정하지 않은 테스트의 신청자격 단계 응답과 그 결과(data.eligibility). 요건이 없으면 결과의 공급행·대상 신청 조건이 바뀌지 않는다.
+EMPTY_ELIGIBILITY = {"requirements": [], "routes": []}
+EMPTY_ELIGIBILITY_DATA = {"common": {"requirements": [], "qualifications": [], "summary": None}, "targets": [], "exclusions": []}
 EXTRACTION = {
     "data": {"announcement": {"name": "여수미평1 영구임대주택 예비입주자 모집"},
              "receptionPlaces": [], "complexes": [],
@@ -151,10 +155,16 @@ class FakeModel:
     def __init__(self, content=json.dumps(EXTRACTION, ensure_ascii=False) + "\n뒤에 붙은 글", stage_contents=None):
         self.content = content
         self.stage_contents = stage_contents or {}
+        # prompts는 공급·본문 단계만 담는다. 신청자격 단계는 늘 따로 한 번 불리므로 eligibility_prompts에 둔다.
         self.prompts = []
+        self.eligibility_prompts = []
         self.deadlines = []
 
     def chat(self, prompt, deadline):
+        if ELIGIBILITY_STAGE in prompt:
+            self.eligibility_prompts.append(prompt)
+            reply = self.stage_contents.get("eligibility", json.dumps(EMPTY_ELIGIBILITY, ensure_ascii=False))
+            return Reply(reply, USAGE)
         self.prompts.append(prompt)
         self.deadlines.append(deadline)
         stage = "supply" if "[추출 단계: 공급 표]" in prompt else "notice"

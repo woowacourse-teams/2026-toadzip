@@ -1,0 +1,95 @@
+package com.toadzip.backend.eligibility.controller;
+
+import com.toadzip.backend.eligibility.domain.EligibilityContent;
+import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
+import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftVersion;
+import com.toadzip.backend.eligibility.dto.EligibilityRequests.SaveDraft;
+import com.toadzip.backend.eligibility.dto.EligibilityResponses.ExtractionDraft;
+import com.toadzip.backend.eligibility.dto.EligibilityResponses.RuleSet;
+import com.toadzip.backend.eligibility.repository.EligibilityJsonCodec;
+import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
+import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
+import com.toadzip.backend.global.response.ApiResponse;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+import tools.jackson.databind.JsonNode;
+
+@RestController
+@RequestMapping("/api/admin/announcements/{announcementId}/basic-comparison-rule-set")
+public class EligibilityRuleSetController {
+    private final EligibilityRuleSetService ruleSets;
+
+    private final EligibilityExtractionDraftService extractionDrafts;
+
+    private final EligibilityJsonCodec codec;
+
+    public EligibilityRuleSetController(
+            EligibilityRuleSetService ruleSets,
+            EligibilityExtractionDraftService extractionDrafts,
+            EligibilityJsonCodec codec) {
+        this.ruleSets = ruleSets;
+        this.extractionDrafts = extractionDrafts;
+        this.codec = codec;
+    }
+
+    @GetMapping("/draft")
+    public ApiResponse<RuleSet> draft(@PathVariable long announcementId) {
+        return new ApiResponse<>(ruleSets.draft(announcementId));
+    }
+
+    /** 지금 사용자에게 보이는 공개본. 없으면 data null이다. */
+    @GetMapping("/published")
+    public ApiResponse<RuleSet> published(@PathVariable long announcementId) {
+        return new ApiResponse<>(ruleSets.published(announcementId));
+    }
+
+    @PutMapping("/draft")
+    public ApiResponse<RuleSet> save(
+            @PathVariable long announcementId, @RequestBody JsonNode request) {
+        return new ApiResponse<>(
+                ruleSets.save(announcementId, codec.request(request, SaveDraft.class)));
+    }
+
+    @PostMapping("/draft/copy")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<RuleSet> copy(@PathVariable long announcementId) {
+        return new ApiResponse<>(ruleSets.copy(announcementId));
+    }
+
+    @PostMapping("/draft/from-extraction")
+    public ApiResponse<ExtractionDraft> fromExtraction(
+            @PathVariable long announcementId, @RequestBody JsonNode request) {
+        return new ApiResponse<>(
+                extractionDrafts.create(announcementId, codec.request(request, DraftFromExtraction.class)));
+    }
+
+    /** 보정 적용 전 신청자격 탭의 미리보기. 저장하지 않는다. */
+    @GetMapping("/draft/from-extraction/preview")
+    public ApiResponse<EligibilityContent> previewFromExtraction(
+            @PathVariable long announcementId, @RequestParam String pdfSha256) {
+        return new ApiResponse<>(extractionDrafts.preview(announcementId, pdfSha256));
+    }
+
+    @PostMapping("/draft/validation")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void validate(@PathVariable long announcementId, @RequestBody JsonNode request) {
+        ruleSets.validate(announcementId, codec.request(request, DraftVersion.class));
+    }
+
+    @PostMapping("/draft/publish")
+    public ApiResponse<RuleSet> publish(
+            @PathVariable long announcementId, @RequestBody JsonNode request) {
+        return new ApiResponse<>(
+                ruleSets.publish(announcementId, codec.request(request, DraftVersion.class)));
+    }
+}

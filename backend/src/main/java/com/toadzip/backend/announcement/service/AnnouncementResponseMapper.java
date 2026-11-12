@@ -7,8 +7,10 @@ import com.toadzip.backend.announcement.dto.response.LhRevisionResponse;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyTargetCountGroup;
 import com.toadzip.backend.announcement.dto.response.AgencyResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
@@ -33,6 +35,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -55,6 +58,7 @@ final class AnnouncementResponseMapper {
             List<Announcement> announcements,
             List<SupplyRow> supplyRows,
             List<AnnouncementApplicationSchedule> applicationSchedules,
+            List<AnnouncementSchedule> schedules,
             LocalDate today
     ) {
         Map<Long, List<SupplyRow>> rowsByAnnouncementId = groupRowsByAnnouncementId(supplyRows);
@@ -64,6 +68,7 @@ final class AnnouncementResponseMapper {
                         rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
                         applicationSchedules.stream().filter(schedule ->
                                 schedule.getAnnouncement().getId().equals(announcement.getId())).toList(),
+                        resultAnnouncementDate(announcement, schedules),
                         today
                 ))
                 .toList();
@@ -142,6 +147,7 @@ final class AnnouncementResponseMapper {
             Announcement announcement,
             List<SupplyRow> supplyRows,
             List<AnnouncementApplicationSchedule> applicationSchedules,
+            LocalDate resultAnnouncementDate,
             LocalDate today
     ) {
         ListAggregate aggregate = aggregateRows(supplyRows);
@@ -164,6 +170,7 @@ final class AnnouncementResponseMapper {
                 start,
                 end,
                 applicationStatusCalculator.calculateDDay(announcement, applicationSchedules, today),
+                resultAnnouncementDate,
                 announcement.getViewCount(),
                 aggregate.supplyComplexCount(),
                 aggregate.supplyHouseholdCount(),
@@ -173,6 +180,22 @@ final class AnnouncementResponseMapper {
                 aggregate.thumbnailImageUrl(),
                 applicationSchedules.stream().map(this::applicationScheduleResponse).toList()
         );
+    }
+
+    // 당첨자 발표 일정이 공고의 발표일보다 늦게 잡혀 있으면 그 일정을 결과 발표일로 본다.
+    private LocalDate resultAnnouncementDate(Announcement announcement, List<AnnouncementSchedule> schedules) {
+        LocalDate result = announcement.getWinnerAnnouncementDate();
+        for (AnnouncementSchedule schedule : schedules) {
+            if (!schedule.getAnnouncement().getId().equals(announcement.getId())
+                    || schedule.getScheduleType() != ScheduleType.WINNER_ANNOUNCEMENT) {
+                continue;
+            }
+            LocalDate scheduled = schedule.getEndAt().toLocalDate();
+            if (result == null || scheduled.isAfter(result)) {
+                result = scheduled;
+            }
+        }
+        return result;
     }
 
     private ApplicationScheduleResponse applicationScheduleResponse(AnnouncementApplicationSchedule schedule) {
@@ -239,8 +262,9 @@ final class AnnouncementResponseMapper {
         for (SupplyRow supplyRow : supplyRows) {
             if (supplyRow.isAdminExcluded()) { continue; }
             List<SupplyTarget> rowTargets = targetsBySupplyRowId.getOrDefault(supplyRow.getId(), List.of());
+            Map<Long, List<String>> sharing = sharingTargets(rowTargets);
             List<SupplyTargetResponse> targetResponses = rowTargets.stream()
-                    .map(this::supplyTargetResponse)
+                    .map(target -> supplyTargetResponse(target, sharing))
                     .toList();
             responses.add(supplyRowResponse(supplyRow, targetResponses));
             rowTargets.stream().map(SupplyTarget::getTarget).forEach(targets::add);
@@ -303,7 +327,7 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyTargetResponse supplyTargetResponse(SupplyTarget supplyTarget) {
+    private SupplyTargetResponse supplyTargetResponse(SupplyTarget supplyTarget, Map<Long, List<String>> sharing) {
         return new SupplyTargetResponse(
                 supplyTarget.getId(),
                 supplyTarget.getTarget(),
@@ -313,8 +337,30 @@ final class AnnouncementResponseMapper {
                 exactLong(supplyTarget.getRentalDeposit()),
                 exactLong(supplyTarget.getMonthlyRent()),
                 exactLong(supplyTarget.getConvertedDeposit()),
-                supplyTarget.getApplicationCondition()
+                supplyTarget.getApplicationCondition(),
+                sharedCount(supplyTarget.getSupplyCountGroup(), sharing),
+                sharedCount(supplyTarget.getReserveCountGroup(), sharing)
         );
+    }
+
+    /** 공급행 안의 공통 모집수 묶음마다 그 수를 함께 쓰는 대상 이름(표시 순서). */
+    private Map<Long, List<String>> sharingTargets(List<SupplyTarget> rowTargets) {
+        Map<Long, List<String>> sharing = new HashMap<>();
+        for (SupplyTarget target : rowTargets) {
+            for (SupplyTargetCountGroup group : Arrays.asList(target.getSupplyCountGroup(), target.getReserveCountGroup())) {
+                if (group != null) {
+                    sharing.computeIfAbsent(group.getId(), id -> new ArrayList<>()).add(target.getTarget());
+                }
+            }
+        }
+        return sharing;
+    }
+
+    private SupplyTargetResponse.SharedCount sharedCount(SupplyTargetCountGroup group, Map<Long, List<String>> sharing) {
+        if (group == null) {
+            return null;
+        }
+        return new SupplyTargetResponse.SharedCount(group.getHouseholdCount(), sharing.getOrDefault(group.getId(), List.of()));
     }
 
     private Long exactLong(BigDecimal amount) {

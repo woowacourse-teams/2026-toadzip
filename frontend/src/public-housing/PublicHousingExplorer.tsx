@@ -31,13 +31,13 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useLocation, useNavigate, useNavigationType } from 'react-router'
+import { useNavigationType } from 'react-router'
+import { useExplorerLocation, useExplorerNavigate } from './navigation/useExplorerLocation.ts'
 import { useStreetView, type StreetViewController } from '../street-view/useStreetView'
 import { StreetViewPanel } from '../street-view/StreetViewPanel'
 import { isMobileViewport, useMobileViewport } from './components/useMobileViewport'
 import { COMPLEX_MARKER_HEIGHT } from '../maps/naver/complexMarkerButton'
-import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
-import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
+import type { DetailEntryPoint } from './analytics/useProductDetailAnalytics'
 import NaverMap, {
   type NaverMapAggregateMarker,
   type NaverMapCameraTarget,
@@ -72,6 +72,13 @@ import { HousingComplexSummarySheet } from './components/HousingComplexSummarySh
 import { readRecentComplexPreview, withRecentComplexPreview } from './navigation/mobileDetailHistory.ts'
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
+import { ConditionListBanner } from './announcements/ConditionListBanner'
+import { AnnouncementPhaseTabs } from './announcements/AnnouncementPhaseTabs'
+import { useConditionListResults } from './announcements/useConditionListResults'
+import { listResultText } from './presentation/comparisonPresentation'
+import { useConditions } from '../user/conditions/ConditionsContext'
+import type { ListConditionResult } from '../user/conditions/conditionsModel'
+import { Button } from '../design-system/components/Button'
 import {
   parseAnnouncementSearchFilters,
   parseComplexSearchFilters,
@@ -89,6 +96,7 @@ import { useCurrentLocation } from './map/useCurrentLocation.ts'
 import { CurrentLocationControl } from './map/CurrentLocationControl.tsx'
 import type {
   AnnouncementDetail,
+  AnnouncementListItem,
   ComplexDetail,
   MapComplex,
 } from './model/publicHousing.ts'
@@ -98,6 +106,7 @@ import {
   parseDetailLocation,
   setAnnouncementIdQuery,
   setComplexIdQuery,
+  toDetailPathLocation,
 } from './navigation/detailLocation.ts'
 import {
   clearMapLocationQuery,
@@ -198,10 +207,10 @@ export function PublicHousingExplorer({
   searchRepository,
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
-  const location = useLocation()
+  const location = useExplorerLocation()
   const mypageReturn = myPageReturnPath(location.state)
   const markerHoverAnalytics = useMarkerHoverAnalytics()
-  const navigate = useNavigate()
+  const navigate = useExplorerNavigate()
   const navigationType = useNavigationType()
   const mobile = useMobileViewport()
   const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
@@ -231,7 +240,8 @@ export function PublicHousingExplorer({
     params.set('mapLat', String(viewport?.center.latitude ?? mapCameraTarget.latitude))
     params.set('mapLng', String(viewport?.center.longitude ?? mapCameraTarget.longitude))
     params.set('mapZoom', String(viewport?.zoom ?? mapCameraTarget.zoom))
-    explorerReturn.current = location.pathname + '?' + params.toString() + location.hash
+    const publicLocation = toDetailPathLocation({ pathname: location.pathname, search: `?${params}` })
+    explorerReturn.current = publicLocation.pathname + publicLocation.search + location.hash
   }, [explorerReturn, location.pathname, location.search, location.hash, viewport, mapCameraTarget])
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)
@@ -410,15 +420,6 @@ export function PublicHousingExplorer({
     }
     setIntegratedSearchActive(active)
   }, [closeStreetView, cancelCurrentLocation])
-  const prepareDetailVisit = useHousingAnalytics({
-    detailLocation,
-    readyComplexId: !showingComplexSummary && complexDetail.status === 'ready'
-      && complexDetail.detail?.complexId === complexDetail.complexId
-      ? complexDetail.complexId : null,
-    readyAnnouncementId: announcementDetail.status === 'ready'
-      && announcementDetail.detail?.announcementId === announcementDetail.announcementId
-      ? announcementDetail.announcementId : null,
-  })
   const { prepare: prepareProductDetail, action: trackDetailAction } = useProductDetailAnalytics({
     detailLocation,
     readyComplexId: !showingComplexSummary && complexDetail.status === 'ready'
@@ -572,6 +573,70 @@ export function PublicHousingExplorer({
     announcementFilters,
     announcementFiltersKey,
   )
+  const conditions = useConditions()
+  // 접수마감 공고는 지원할 수 없으니 내 조건과 비교하지 않는다.
+  const announcementClosed = announcementFilters.closed === true
+  const conditionList = useConditionListResults(
+    announcementClosed ? NO_ANNOUNCEMENTS : announcementResults.state.items, announcementFilters.regionCode)
+  const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
+
+  // 데스크톱에서 공고 상세 주소로 처음 들어오면 그 공고가 보이는 목록 탭(모집 중·접수마감)을 펼친다.
+  // 탭은 상세 응답의 listPhase(백엔드가 목록과 같은 기준으로 판정)를 따르고, 응답 뒤에 한 번만 적용한다.
+  const entryAnnouncementRef = useRef(initialDetail.kind === 'announcement' && listPanelMode !== 'collapsed'
+    ? initialDetail.announcementId
+    : null)
+  const scrollToSelectedAnnouncementRef = useRef(false)
+  const entryTabAppliedRef = useRef(false)
+  useEffect(() => {
+    const entryId = entryAnnouncementRef.current
+    if (entryId === null) return
+    if (detailLocation.kind !== 'announcement' || detailLocation.announcementId !== entryId) {
+      entryAnnouncementRef.current = null
+      return
+    }
+    if (announcementDetail.announcementId !== entryId || announcementDetail.status === 'loading') return
+    const phase = announcementDetail.detail?.listPhase ?? 'NONE'
+    // 그사이 사용자가 목록을 직접 열었거나 접었으면 건드리지 않는다.
+    if (announcementDetail.status !== 'ready' || phase === 'NONE'
+      || announcementListRequested || listPanelMode === 'collapsed') {
+      entryAnnouncementRef.current = null
+      return
+    }
+    const closed = phase === 'CLOSED'
+    if (announcementClosed !== closed) {
+      // 탭을 주소에 먼저 반영하고 다음 렌더에서 목록을 연다. 다른 탭을 먼저 불러오지 않게 한다.
+      // 반영되지 않으면(다시 이 분기에 오면) 한 번만 시도하고 멈춘다.
+      if (entryTabAppliedRef.current) {
+        entryAnnouncementRef.current = null
+        return
+      }
+      entryTabAppliedRef.current = true
+      const nextSearch = setAnnouncementSearchFilters(new URLSearchParams(location.search),
+        withAnnouncementPhase(announcementFilters, closed))
+      navigate({ hash: location.hash, pathname: location.pathname, search: toSearchString(nextSearch) },
+        { replace: true, state: location.state })
+      return
+    }
+    entryAnnouncementRef.current = null
+    setActiveResultTab('announcements')
+    setAnnouncementListRequested(true)
+    setListPanelMode('open')
+    scrollToSelectedAnnouncementRef.current = true
+  }, [announcementClosed, announcementDetail, announcementFilters, announcementListRequested, detailLocation,
+    listPanelMode, location.hash, location.pathname, location.search, location.state, navigate])
+  // 첫 페이지에 그 공고가 있으면 선택된 카드로 스크롤한다. 뒤 페이지는 이어 불러오지 않는다.
+  useEffect(() => {
+    if (!scrollToSelectedAnnouncementRef.current || announcementResults.state.status !== 'ready') return
+    scrollToSelectedAnnouncementRef.current = false
+    announcementResultsScrollRef.current?.querySelector('[aria-current="true"]')
+      ?.scrollIntoView?.({ block: 'nearest' })
+  }, [announcementResults.state.status, announcementResults.state.items])
+  const [onlyMatched, setOnlyMatched] = useState(false)
+  const filteringMatched = onlyMatched && conditionsCompared && !announcementClosed
+  const toggleMatched = useCallback(() => {
+    if (conditionsCompared) setOnlyMatched((current) => !current)
+    else conditions.openNudge('list')
+  }, [conditions, conditionsCompared])
   const updateAnnouncementViewCount = announcementResults.updateViewCount
   const loadMoreAnnouncements = announcementResults.loadMore
 
@@ -911,7 +976,6 @@ export function PublicHousingExplorer({
     const nextSearch = kind === 'complexes'
       ? setComplexIdQuery(currentSearch, id)
       : setAnnouncementIdQuery(currentSearch, id)
-    prepareDetailVisit(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
     prepareProductDetail(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint, hover)
     navigate({
       hash: location.hash,
@@ -929,7 +993,6 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     mypageReturn,
-    prepareDetailVisit,
     prepareProductDetail,
     listPanelMode,
     mobile,
@@ -945,7 +1008,6 @@ export function PublicHousingExplorer({
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
-    trackAppliedFilters('complex', currentSearch, nextSearch)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -968,7 +1030,6 @@ export function PublicHousingExplorer({
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
-    trackAppliedFilters('announcement', currentSearch, nextSearch)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -1100,13 +1161,12 @@ export function PublicHousingExplorer({
     const nextSearch = previous.kind === 'complex'
       ? setComplexIdQuery(query, previous.id)
       : setAnnouncementIdQuery(query, previous.id)
-    prepareDetailVisit(previous.kind, previous.id, 'history')
     prepareProductDetail(previous.kind, previous.id, 'history')
     navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(nextSearch) }, {
       replace: true,
       state: popDetailHistoryState(location.state),
     })
-  }, [detailReturnFocusStack, location, navigate, prepareDetailVisit, prepareProductDetail, closeStreetView, trackDetailAction])
+  }, [detailReturnFocusStack, location, navigate, prepareProductDetail, closeStreetView, trackDetailAction])
 
   function expandComplexSummary() {
     if (!recentPreview || !showingComplexSummary) return
@@ -1312,15 +1372,6 @@ export function PublicHousingExplorer({
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     cancelCurrentLocation()
-    if (item.type === 'COMPLEX') {
-      trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
-    } else if (item.type === 'ANNOUNCEMENT') {
-      trackEvent('select_search_result', { result_type: 'announcement', announcement_id: item.id })
-    } else if (item.type === 'REGION') {
-      trackEvent('select_search_result', { result_type: 'region' })
-    } else if (item.type === 'SUBWAY_STATION') {
-      trackEvent('select_search_result', { result_type: 'subway_station' })
-    }
     if (item.type === 'SUBWAY_STATION' || (item.type === 'REGION' && item.regionCode === null)) {
       if (item.latitude !== null && item.longitude !== null) {
         pendingDetailCameraRef.current = null
@@ -1417,13 +1468,21 @@ export function PublicHousingExplorer({
       selectedSearchComplex,
     ],
   )
-  const resultCount = resultCountLabel(
+  const baseResultCount = resultCountLabel(
     activeResultTab,
     complexResults,
     announcementResults.state,
     recentComplexes.length,
 
   )
+  const comparingList = conditionsCompared && (conditionList.status === 'loading' || conditionList.rechecking)
+  const resultCount = filteringMatched && activeResultTab === 'announcements'
+    ? conditionList.status === 'error'
+      ? { accessibleLabel: '신청자격 조회 실패', visibleLabel: '신청자격 조회 실패' }
+      : comparingList
+      ? { accessibleLabel: '지원 가능 공고 확인 중', visibleLabel: '지원 가능 확인 중' }
+      : { accessibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건`, visibleLabel: `불러온 공고 중 지원 가능 ${conditionList.matchedIds.size}건` }
+    : baseResultCount
   const complexFilterResultCountLabel = mapFilterResultCountLabel({
     aggregateMapActive,
     requestBlocked,
@@ -1741,20 +1800,37 @@ export function PublicHousingExplorer({
               hidden={activeResultTab !== 'announcements'}
             >
               <div className="housing-results__body">
+                <AnnouncementPhaseTabs
+                  closed={announcementClosed}
+                  panelId={ANNOUNCEMENT_LIST_PANEL_ID}
+                  onChange={(closed) => applyAnnouncementFilters(withAnnouncementPhase(announcementFilters, closed))}
+                />
+                {!announcementClosed && <ConditionListBanner items={announcementResults.state.items} results={conditionList.results} loading={comparingList} error={conditionList.status === 'error'} onRetry={conditionList.retry}
+                  filtering={filteringMatched} onToggleFilter={toggleMatched} />}
                 <AnnouncementFilterPanel
                   filters={announcementFilters}
                   onApply={applyAnnouncementFilters}
                   regionRepository={regionRepository}
                   resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
+                  eligibilityFilter={conditions.mode === 'disabled' || announcementClosed ? undefined : { checked: filteringMatched, onToggle: toggleMatched }}
                 />
                 <div
                   ref={announcementResultsScrollRef}
+                  id={ANNOUNCEMENT_LIST_PANEL_ID}
+                  role="tabpanel"
+                  aria-labelledby={`${ANNOUNCEMENT_LIST_PANEL_ID}-tab-${announcementClosed ? 'closed' : 'open'}`}
                   className="housing-results__scroll"
                   aria-busy={announcementResults.state.status === 'loading'
                     || announcementResults.state.status === 'loading-more'}
                 >
                   <AnnouncementResultContent
                     state={announcementResults.state}
+                    closed={announcementClosed}
+                    conditionResults={conditionsCompared ? conditionList.results : null}
+                    matchedIds={filteringMatched ? conditionList.matchedIds : null}
+                    comparing={filteringMatched && comparingList}
+                    comparisonError={filteringMatched && conditionList.status === 'error'}
+                    onComparisonRetry={conditionList.retry}
                     selectedAnnouncementId={selectedAnnouncementId}
                     onSelect={openAnnouncementDetail}
                     onCardRef={(announcementId, node) => {
@@ -1766,6 +1842,8 @@ export function PublicHousingExplorer({
                     }}
                     onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
                   />
+                  {filteringMatched && announcementResults.state.hasNext && <Button size="sm" variant="secondary" onClick={loadMoreAnnouncements}
+                    disabled={announcementResults.state.status === 'loading-more'}>다음 공고도 불러와 확인하기</Button>}
                   {announcementResults.state.items.length > 0 && announcementResults.state.status !== 'error' && (
                     <div ref={announcementListEndRef} className="housing-results__list-end" role="status" aria-atomic="true">
                       {announcementResults.state.status === 'loading-more'
@@ -1913,12 +1991,27 @@ function AnnouncementDetailLayer({ returnToMyPage, state, onClose, onOpenComplex
 
 function AnnouncementResultContent({
   state,
+  closed,
+  conditionResults,
+  matchedIds,
+  comparing,
+  comparisonError,
+  onComparisonRetry,
   selectedAnnouncementId,
   onSelect,
   onCardRef,
   onRetry,
 }: {
   state: AnnouncementResultsState
+  /** 접수마감 탭 */
+  closed: boolean
+  conditionResults: ReadonlyMap<string, ListConditionResult> | null
+  /** 지원 가능 공고만 볼 때 남길 공고 */
+  matchedIds: ReadonlySet<string> | null
+  /** 지원 가능 공고만 보는 중 새 목록을 비교하는 중 */
+  comparing: boolean
+  comparisonError: boolean
+  onComparisonRetry: () => void
   selectedAnnouncementId: string | null
   onSelect: (announcementId: string) => void
   onCardRef: (announcementId: string, node: HTMLElement | null) => void
@@ -1948,7 +2041,12 @@ function AnnouncementResultContent({
   }
 
   if (state.status === 'ready' && state.items.length === 0) {
-    return (
+    return closed ? (
+      <div className="housing-results__state" role="status">
+        <strong>일정이 남은 마감 공고가 없어요.</strong>
+        <span>마지막 일정 후 7일이 지난 공고는 검색에서 찾을 수 있어요.</span>
+      </div>
+    ) : (
       <div className="housing-results__state" role="status">
         <strong>현재 확인되는 공고가 없어요.</strong>
         <span>새 공고가 등록되면 이 목록에서 확인할 수 있어요.</span>
@@ -1956,13 +2054,27 @@ function AnnouncementResultContent({
     )
   }
 
+  if (comparisonError) return <RequestError title="신청자격을 불러오지 못했어요" onRetry={onComparisonRetry} />
+
+  if (comparing) {
+    return (
+      <div className="housing-results__state" role="status">
+        <strong>내 조건과 비교하고 있어요.</strong>
+        <span>지원 가능 공고를 찾고 있어요.</span>
+      </div>
+    )
+  }
+  const items = matchedIds ? state.items.filter((announcement) => matchedIds.has(announcement.announcementId)) : state.items
+  if (matchedIds && items.length === 0 && state.status !== 'loading-more') return <NoMatchedAnnouncements />
+
   return (
     <>
       <ul className="housing-results__list">
-        {state.items.map((announcement) => (
+        {items.map((announcement) => (
           <li key={announcement.announcementId}>
             <HousingAnnouncementCard
               announcement={toHousingAnnouncementCardData(announcement)}
+              conditionLine={conditionLineOf(conditionResults?.get(announcement.announcementId))}
               selected={selectedAnnouncementId === announcement.announcementId}
               cardRef={(node) => onCardRef(announcement.announcementId, node)}
               onSelect={onSelect}
@@ -1975,6 +2087,32 @@ function AnnouncementResultContent({
       )}
     </>
   )
+}
+
+const ANNOUNCEMENT_LIST_PANEL_ID = 'announcement-list'
+const NO_ANNOUNCEMENTS: readonly AnnouncementListItem[] = []
+
+function withAnnouncementPhase(
+  filters: AnnouncementSearchFilters,
+  closed: boolean,
+): AnnouncementSearchFilters {
+  if (closed) return { ...filters, closed: true }
+  const { closed: _closed, ...open } = filters
+  return open
+}
+
+function conditionLineOf(result: ListConditionResult | undefined) {
+  if (!result) return null
+  const text = listResultText(result)
+  if (!text) return null
+  return { status: result.best?.status ?? 'NOT_EVALUATED' as const, text }
+}
+
+function NoMatchedAnnouncements() {
+  return <div className="housing-results__state" role="status">
+    <strong>불러온 공고에는 선택 지역의 지원 가능한 모집 선택지가 없어요</strong>
+    <span>현재 불러온 목록에만 적용한 결과예요. 필터를 해제해 다른 공고도 확인해 주세요.</span>
+  </div>
 }
 
 function resultCountLabel(

@@ -174,5 +174,24 @@ public final class SupplyCorrection {
             @PositiveOrZero @Digits(integer = 18, fraction = 0) @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal deposit,
             @PositiveOrZero @Digits(integer = 18, fraction = 0) @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal rent,
             @PositiveOrZero @Digits(integer = 18, fraction = 0) @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal convertedDeposit,
-            @Size(max = 255) @Pattern(regexp = "(?s).*\\S.*") String condition) { }
+            @Size(max = 255) @Pattern(regexp = "(?s).*\\S.*") String condition,
+            @Valid TargetCountGroup householdCountGroup,
+            @Valid TargetCountGroup reserveCountGroup) {
+        /** 공통 모집수를 빼고 나머지 값만 같은 대상. 묶음 정리를 하기 전에 대상 값을 먼저 고칠 때 쓴다. */
+        public Target withoutCountGroups() {
+            return withCountGroups(null, null);
+        }
+
+        public Target withCountGroups(TargetCountGroup household, TargetCountGroup reserve) {
+            return new Target(id, key, excluded, protectedValues, displayOrder, target, supplyRank, householdCount,
+                    reserveCount, deposit, rent, convertedDeposit, condition, household, reserve);
+        }
+    }
+
+    /**
+     * 같은 공급행의 대상 여럿이 함께 쓰는 모집수 하나(householdCountGroup은 공급세대수, reserveCountGroup은 예비자수).
+     * 같은 key를 가진 대상끼리 한 묶음이고, 수는 대상마다 같은 값으로 보낸다. 저장된 묶음은 "group:{id}", 새 묶음은 화면이 정한 key다.
+     * 묶인 대상은 그 종류의 칸(householdCount·reserveCount)을 비운다. 공급행끼리의 공통 모집 묶음(Row.groupId)과는 다르다.
+     */
+    public record TargetCountGroup(@NotBlank @Size(max = 64) String key, @NotNull @PositiveOrZero Integer count) { }
 }

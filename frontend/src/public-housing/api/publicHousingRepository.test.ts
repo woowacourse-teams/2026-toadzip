@@ -7,6 +7,7 @@ import {
   decodeComplexPageEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
+import { toAnnouncementPage } from './publicHousingMapper.ts'
 import {
   createHttpPublicHousingRepository,
   PublicHousingHttpError,
@@ -113,6 +114,7 @@ const COMPLEX_DETAIL = {
           deposit: 0,
           monthlyRent: null,
           convertibleDeposit: null,
+          postedDate: '2026-08-20',
         },
       ],
     },
@@ -431,6 +433,21 @@ describe('공공주택 HTTP repository', () => {
       ),
     ).rejects.toBeInstanceOf(RangeError)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['RECRUITING', 'RECRUITING'],
+    ['CLOSED', 'CLOSED'],
+    ['NONE', 'NONE'],
+    ['UNKNOWN', 'NONE'],
+    [undefined, 'NONE'],
+  ])('공고 상세의 목록 탭 %s를 %s로 읽는다', async (listPhase, expected) => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: { ...ANNOUNCEMENT_DETAIL, listPhase } }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+
+    const detail = await repository.findAnnouncementDetail('42', new AbortController().signal)
+
+    expect(detail.listPhase).toBe(expected)
   })
 
   it('공고 상세의 full DTO를 보존하고 모든 중첩 ID를 canonical string으로 변환한다', async () => {
@@ -986,6 +1003,17 @@ describe('공공주택 응답 계약', () => {
     } })).toThrow(PublicHousingContractError)
   })
 
+  it('공고 목록 항목의 결과 발표일을 읽고 이전 API처럼 없으면 null로 둔다', () => {
+    const page = { nextCursor: null, hasNext: false }
+    expect(toAnnouncementPage(decodeAnnouncementPageEnvelope({ data: { ...page,
+      items: [{ ...ANNOUNCEMENT_ITEM, winnerAnnouncementAt: '2027-02-24' }] } })).items[0]?.winnerAnnouncementAt)
+      .toBe('2027-02-24')
+    expect(toAnnouncementPage(decodeAnnouncementPageEnvelope({ data: { ...page, items: [ANNOUNCEMENT_ITEM] } }))
+      .items[0]?.winnerAnnouncementAt).toBeNull()
+    expect(() => decodeAnnouncementPageEnvelope({ data: { ...page,
+      items: [{ ...ANNOUNCEMENT_ITEM, winnerAnnouncementAt: '2027.02.24' }] } })).toThrow(PublicHousingContractError)
+  })
+
   it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {
     const decoded = decodeAnnouncementPageEnvelope({
       data: { items: [], nextCursor: null, hasNext: false },
@@ -1097,6 +1125,28 @@ describe('공공주택 응답 계약', () => {
     } })
     expect(decoded.housingTypes[0].basicRentalCondition).toEqual(basicRentalCondition)
     expect(decoded.housingTypes[0].currentSupplyConditions).toEqual(COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions)
+  })
+
+  it('현재 공급 조건의 공고 게시일을 보존하고 게시일이 없는 이전 응답은 null로 읽는다', () => {
+    const { postedDate: _postedDate, ...previousCondition } = COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions[0]
+    const decoded = decodeComplexDetailEnvelope({ data: COMPLEX_DETAIL })
+    const previous = decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{ ...COMPLEX_DETAIL.housingTypes[0], currentSupplyConditions: [previousCondition] }],
+    } })
+
+    expect(decoded.housingTypes[0].currentSupplyConditions[0].postedDate).toBe('2026-08-20')
+    expect(previous.housingTypes[0].currentSupplyConditions[0].postedDate).toBeNull()
+  })
+
+  it.each(['2026.08.20', 20260820])('잘못된 공고 게시일 %s는 API 경계에서 거절한다', (postedDate) => {
+    expect(() => decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{
+        ...COMPLEX_DETAIL.housingTypes[0],
+        currentSupplyConditions: [{ ...COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions[0], postedDate }],
+      }],
+    } })).toThrow(PublicHousingContractError)
   })
 
   it.each(['185500', 0.5, -1, Number.MAX_SAFE_INTEGER + 1])('잘못된 기본 월 임대료 %s는 API 경계에서 거절한다', (monthlyRent) => {

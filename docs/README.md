@@ -17,12 +17,13 @@ docs/
 │   ├── announcements/          # 공고 기능·조회수 집계
 │   ├── authentication/         # 소셜 로그인·계정 생명주기
 │   ├── documents/              # 공고 첨부파일·다운로드·문서 뷰어
+│   ├── eligibility/            # 공고 구조화·입력·신청자격 판정·저장·호환
 │   ├── ingest/                 # 수집·정제·매칭·원천 보존
 │   ├── notifications/          # 알림 신청·생성·전달·사용자 화면
 │   ├── privacy/                # 동의·수집 제어·저장·제거 경계
 │   └── search/                 # 검색·지도·지역 데이터·거리뷰
 ├── operations/                 # 배포·관측·점검·복구 절차
-│   ├── analytics/              # GA4·PostHog 설정·이벤트·지표
+│   ├── analytics/              # PostHog 설정·이벤트·지표
 │   ├── database/               # DB 서버·Flyway·전환·복구
 │   └── ingest/                 # 수집 중지·잠금 복구·품질·성능 점검
 ├── fixtures/                   # 문서·테스트가 사용하는 공고 JSON 예시

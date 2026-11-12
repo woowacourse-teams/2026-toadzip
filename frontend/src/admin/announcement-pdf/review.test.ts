@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { ghFrame, ghSameArea, scenario, separateHansville } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction } from './extraction'
-import { blankTarget } from '../supply/supplyCorrectionApi'
+import { blankRow, blankTarget } from '../supply/supplyCorrectionApi'
 import { createdTypeName, foldSameHousingType, renamedTypeName } from './subtypes'
+import { announcementHousingType } from './areas'
 import { describeRow } from './matching'
 import { areaOnlyTypeName, createRowReview, housingTypePrice, leftoverRows, linkedHousingTypeId, pendingPrice, foreignCharacters, shownDateTime, pendingChanges, assembleReview, applicableCells, chooseCellValue, createReview, editCell, pendingCell, pendingItems, rebaseReview, remapSchedule, remapTarget, rowStatus, serverFieldError, serverFieldsError, pendingSubtypes, validCellValue } from './review'
 
@@ -29,7 +30,7 @@ it('대상 조건이 달라도 모집수를 함께 쓰는 한스빌의 두 주�
   expect(request.document.announcement.rentalType).toBe('NATIONAL_RENTAL')
 })
 
-it('공통 수량과 겹친 대상별 수량은 미확인으로 남겨 대상별 값으로 저장하지 않는다', () => {
+it('한 공급행의 대상끼리 함께 쓰는 수는 대상마다 나누지 않고 공통 수 하나로 저장하며, 확인 필요로 남기지 않는다', () => {
   const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
   input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년', reserveCount: 20 })
   input.data.supplyRows[0].targets.forEach(target => { target.reserveCount = 20 })
@@ -38,14 +39,20 @@ it('공통 수량과 겹친 대상별 수량은 미확인으로 남겨 대상별
   if (!parsed.ok) throw new Error(parsed.error)
   const { workspace, housing } = scenario('hansville')
   const review = createReview(parsed.value, workspace, housing)
-  expect(review.rows[0].targets.map(target => target.cells.find(cell => cell.field === 'reserveCount')?.state)).toEqual(['unresolved', 'unresolved'])
+  const reserve = review.rows[0].targets.map(target => target.cells.find(cell => cell.field === 'reserveCount')!)
+  expect(reserve.map(cell => cell.state)).toEqual(['notApplicable', 'notApplicable'])
+  expect(reserve[0].note).toContain('공통 예비 20명으로 저장합니다')
+  expect(pendingItems(review, true).filter(item => item.id.includes('reserveCount'))).toEqual([])
   // 행 모집수를 함께 적지 않은 두 주택형(면적이 다름)은 접지 않는다.
   expect(review.rows).toHaveLength(2)
   review.rows[0].proposal.destination = workspace.supply.rows[0].key
   review.rows[1].include = false
   const request = assembleReview(review, workspace, evidence)
-  expect(request.correction.rows.find(row => row.id === 90)?.targets.map(target => target.reserveCount)).toEqual([null, null])
-  expect(review.extraction.sharedCounts[0].count).toBe(20)
+  const targets = request.correction.rows.find(row => row.id === 90)!.targets
+  expect(targets.map(target => [target.reserveCount, target.reserveCountGroup])).toEqual([[null, { key: 'pdf:0', count: 20 }], [null, { key: 'pdf:0', count: 20 }]])
+  // 한 대상을 빼면 혼자 남은 대상의 수는 공통 수가 아니라 비워 둔다.
+  review.rows[0].targets[1].destination = 'exclude'
+  expect(assembleReview(review, workspace, evidence).correction.rows.find(row => row.id === 90)!.targets.map(target => target.reserveCountGroup ?? null)).toEqual([null])
 })
 
 it('지번을 모르는 단지의 공급행은 소재지 PNU 없이 저장하고 문서 PNU도 비운다', () => {
@@ -805,6 +812,22 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
     expect(review.rows[0].proposal).toMatchObject({ destination: workspace.supply.rows[0].key, needsConfirmation: false })
   })
 
+  it('단지가 둘 이상인 공고에서 단지명이 빈 행은 신청형이 같아도 접지 않는다', () => {
+    // 광주선운2: 블록 제목 아래 표라 단지명을 확인하지 못하면 A-1·A-3블록의 55B-1이 같은 단지의 같은 신청형으로 보인다.
+    const rows = [pdfRow('', '55B-1 (주거약자)', 55.57, null, [target('신혼부부·한부모가족')]), pdfRow('', '55B-1 (주거약자)', 55.77, null, [target('신혼부부·한부모가족')])]
+    const twoBlocks = extract(rows)
+    twoBlocks.complexes = ['광주선운2 A-1블록', '광주선운2 A-3블록'].map(name => ({ name, address: null, totalHouseholdCount: null, parkingCount: null }))
+    expect(foldSameHousingType(twoBlocks).supplyRows).toHaveLength(2)
+    // 단지가 하나뿐인 공고(단지명 열 없는 표)는 지금처럼 같은 신청형을 접는다.
+    expect(foldSameHousingType(extract(rows)).supplyRows).toHaveLength(1)
+    // 행 모집수 하나를 함께 쓰는 단지명 빈 행도 단지가 둘 이상이면 어느 단지끼리인지 몰라 접지 않는다(그 공통 수는 저장하지 않는다).
+    const shared = extract([pdfRow('', '26A', 26.01, null, [target('일반')]), pdfRow('', '26B', 26.1, null, [target('일반')])],
+      [{ paths: ['supplyRows[0].totalSupplyHouseholdCount', 'supplyRows[1].totalSupplyHouseholdCount'], count: 4, page: 3, quote: '26A 26B 4' }])
+    expect(foldSameHousingType(shared).supplyRows).toHaveLength(1)
+    shared.complexes = twoBlocks.complexes
+    expect(foldSameHousingType(shared).supplyRows).toHaveLength(2)
+  })
+
   it('같은 면적이어도 신청형이 다르면(26A·26B(주거약자)) 접지 않고, 신청자 표기만 다른 같은 신청형(26A·26A(고령자))만 공급행 하나로 접는다', () => {
     const folded = foldSameHousingType(extract([pdfRow('A단지', '26A', 26.0100, 3, [target('일반')]), pdfRow('A단지', '26B(주거약자)', 26.01, 2, [target('주거약자')]),
       pdfRow('A단지', '26A [고령자]', 26.01, 4, [target('고령자')]), pdfRow('B단지', '26A', 26.01, 5, [target('일반')])]))
@@ -943,7 +966,7 @@ it('미확정 공고의 필수 일정·유형이 비면 확인 필요로 표시�
   workspace.detail.data.recruitmentType = null
   review.metadata = review.metadata.map(cell => ['applicationStartDate', 'applicationEndDate', 'winnerAnnouncementDate'].includes(cell.field)
     ? { ...cell, before: null, selected: false } : cell)
-  const release = { rentalType: '', recruitmentType: '', publish: false }
+  const release = { rentalType: '', recruitmentType: '' }
   expect(pendingItems(review, true, workspace, release).map(item => item.id)).toEqual(expect.arrayContaining([
     'cell:announcement.applicationStartDate', 'cell:announcement.applicationEndDate', 'cell:announcement.winnerAnnouncementDate',
     'release:rentalType', 'release:recruitmentType',
@@ -1081,11 +1104,42 @@ describe('접수처 여러 곳', () => {
     expect(pendingChanges(dropped).filter(change => change.section === '접수처' && change.cell.label === '접수처 삭제')).toHaveLength(1)
   })
 
-  it('방식은 같아도 이름이 다른 기존 접수처와는 짝짓지 않아 다른 접수처의 주소·연락처가 섞이지 않는다', () => {
+  it('방식이 같아도 주소가 다른 기존 접수처와는 짝짓지 않아 다른 접수처의 주소·연락처가 섞이지 않는다', () => {
     const lh = { name: 'LH 접수처', method: 'VISIT', address: '충주시 2', contact: '043-000-0000', url: null, guidance: null }
     const { review, workspace } = withPlaces([lh])
     expect(review.reception.map(entry => [entry.extracted, entry.existing])).toEqual([[null, 0], [0, null], [1, null], [2, null]])
     expect(assembleReview(review, workspace, evidence).document.receptionPlaces).toEqual([lh, online, visitA, visitB])
+  })
+
+  it('이름이 없는 LH 현장 접수처도 도로명·건물번호가 같은 PDF 접수처와 짝짓고, 예전 보정이 따로 더한 같은 곳은 중복으로 기본에서 뺀다', () => {
+    const lh = { name: '관리사무소', method: 'VISIT', address: '익산시 목천로 30-14(한스빌) 관리사무소', contact: '063-000-0001', url: null, guidance: '* 자세한 사항은 공고문을 확인하시기 바랍니다.' }
+    const pdfVisit = { ...visitA, address: '익산시 목천로 30-14' }
+    const { review, workspace } = withPlaces([lh])
+    const placed = createReview({ ...review.extraction, receptionPlaces: [online, pdfVisit] }, workspace, scenario('gongju').housing)
+    expect(placed.reception.map(entry => [entry.extracted, entry.existing, entry.include])).toEqual([[1, 0, true], [0, null, true]])
+    // 지금 주소가 더 자세하면(괄호 속 단지명) 기존 주소를 기본으로 둔다. 이름은 공고문 표기로 바꾼다.
+    const visit = placed.reception[0].cells
+    expect(visit.find(cell => cell.field === 'name')).toMatchObject({ value: '익산 견본주택', selected: true })
+    expect(visit.find(cell => cell.field === 'address')).toMatchObject({ selected: false, note: '현재값이 더 자세합니다.' })
+    expect(assembleReview(placed, workspace, evidence).document.receptionPlaces).toHaveLength(2)
+
+    // 예전 보정이 LH 접수처(안내문이 이름이 된 것) 곁에 같은 곳을 따로 더해 둔 공고는, PDF와 짝지은 접수처를 남기고 LH 쪽을 중복으로 뺀다.
+    const stale = { ...lh, name: '* 자세한 사항은 반드시 공고문을 확인하시기 바랍니다.' }
+    const doubled = withPlaces([stale, { ...pdfVisit, guidance: null }])
+    const again = createReview({ ...doubled.review.extraction, receptionPlaces: [online, pdfVisit] }, doubled.workspace, doubled.housing)
+    expect(again.reception.map(entry => [entry.extracted, entry.existing, entry.include, entry.duplicateOf ?? null])).toEqual([[null, 0, false, 1], [1, 1, true, null], [0, null, true, null]])
+    expect(assembleReview(again, doubled.workspace, evidence).document.receptionPlaces).toEqual([pdfVisit, online])
+    // PDF에 현장 접수처가 없어 둘 다 짝이 없으면 앞 접수처를 남기고 뒤 접수처만 중복으로 뺀다.
+    const unpaired = createReview({ ...doubled.review.extraction, receptionPlaces: [online] }, doubled.workspace, doubled.housing)
+    expect(unpaired.reception.filter(entry => entry.extracted === null).map(entry => [entry.existing, entry.include, entry.duplicateOf ?? null])).toEqual([[0, true, null], [1, false, 0]])
+  })
+
+  it('워커가 주소만 있는 현장 접수처를 인터넷 접수로 내도 현장 접수로 읽어 같은 곳인 기존 접수처와 짝짓는다', () => {
+    const lh = { name: 'LH 현장 접수처', method: 'VISIT', address: '경기도 성남시 분당구 성남대로 54번길 3', contact: null, url: null, guidance: null }
+    const { review, workspace, housing } = withPlaces([lh])
+    const placed = createReview({ ...review.extraction, receptionPlaces: [{ ...visitB, method: 'ONLINE', name: 'LH경기남부지역본부 1층 대강당', address: '경기도 성남시 분당구 성남대로54번길 3' }] }, workspace, housing)
+    expect(placed.reception.map(entry => [entry.extracted, entry.existing])).toEqual([[0, 0]])
+    expect(placed.reception[0].cells.find(cell => cell.field === 'method')).toMatchObject({ value: 'VISIT', state: 'same' })
   })
 
   it('최신값으로 다시 비교해도 빼기 선택은 같은 접수처에만 남는다', () => {
@@ -1138,4 +1192,33 @@ describe('접수처 여러 곳', () => {
     expect(upgraded.extraction.evidence.some(item => item.path.startsWith('receptionPlace.') || item.path === 'receptionPlace')).toBe(false)
     expect(upgradeDraftReview(upgraded, workspace)).toBe(upgraded)
   })
+})
+
+it('주택타입 열이 없는 공고문의 병합 칸 이름이 면적이 다른 단지 주택타입과 같아도 면적이 같은 주택타입에 그대로 이어 그 값을 덮지 않는다', () => {
+  // 평택송화: 공고문 '46'(45.79㎡ 13호)을 단지 주택타입 46(46.22㎡ 253호)에 이어 그 값을 덮고 공급행 연결을 옮겼다. 다시 열면 새 공급행이 추천됐다.
+  const extraction = readExtraction(JSON.stringify({ data: { announcement: {}, receptionPlaces: [], schedules: [], unresolvedFields: [], supplyRows: [{
+    complexReference: { sourceComplexName: '평택송화' }, sourceHousingTypeName: '46', expectedMoveInMonth: null, totalSupplyHouseholdCount: null,
+    exclusiveArea: 45.79, supplyArea: 66.4399, constructedHouseholdCount: 13, sourceRow: null,
+    targets: [{ target: '전체', supplyRank: null, supplyHouseholdCount: null, reserveCount: 70, rentalDeposit: 17226000, monthlyRent: 208580, convertedDeposit: 25000000 }] }] },
+    sharedCounts: [], notApplicable: [], evidence: [{ path: 'supplyRows[0]', page: 3, quote: '평택송화 46 45.79 13 70' }] }))
+  if (!extraction.ok) throw new Error(extraction.error)
+  const row = { ...blankRow(1), id: 734, key: 'row:734', complexName: '평택송화', typeName: '46형', housingComplexId: 1290, housingComplexName: '평택송화주공아파트',
+    housingTypeId: 4216, householdCount: 70, exclusiveArea: 45.79, supplyArea: 66.4399 }
+  const { workspace } = scenario('gongju')
+  const pyeongtaek = { ...workspace, supply: { ...workspace.supply, rows: [row] } }
+  const housing = { 1290: [{ id: 4216, name: '45', exclusiveArea: 45.79, supplyArea: 66.4399, householdCount: 13 }, { id: 4217, name: '46', exclusiveArea: 46.22, supplyArea: 67.0638, householdCount: 253 }] }
+
+  const review = createReview(extraction.value, pyeongtaek, housing)
+
+  expect(review.rows[0].proposal.destination).toBe('row:734')
+  expect(review.rows[0].relinkTo).toBeUndefined()
+  const request = assembleReview(review, pyeongtaek, evidence)
+  expect(request.correction.rows.find(item => item.id === 734)?.housingTypeId).toBe(4216)
+
+  // 단지만 이어지고 주택타입이 비어 있는 행(LH 행)도 저장할 때 고르는 주택타입이 45다. 46을 새로 만들거나 46에 잇지 않는다.
+  const unlinked = { ...pyeongtaek, supply: { ...pyeongtaek.supply, rows: [{ ...row, housingTypeId: null }] } }
+  const saved = assembleReview(createReview(extraction.value, unlinked, housing), unlinked, evidence).correction.rows.find(item => item.id === 734)
+  expect([saved?.housingTypeId, saved?.newHousingType ?? null]).toEqual([4216, null])
+  // 공고문 면적과 0.1㎡ 미만으로 다른 같은 이름 주택타입은 표기 차이로 보고 그대로 잇는다.
+  expect(announcementHousingType([{ id: 1, name: '59D', exclusiveArea: 59.88 }, { id: 2, name: '59Ea', exclusiveArea: 59.87 }] as never, '59D', 59.87, [], false)?.id).toBe(1)
 })

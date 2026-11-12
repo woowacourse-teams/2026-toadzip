@@ -205,6 +205,16 @@ describe('PostHog privacy and identity boundary', () => {
     expect(analytics.sanitizeCapture(captured({}, '$autocapture'))).toBeNull()
   })
 
+  it('상세 주소에서도 수집하고 경로는 ID 없이 지도 화면으로 기록한다', async () => {
+    window.history.replaceState({}, '', '/complexes/17?mapZoom=12')
+    const analytics = await import('./productAnalytics')
+    expect(analytics.captureWebPageView('detail')).toBe(true)
+    await vi.dynamicImportSettled()
+    const [view] = sdk.capture.mock.calls.filter(([name]) => name === '$pageview')
+    expect(view[1].$pathname).toBe('/explore')
+    expect(analytics.sanitizeCapture(captured(view[1], '$pageview'))?.properties.$pathname).toBe('/explore')
+  })
+
   it('keeps pageview deduplication through a pause but clears it on withdrawal without replaying blocked visits', async () => {
     consentGate.allowed = false
     const analytics = await import('./productAnalytics')
@@ -309,7 +319,7 @@ describe('PostHog privacy and identity boundary', () => {
 const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<(reason?: 'pause' | 'reset' | 'context-change') => void>, listeners: [] as Array<() => void> }))
 vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed,
   consentStore: {
-    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-4' }, requiredScopeVersion: 'analytics-scope-4' } }),
     remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
     transition: () => { consentGate.allowed = false; consentGate.stops.forEach(stop => stop('context-change')); consentGate.listeners.forEach(listener => listener()) },
     refresh: async () => {},

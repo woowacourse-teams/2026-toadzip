@@ -215,7 +215,7 @@ describe('DataPipelineControl', () => {
     await screen.findByRole('article', { name: '현재 작업 단계' })
     view.rerender(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '3 단지 등록' }))
+    fireEvent.click(screen.getByRole('tab', { name: '3 신규 단지 등록' }))
     expect(screen.getByRole('button', { name: '대상 상태 확인' })).toBeDisabled()
     expect(screen.getByText(/한 번에 한 작업/)).toHaveAttribute('role', 'status')
     view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
@@ -472,7 +472,7 @@ describe('DataPipelineControl', () => {
 
   it('시작 응답과 상태 조회를 모두 잃으면 실행 잠금을 유지하며 재조회한다', async () => {
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(9))
+    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(10))
     apiMocks.startDataPipeline.mockRejectedValue(new Error('네트워크 연결이 끊겼습니다.'))
     apiMocks.getDataPipelineStatus.mockRejectedValue(new Error('상태를 조회하지 못했습니다.'))
 
@@ -668,8 +668,8 @@ describe('DataPipelineControl', () => {
     ))
     render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
     await act(async () => {})
-    fireEvent.click(screen.getByRole('tab', { name: '3 단지 등록' }))
-    expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: '3 신규 단지 등록' }))
+    expect(screen.getByRole('heading', { name: '신규 단지 등록' })).toBeVisible()
     expect(screen.queryByText('일부 실패')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '단지 저장 결과 확인' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: '2 주소·좌표 준비' }))

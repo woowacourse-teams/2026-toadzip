@@ -39,6 +39,7 @@ class AdminUserManagementControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.items[0].email").value("member@example.test"))
                 .andExpect(jsonPath("$.data.items[0].provider").value("GOOGLE"))
                 .andExpect(jsonPath("$.data.items[0].createdAt").value("2026-10-03T09:00:00"))
+                .andExpect(jsonPath("$.data.items[0].admin").value(false))
                 .andExpect(jsonPath("$.data.items[0].loginIdentifier").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].eligibilityInfo").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].places").doesNotExist())
@@ -243,5 +244,16 @@ class AdminUserManagementControllerIntegrationTest {
                 VALUES (:identifier, :email, :createdAt::timestamp) RETURNING id
                 """).param("identifier", identifier).param("email", email).param("createdAt", createdAt)
                 .query(Long.class).single();
+    }
+
+    @Test
+    void 목록과_상세는_관리자_여부를_함께_보인다() throws Exception {
+        long id = member("kakao:admin-flag", "admin@example.test", "2026-10-03T09:00:00");
+        jdbc.sql("UPDATE users SET admin = true WHERE id = :id").param("id", id).update();
+
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data.items[0].admin").value(true));
+        mockMvc.perform(get(ENDPOINT + "/" + id).with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data.admin").value(true));
     }
 }

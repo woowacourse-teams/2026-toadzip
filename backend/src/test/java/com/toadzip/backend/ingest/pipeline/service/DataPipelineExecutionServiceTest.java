@@ -196,7 +196,8 @@ class DataPipelineExecutionServiceTest {
         query.history(0, 20, "complex");
 
         verify(executionRepository).findByTypeIn(
-                eq(List.of(DataPipelineType.COMPLEX_COLLECTION, DataPipelineType.COMPLEX_REFINEMENT,
+                eq(List.of(DataPipelineType.COMPLEX_COLLECTION, DataPipelineType.COMPLEX_REGISTRATION,
+                        DataPipelineType.COMPLEX_REFINEMENT,
                         DataPipelineType.COMPLEX_SYNC)),
                 any()
         );
@@ -601,6 +602,78 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         verify(executionStateService, never()).recoverInterruptedBefore(any(), any(), any());
+    }
+
+    @Test
+    void 신규_단지_등록은_작업_완료를_기다리지_않고_접수하고_작업_종료까지_소유권과_실행자를_유지한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set, null);
+
+        var accepted = service.start(DataPipelineType.COMPLEX_REGISTRATION, "local-admin");
+
+        assertThat(accepted.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
+        assertThat(accepted.type()).isEqualTo(DataPipelineType.COMPLEX_REGISTRATION);
+        verify(runner, never()).registerComplexes(any(), any());
+        verify(lease, never()).close();
+        doAnswer(invocation -> {
+            assertThat(IngestExecutionScope.current()).contains(lease);
+            return null;
+        }).when(runner).registerComplexes(accepted.executionId(), "local-admin");
+        queued.get().run();
+        verify(runner).registerComplexes(accepted.executionId(), "local-admin");
+        verify(executionStateService).complete(eq(accepted.executionId()), any());
+        verify(lease).close();
+        verify(heartbeatTask).cancel(false);
+    }
+
+    @Test
+    void 재처리는_선택한_식별자와_실행자를_작업_스레드로_전달하고_전체_등록을_호출하지_않는다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set, null);
+        var identifiers = new java.util.ArrayList<>(List.of("2:HAPPY_HOUSING", "1:HAPPY_HOUSING", "1:HAPPY_HOUSING"));
+
+        var accepted = service.retryComplexRegistration(identifiers, "retry-admin");
+        identifiers.clear();
+        verify(lease, never()).close();
+        doAnswer(invocation -> {
+            assertThat(IngestExecutionScope.current()).contains(lease);
+            return null;
+        }).when(runner).retryComplexes(accepted.executionId(), "retry-admin",
+                List.of("1:HAPPY_HOUSING", "2:HAPPY_HOUSING"));
+        queued.get().run();
+
+        verify(runner).retryComplexes(accepted.executionId(), "retry-admin",
+                List.of("1:HAPPY_HOUSING", "2:HAPPY_HOUSING"));
+        verify(runner, never()).registerComplexes(any(), any());
+        verify(executionStateService).complete(eq(accepted.executionId()), any());
+        verify(lease).close();
+    }
+
+    @Test
+    void 재처리는_이백곳을_초과해도_하나의_실행으로_전달한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set, null);
+        var identifiers = java.util.stream.IntStream.rangeClosed(1, 201)
+                .mapToObj(id -> id + ":HAPPY_HOUSING").toList();
+
+        var accepted = service.retryComplexRegistration(identifiers, "retry-admin");
+        queued.get().run();
+
+        verify(runner).retryComplexes(accepted.executionId(), "retry-admin", identifiers.stream().sorted().toList());
+    }
+
+    @Test
+    void 재처리_만곳_초과는_실행_잠금_전에_거부한다() {
+        var identifiers = java.util.Collections.nCopies(10001, "1:HAPPY_HOUSING");
+        assertThatThrownBy(() -> service.retryComplexRegistration(identifiers, "admin"))
+                .isInstanceOf(InvalidIngestRequestException.class);
+        verify(executionLock, never()).tryAcquire(any());
     }
 
     private void configureStoredExecution() {

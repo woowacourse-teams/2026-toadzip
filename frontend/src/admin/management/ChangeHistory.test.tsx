@@ -198,3 +198,15 @@ it('이전 한 곳짜리 접수처 이력은 접수처 1로 읽고, 새 목록 �
   expect(within(screen.getByRole('table', { name: '수정한 항목' })).getAllByRole('row').slice(1).map(row => row.textContent))
     .toEqual(['접수처 1 · 접수 방식방문 (VISIT)온라인 (ONLINE)'])
 })
+
+it('PDF와 같음을 확인한 이력은 바뀐 값 없이 확인했다는 것만 보인다', async () => {
+  vi.mocked(getManagementHistory).mockResolvedValue([{
+    id: 3, action: 'CONFIRM_FROM_PDF', actor: '운영자', occurredAt: '2026-11-09T00:00:00Z',
+    beforeValue: JSON.stringify({ detail: { data: { name: '평택송화' } } }),
+    afterValue: JSON.stringify({ unchanged: true, reason: '공고문 대조', sourceUrl: 'https://example.com/notice.pdf' }),
+  }])
+  render(<ChangeHistory resource="announcements" id="7" version={2} />)
+  fireEvent.click(await screen.findByRole('button', { name: /PDF와 같음 확인\(변경 없음\) · 운영자/ }))
+  expect(screen.getByText('PDF와 지금 값이 같아 값은 바꾸지 않고 공고문으로 확인한 것으로 남겼습니다.')).toBeVisible()
+  expect(screen.queryByRole('table', { name: '수정한 항목' })).not.toBeInTheDocument()
+})

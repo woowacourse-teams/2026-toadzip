@@ -15,6 +15,7 @@ import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -23,9 +24,12 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -156,6 +160,223 @@ class AnnouncementJsonCorrectionIntegrationTest {
 
         var supply = preview(id, request).path("supply");
         assertThat(supply.isNull() || supply.isMissingNode()).isTrue();
+    }
+
+    @Test
+    void 바뀐_것이_없는_PDF_보정은_거절하지_않고_값은_그대로_둔_채_공고문으로_확인한_것으로_남긴다() throws Exception {
+        var announcement = fixture();
+        long id = announcement.getId();
+        jdbc.update("UPDATE announcements SET supply_owner = 'LH_SOURCE', supply_recheck_required = true WHERE id = ?", id);
+        var request = request(id);
+        ((ArrayNode) request.path("fields")).removeAll();
+
+        var preview = preview(id, request);
+        assertThat(preview.path("unchanged").asBoolean()).isTrue();
+        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.detail.data.name").value(announcement.getName()));
+
+        assertThat(jdbc.queryForMap("SELECT name, supply_owner, supply_recheck_required FROM announcements WHERE id = ?", id))
+                .containsEntry("name", announcement.getName()).containsEntry("supply_owner", "ANNOUNCEMENT_DOCUMENT")
+                .containsEntry("supply_recheck_required", false);
+        assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id = ?", String.class, id))
+                .containsExactly("CONFIRM_FROM_PDF");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_supply_corrections WHERE announcement_id = ?", Long.class, id))
+                .isZero();
+    }
+
+    @Test
+    void 공급행을_순서만_바꿔_보내도_공급정보_변경_없음으로_보고_다른_항목은_저장한다() throws Exception {
+        var fixtures = new NotificationFixtures(entities, jdbc);
+        var announcement = fixtures.announcement();
+        var complex = fixtures.complex("11140", "1114010100");
+        for (var name : new String[] {"26A", "36A"}) {
+            entities.persist(SupplyRow.create(announcement, complex, type(complex, name, name.substring(0, 2) + ".5000"),
+                    UUID.randomUUID().toString(), 0, complex.getName(), name, "1114010100100010000", null,
+                    SupplyCategory.NEW_SUPPLY, null, 10));
+        }
+        entities.flush(); entities.clear();
+        long id = announcement.getId();
+        var request = request(id);
+        var rows = (ArrayNode) request.path("correction").path("rows");
+        assertThat(rows).hasSize(2);
+        ((ObjectNode) request.path("correction")).set("rows", json.createArrayNode().add(rows.get(1)).add(rows.get(0)));
+
+        var preview = preview(id, request);
+        assertThat(preview.path("supply").isNull() || preview.path("supply").isMissingNode()).isTrue();
+        assertThat(preview.path("unchanged").asBoolean()).isFalse();
+        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.detail.data.name").value("JSON으로 확인한 공고"));
+    }
+
+    @Test
+    void 함께_모집하는_주택형_연결만_더해도_변경_없음으로_넘기지_않고_연결을_저장한다() throws Exception {
+        var fixtures = new NotificationFixtures(entities, jdbc);
+        var announcement = fixtures.announcement();
+        var complex = fixtures.complex("11140", "1114010100");
+        var representative = type(complex, "46A", "45.7900");
+        var joint = type(complex, "46B", "46.2200");
+        var row = SupplyRow.create(announcement, complex, representative, UUID.randomUUID().toString(), 0, complex.getName(),
+                "46", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 70);
+        entities.persist(row); entities.flush(); entities.clear();
+        long id = announcement.getId();
+        var request = request(id);
+        ((ArrayNode) request.path("fields")).removeAll();
+        ((ObjectNode) request.path("correction").path("rows").get(0)).putArray("linkedHousingTypes").addObject()
+                .put("housingTypeId", joint.getId());
+
+        var preview = preview(id, request);
+        assertThat(preview.path("unchanged").asBoolean()).isFalse();
+        assertThat(preview.path("supply").isObject()).isTrue();
+        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
+                row.getId())).contains(joint.getId());
+    }
+
+    @Test
+    void 대상끼리_함께_쓰는_예비자_수를_묶음_하나로_저장하고_작업_화면과_공개_상세에_함께_보인다() throws Exception {
+        long id = incomeSplitRow();
+        var request = request(id);
+        var targets = (ArrayNode) request.path("correction").path("rows").get(0).path("targets");
+        for (var target : targets) { ((ObjectNode) target).putObject("reserveCountGroup").put("key", "pdf:0").put("count", 20); }
+
+        var preview = preview(id, request);
+        assertThat(preview.path("unchanged").asBoolean()).isFalse();
+        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT kind || ':' || household_count FROM supply_target_count_groups", String.class))
+                .containsExactly("RESERVE:20");
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT reserve_count_group_id) FROM supply_targets WHERE reserve_count IS NULL",
+                Long.class)).isEqualTo(1);
+        var stored = data("/api/admin/announcements/" + id + "/json-corrections").path("supply").path("rows").get(0).path("targets");
+        assertThat(List.of(stored.get(0).path("reserveCountGroup").path("count").asInt(),
+                stored.get(1).path("reserveCountGroup").path("count").asInt())).containsExactly(20, 20);
+        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").doesNotExist())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedWaitlistCount.count").value(20))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[1].sharedWaitlistCount.targets[0]").value("청년(소득 없음)"))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[1].sharedWaitlistCount.targets[1]").value("청년(소득 있음)"))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount").doesNotExist());
+
+        // PDF 화면처럼 같은 묶음을 새 key(pdf:0)로 다시 보내도 묶음은 바뀌지 않았다. 묶음 id도 그대로다.
+        long groupId = jdbc.queryForObject("SELECT id FROM supply_target_count_groups", Long.class);
+        var again = request(id);
+        ((ArrayNode) again.path("fields")).removeAll();
+        for (var target : (ArrayNode) again.path("correction").path("rows").get(0).path("targets")) {
+            ((ObjectNode) target).putObject("reserveCountGroup").put("key", "pdf:0").put("count", 20);
+        }
+        var same = preview(id, again);
+        assertThat(same.path("unchanged").asBoolean()).isTrue();
+        apply(id, again, same.path("confirmationToken").asText()).andExpect(status().isOk());
+        assertThat(jdbc.queryForList("SELECT id FROM supply_target_count_groups", Long.class)).containsExactly(groupId);
+        // 묶음을 풀고 대상마다 수를 주면 옛 묶음을 지운다.
+        var split = request(id);
+        ((ArrayNode) split.path("fields")).removeAll();
+        for (var target : (ArrayNode) split.path("correction").path("rows").get(0).path("targets")) {
+            ((ObjectNode) target).putNull("reserveCountGroup").put("reserveCount", 10);
+        }
+        apply(id, split, preview(id, split).path("confirmationToken").asText()).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_target_count_groups", Long.class)).isZero();
+        assertThat(jdbc.queryForList("SELECT reserve_count FROM supply_targets ORDER BY display_order", Integer.class))
+                .containsExactly(10, 10);
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+            "one | 공통 예비자 수는 공급대상 둘 이상이 함께 써야 합니다.",
+            "own | 공통 예비자 수를 쓰는 대상에는 그 대상만의 예비자 수를 넣을 수 없습니다.",
+            "count | 같은 공통 예비자 수를 쓰는 대상끼리 수가 다릅니다.",
+            "excluded | 제외한 공급대상은 공통 예비자 수에 넣을 수 없습니다.",
+    }, delimiter = '|')
+    void 공통_모집수는_한_대상만_쓰거나_대상만의_수가_있거나_수가_다르면_거절한다(String broken, String message) throws Exception {
+        long id = incomeSplitRow();
+        var request = request(id);
+        var targets = (ArrayNode) request.path("correction").path("rows").get(0).path("targets");
+        ((ObjectNode) targets.get(0)).putObject("reserveCountGroup").put("key", "pdf:0").put("count", 20);
+        int otherCount = 20;
+        if (broken.equals("count")) { otherCount = 30; }
+        if (!broken.equals("one")) {
+            ((ObjectNode) targets.get(1)).putObject("reserveCountGroup").put("key", "pdf:0").put("count", otherCount);
+        }
+        if (broken.equals("own")) { ((ObjectNode) targets.get(1)).put("reserveCount", 5); }
+        if (broken.equals("excluded")) { ((ObjectNode) targets.get(0)).put("excluded", true); }
+
+        mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
+                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                        .content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(message)));
+    }
+
+    @Test
+    void 대상끼리_함께_쓰는_모집수는_묶음마다_한_번만_더해_행_모집수와_대조한다() throws Exception {
+        long id = incomeSplitRow();
+        var request = request(id);
+        var row = (ObjectNode) request.path("correction").path("rows").get(0);
+        row.put("householdCount", 39).put("targetCountsComparable", true);
+        for (var target : (ArrayNode) row.path("targets")) {
+            ((ObjectNode) target).putObject("householdCountGroup").put("key", "pdf:0").put("count", 39);
+        }
+
+        // 두 대상이 39를 함께 쓰면 합계는 78이 아니라 39이고, 대상 칸이 비어도 미확정 모집수가 아니다.
+        var preview = preview(id, request);
+        assertThat(preview.path("supply").path("warnings").toString()).doesNotContain("미확정 모집수");
+
+        var extra = ((ArrayNode) row.path("targets")).addObject();
+        extra.put("key", "new:elder").put("excluded", false).put("protectedValues", false).put("displayOrder", 2)
+                .put("target", "고령자").put("householdCount", 1);
+        mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
+                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                        .content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("대상별 모집수 합계가 행 모집수를 초과합니다")));
+    }
+
+    @Test
+    void 모집수와_예비자_수를_함께_쓰는_대상에서_예비자_묶음만_풀면_모집수_묶음은_그대로_남는다() throws Exception {
+        long id = incomeSplitRow();
+        var request = request(id);
+        for (var target : (ArrayNode) request.path("correction").path("rows").get(0).path("targets")) {
+            ((ObjectNode) target).putObject("householdCountGroup").put("key", "pdf:0").put("count", 10);
+            ((ObjectNode) target).putObject("reserveCountGroup").put("key", "pdf:1").put("count", 20);
+        }
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+        long supplyGroup = jdbc.queryForObject("SELECT id FROM supply_target_count_groups WHERE kind = 'SUPPLY'", Long.class);
+
+        var split = request(id);
+        ((ArrayNode) split.path("fields")).removeAll();
+        for (var target : (ArrayNode) split.path("correction").path("rows").get(0).path("targets")) {
+            ((ObjectNode) target).putNull("reserveCountGroup").put("reserveCount", 10);
+        }
+        apply(id, split, preview(id, split).path("confirmationToken").asText()).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT id FROM supply_target_count_groups", Long.class)).containsExactly(supplyGroup);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_targets WHERE supply_count_group_id = ?", Long.class,
+                supplyGroup)).isEqualTo(2);
+        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount.count").value(10))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[1].sharedSupplyHouseholdCount.targets.length()").value(2))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedWaitlistCount").doesNotExist())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").value(10));
+    }
+
+    /** 공고문이 소득 유무로 나눈 청년 두 대상이 예비자 수를 함께 쓰는 공급행(공고 기본정보는 그대로 둔다). */
+    private long incomeSplitRow() {
+        var fixtures = new NotificationFixtures(entities, jdbc);
+        var announcement = fixtures.announcement();
+        var complex = fixtures.complex("11140", "1114010100");
+        var row = SupplyRow.create(announcement, complex, type(complex, "36A", "36.5000"), UUID.randomUUID().toString(), 0,
+                complex.getName(), "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, null);
+        entities.persist(row);
+        int order = 0;
+        for (var target : new String[] {"청년(소득 없음)", "청년(소득 있음)"}) {
+            entities.persist(SupplyTarget.create(row, target, null, null, null, new BigDecimal("13780000"),
+                    new BigDecimal("166640"), null, null, order++));
+        }
+        entities.flush(); entities.clear();
+        return announcement.getId();
     }
 
     private HousingType type(HousingComplex complex, String name, String area) {

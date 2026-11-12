@@ -9,7 +9,7 @@
 | [환경 설정](../docs/setup/README.md) | 컨테이너로 로컬·개발·운영 환경을 준비하는 방법 |
 | [프론트 개발 기준](../docs/development/frontend/README.md) | 구조·상태·외부 경계·디자인·검증 기준 |
 | [기능 명세](../docs/features/README.md) | 지도·공고·알림·관리자와 문서 뷰어의 현재 동작 |
-| [분석 운영](../docs/operations/analytics/README.md) | GA4·PostHog 환경 연결·측정·수신 확인 |
+| [분석 운영](../docs/operations/analytics/README.md) | PostHog 환경 연결·측정·수신 확인 |
 | [HTTPS 운영](../docs/operations/https.md) | EC2 인증서 발급·갱신과 Nginx 반영 |
 | [AI 작업 지침](AGENTS.md) | 프론트 변경 시 필수 문서·제약과 완료 판단 |
 
@@ -93,13 +93,14 @@ snapshot의 지역명·단지명·공고명에서 일치하는 결과와 유형�
 백엔드 검색 순위나 전체 데이터 검색을 재현하지 않는다. 외부 읍·면·동과 지하철역 검색은
 snapshot에 포함되지 않는다.
 
+## 내 조건 입력과 비교
+
+현재 프로필 입력은 계약 3, 결과 화면은 기본 비교 API에 연결되어 있다.
+최신 신청자격 판정과의 차이는 [기본 비교 호환 문서](../docs/features/eligibility/compatibility.md#현재-화면-연결과-계약-차이)를 따른다.
+
 ## 지역·지도 기능
 
 검색·위치 권한·환경별 지도 설정은 [공개 지도와 검색](../docs/features/search/map.md)을 따른다.
-
-## GA4 측정
-
-설정·이벤트 계약·지표·팀원 제외와 실제 수집 검증은 [GA4 운영 안내](../docs/operations/analytics/ga4.md)를 따른다.
 
 ## 코드 검사
 
@@ -129,7 +130,8 @@ npm run check
 npm run build
 ```
 
-TypeScript 타입 검사 후 프로덕션 파일을 `dist/`에 생성한다.
+TypeScript 타입 검사 후 프로덕션 파일을 `dist/`에 생성한다. 공개 경로의 JS 없는 HTML은
+`dist/prerendered/`에 함께 생성하며 규칙은 [프론트엔드 구조](../docs/development/frontend/architecture.md#공개-페이지-프리렌더와-색인-정책)를 따른다.
 
 프로덕션에서 `VITE_API_BASE_URL`을 생략하면 브라우저는 프론트엔드와 같은 주소의
 `/api`로 요청한다. 별도 API 주소가 필요한 환경에서만 프로토콜과 호스트를 끝

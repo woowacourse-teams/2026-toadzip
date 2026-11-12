@@ -325,6 +325,22 @@ describe('useAnnouncementResults', () => {
     )
     expect(await screen.findByText('101')).toBeVisible()
   })
+
+  it('접수마감 탭은 다른 조건을 유지한 채 마감 공고만 최근 마감순으로 요청한다', async () => {
+    const repository = createRepository()
+    render(
+      <Harness enabled filters={{ closed: true, regionCode: '11', applicationStatuses: ['APPLYING'], sort: 'LATEST' }}
+        repository={repository} />,
+    )
+    await screen.findByText('101')
+
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { regionCode: '11', applicationStatuses: ['CLOSED'], sort: 'CLOSED_RECENT' },
+    )
+  })
 })
 
 function Harness({

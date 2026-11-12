@@ -1,4 +1,5 @@
-import { campaignEntry, consumeCampaignEntry, safeCampaignSource, type CampaignEntry } from './campaignAttribution'
+import { campaignEntry, consumeCampaignEntry, consumeOrganicEntry, safeCampaignSource, type CampaignEntry } from './campaignAttribution'
+import { explorerPagePath } from '../public-housing/navigation/detailLocation'
 
 const ACTIONS = new Set([
   'landing', 'page_view', 'view_complex', 'view_announcement', 'notification_inbox_viewed', 'notification_opened',
@@ -14,7 +15,7 @@ function configuration(): { key: string; environment: string } | undefined {
   const environment = import.meta.env.VITE_ANALYTICS_ENV
   if (environment !== 'dev' && environment !== 'prod') return
   if (!key || !/^phc_[a-zA-Z0-9]+$/.test(key) || import.meta.env.VITE_POSTHOG_HOST !== 'https://us.i.posthog.com'
-    || !PATHS.has(location.pathname)) return
+    || !PATHS.has(explorerPagePath(location.pathname))) return
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
   if (local && (environment !== 'dev' || import.meta.env.VITE_POSTHOG_LOCAL_ENABLED !== 'true')) return
   if (location.hostname === 'bokduckbang.com' && environment !== 'prod') return
@@ -62,5 +63,5 @@ export function captureCampaignStat(action: string, input: Record<string, unknow
 }
 
 export function initializeCampaignStats(): void {
-  if (consumeCampaignEntry()) captureCampaignStat('landing')
+  if (consumeCampaignEntry() || consumeOrganicEntry()) captureCampaignStat('landing')
 }

@@ -11,6 +11,10 @@ import com.toadzip.backend.ingest.mapping.domain.InitialRegistrationStatus;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationLocationRequest;
 import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationResponse;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationService;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationSupplementService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -25,12 +29,64 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest(MyHomeInitialRegistrationController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class MyHomeInitialRegistrationControllerTest {
+    @MockitoBean private MyHomeInitialRegistrationSupplementService supplements;
 
     @Autowired
     private MockMvc mvc;
 
     @MockitoBean
     private MyHomeInitialRegistrationService service;
+
+    @MockitoBean
+    private DataPipelineExecutionService execution;
+
+    @Test
+    void 선택한_실패_보완_대상만_재처리하도록_접수한다() throws Exception {
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/retry")
+                        .principal(() -> "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"sourceComplexIdentifiers":["123:PERMANENT_RENTAL"]}
+                                """))
+                .andExpect(status().isAccepted());
+        verify(execution).retryComplexRegistration(List.of("123:PERMANENT_RENTAL"), "admin");
+    }
+
+    @Test
+    void 여러_페이지에서_선택한_이백곳_초과_대상을_접수한다() throws Exception {
+        String identifiers = String.join(",", java.util.Collections.nCopies(201, "\"123:PERMANENT_RENTAL\""));
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/retry")
+                        .principal(() -> "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceComplexIdentifiers\":[" + identifiers + "]}"))
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void 재처리_대상이_만곳을_초과하면_거절한다() throws Exception {
+        String identifiers = String.join(",", java.util.Collections.nCopies(10001, "\"123:PERMANENT_RENTAL\""));
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/retry")
+                        .principal(() -> "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceComplexIdentifiers\":[" + identifiers + "]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 빈_재처리_대상은_거절한다() throws Exception {
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/retry")
+                        .principal(() -> "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceComplexIdentifiers\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 준비된_신규_단지만_최초_등록할_수_있다() throws Exception {
+        when(execution.start(DataPipelineType.COMPLEX_REGISTRATION, "admin"))
+                .thenReturn(DataPipelineExecutionResponse.idle(DataPipelineType.COMPLEX_REGISTRATION));
+        mvc.perform(post("/api/admin/ingest/myhome/initial-registration/register")
+                        .principal(() -> "admin"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type").value("COMPLEX_REGISTRATION"));
+        verify(execution).start(DataPipelineType.COMPLEX_REGISTRATION, "admin");
+    }
 
     @Test
     void 최초_등록_대상_진행_상태를_조회한다() throws Exception {

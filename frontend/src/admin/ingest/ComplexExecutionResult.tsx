@@ -5,12 +5,13 @@ import { PipelineReport } from './DataPipelineProgress'
 import { pipelineStepDefinitions, pipelineStepSequences, pipelineStepState } from './pipelineSteps'
 import { ComplexStatusBadge, type ComplexStatus } from './ComplexStatusBadge'
 import { ComplexRunErrors } from './ComplexRunErrors'
+import { InitialRegistrationResultNotice } from './InitialRegistrationReport'
 import styles from './ComplexIngest.module.css'
 
 const stepStatuses = { waiting: 'waiting', running: 'running', success: 'completed', partial: 'partial', failed: 'failed', skipped: 'skipped', stopped: 'stopped', unexecuted: 'unexecuted' } as const satisfies Record<string, ComplexStatus>
 
-export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, showSummary = true, showErrors = true }: {
-  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; showSummary?: boolean; showErrors?: boolean
+export function ComplexExecutionResult({ execution, phase, pending = false, stopping = false, showSummary = true, showErrors = true, onShowRegistration }: {
+  execution: DataPipelineExecution; phase?: 'collection' | 'refinement'; pending?: boolean; stopping?: boolean; showSummary?: boolean; showErrors?: boolean; onShowRegistration?: () => void
 }) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const errorsId = useId()
@@ -41,12 +42,13 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
             {work.totalCount > 0 ? <progress aria-label={`${name} 진행률`} value={Math.min(work.completedCount, work.totalCount)} max={work.totalCount} /> : <progress aria-label={`${name} 진행 중`} />}
           </div>}
           {skipped && <p>{skipped.reason}</p>}
-          {report != null && <PipelineReport report={report} />}
+          {report != null && <PipelineReport report={report} type={execution.type} />}
         </li>
       })}
     </ol>
     {execution.failure && <p className="form-error" role="alert">{execution.failure.message}</p>}
-    {showErrors && <>
+    {showErrors && execution.type === 'COMPLEX_REGISTRATION' && <InitialRegistrationResultNotice onShowRegistration={onShowRegistration} />}
+    {showErrors && execution.type !== 'COMPLEX_REGISTRATION' && <>
       <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
         결과 오류 조회
@@ -76,7 +78,7 @@ export function ComplexExecutionSummary({ execution, pending = false, stopping =
 
 
 export function ComplexExecutionStop({ execution, stopping = false, label, onStop }: {
-  execution: DataPipelineExecution; stopping?: boolean; label: '수집 중지' | '정제 중지'; onStop: () => void
+  execution: DataPipelineExecution; stopping?: boolean; label: '수집 중지' | '정제 중지' | '등록 중지'; onStop: () => void
 }) {
   if (execution.status !== 'RUNNING') return null
   return <>

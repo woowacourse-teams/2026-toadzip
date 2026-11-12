@@ -2,6 +2,7 @@ package com.toadzip.backend.notification.repository;
 
 import com.toadzip.backend.notification.domain.NotificationCursor;
 import com.toadzip.backend.notification.domain.NotificationContent;
+import com.toadzip.backend.notification.domain.NotificationRecipient;
 import tools.jackson.databind.ObjectMapper;
 import com.toadzip.backend.notification.dto.NotificationPageResponse;
 import com.toadzip.backend.notification.dto.NotificationPageResponse.Item;
@@ -31,27 +32,31 @@ public class UserNotificationRepository {
                 "notification-user:" + userId);
     }
 
+    /**
+     * 수신자 페이지의 알림을 한 번에 만든다. 회원별 잠금은 회원 ID 순서로 잡아 교착을 막고,
+     * 이미 있는 (회원, 이벤트) 알림은 건드리지 않는다. 새로 만든 알림의 ID만 돌려준다.
+     */
     @Transactional(propagation = Propagation.MANDATORY)
-    public InsertedNotification insertIfAbsent(long userId, long eventId, long announcementId, String title, Instant now) {
-        lockUser(userId);
-        List<Long> inserted = jdbc.query("""
-                INSERT INTO user_notifications(user_id,event_id,announcement_id,title,created_at,expires_at)
-                VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,event_id) DO NOTHING RETURNING id
-                """, (row, number) -> row.getLong(1), userId, eventId, announcementId, title,
-                Timestamp.from(now), Timestamp.from(now.plus(Duration.ofDays(90))));
-        if (!inserted.isEmpty()) {
-            return new InsertedNotification(inserted.getFirst(), true);
+    public List<Long> insertAllIfAbsent(long eventId, long announcementId, String title,
+            List<NotificationRecipient> recipients, Instant now) {
+        if (recipients.isEmpty()) {
+            return List.of();
         }
-        long id = jdbc.queryForObject("SELECT id FROM user_notifications WHERE user_id=? AND event_id=?",
-                Long.class, userId, eventId);
-        return new InsertedNotification(id, false);
-    }
-
-    public void setContent(long id, NotificationContent content) {
-        jdbc.update("UPDATE user_notifications SET content=? WHERE id=?", json.writeValueAsString(content), id);
-    }
-
-    public record InsertedNotification(long id, boolean created) {
+        Long[] userIds = recipients.stream().map(NotificationRecipient::userId).toArray(Long[]::new);
+        String[] contents = recipients.stream()
+                .map(recipient -> recipient.content() == null ? null : json.writeValueAsString(recipient.content()))
+                .toArray(String[]::new);
+        jdbc.query("""
+                SELECT count(pg_advisory_xact_lock(hashtextextended('notification-user:' || user_id,0)))
+                FROM (SELECT DISTINCT user_id FROM unnest(?::bigint[]) AS u(user_id) ORDER BY user_id) ordered
+                """, (row, number) -> 0, (Object) userIds);
+        return jdbc.query("""
+                INSERT INTO user_notifications(user_id,event_id,announcement_id,title,created_at,expires_at,content)
+                SELECT r.user_id,?,?,?,?,?,r.content FROM unnest(?::bigint[],?::text[]) AS r(user_id,content)
+                ORDER BY r.user_id
+                ON CONFLICT(user_id,event_id) DO NOTHING RETURNING id
+                """, (row, number) -> row.getLong(1), eventId, announcementId, title, Timestamp.from(now),
+                Timestamp.from(now.plus(Duration.ofDays(90))), userIds, contents);
     }
 
     public long countUnread(long userId, Instant now) {

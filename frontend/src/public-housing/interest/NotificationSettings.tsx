@@ -9,6 +9,7 @@ import { Button } from '../../design-system/components/Button'
 import { useNotificationInterests } from './NotificationInterestContext'
 import type { NotificationTargetType } from './notificationInterestRepository'
 import styles from './NotificationSettings.module.css'
+import { announcementPath, complexPath } from '../navigation/detailLocation'
 
 const groups = [
   { type: 'COMPLEX', title: '단지' }, { type: 'ANNOUNCEMENT', title: '공고' }, { type: 'REGION', title: '지역' },
@@ -68,7 +69,7 @@ export function NotificationSettings() {
             <Button variant="secondary" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
               onClick={(event) => { tabs.current[groups.findIndex(group => group.type === selected.type)]?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>알림 해제</Button>
           }><strong>{target.type === 'REGION' ? target.name : <Link
-            to={`/explore?${target.type === 'COMPLEX' ? 'complexId' : 'announcementId'}=${encodeURIComponent(target.id)}`}
+            to={target.type === 'COMPLEX' ? complexPath(encodeURIComponent(target.id)) : announcementPath(encodeURIComponent(target.id))}
             state={returnState}>{target.name}</Link>}</strong></ManagementRow>)}
         </ManagementTable>}
     </section>

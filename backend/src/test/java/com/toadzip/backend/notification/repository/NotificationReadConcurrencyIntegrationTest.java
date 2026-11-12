@@ -4,6 +4,7 @@ import static com.toadzip.backend.notification.NotificationFixtures.NOW;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.notification.NotificationFixtures;
+import com.toadzip.backend.notification.domain.NotificationRecipient;
 import com.toadzip.backend.notification.service.NotificationReadService;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
@@ -106,7 +107,8 @@ class NotificationReadConcurrencyIntegrationTest {
     }
 
     private long insert(int index) {
-        return notifications.insertIfAbsent(MEMBER, events.get(index), announcements.get(index), "새 공고", NOW).id();
+        return notifications.insertAllIfAbsent(events.get(index), announcements.get(index), "새 공고",
+                List.of(new NotificationRecipient(MEMBER, null)), NOW).getFirst();
     }
 
     private void awaitAdvisoryWait(int pid) {

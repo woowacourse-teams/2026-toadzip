@@ -19,7 +19,7 @@ export type TypeValues = { name: string; supplyArea: number | null; householdCou
 export type HousingTypeChange = { rowKey: string; housingTypeId: number | null; typeName: string; before: TypeValues | null; after: TypeValues }
 export type JsonChange = { field: string; before: unknown; after: unknown }
 export type ChildChange = { inputIndex: number; existingId: number | null; before: JsonObject | null; after: JsonObject }
-export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; housingTypes: HousingTypeChange[]; housingTypeWarnings: string[]; warnings: string[]; publishes?: boolean }
+export type JsonPreview = { confirmationToken: string; fields: JsonChange[]; supply: SupplyPreview | null; schedules: ChildChange[]; attachments: ChildChange[]; housingTypes: HousingTypeChange[]; housingTypeWarnings: string[]; warnings: string[]; publishes?: boolean; unchanged?: boolean }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/json-corrections`
 function objectArray(value: unknown): value is JsonObject[] { return Array.isArray(value) && value.every(isRecord) }
 function invalid(): never { throw new Error('공고 보정 응답이 올바르지 않습니다.') }

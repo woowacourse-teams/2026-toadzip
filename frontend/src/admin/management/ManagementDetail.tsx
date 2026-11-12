@@ -16,6 +16,7 @@ import { ComplexVerificationPanel } from './ComplexVerificationPanel'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 import { AddressPicker } from '../registration/AddressPicker'
 import { AnnouncementDocuments } from './AnnouncementDocuments'
+import { EligibilityDraftPanel } from '../announcement-pdf/EligibilityDraftPanel'
 import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
 import { AnnouncementDetailNavigation } from './AnnouncementDetailNavigation'
@@ -42,7 +43,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [attempt, setAttempt] = useState(0)
   const requestedSection = params.get('section') ?? ''
   const resolvedSection = resource === 'announcements' && requestedSection === 'verification' ? 'history' : requestedSection
-  const sectionKeys = ['info', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents'] : ['verification'])]
+  const sectionKeys = ['info', 'schedules', 'relations', 'history', ...(resource === 'announcements' ? ['documents', 'eligibility'] : ['verification'])]
   const knownSection = sectionKeys.includes(resolvedSection)
   const [section, setSection] = useState(knownSection ? resolvedSection : 'info')
   // 주소의 섹션이 바뀌면(뒤로 가기·작업 링크) 해당 탭을 연다. 탭 이동은 아래 openSection이 주소에도 남긴다.
@@ -102,6 +103,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy || extendedBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) openSection(key)}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
       {section === 'documents' && resource === 'announcements' ? <AnnouncementDocuments key={id} id={id} detail={value} /> : null}
+      {section === 'eligibility' && resource === 'announcements' ? <EligibilityDraftPanel key={id} announcementId={id} pdfSha256={null} pdfActions={false} /> : null}
       {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <>
         {reviewDirty ? <p className="admin-warning">작성 중인 검토 기록을 저장하거나 취소한 뒤 값을 수정할 수 있습니다.</p> : null}
         <fieldset className="admin-verification-group" disabled={reviewDirty || extendedDirty}>

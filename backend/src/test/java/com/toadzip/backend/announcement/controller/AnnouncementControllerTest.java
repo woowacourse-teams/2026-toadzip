@@ -365,6 +365,7 @@ class AnnouncementControllerTest {
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 10),
                 0,
+                LocalDate.of(2026, 8, 20),
                 7L,
                 1,
                 null,
@@ -381,6 +382,8 @@ class AnnouncementControllerTest {
         SupplyTargetResponse target = new SupplyTargetResponse(
                 401L,
                 "청년",
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -489,6 +492,7 @@ class AnnouncementControllerTest {
                       "applicationStartAt": "2026-08-10",
                       "applicationEndAt": "2026-08-10",
                       "dDay": 0,
+                      "winnerAnnouncementAt": "2026-08-20",
                       "viewCount": 7,
                       "supplyComplexCount": 1,
                       "supplyHouseholdCount": null,
@@ -584,7 +588,9 @@ class AnnouncementControllerTest {
                         "deposit": null,
                         "monthlyRent": null,
                         "convertibleDeposit": null,
-                        "applicationCondition": null
+                        "applicationCondition": null,
+                        "sharedSupplyHouseholdCount": null,
+                        "sharedWaitlistCount": null
                       }]
                     }, {
                       "supplyRowId": 302,
@@ -601,7 +607,8 @@ class AnnouncementControllerTest {
                     }],
                     "competition": {"actualRate": 2.5000, "predictedRate": null},
                     "applicationSchedules": [],
-                    "revision": null
+                    "revision": null,
+                    "listPhase": "NONE"
                   }
                 }
                 """;

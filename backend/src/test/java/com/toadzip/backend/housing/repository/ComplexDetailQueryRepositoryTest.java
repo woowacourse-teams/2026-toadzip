@@ -343,7 +343,8 @@ class ComplexDetailQueryRepositoryTest {
                 target.getTarget(),
                 new BigDecimal(deposit + ".00"),
                 new BigDecimal(monthlyRent + ".00"),
-                converted
+                converted,
+                announcement.getPostedDate()
         );
     }
 

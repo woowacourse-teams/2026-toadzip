@@ -8,7 +8,7 @@ import type { ConsentContext } from './privacy/api'
 // The SDK-backed map is independent of routing and privacy choices.
 vi.mock('./public-housing/DefaultPublicHousingExplorer', () => ({ DefaultPublicHousingExplorer: () => null }))
 
-const notice = { key: 'ANALYTICS_NOTICE', version: 'analytics-v3', scopeVersion: 'analytics-scope-3', effectiveAt: '2026-10-09T00:00:00Z', contentHash: 'hash', documentUrl: '/api/v1/privacy/notices/ANALYTICS_NOTICE/analytics-v3' }
+const notice = { key: 'ANALYTICS_NOTICE', version: 'analytics-v3', scopeVersion: 'analytics-scope-4', effectiveAt: '2026-10-09T00:00:00Z', contentHash: 'hash', documentUrl: '/api/v1/privacy/notices/ANALYTICS_NOTICE/analytics-v3' }
 const policy = { ...notice, key: 'PRIVACY_POLICY', version: 'privacy-v3', scopeVersion: null }
 let current: ConsentContext
 
@@ -41,7 +41,7 @@ it.each(['/explore/', '/EXPLORE///', '/%65xplore', '/explor%65/'])('%s에서도 
   window.history.replaceState({}, '', `${path}?complexId=7#detail`)
   render(<BrowserRouter><App /></BrowserRouter>)
   expect(await screen.findByRole('heading', { name: '서비스 개선을 위한 이용 정보 수집' })).toBeVisible()
-  expect(window.location.pathname + window.location.search + window.location.hash).toBe('/explore?complexId=7#detail')
+  expect(window.location.pathname + window.location.search + window.location.hash).toBe('/complexes/7#detail')
   expect(consentStore.allowed()).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: '동의하기' }))
   await waitFor(() => expect(consentStore.allowed()).toBe(true))

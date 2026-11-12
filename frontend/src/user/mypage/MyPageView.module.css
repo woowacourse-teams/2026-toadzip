@@ -66,8 +66,11 @@
 .back .chevron { width: 22px; height: 22px; color: currentColor; }
 
 /* 단지·공고·지역 분류는 밑줄 탭으로 표시한다. */
-.kinds { display: flex; gap: var(--ds-space-1); margin: var(--ds-space-1) 0 var(--ds-space-2); border-bottom: 2px solid var(--ds-color-divider); }
-.kinds button { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: var(--ds-control-height-md); margin-bottom: -2px; padding: 0 var(--ds-space-4); border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: var(--ds-text-section); cursor: pointer; }
+/* 북마크·알림 탭은 같은 모양을 쓴다. 탭이 넘치면 가로로만 스크롤하고, 구분선은 안쪽 그림자로 그려
+   선택 밑줄이 상자 안에서 구분선 위에 겹치게 한다(아래 테두리+음수 여백은 세로 스크롤바를 만든다). */
+.kinds { display: flex; gap: var(--ds-space-1); margin: var(--ds-space-1) 0 var(--ds-space-2); overflow-x: auto; overflow-y: hidden; box-shadow: inset 0 -2px 0 var(--ds-color-divider); scrollbar-width: none; }
+.kinds::-webkit-scrollbar { display: none; }
+.kinds button { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; min-height: var(--ds-control-height-md); padding: 0 var(--ds-space-4); border: 0; border-bottom: 3px solid transparent; white-space: nowrap; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: var(--ds-text-section); cursor: pointer; }
 .kinds button span { color: var(--ds-color-muted); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
 .kinds button:hover { color: var(--ds-color-text); }
 .kinds button[aria-selected=true] { border-bottom-color: var(--ds-color-brand); color: var(--ds-color-text); font-weight: 700; }
@@ -139,14 +142,14 @@ button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-o
   .lists { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
   .lists > .sub { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .lists > .sub > .subHeader, .lists > .sub > .kinds { flex-shrink: 0; }
-  .lists > .sub > [role=tabpanel] { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
-  .hub, .lists > .sub > [role=tabpanel] { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
+  .lists > .sub > :is([role=tabpanel], .subBody) { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
+  .hub, .lists > .sub > :is([role=tabpanel], .subBody) { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
   @supports selector(::-webkit-scrollbar) {
-    :is(.hub, .lists > .sub > [role=tabpanel]) { scrollbar-width: auto; scrollbar-color: auto; }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar { width: 6px; }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-track { background: transparent; }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody)) { scrollbar-width: auto; scrollbar-color: auto; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar { width: 6px; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-track { background: transparent; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
   }
   .hub > .counts.card, .hub > .counts.card > .row { border-radius: 0; }
   .hub > .counts.card > .row + .row { border-top: 0; }
@@ -172,9 +175,7 @@ button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-o
 .alarmCheckbox { justify-content: center; flex: 0 0 32px; }
 .selectAll input, .alarmCheckbox input { width: 18px; height: 18px; margin: 0; accent-color: var(--ds-color-action); cursor: pointer; }
 .selectAll input:focus-visible, .alarmCheckbox input:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
-.kinds:has([data-device]) { overflow-x: auto; }
-.kinds button[data-device] { white-space: nowrap; }
 @media (max-width: 767px) {
-  .kinds:has([data-device]) button { padding-inline: var(--ds-space-2); white-space: nowrap; font-size: var(--ds-text-body); }
+  .kinds button { padding-inline: var(--ds-space-2); font-size: var(--ds-text-body); }
   .batchActions { margin-left: auto; }
 }

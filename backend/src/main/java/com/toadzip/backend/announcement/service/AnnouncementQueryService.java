@@ -2,6 +2,7 @@ package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementListPhase;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementSort;
@@ -42,6 +43,10 @@ public class AnnouncementQueryService {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final int MINIMUM_PAGE_SIZE = 1;
     private static final int MAXIMUM_PAGE_SIZE = 50;
+    // 프론트 공고 목록의 `모집 중` 탭이 요청하는 상태. 조건부 접수는 그 탭에 보이지 않는다.
+    private static final Set<ApplicationStatus> RECRUITING_STATUSES =
+            Set.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.APPLYING);
+    private static final Set<ApplicationStatus> CLOSED_STATUSES = Set.of(ApplicationStatus.CLOSED);
 
     private final AnnouncementRepository announcementRepository;
     private final AnnouncementApplicationScheduleRepository applicationScheduleRepository;
@@ -153,14 +158,16 @@ public class AnnouncementQueryService {
 
     private List<AnnouncementListItemResponse> listItems(List<Announcement> announcements,
             AnnouncementSearchCondition condition, LocalDate today) {
-        List<SupplyRow> supplyRows = findSupplyRows(announcementIds(announcements));
+        List<Long> announcementIds = announcementIds(announcements);
+        List<SupplyRow> supplyRows = findSupplyRows(announcementIds);
         return announcementResponseMapper.toListItemResponses(
                 announcements,
                 supplyRows,
-                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
+                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds).stream()
                         .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
                                 || matchesRegion(condition.regionCodes(), schedule.getHousingComplex().getAddress()))
                         .toList(),
+                findSchedules(announcementIds),
                 today
         );
     }
@@ -187,7 +194,23 @@ public class AnnouncementQueryService {
                 supplyTargets,
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds),
                 today
-        );
+        ).withListPhase(listPhase(announcement.getId(), today));
+    }
+
+    // 공고 목록 탭과 같은 조건(모집 중: 공고중·접수중, 접수마감: 마지막 일정 후 7일까지)으로 판정한다.
+    private AnnouncementListPhase listPhase(long announcementId, LocalDate today) {
+        if (announcementSearchRepository.isListed(announcementId, statusCondition(RECRUITING_STATUSES, today))) {
+            return AnnouncementListPhase.RECRUITING;
+        }
+        if (announcementSearchRepository.isListed(announcementId, statusCondition(CLOSED_STATUSES, today))) {
+            return AnnouncementListPhase.CLOSED;
+        }
+        return AnnouncementListPhase.NONE;
+    }
+
+    private static AnnouncementSearchCondition statusCondition(Set<ApplicationStatus> statuses, LocalDate today) {
+        return new AnnouncementSearchCondition(null, Set.of(), Set.of(), statuses, Set.of(), Set.of(), Set.of(),
+                null, null, today);
     }
 
     private void validateSize(int size) {
@@ -320,6 +343,13 @@ public class AnnouncementQueryService {
             return List.of();
         }
         return supplyRowRepository.findAllByAnnouncementIdIn(announcementIds);
+    }
+
+    private List<AnnouncementSchedule> findSchedules(Collection<Long> announcementIds) {
+        if (announcementIds.isEmpty()) {
+            return List.of();
+        }
+        return announcementScheduleRepository.findAllByAnnouncementIdIn(announcementIds);
     }
 
     private List<SupplyTarget> findSupplyTargets(Collection<Long> supplyRowIds) {

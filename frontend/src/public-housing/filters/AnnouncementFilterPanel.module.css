@@ -13,6 +13,7 @@
 .toolbar {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -25,14 +26,17 @@
 
 .resultSummary {
   display: flex;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px;
 }
 
 .resultSummary > span {
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .toolbarControls {
@@ -90,7 +94,8 @@
   transform: rotate(180deg);
 }
 
-.sort[aria-pressed='true'] {
+.sort[aria-pressed='true'],
+.sort[aria-checked='true'] {
   border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
   color: var(--ds-color-text);

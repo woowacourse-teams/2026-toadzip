@@ -56,6 +56,12 @@ function requiredRow(card: HTMLElement, row: string) {
 }
 
 describe('HousingAnnouncementCard', () => {
+  it('shows my conditions result as one line under the card', () => {
+    render(<HousingAnnouncementCard announcement={BASE_ANNOUNCEMENT} conditionLine={{ status: 'ELIGIBLE', text: '청년 지원 가능' }} />)
+    const line = screen.getByText('청년 지원 가능')
+    expect(line.closest('[data-condition-status]')).toHaveAttribute('data-condition-status', 'ELIGIBLE')
+  })
+
   it('서울 날짜 기준 오늘 게시된 공고에 오늘 공고를 표시한다', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-21T15:30:00Z'))
@@ -96,6 +102,22 @@ describe('HousingAnnouncementCard', () => {
     expect(within(card).queryByRole('img')).not.toBeInTheDocument()
     expect(within(card).queryByRole('button', { name: /저장|북마크|알림/ }))
       .not.toBeInTheDocument()
+  })
+
+  it('접수마감 공고는 접수기간 아래에 결과 발표일을 함께 보여 준다', () => {
+    const { card } = renderCard(announcementWith({
+      applicationStatus: 'CLOSED', dDay: null, winnerAnnouncementAt: '2027-02-24',
+    }))
+
+    const schedule = requiredRow(card, 'schedule')
+    expect(within(schedule).getByText('결과 발표')).toBeVisible()
+    expect(within(schedule).getByText('2027.02.24')).toHaveAttribute('dateTime', '2027-02-24')
+  })
+
+  it('접수가 끝나지 않은 공고에는 결과 발표일을 보여 주지 않는다', () => {
+    const { card } = renderCard(announcementWith({ winnerAnnouncementAt: '2027-02-24' }))
+
+    expect(within(requiredRow(card, 'schedule')).queryByText('결과 발표')).not.toBeInTheDocument()
   })
 
   it('같은 연도의 종료일만 연도를 생략한다', () => {

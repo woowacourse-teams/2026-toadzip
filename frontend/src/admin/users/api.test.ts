@@ -1,7 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { getUser, listUsers } from './api'
+import { getUser, listUsers, setUserAdmin } from './api'
 
-const user = { id: 7, email: null, provider: 'UNKNOWN', createdAt: '2026-10-04T09:12:34.123456' }
+vi.mock('../../api/apiBaseUrl', () => ({ getApiBaseUrl: () => 'http://localhost:8080' }))
+
+const user = { id: 7, email: null, provider: 'UNKNOWN', createdAt: '2026-10-04T09:12:34.123456', admin: false }
 function respond(value: unknown, status = 200) {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } }))
   vi.stubGlobal('fetch', fetchMock)
@@ -26,7 +28,7 @@ it('상세는 허용한 기본 필드만 반환하며 미제공 이메일과 미
 
 it.each([
   { id: -1 }, { id: 1.5 }, { id: Number.MAX_SAFE_INTEGER + 1 }, { email: 7 },
-  { provider: 'FACEBOOK' }, { createdAt: null }, { createdAt: '2026-10-04T09:12:34Z' },
+  { provider: 'FACEBOOK' }, { createdAt: null }, { createdAt: '2026-10-04T09:12:34Z' }, { admin: 'true' }, { admin: undefined },
 ])('회원 정보의 잘못된 필드를 거부한다: %o', async fields => {
   respond({ data: { ...user, ...fields } })
   await expect(getUser('7')).rejects.toThrow('회원 정보 응답이 올바르지 않습니다.')
@@ -44,4 +46,17 @@ it('접근 거부와 없는 회원 응답을 빈 성공 데이터로 바꾸지 �
   await expect(listUsers(new URLSearchParams())).rejects.toMatchObject({ status: 403, message: '관리자 권한이 필요합니다.' })
   respond({ message: '회원을 찾을 수 없습니다.' }, 404)
   await expect(getUser('7')).rejects.toMatchObject({ status: 404, message: '회원을 찾을 수 없습니다.' })
+})
+
+it.each([
+  { admin: true, method: 'PUT' }, { admin: false, method: 'DELETE' },
+])('관리자 권한 변경은 CSRF 토큰을 붙여 $method로 보내고 바뀐 회원을 돌려준다', async ({ admin, method }) => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ headerName: 'X-XSRF-TOKEN', token: 'csrf' }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ data: { ...user, admin } }), { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  expect(await setUserAdmin(7, admin)).toEqual({ ...user, admin })
+  expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/users/7/admin', expect.objectContaining({
+    method, credentials: 'include', headers: { 'X-XSRF-TOKEN': 'csrf' },
+  }))
 })

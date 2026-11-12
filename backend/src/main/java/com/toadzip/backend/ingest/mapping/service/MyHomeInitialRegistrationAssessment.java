@@ -23,6 +23,7 @@ class MyHomeInitialRegistrationAssessment {
 
     private final MyHomeComplexSourceMapper mapper;
     private final RoadAddressGeocodingService geocoding;
+    private final InitialRegistrationInputs inputs;
     private final MyHomeComplexClassificationPolicy classification = new MyHomeComplexClassificationPolicy();
 
     Assessment assess(InitialRegistrationTarget target, List<MyHomeComplexSourceView> sources,
@@ -32,7 +33,16 @@ class MyHomeInitialRegistrationAssessment {
         if (linked != null) {
             return existing(linked);
         }
-        List<Product> candidates = index.candidates(sources);
+        String preparedAddress = null;
+        if (target.getLocation() != null
+                && target.getLocation().isAdministratorValueFor(sources.getFirst().getRnAdres())) {
+            preparedAddress = target.getLocation().getAddress();
+        }
+        String preparedName = null;
+        if (target.getInformation() != null) {
+            preparedName = target.getInformation().getComplexName();
+        }
+        List<Product> candidates = index.candidates(sources, preparedAddress, preparedName);
         if (!candidates.isEmpty()) {
             Assessment result = candidate(sources, candidates, index);
             if (result.complexId() == null) {
@@ -45,12 +55,16 @@ class MyHomeInitialRegistrationAssessment {
         if (!location.isReady()) {
             return new Assessment(LOCATION_REQUIRED, locationFailureDetail(location), null);
         }
+        var information = target.getInformation();
+        if (inputs.hasInformation(information) && !information.matches(inputs.fingerprint(sources))) {
+            return new Assessment(INFORMATION_REQUIRED, "원천이 변경되었습니다. 이전 정보 보완값의 근거를 다시 확인하세요.", null);
+        }
         try {
             if ("ADMIN".equals(location.getOrigin())) {
-                mapper.map(identifier, sources, location.getAddress());
+                mapper.map(identifier, sources, location.getAddress(), information);
             }
             if (!"ADMIN".equals(location.getOrigin())) {
-                mapper.map(identifier, sources);
+                mapper.map(identifier, sources, null, information);
             }
             return new Assessment(READY, "필수 정보와 지도용 좌표가 준비되었습니다.", null);
         }

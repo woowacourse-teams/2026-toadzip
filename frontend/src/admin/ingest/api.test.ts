@@ -8,6 +8,34 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it('선택 재처리는 식별자 목록을 관리자 세션·CSRF와 함께 비동기로 접수한다', async () => {
+    const result = { ...execution('COMPLEX_REGISTRATION', 'RUNNING'), executionId: 'retry-1' }
+    const fetchMock = prepareFetch(result, 202)
+    const { retryInitialRegistration } = await import('./api.ts')
+    await expect(retryInitialRegistration(['1:HAPPY_HOUSING'])).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/retry', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+      body: JSON.stringify({ sourceComplexIdentifiers: ['1:HAPPY_HOUSING'] }),
+    })
+  })
+  it('정보 보완에는 현재 원천 지문과 근거를 함께 전송한다', async () => {
+    const fetchMock = prepareFetch(null, 204)
+    const request = { sourceComplexIdentifier: '1:HAPPY_HOUSING', fingerprint: 'a'.repeat(64), complexName: null,
+      housingTypeNames: { row: '26A' }, evidence: '공식 공고문 3쪽' }
+    const { supplementRegistrationInformation } = await import('./api.ts')
+    await supplementRegistrationInformation(request)
+    expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/information', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+      body: JSON.stringify(request),
+    })
+  })
+  it('불완전한 보완 정보와 실패 이력 응답을 성공으로 처리하지 않는다', async () => {
+    const fetchMock = prepareFetch(null)
+    fetchMock.mockReset().mockResolvedValue(jsonResponse({ fingerprint: 'a'.repeat(64), housingTypes: [] }))
+    const { getRegistrationInformation, getRegistrationFailures } = await import('./api.ts')
+    await expect(getRegistrationInformation('1:HAPPY_HOUSING')).rejects.toThrow('응답 형식')
+    await expect(getRegistrationFailures('1:HAPPY_HOUSING', 0)).rejects.toThrow('응답 형식')
+  })
   it('주소·좌표 보완은 원천 식별자와 새 주소·좌표를 CSRF와 함께 전달한다', async () => {
     const fetchMock = prepareFetch(null, 204)
     const { supplementInitialRegistrationLocation } = await import('./api.ts')
@@ -310,6 +338,23 @@ describe('관리자 데이터 수집·정제 API', () => {
       },
     )
   })
+})
+
+it('준비된 신규 단지 등록은 CSRF를 보내고 즉시 실행 접수를 읽는다', async () => {
+  const data = { executionId: 'async-1', type: 'COMPLEX_REGISTRATION', status: 'RUNNING', currentStepName: null,
+    currentStepIndex: 0, totalStepCount: 1, completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null }
+  const fetchMock = prepareFetch(data, 202)
+  const { registerReadyComplexes } = await import('./api.ts')
+  await expect(registerReadyComplexes()).resolves.toEqual(data)
+  expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:8080/api/admin/ingest/myhome/initial-registration/register', {
+    method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' },
+  })
+})
+
+it('실행 접수 정보가 빠지면 성공으로 표시하지 않는다', async () => {
+  prepareFetch({ counts: { COMPLETED: 2 }, targetCount: 2, uniqueAddressCount: 1 }, 202)
+  const { registerReadyComplexes } = await import('./api.ts')
+  await expect(registerReadyComplexes()).rejects.toThrow()
 })
 
 function refreshReport() {

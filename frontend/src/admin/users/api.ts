@@ -2,7 +2,7 @@ import { requestManagementApi } from '../management/api'
 import { isRecord } from '../management/managementContract'
 
 export type UserProvider = 'GOOGLE' | 'KAKAO' | 'UNKNOWN'
-export type AdminUser = { id: number; email: string | null; provider: UserProvider; createdAt: string }
+export type AdminUser = { id: number; email: string | null; provider: UserProvider; createdAt: string; admin: boolean }
 export type UserPage = { items: AdminUser[]; page: number; hasNext: boolean; totalElements: number; totalPages: number }
 export async function listUsers(params: URLSearchParams, signal?: AbortSignal): Promise<UserPage> {
   const value = await requestManagementApi(`/api/admin/users?${params}`, 'GET', undefined, signal)
@@ -14,13 +14,18 @@ export async function listUsers(params: URLSearchParams, signal?: AbortSignal): 
 export async function getUser(id: string, signal?: AbortSignal): Promise<AdminUser> {
   return parseUser(await requestManagementApi(`/api/admin/users/${encodeURIComponent(id)}`, 'GET', undefined, signal))
 }
+/** 관리자 권한을 주거나 뺀 뒤의 회원 정보를 돌려준다. */
+export async function setUserAdmin(id: number, admin: boolean): Promise<AdminUser> {
+  return parseUser(await requestManagementApi(`/api/admin/users/${id}/admin`, admin ? 'PUT' : 'DELETE'))
+}
 function parseUser(value: unknown): AdminUser {
   if (!isRecord(value) || !isCount(value.id) || value.id === 0 || (value.email !== null && typeof value.email !== 'string')
     || !isUserProvider(value.provider) || typeof value.createdAt !== 'string'
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/.test(value.createdAt)) {
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/.test(value.createdAt)
+    || typeof value.admin !== 'boolean') {
     throw new Error('회원 정보 응답이 올바르지 않습니다.')
   }
-  return { id: value.id, email: value.email, provider: value.provider, createdAt: value.createdAt }
+  return { id: value.id, email: value.email, provider: value.provider, createdAt: value.createdAt, admin: value.admin }
 }
 export function isUserProvider(value: unknown): value is UserProvider {
   return value === 'GOOGLE' || value === 'KAKAO' || value === 'UNKNOWN'

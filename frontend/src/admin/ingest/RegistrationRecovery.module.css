@@ -1,0 +1,11 @@
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); }
+.help { position: relative; display: inline-flex; }
+.selection { display: flex; align-items: center; gap: var(--ds-space-2); }
+.editor { margin: var(--ds-space-4) 0; }
+.editor fieldset { display: grid; gap: var(--ds-space-3); min-width: 0; margin: 0; padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
+.editor label { display: grid; gap: var(--ds-space-2); min-width: 0; }
+.editor input { box-sizing: border-box; width: 100%; min-width: 0; padding: var(--ds-space-3); font: inherit; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); }
+.editor p, .history p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.history { display: grid; gap: var(--ds-space-3); margin: var(--ds-space-4) 0; padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); border-radius: var(--ds-radius-control); }
+.history h4 { margin: 0; }
+.history ul { display: grid; gap: var(--ds-space-3); margin: 0; padding-inline-start: var(--ds-space-5); }

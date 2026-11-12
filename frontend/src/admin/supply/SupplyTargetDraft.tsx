@@ -8,11 +8,12 @@ export function SupplyTargetDraft({ value, onChange, onRemove }: { value: Correc
     <div className={styles.fields}>
       <label>공급대상<input required maxLength={255} value={value.target} onChange={event => field('target', event.target.value)} /></label>
       <label>공급순위<input maxLength={255} value={value.supplyRank ?? ''} onChange={event => field('supplyRank', event.target.value || null)} /></label>
-      <label>대상 모집수 (세대)<input type="number" min="0" step="1" value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
-      <label>예비자수 (명)<input type="number" min="0" step="1" value={value.reserveCount ?? ''} onChange={event => field('reserveCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
+      <label>대상 모집수 (세대)<input type="number" min="0" step="1" disabled={Boolean(value.householdCountGroup)} placeholder={value.householdCountGroup ? `공통 ${value.householdCountGroup.count}세대` : undefined} value={value.householdCount ?? ''} onChange={event => field('householdCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
+      <label>예비자수 (명)<input type="number" min="0" step="1" disabled={Boolean(value.reserveCountGroup)} placeholder={value.reserveCountGroup ? `공통 ${value.reserveCountGroup.count}명` : undefined} value={value.reserveCount ?? ''} onChange={event => field('reserveCount', event.target.value === '' ? null : Number(event.target.value))} /></label>
       {([['deposit', '보증금 (원)'], ['rent', '월 임대료 (원)'], ['convertedDeposit', '전환 보증금 (원)']] as const).map(([key, label]) =>
         <label key={key}>{label}<input inputMode="numeric" pattern="[0-9]*" maxLength={18} value={value[key] ?? ''} onChange={event => field(key, event.target.value || null)} /></label>)}
     </div>
+    {(value.householdCountGroup || value.reserveCountGroup) && <p className={styles.hint}>같은 공급행의 다른 대상과 함께 쓰는 수(공통 모집수)입니다. 대상마다 나누지 않으며 공통 모집수는 PDF 보정에서 바꿉니다. 이 대상을 제외하면 묶음을 풀고 그 수는 비웁니다.</p>}
     <label>신청조건<textarea maxLength={255} rows={2} value={value.condition ?? ''} onChange={event => field('condition', event.target.value || null)} /></label>
     <div className={styles.actions}>{value.id ? <button type="button" onClick={() => field('excluded', !value.excluded)}>{value.excluded ? '대상 복구' : '대상 제외'}</button>
       : <button type="button" onClick={onRemove}>추가한 대상 지우기</button>}

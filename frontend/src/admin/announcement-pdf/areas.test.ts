@@ -29,3 +29,13 @@ it('이름 형식만 다른 같은 집(단지 059.9100A ↔ 공고문 59A)은 �
   expect(announcementHousingType(types, '59A', 59.91, [{ name: '59C', exclusiveArea: 59.91 }])?.id).toBe(11)
   expect(announcementHousingType(types, '59C', 59.91, [{ name: '59A', exclusiveArea: 59.91 }])).toBeNull()
 })
+
+it('주택타입 열이 없어 신청형 이름으로 잇는 행은 이름이 같은 주택타입의 면적이 다르고 면적이 같은 주택타입이 따로 있으면 그쪽에 잇는다', () => {
+  // 평택송화: 공고문 병합 칸 '46'이 45.79㎡(13호)·46.22㎡(253호) 두 줄을 덮는다. 단지는 45(45.79)·46(46.22)로 나뉘어 있다.
+  const types = [{ id: 4216, name: '45', exclusiveArea: 45.79 }, { id: 4217, name: '46', exclusiveArea: 46.22 }] as never
+  expect(announcementHousingType(types, '46', 45.79, [], false)?.id).toBe(4216)
+  // 주택타입 열에 적힌 이름이면 공고문 이름이 우선이다(단지 주택타입 이름 기준).
+  expect(announcementHousingType(types, '46', 45.79, [], true)?.id).toBe(4217)
+  // 면적이 같은 다른 주택타입이 없으면(면적만 조금 다름) 지금처럼 이름이 같은 주택타입에 잇는다.
+  expect(announcementHousingType(types, '46', 46.21, [], false)?.id).toBe(4217)
+})

@@ -97,6 +97,9 @@ public class AnnouncementJsonCorrectionService {
         if (!plan.preview().confirmationToken().equals(apply.confirmationToken())) {
             throw new AdminDataConflictException("변경안이나 연결 후보가 달라졌습니다. 다시 미리보기 하세요.");
         }
+        if (plan.preview().unchanged()) {
+            return confirmUnchanged(announcement, id, plan, request, actor);
+        }
         SupplyCorrection.Apply supplyApply = plan.preview().supply() == null ? null
                 : new SupplyCorrection.Apply(request.correction(), plan.preview().supply().confirmationToken());
         Map<String, SupplyRow> written = Map.of();
@@ -135,6 +138,25 @@ public class AnnouncementJsonCorrectionService {
         return after;
     }
 
+    /**
+     * 공고문과 지금 값이 같다고 확인한 보정. 값은 쓰지 않지만 공고문으로 확인한 것은 적용과 같다: 공급정보를 공고문 소유로 바꾸고
+     * 재확인 표시를 지우며, 남은 정제·보강 실패를 해결하고, '변경 없음 확인' 이력을 한 건 남긴다. 그래야 같은 공고가 다시 확인 대상으로 돌아오지 않는다.
+     */
+    private Workspace confirmUnchanged(Announcement announcement, long id, Prepared plan, Request request, String actor) {
+        announcement.recordAdminSupplyChange();
+        announcements.flush();
+        var after = workspace(id);
+        var audit = new LinkedHashMap<String, Object>();
+        audit.put("unchanged", true);
+        audit.put("source", request.document().source());
+        audit.put("reason", request.correction().reason().strip());
+        audit.put("sourceUrl", request.correction().sourceUrl());
+        changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CONFIRM_FROM_PDF", actor,
+                json.writeValueAsString(Map.of("detail", plan.before().detail())), json.writeValueAsString(audit)));
+        resolveFailures(announcement.getSourceAnnouncementIdentifier(), actor);
+        return after;
+    }
+
     /** PDF 보정은 공고를 원문 기준으로 맞추므로 이 공고에 남은 정제·보강 실패를 해결한 관리자와 함께 해결로 바꾼다. */
     private void resolveFailures(String identifier, String actor) {
         if (identifier == null || identifier.isBlank()) { return; }
@@ -153,7 +175,7 @@ public class AnnouncementJsonCorrectionService {
         find(id).validateAdminRevision(incoming(find(id), metadata));
         SupplyCorrection.Preview supply = null;
         if (!hash(before.supply().rows()).equals(hash(withLinks(before.supply().rows(), request.correction().rows())))) {
-            supply = supplies.preview(id, before.supply(), request.correction());
+            supply = supplies.previewChanges(id, before.supply(), request.correction()).orElse(null);
         }
         if (supply == null && !before.supply().snapshotToken().equals(request.correction().snapshotToken())) {
             throw new AdminDataConflictException("공급정보가 바뀌었습니다. 다시 확인하세요.");
@@ -170,10 +192,10 @@ public class AnnouncementJsonCorrectionService {
         if (publishes) {
             verifyLinkedToComplex(planned);
         }
-        if (!publishes && fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty() && attachmentChanges.isEmpty()
-                && typeChanges.isEmpty() && !housingTypes.advancesObservation(postedDate, planned, request.housingTypeValues())) {
-            throw new IllegalArgumentException("적용할 변경이 없습니다. 현재값과 다른 항목을 선택하세요.");
-        }
+        // 공고문과 지금 값이 같으면 거절하지 않고 '변경 없음'으로 끝낸다. 적용도 아무것도 쓰지 않는다(사용자 결정).
+        boolean unchanged = !publishes && fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty()
+                && attachmentChanges.isEmpty() && typeChanges.isEmpty()
+                && !housingTypes.advancesObservation(postedDate, planned, request.housingTypeValues());
         if (find(id).isPublished()) {
             warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
         } else {
@@ -190,7 +212,7 @@ public class AnnouncementJsonCorrectionService {
         String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken, typeChanges,
                 publishes));
         return new Prepared(before, metadata, planned, new Preview(token, fieldChanges, supply,
-                eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings, publishes));
+                eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings, publishes, unchanged));
     }
 
     /**

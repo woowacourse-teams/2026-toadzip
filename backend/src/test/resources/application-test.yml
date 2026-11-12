@@ -18,3 +18,7 @@ app:
   datasource:
     shared:
       driver-class-name: org.postgresql.Driver
+
+comparison:
+  recheck:
+    enabled: false

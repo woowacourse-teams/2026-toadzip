@@ -30,26 +30,30 @@ import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { CampaignStatsBoundary } from './analytics/CampaignStatsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
+import { hasExplorerState } from './landing/explorerState'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
-import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
+import { isInvalidExplorerPath, toExplorerQueryLocation, toPublicLocation } from './public-housing/navigation/detailLocation'
+import { clearLoginReturn, isAdminPath, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
 import { MobileInstallProvider } from './install/MobileInstallProvider'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
-  const params = new URLSearchParams(search)
   // Keep existing detail, filter, map and authentication links usable.
-  const hasExplorerState = Array.from(params.keys()).some((key) =>
-    /^(complex|announcement|map)/.test(key)
-    || key === 'boundaryRegionCode' || key === 'login' || key === 'tab' || key === 'inbox',
-  )
-  return hasExplorerState
+  return hasExplorerState(search)
     ? <Navigate to={{ pathname: '/explore', search, hash }} replace />
     : <LandingPage />
 }
 
+// `/explore`와 상세·지역 주소는 같은 Home을 써서 상세를 여닫을 때 지도를 다시 만들지 않는다.
 function Home() {
+  const location = useLocation()
+  if (isInvalidExplorerPath(location.pathname)) return <NotFound />
+  return <ExplorerHome />
+}
+
+function ExplorerHome() {
   const location = useLocation()
   useEffect(() => { rememberExplorerPath(location.pathname + location.search + location.hash) }, [location])
   const navigationType = useNavigationType()
@@ -88,8 +92,9 @@ function LegacyLoginRedirect() {
   const { search, hash } = useLocation()
   const mobile = useMobileViewport()
   const params = new URLSearchParams(search)
-  if (mobile) return <UserLoginPage />
   const returnTo = params.get('returnTo')
+  // 관리자 화면에는 소셜 로그인 창이 없으므로 화면 크기와 관계없이 로그인 화면을 연다.
+  if (mobile || isAdminPath(new URL(safeLoginReturn(returnTo), window.location.origin).pathname)) return <UserLoginPage />
   if (returnTo) {
     const target = new URL(safeLoginReturn(returnTo), window.location.origin)
     target.searchParams.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
@@ -149,6 +154,11 @@ export default function App() {
   if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
     return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
   }
+  // 예전 상세 링크(`/explore?complexId=1`)는 상세 주소로 바꿔 열고, 상세·지역 주소에 겹쳐 붙은 쿼리는 지운다.
+  const detailPath = toPublicLocation(toExplorerQueryLocation({ pathname, search }), { pathname, search })
+  if (detailPath.pathname !== pathname || detailPath.search !== search) {
+    return <Navigate to={{ ...detailPath, hash }} state={state} replace />
+  }
   return (
     <MobileInstallProvider>
     {pathname !== '/' && <PrivacyBoundary />}
@@ -158,6 +168,10 @@ export default function App() {
       <Route path="/" element={<LandingEntry />} />
       <Route element={<PublicNotificationLayout />}>
         <Route path="/explore" element={<Home />} />
+        <Route path="/complexes/:complexId" element={<Home />} />
+        <Route path="/announcements/:announcementId" element={<Home />} />
+        <Route path="/regions/:regionCode" element={<Home />} />
+        <Route path="/regions/:regionCode/:rentalType" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
         <Route path="/mypage" element={<Home />} />
         <Route path="/mypage/:section" element={<Home />} />

@@ -19,7 +19,7 @@ vi.mock('./admin/management/api', async importOriginal => ({
 }))
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StrictMode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.tsx'
 import type { DataPipelineType } from './admin/ingest/api.ts'
@@ -174,11 +174,32 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
   })
 
+  it('관리자 로그인 화면은 보던 관리자 주소로 돌아오는 소셜 로그인 링크를 보인다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: '인증이 필요합니다.' }, 401)))
+    render(<MemoryRouter initialEntries={['/admin/announcements?page=2']}><App /><LocationProbe /></MemoryRouter>)
+
+    expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '카카오·구글 계정으로 로그인' }))
+
+    expect(await screen.findByRole('heading', { name: '로그인' })).toBeVisible()
+    expect(screen.getByRole('link', { name: /카카오톡으로 로그인/ })).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent('/login?returnTo=%2Fadmin%2Fannouncements%3Fpage%3D2')
+  })
+
+  it('관리자가 아닌 소셜 계정은 로그인 화면으로 다시 가지 않고 권한 없음 안내를 본다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ code: 'ACCESS_DENIED', message: '관리자 권한이 필요합니다.' }, 403)))
+    render(<MemoryRouter initialEntries={['/admin/operations']}><App /><LocationProbe /></MemoryRouter>)
+
+    expect(await screen.findByText('관리자 권한이 없는 계정입니다.')).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent('/admin/operations')
+    expect(screen.getByRole('link', { name: '지도로 돌아가기' })).toHaveAttribute('href', '/explore')
+  })
+
   it('관리자 메뉴를 이동하면 해당 업무만 표시하고 뒤로 돌아와도 실행 상태를 조회한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('navigation', { name: '관리자 메뉴' })).getByRole('link', { name: '단지 관리' }))
     fireEvent.click(screen.getByRole('link', { name: '단지 추가' }))
     expect(screen.getByRole('heading', { name: '단지 관리',level:1 })).toBeVisible()
@@ -192,7 +213,7 @@ describe('App', () => {
     fireEvent.click(screen.getByText('수집·원천 도구', { selector: 'summary' }))
     fireEvent.click(screen.getByRole('link', { name: '주소 데이터' }))
     expect(screen.getByRole('heading', { name: '주소 데이터', level: 1 })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '공고 수집' }))
     expect(screen.getByRole('heading', { name: '공고 수집', level: 1 })).toBeVisible()
   })
@@ -228,7 +249,7 @@ describe('App', () => {
     render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '직접 입력' })).toBeVisible()
     expect(screen.getByRole('link', { name: '공고 관리' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
   })
 
   it.each([false, true])('인증 복원 대기 중 로그인하면 관리자 화면을 연다 (실패 후 재시도: %s)', async retry => {
@@ -316,4 +337,9 @@ function deferredResponse(): {
     resolveResponse = resolve
   })
   return { promise, resolve: resolveResponse! }
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.pathname + location.search}</output>
 }

@@ -10,29 +10,36 @@ from dataclasses import dataclass
 from ai_worker import checks, pages, tables
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
-    check_source_rows, count_cell, normalize_source_text, numeric_cell_matches, recruitment_count, source_cell_matches,
-    source_row_map, source_texts, target_cells,
+    Headings, check_source_rows, count_cell, count_or_dash, normalize_source_text, numeric_cell_matches,
+    recruitment_count, source_cell_matches, source_row_map, source_texts, target_cells,
 )
 
 
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
-def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str]]:
-    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다."""
+def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tuple[dict, list[str]]:
+    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다.
+    source_names는 LH 공급행의 단지명이다. 표 위 블록 제목과 단지명을 대조할 때 후보로 쓴다(Headings)."""
     groups: list[dict] = []
     group_indexes: dict[tuple, int] = {}
     unresolved: list[dict] = []
     compact_paths: dict[int, tuple[int, int | None]] = {}
     items = checks.objects(compact.get("data", {}).get("rows"))
     per_house_type_tables = _per_house_type_tables(items, selected)
+    headings = Headings(selected.supply_row_headings, tuple(
+        name for name in (*(item.get("complexName") for item in items), *source_names) if isinstance(name, str)))
 
     for item_index, item in enumerate(items):
         unresolved_start = len(unresolved)
         row_ids = _row_ids(item)
-        complex_name = _compact_source_text(item.get("complexName"), "complexName", row_ids, selected,
-                                            "supplyRows[__item__].complexReference.sourceComplexName", unresolved,
-                                            missing_value="")
+        complex_name = None
+        if headings.confirms(item.get("complexName"), row_ids, selected.supply_row_values):
+            complex_name = _normalize_source_display(item["complexName"], "complexName")
+        if complex_name is None:
+            complex_name = _compact_source_text(item.get("complexName"), "complexName", row_ids, selected,
+                                                "supplyRows[__item__].complexReference.sourceComplexName", unresolved,
+                                                missing_value="")
         unit = _house_type_unit(row_ids, selected, per_house_type_tables)
         if unit is None:
             housing_type = _compact_source_text(item.get("housingType"), "housingType", row_ids, selected,
@@ -181,9 +188,14 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
         else:
             compact_paths[item_index] = (group_index, None)
 
+    merged = _merge_groups_sharing_counts(groups, selected, compact_paths, unresolved)
     for group_index, group in enumerate(groups):
         _area_from_source_cells(group, selected)
-        _counts_from_source_cells(group_index, group, groups, selected, unresolved, per_house_type_tables)
+        if group_index in merged:
+            _joined_counts(group_index, group, selected, unresolved)
+        else:
+            _counts_from_source_cells(group_index, group, groups, selected, unresolved, per_house_type_tables)
+        _leave_merged_cells_unconfirmed(group, selected)
 
     supply_rows = []
     source_rows = []
@@ -229,6 +241,18 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
 
     source_by_path = {item["path"]: set(item["rowIds"]) for item in source_rows}
     shared_counts = []
+    code_shared = [(f"supplyRows[{index}]", shared) for index, group in enumerate(groups)
+                   for shared in group.get("codeShared", [])]
+    code_shared_paths = {f"{row}.targets[{target}].{shared['field']}"
+                         for row, shared in code_shared for target in shared["targets"]}
+    def add_shared(paths: list[str], count: int, page: int, quote: str, row_ids: list[str]) -> None:
+        """공통 수량 하나를 싣고, 그 경로의 근거 행을 넓히며, 공통 수량이 대신하는 '예비자 모집수 미확인'을 지운다."""
+        shared_counts.append({"paths": paths, "count": count, "page": page, "quote": quote})
+        for path in paths:
+            source_by_path.setdefault(path, set()).update(row_ids)
+        unresolved[:] = [item for item in unresolved if not (
+            item.get("path") in paths and item.get("reason") == "이번 공고의 예비자 모집수를 표에서 확인하지 못함")]
+
     for shared in checks.objects(compact.get("sharedCounts")):
         field = shared.get("field")
         count = _compact_number(shared.get("count"), field) if isinstance(field, str) else None
@@ -247,6 +271,10 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
                 elif field != "totalSupplyHouseholdCount" and target_index is not None:
                     paths.append(f"supplyRows[{supply_index}].targets[{target_index}].{field}")
         paths = list(dict.fromkeys(paths))
+        if len(paths) < 2 and all(_path_group(path) in merged for path in paths):
+            continue  # 한 공급행으로 묶은 주택형들의 공통 수량이다. 묶은 공급행의 수량은 원문 칸에서 읽는다.
+        if any(path in code_shared_paths for path in paths):
+            continue  # 같은 대상의 공통 수량은 원문 칸에서 읽은 값(아래)을 쓴다.
         field_supported = count is not None and any(
             source_cell_matches(count, selected.supply_row_values.get(row_id, {}), field) for row_id in row_ids
         )
@@ -262,12 +290,13 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
         if page is None or not quote:
             unresolved.extend({"path": path, "reason": "공통 수량의 원문 쪽과 인용을 만들지 못함"} for path in paths)
             continue
-        shared_counts.append({"paths": paths, "count": count, "page": page, "quote": quote})
-        for path in paths:
-            source_by_path.setdefault(path, set()).update(row_ids)
-            unresolved = [item for item in unresolved if not (
-                item.get("path") == path and item.get("reason") == "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
-            )]
+        add_shared(paths, count, page, quote, row_ids)
+    for row, shared in code_shared:
+        paths = [f"{row}.targets[{target}].{shared['field']}" for target in shared["targets"]]
+        page = int(re.match(r"P(\d+):", shared["rowIds"][0]).group(1))
+        quote = " ".join(selected.supply_row_text.get(row_id, "").strip() for row_id in shared["rowIds"]
+                         if row_id.startswith(f"P{page}:"))[:500]
+        add_shared(paths, shared["count"], page, quote, shared["rowIds"])
     source_rows = [{"path": path, "rowIds": sorted(row_ids)} for path, row_ids in source_by_path.items()]
 
     tree = {
@@ -297,9 +326,12 @@ def assemble(compact: dict, selected: pages.PromptPages) -> tuple[dict, list[str
             for target_index in range(len(group["targets"])):
                 block_counts[f"supplyRows[{index}].targets[{target_index}]"] = {
                     "supplyHouseholdCount": None, "reserveCount": None}
+        # 원문 칸에서 대상별로 정한 수(우선·일반 공급의 합, 예비자만 모집하는 표의 예비자 수)와 공통 수량에 든 대상(None)
+        for suffix, values in group.get("sourceCounts", {}).items():
+            block_counts.setdefault(f"supplyRows[{index}]{suffix}", {}).update(values)
     warnings = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
                                  tree["data"]["unresolvedFields"], selected.supply_row_values,
-                                 selected.supply_row_target_values, block_counts)
+                                 selected.supply_row_target_values, block_counts, headings)
     tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
     for index, row in enumerate(supply_rows):
         _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
@@ -394,8 +426,10 @@ def _counts_from_source_cells(index: int, group: dict, groups: list[dict], selec
                               unresolved: list[dict], per_house_type_tables: set[str]) -> None:
     """모델이 모집수·예비자 수를 빠뜨린 공급행은 그 행이 가리키는 원문 표의 수량 행이 하나로 정해지면 그 칸을 쓴다.
     모집수는 입주자와 예비자를 합한 수다(사용자 결정). 모집호수 칸(입주자·예비자를 나눈 표의 '계')이 있으면 그 값,
-    없으면 당첨자 칸과 예비자 칸의 합이다. 다른 공급행도 가리키거나 이 공급행 밖의 행까지 병합된 수량 칸은 여러 공급행의
-    공통 수량이라 채우지 않는다(나누거나 복제하지 않는다). 모델이 낸 값은 바꾸지 않고 뒤의 원문 대조에 맡긴다.
+    없으면 당첨자 칸과 예비자 칸의 합, 공급호수를 우선·일반 공급으로 나눈 표는 두 칸의 합이다. 예비자만 모집하는 표는 예비자 수다.
+    다른 공급행도 가리키는 수량 칸은 여러 공급행의 공통 수량이라 채우지 않는다(나누거나 복제하지 않는다).
+    대상이 여럿이면 수량 행 하나를 모든 대상의 공통 수량으로 두고(가군·나군), 대상마다 수량 행이 있으면 대상별로 읽는다
+    (_target_counts). 모델이 낸 값은 뒤의 원문 대조에 맡기되, 공통 수량으로 둔 대상들의 값은 공통 수량이 대신해 비운다.
     주택타입이 여럿인 주택형을 한 공급행으로 뽑았으면 수량은 주택타입 행마다라 그 합이 공급행 모집수다(_block_counts)."""
     unit = _house_type_unit(sorted(group["rowIds"]), selected, per_house_type_tables)
     if unit is not None and not unit.per_house_type and unit.rows[0].block_size > 1:
@@ -403,22 +437,32 @@ def _counts_from_source_cells(index: int, group: dict, groups: list[dict], selec
         return
     count_rows = [row_id for row_id in sorted(group["rowIds"])
                   if any(count_cell(selected.supply_row_values.get(row_id, {}).get(field)) is not None
-                         for field in _COUNT_FIELDS)]
+                         for field in _SOURCE_COUNT_FIELDS)]
+    if len(count_rows) > 1 and len(group["targets"]) > 1:
+        _target_counts(group, groups, count_rows, selected)
     if len(count_rows) != 1:
         return
     row_id = count_rows[0]
+    span = _merged_count_rows(row_id, selected)
     if any(row_id in other["rowIds"] for other in groups if other is not group) \
-            or not _merged_count_rows(row_id, selected) <= group["rowIds"]:
+            or not _own_rows(span, group, groups, selected):
         return
     cells = selected.supply_row_values[row_id]
-    recruited, reserve = recruitment_count(cells), count_cell(cells.get("reserveCount"))
+    recruited, reserve = _recruited(row_id, selected), count_cell(cells.get("reserveCount"))
+    if recruited is not None and recruitment_count(cells) is None:
+        # 예비자만 모집하는 표의 모집수는 원문 칸 하나와 같지 않아 원문 대조가 이 값을 확인된 값으로 보게 한다.
+        _confirm(group, "", totalSupplyHouseholdCount=recruited)
     if recruited is not None and "totalSupplyHouseholdCount" not in group["rowValues"]:
         group["rowValues"]["totalSupplyHouseholdCount"] = recruited
     if len(group["targets"]) != 1:
+        if group["targets"]:
+            _share_row_counts(group, row_id, span, recruited, reserve, selected)
         return
     target = group["targets"][0]
     if target["supplyHouseholdCount"] is None and recruited is not None:
         target["supplyHouseholdCount"] = recruited
+        if recruitment_count(cells) is None:
+            _confirm(group, ".targets[0]", supplyHouseholdCount=recruited)
     if target["reserveCount"] is None and reserve is not None:
         target["reserveCount"] = reserve
         target["rowIds"].add(row_id)
@@ -428,7 +472,319 @@ def _counts_from_source_cells(index: int, group: dict, groups: list[dict], selec
         target["rowIds"].add(row_id)
 
 
+def _own_rows(rows: set[str], group: dict, groups: list[dict], selected: pages.PromptPages) -> bool:
+    """병합된 수량 칸이 덮는 행이 모두 이 공급행의 행인지 본다. 어느 공급행도 가리키지 않은 행은 주택형·대상 칸이 비어
+    위 행에 이어진 줄(같은 주택형의 두 번째 면적 줄)일 때만 이 공급행의 행이다."""
+    for row_id in rows - group["rowIds"]:
+        values = selected.supply_row_values.get(row_id, {})
+        if any(row_id in other["rowIds"] for other in groups) or values.get("housingType") or values.get("target"):
+            return False
+    return True
+
+
+def _recruited(row_id: str, selected: pages.PromptPages) -> int | None:
+    """원문 행의 모집수(recruitment_count). 입주자 열 없이 '금회 모집 예비자'만 적은 표(예비입주자 모집 공고)는 입주자가 0이라
+    예비자 수가 모집수다. 모집 열을 읽지 못한 표(공급호수 등)에서 예비자 수만 모집수로 잡지 않게, 표에 다른 수량 열이 없고
+    예비자 열 머리글에 '모집'이 있을 때만 그렇게 본다."""
+    cells = selected.supply_row_values.get(row_id, {})
+    recruited = recruitment_count(cells)
+    if recruited is not None:
+        return recruited
+    table = _table_of(row_id, selected)
+    if table is None or "reserveCount" not in table.columns \
+            or any(field in table.columns for field in _SOURCE_COUNT_FIELDS if field != "reserveCount"):
+        return None
+    headers = tables.table_column_headers(table.cells[:6], max(len(row) for row in table.cells))
+    if "모집" not in headers[table.columns["reserveCount"]]:
+        return None
+    return count_cell(cells.get("reserveCount"))
+
+
+def _share_row_counts(group: dict, row_id: str, span: set[str], recruited: int | None, reserve: int | None,
+                      selected: pages.PromptPages) -> None:
+    """수량 행 하나를 여러 대상이 함께 쓰면(공급표는 주택형마다, 임대조건만 가군·나군으로 나눈 표) 그 수는 모든 대상의 공통 수량이다.
+    대상마다 수량 표의 다른 행을 가리키면 대상별 수가 따로 있을 수 있어 공통으로 두지 않는다."""
+    count_table_rows = {row.id for table in selected.supply_tables
+                        if any(field in table.columns for field in _SOURCE_COUNT_FIELDS) for row in table.rows}
+    if any((target["rowIds"] & count_table_rows) - span for target in group["targets"]):
+        return
+    everyone = list(range(len(group["targets"])))
+    for field, count in (("supplyHouseholdCount", recruited), ("reserveCount", reserve)):
+        if count is None:
+            continue
+        group.setdefault("codeShared", []).append({"field": field, "count": count, "targets": everyone, "rowIds": [row_id]})
+        # 대상마다 같은 수를 복제한 값은 공통 수량이 대신한다.
+        for target in group["targets"]:
+            target[field] = None
+
+
+def _target_counts(group: dict, groups: list[dict], count_rows: list[str], selected: pages.PromptPages) -> None:
+    """대상마다 수량 행이 있는 공급행(인천석남 21A: 대학생·청년·주거급여 수급자 행)은 대상 이름이 적힌 행의 칸으로 대상별 모집수를 정한다.
+    모집수 칸이 여러 대상 행에 걸쳐 병합되어 있으면(대학생·청년의 일반 공급 28) 그 칸을 나누지 않고, 그 칸을 함께 쓰는 대상들을
+    한 공통 모집수로 둔다. 공통 모집수는 그 대상들의 자기 칸과 함께 쓰는 칸의 합이다(5 + 23 + 28 = 56, 사용자 결정).
+    공급행 모집수는 모든 칸의 합이다. 대상과 수량 행을 하나씩 맞추지 못하거나, 다른 공급행 행이 섞이거나, 읽지 못한 칸이 있으면 정하지 않는다.
+    모집호수(계) 열이나 우선·일반 공급 열이 있는 표만 본다. 당첨자·예비자로 나눈 표는 예비자 수를 대상별로 정해야 해 다루지 않는다."""
+    targets = group["targets"]
+    owners: dict[str, int] = {}
+    for target_index, target in enumerate(targets):
+        name = normalize_source_text(target["target"] or "")
+        own = [row_id for row_id in count_rows if row_id in target["rowIds"] and name
+               and normalize_source_text(selected.supply_row_values[row_id].get("target", "")) == name]
+        if len(own) != 1 or own[0] in owners:
+            return
+        owners[own[0]] = target_index
+    table = _table_of(count_rows[0], selected)
+    if set(owners) != set(count_rows) or table is None or any(_table_of(row_id, selected) is not table for row_id in count_rows) \
+            or any(set(count_rows) & other["rowIds"] for other in groups if other is not group):
+        return
+    if "totalSupplyHouseholdCount" in table.columns:
+        fields = ("totalSupplyHouseholdCount",)
+    elif "priorityCount" in table.columns and "generalCount" in table.columns:
+        fields = ("priorityCount", "generalCount")
+    else:
+        return
+    ids = [row.id for row in table.rows]
+    own_counts = dict.fromkeys(range(len(targets)), 0)
+    spans: dict[tuple[str, int], tuple[int, set[int], list[str]]] = {}
+    for row_id, target_index in owners.items():
+        at = ids.index(row_id)
+        for field in fields:
+            column = table.columns[field]
+            start, end = _column_span(table, at, column)
+            value = count_or_dash(table.cells[start][column] if column < len(table.cells[start]) else None)
+            members = {owners.get(ids[position]) for position in range(start, end + 1)}
+            if value is None or None in members:
+                return
+            if start == end:
+                own_counts[target_index] += value
+            else:
+                spans[(field, start)] = (value, members, ids[start:end + 1])
+    components = [{target} for target in range(len(targets))]
+    for _, members, _ in spans.values():
+        joined = [component for component in components if component & members]
+        components = [component for component in components if not component & members] + [set().union(*joined)]
+    for component in components:
+        shared = [(value, rows) for value, members, rows in spans.values() if members & component]
+        count = sum(own_counts[target] for target in component) + sum(value for value, _ in shared)
+        if len(component) == 1:
+            target_index = next(iter(component))
+            if targets[target_index]["supplyHouseholdCount"] is None:
+                targets[target_index]["supplyHouseholdCount"] = count
+            _confirm(group, f".targets[{target_index}]", supplyHouseholdCount=count)
+            continue
+        rows = sorted({row_id for row_id, target in owners.items() if target in component}
+                      | {row_id for _, span_rows in shared for row_id in span_rows}, key=ids.index)
+        group.setdefault("codeShared", []).append(
+            {"field": "supplyHouseholdCount", "count": count, "targets": sorted(component), "rowIds": rows})
+        for target in component:
+            targets[target]["supplyHouseholdCount"] = None
+    total = sum(own_counts.values()) + sum(value for value, _, _ in spans.values())
+    _confirm(group, "", totalSupplyHouseholdCount=total)
+    group["rowValues"].setdefault("totalSupplyHouseholdCount", total)
+
+
+def _leave_merged_cells_unconfirmed(group: dict, selected: pages.PromptPages) -> None:
+    """대상의 수량 칸이 그 대상 밖의 행까지 병합된 칸이면(대학생·청년이 함께 쓰는 일반 공급 28) 여러 대상의 공통 수량이다.
+    병합이 시작된 행에는 그 칸 값이 그대로 있어, 코드가 대상 수를 정하지 못했을 때 모델이 낸 5 + 28이 대학생 몫으로
+    확인되지 않게 그 대상의 수량은 어떤 값도 확인된 값으로 보지 않는다."""
+    for target_index, target in enumerate(group["targets"]):
+        confirmed = group.get("sourceCounts", {}).get(f".targets[{target_index}]", {})
+        for row_id in sorted(target["rowIds"]):
+            table = _table_of(row_id, selected)
+            if table is None:
+                continue
+            ids = [row.id for row in table.rows]
+            for field in _SOURCE_COUNT_FIELDS:
+                if field not in table.columns:
+                    continue
+                start, end = _column_span(table, ids.index(row_id), table.columns[field])
+                if set(ids[start:end + 1]) <= target["rowIds"]:
+                    continue
+                for count_field in ("supplyHouseholdCount", "reserveCount"):
+                    if count_field not in confirmed:
+                        _confirm(group, f".targets[{target_index}]", **{count_field: None})
+
+
+def _confirm(group: dict, suffix: str, **values: int | str | None) -> None:
+    """원문 칸 하나와 같지 않은 값(합·예비자 수)을 원문 대조가 확인된 값으로 보게 group["sourceCounts"]에 둔다.
+    None은 그 필드의 어떤 값도 확인된 값으로 보지 않게 한다."""
+    group.setdefault("sourceCounts", {}).setdefault(suffix, {}).update(values)
+
+
+def _table_of(row_id: str, selected: pages.PromptPages) -> "tables.SupplyTable | None":
+    return next((table for table in selected.supply_tables if any(row.id == row_id for row in table.rows)), None)
+
+
+def _column_span(table: "tables.SupplyTable", index: int, column: int) -> tuple[int, int]:
+    """그 행의 칸과 세로 병합(None)으로 이어진 행 범위(처음, 끝)."""
+    def merged(at: int) -> bool:
+        return column < len(table.cells[at]) and table.cells[at][column] is None
+    start = index
+    while start > 0 and merged(start):
+        start -= 1
+    end = index
+    while end + 1 < len(table.cells) and merged(end + 1):
+        end += 1
+    return start, end
+
+
+def _merge_groups_sharing_counts(groups: list[dict], selected: pages.PromptPages,
+                                 compact_paths: dict[int, tuple[int, int | None]], unresolved: list[dict]) -> set[int]:
+    """여러 주택형 행이 병합된 모집수 칸 하나를 함께 쓰면(탑석 센트럴 자이 49A·49B·49C의 모집 70) 공고가 그 주택형들을 한 모집 단위로
+    묶은 것이다. 공고 공급행은 하나로 묶고(이름은 공통 형명 49), 주택형마다의 면적은 세부 타입(subtypes)으로 둔다(사용자 결정:
+    공고에서는 묶고 단지 주택타입은 뗀다). 공통 모집수가 공급행을 넘나들면 저장할 곳이 없어 모집수가 빠지기 때문이다.
+    같은 단지, 대상 하나씩, 같은 대상 이름·임대조건이고 세부 타입이 없는 공급행만 묶는다. 묶은 공급행 번호를 돌려준다.
+    이 시점에 공급행 번호를 담은 것은 unresolved와 compact_paths뿐이라 그 둘만 새 번호로 고친다."""
+    parent = list(range(len(groups)))
+
+    def root(index: int) -> int:
+        while parent[index] != index:
+            index = parent[index]
+        return index
+    for index, group in enumerate(groups):
+        for row_id in group["rowIds"]:
+            # 병합 칸이 없는 행 하나는 묶을 근거가 아니다. 위 행의 면적을 물려받으려고 근거 행에 넣은 행도 같은 행 하나다.
+            if len(span := _merged_count_rows(row_id, selected)) == 1:
+                continue
+            for other, other_group in enumerate(groups):
+                if other != index and span & other_group["rowIds"]:
+                    parent[root(other)] = root(index)
+    components: dict[int, list[int]] = {}
+    for index in range(len(groups)):
+        components.setdefault(root(index), []).append(index)
+    joined = [indexes for indexes in components.values()
+              if len(indexes) > 1 and _can_join([groups[i] for i in indexes], selected)]
+    if not joined:
+        return set()
+    new_index: dict[int, int] = {}
+    result: list[dict] = []
+    for index, group in enumerate(groups):
+        component = next((indexes for indexes in joined if index in indexes), None)
+        if component is not None and index != component[0]:
+            new_index[index] = new_index[component[0]]
+            continue
+        new_index[index] = len(result)
+        result.append(_joined_group([groups[i] for i in component], selected) if component else group)
+    merged = {new_index[indexes[0]] for indexes in joined}
+    joined_old = {index for indexes in joined for index in indexes}
+
+    def remap(match: re.Match) -> str:
+        old = int(match.group(1))
+        target = match.group(2)
+        if target is not None and old in joined_old:
+            target = "[0]"
+        return f"supplyRows[{new_index[old]}]" + (f".targets{target}" if target is not None else "")
+    for finding in unresolved:
+        finding["path"] = re.sub(r"supplyRows\[(\d+)\](?:\.targets(\[\d+\]))?", remap, finding["path"])
+    for item, (group_index, target_index) in list(compact_paths.items()):
+        compact_paths[item] = (new_index[group_index],
+                               0 if group_index in joined_old and target_index is not None else target_index)
+    groups[:] = result
+    return merged
+
+
+def _can_join(parts: list[dict], selected: pages.PromptPages) -> bool:
+    if len({complex_key(part["complexName"] or "") for part in parts}) != 1:
+        return False
+    # 병합 칸이 덮는 주택형 행이 모두 묶을 공급행에 있어야 한다. 모델이 한 주택형(49A)을 빠뜨렸는데 묶으면
+    # 그 주택형 몫까지 남은 공급행의 모집수가 된다.
+    names = {normalize_source_text(part["housingType"] or "") for part in parts}
+    covered = set().union(*(_merged_count_rows(row_id, selected) for part in parts for row_id in part["rowIds"]))
+    if any((name := normalize_source_text(selected.supply_row_values.get(row_id, {}).get("housingType", "")))
+           and name not in names for row_id in covered):
+        return False
+    if any(len(part["targets"]) != 1 or part["subtypes"] or part["tableSubtypes"] or not part["housingType"]
+           for part in parts):
+        return False
+    fields = ("rentalDeposit", "monthlyRent", "convertedDeposit")
+    return len({(normalize_source_text(part["targets"][0]["target"] or ""),
+                 *(part["targets"][0][field] for field in fields)) for part in parts}) == 1
+
+
+def _joined_counts(index: int, group: dict, selected: pages.PromptPages, unresolved: list[dict]) -> None:
+    """묶은 공급행의 수량은 열마다 그 행들이 가진 칸(병합 칸은 한 번)의 합이다. 당첨자는 주택형 행마다, 예비자는 세 행에 병합된
+    표(49A 5·49B 4·49C 3, 예비자 56)면 모집수는 12 + 56 = 68이다. 읽지 못한 칸이 있는 열은 합하지 않는다.
+    모델이 낸 값은 바꾸지 않고, 합은 원문 칸 하나에 없어 원문 대조가 확인된 값으로 보게 sourceCounts에 둔다."""
+    row_ids = sorted(group["rowIds"])
+    table = _table_of(row_ids[0], selected)
+    if table is None or any(_table_of(row_id, selected) is not table for row_id in row_ids):
+        return
+    ids = [row.id for row in table.rows]
+    sums: dict[str, str] = {}
+    for field in _SOURCE_COUNT_FIELDS:
+        if field not in table.columns:
+            continue
+        starts = {ids[_column_span(table, ids.index(row_id), table.columns[field])[0]] for row_id in row_ids}
+        values = [count_or_dash(selected.supply_row_values.get(row_id, {}).get(field)) for row_id in starts]
+        if starts <= group["rowIds"] and all(value is not None for value in values):
+            sums[field] = str(sum(values))
+    recruited, reserve = recruitment_count(sums), count_cell(sums.get("reserveCount"))
+    if recruited is None:
+        return
+    group["rowValues"].setdefault("totalSupplyHouseholdCount", recruited)
+    target = group["targets"][0]
+    if target["supplyHouseholdCount"] is None:
+        target["supplyHouseholdCount"] = recruited
+    if target["reserveCount"] is None and reserve is not None:
+        target["reserveCount"] = reserve
+        unresolved[:] = [finding for finding in unresolved
+                         if finding["path"] != f"supplyRows[{index}].targets[0].reserveCount"]
+    target["rowIds"].update(row_ids)
+    _confirm(group, "", totalSupplyHouseholdCount=recruited)
+    _confirm(group, ".targets[0]", supplyHouseholdCount=recruited,
+             **({"reserveCount": reserve} if reserve is not None else {}))
+
+
+def _part_value(part: dict, field: str, selected: pages.PromptPages) -> float | None:
+    """묶은 주택형 하나의 면적·건설호수. 그 주택형이 적힌 원문 행 칸의 값이고, 없으면 모델이 낸 값이다."""
+    wanted = normalize_source_text(part["housingType"])
+    for row_id in sorted(part["rowIds"]):
+        values = selected.supply_row_values.get(row_id, {})
+        if normalize_source_text(values.get("housingType", "")) != wanted:
+            continue
+        try:
+            return float(str(values.get(field, "")).replace(",", "").strip())
+        except ValueError:
+            break
+    return _compact_number(part["rowValues"].get(field), field)
+
+
+def _joined_group(parts: list[dict], selected: pages.PromptPages) -> dict:
+    names = [part["housingType"] for part in parts]
+    prefixes = {match.group(0) if (match := re.match(r"\d+", name)) else None for name in names}
+    housing_type = prefixes.pop() if len(prefixes) == 1 and None not in prefixes else "·".join(names)
+    shared = {key: value for key, value in parts[0]["rowValues"].items()
+              if all(part["rowValues"].get(key) == value for part in parts)}
+    shared.pop("totalSupplyHouseholdCount", None)
+    shared = {key: value for key, value in shared.items() if key not in ("exclusiveArea", "commonArea", "supplyArea",
+                                                                          "constructedHouseholdCount")}
+    target = dict(parts[0]["targets"][0])
+    target["rowIds"] = set().union(*(part["targets"][0]["rowIds"] for part in parts))
+    target["supplyHouseholdCount"] = target["reserveCount"] = None
+    return {
+        "complexName": parts[0]["complexName"],
+        "housingType": housing_type,
+        "rowIds": set().union(*(part["rowIds"] for part in parts)),
+        "items": [item for part in parts for item in part["items"]],
+        "rowValues": shared,
+        "subtypes": [{"name": part["housingType"],
+                      **{field: _part_value(part, field, selected)
+                         for field in ("exclusiveArea", "commonArea", "constructedHouseholdCount")}} for part in parts],
+        "tableSubtypes": [],
+        "targets": [target],
+        # 공통 형명(49)은 원문 칸 하나에 없지만 묶은 주택형 칸들에서 코드가 만든 이름이라 원문 대조가 확인된 값으로 본다.
+        "sourceCounts": {"": {"sourceHousingTypeName": housing_type}},
+    }
+
+
+def _path_group(path: str) -> int | None:
+    match = re.match(r"supplyRows\[(\d+)\]", path)
+    return int(match.group(1)) if match else None
+
+
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
+# 모집수를 읽는 원문 칸. 공급호수를 우선·일반 공급으로 나눈 표는 두 칸의 합이 모집수다.
+_SOURCE_COUNT_FIELDS = (*_COUNT_FIELDS, "priorityCount", "generalCount")
 
 
 def _fill_block_counts(index: int, group: dict, groups: list[dict], unit: "_HouseTypeUnit",
@@ -477,15 +833,8 @@ def _merged_count_rows(row_id: str, selected: pages.PromptPages) -> set[str]:
         if row_id not in ids:
             continue
         index = ids.index(row_id)
-        for column in (table.columns[field] for field in _COUNT_FIELDS if field in table.columns):
-            def merged(at: int) -> bool:
-                return column < len(table.cells[at]) and table.cells[at][column] is None
-            start = index
-            while start > 0 and merged(start):
-                start -= 1
-            end = index
-            while end + 1 < len(ids) and merged(end + 1):
-                end += 1
+        for column in (table.columns[field] for field in _SOURCE_COUNT_FIELDS if field in table.columns):
+            start, end = _column_span(table, index, column)
             rows.update(ids[start:end + 1])
     return rows
 

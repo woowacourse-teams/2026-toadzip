@@ -123,6 +123,8 @@ export interface RawComplexSupplyCondition {
   readonly deposit: number | null
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
+  /** 이 조건을 낸 공고의 게시일(YYYY-MM-DD). */
+  readonly postedDate: string | null
 }
 
 export interface ComplexBasicRentalCondition {
@@ -189,6 +191,8 @@ export interface ComplexSupplyCondition {
   readonly deposit: number | null
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
+  /** 이 조건을 낸 공고의 게시일(YYYY-MM-DD). */
+  readonly postedDate: string | null
 }
 
 export interface ComplexHousingType {
@@ -253,6 +257,8 @@ export interface RawAnnouncementListItem {
   readonly applicationStartAt: string | null
   readonly applicationEndAt: string | null
   readonly dDay: number | null
+  /** 이 필드가 없던 이전 API 응답을 위해 생략할 수 있다. */
+  readonly winnerAnnouncementAt?: string | null
   readonly viewCount: number
   readonly supplyComplexCount: number
   readonly supplyHouseholdCount: number | null
@@ -281,6 +287,7 @@ export interface AnnouncementListItem {
   readonly applicationStartAt: string | null
   readonly applicationEndAt: string | null
   readonly dDay: number | null
+  readonly winnerAnnouncementAt?: string | null
   readonly viewCount: number
   readonly supplyComplexCount: number
   readonly supplyHouseholdCount: number | null
@@ -373,6 +380,14 @@ export interface RawAnnouncementSupplyTarget {
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
   readonly applicationCondition: string | null
+  readonly sharedSupplyHouseholdCount?: SharedTargetCount | null
+  readonly sharedWaitlistCount?: SharedTargetCount | null
+}
+
+/** 같은 공급행의 다른 대상과 함께 쓰는 수. 대상마다 나누지 않은 공고문 그대로의 수와 그 수를 함께 쓰는 대상 이름이다. */
+export interface SharedTargetCount {
+  readonly count: number
+  readonly targets: readonly string[]
 }
 
 export interface RawAnnouncementSupplyRow {
@@ -397,7 +412,11 @@ export interface RawAnnouncementCompetition {
   readonly predictedRate: number | null
 }
 
+/** 공고가 보이는 공고 목록 탭. 백엔드가 목록과 같은 기준으로 판정한다. */
+export type AnnouncementListPhase = 'RECRUITING' | 'CLOSED' | 'NONE'
+
 export interface RawAnnouncementDetail {
+  readonly listPhase?: AnnouncementListPhase
   readonly announcementId: number
   readonly publicationType: string | null
   readonly correctionOrCancellationReason: string | null
@@ -470,6 +489,8 @@ export interface AnnouncementSupplyTarget {
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
   readonly applicationCondition: string | null
+  readonly sharedSupplyHouseholdCount?: SharedTargetCount | null
+  readonly sharedWaitlistCount?: SharedTargetCount | null
 }
 
 export interface AnnouncementSupplyRow {
@@ -517,5 +538,7 @@ export interface AnnouncementDetail {
   readonly attachments: readonly AnnouncementAttachment[]
   readonly supplyRows: readonly AnnouncementSupplyRow[]
   readonly competition: AnnouncementCompetition | null
+  /** 없으면 어느 탭에도 없는 것으로 본다. */
+  readonly listPhase?: AnnouncementListPhase
   readonly raw: RawAnnouncementDetail
 }

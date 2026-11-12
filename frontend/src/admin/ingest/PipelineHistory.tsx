@@ -8,7 +8,7 @@ import { ComplexIconButton } from './ComplexIconButton'
 import styles from './ComplexIngest.module.css'
 import listStyles from './PipelineHistory.module.css'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
-export function PipelineHistory({ domain, compact = false, readOnlyComplex = false }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean } = {}) {
+export function PipelineHistory({ domain, compact = false, readOnlyComplex = false, onShowRegistration }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean; onShowRegistration?: () => void } = {}) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
   const [selected, setSelected] = useState<DataPipelineExecution | null>(null)
@@ -62,9 +62,11 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
     <section id={detailId} className="pipeline-history-detail" aria-label="선택한 실행 상세">
       <header><h3 ref={detailHeading} tabIndex={readOnlyComplex ? -1 : undefined}>선택한 실행 상세</h3>{readOnlyComplex ? <ComplexIconButton icon="close" label="닫기" onClick={closeDetail} />
         : <button type="button" onClick={() => setSelected(null)}>닫기</button>}</header>
-      <p>{readOnlyComplex ? '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'
+      <p>{readOnlyComplex ? selected.type === 'COMPLEX_REGISTRATION'
+        ? '선택한 등록 실행에 저장된 단계별 결과입니다.'
+        : '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'
         : '선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.'}</p>
-      {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} />
+      {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} onShowRegistration={onShowRegistration} />
         : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
           stopping={true} onStop={() => {}} />}
     </section>

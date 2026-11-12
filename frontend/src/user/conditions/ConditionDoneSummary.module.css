@@ -1,0 +1,129 @@
+.hero {
+  padding: 8px 0 18px;
+  text-align: center;
+}
+
+.big {
+  display: inline-grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
+}
+
+.hero h3 {
+  margin: 12px 0 4px;
+  font-size: 20px;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-body);
+}
+
+.meter {
+  margin: 0 0 14px;
+}
+
+.meter p {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  margin: 0;
+  color: var(--ds-color-label);
+  font-size: 13.5px;
+}
+
+.meter b {
+  color: var(--ds-color-text);
+}
+
+.later {
+  color: var(--ds-color-error-text);
+  font-weight: 600;
+}
+
+.track {
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--ds-color-divider);
+}
+
+.track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ds-color-brand);
+}
+
+.group {
+  margin-top: 10px;
+  padding: 12px 14px 6px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 10px;
+}
+
+.group header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.group header strong {
+  font-size: 14.5px;
+}
+
+.group dl {
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--ds-color-section-divider);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.row dt {
+  color: var(--ds-color-label);
+}
+
+.row dd {
+  margin: 0;
+  color: var(--ds-color-text);
+  font-weight: 600;
+  word-break: keep-all;
+}
+
+.row dd.missing {
+  color: var(--ds-color-error-text);
+  font-weight: var(--ds-weight-strong);
+}
+
+.privacy {
+  display: flex;
+  gap: 6px;
+  margin: 14px 0 0;
+  color: var(--ds-color-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.privacy svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+@media (forced-colors: active) {
+  .track span { background: Highlight; }
+}

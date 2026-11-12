@@ -21,6 +21,8 @@ interface AnnouncementFilterPanelProps {
   readonly onApply: (filters: AnnouncementSearchFilters) => void
   readonly regionRepository?: PublicHousingRegionRepository
   readonly resultSummary?: ReactNode
+  /** 내 조건 기준 지원 가능 공고만 보기 */
+  readonly eligibilityFilter?: { readonly checked: boolean; readonly onToggle: () => void }
 }
 
 export function AnnouncementFilterPanel({
@@ -28,6 +30,7 @@ export function AnnouncementFilterPanel({
   onApply,
   regionRepository = publicHousingRegionRepository,
   resultSummary,
+  eligibilityFilter,
 }: AnnouncementFilterPanelProps) {
   const mobile = useMobileViewport()
   const [open, setOpen] = useState(false)
@@ -113,8 +116,13 @@ export function AnnouncementFilterPanel({
     onApply(next)
   }
 
+  // 필터를 바꿔도 정렬과 보고 있는 탭은 유지한다.
   function preserveSort(next: AnnouncementSearchFilters): AnnouncementSearchFilters {
-    return filters.sort ? { ...next, sort: filters.sort } : next
+    return {
+      ...next,
+      ...(filters.sort ? { sort: filters.sort } : {}),
+      ...(filters.closed ? { closed: true } : {}),
+    }
   }
 
   function changeSort() {
@@ -130,7 +138,9 @@ export function AnnouncementFilterPanel({
       <div className={styles.toolbar} role="group" aria-label="공고 목록 도구">
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
         <div className={styles.toolbarControls}>
-          <div className={styles.sortOptions} role="group" aria-label="공고 정렬">
+          {eligibilityFilter && <button className={styles.sort} type="button" role="switch" aria-checked={eligibilityFilter.checked}
+            aria-label="불러온 공고 중 지원 가능한 공고" title="현재 목록에 불러온 공고를 내 신청자격으로 확인합니다." onClick={eligibilityFilter.onToggle}>지원 가능</button>}
+          {!filters.closed && <div className={styles.sortOptions} role="group" aria-label="공고 정렬">
             <button className={styles.sort} type="button" aria-pressed={latestSelected}
               aria-describedby={sortDescriptionId} onClick={changeSort}>
               최신순
@@ -146,7 +156,7 @@ export function AnnouncementFilterPanel({
                   ? '공고일 오름차순으로, 오래된 공고부터 보여드려요. 같은 날짜는 마감임박순이에요.'
                   : '공고일 내림차순으로, 최근에 올라온 공고부터 보여드려요. 같은 날짜는 마감임박순이에요.'}
             </span>
-          </div>
+          </div>}
           <button
             ref={toggleRef}
             className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
@@ -207,6 +217,7 @@ export function AnnouncementFilterPanel({
           <div className={styles.fields}>
             <div className={styles.grid}>
               <RegionFilterFields
+                includeSubdistricts
                 initialRegionCode={formFilters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
                 loadingMessage="시·군·구 목록을 불러오는 중이에요."
@@ -225,12 +236,12 @@ export function AnnouncementFilterPanel({
                 options={RENTAL_TYPE_OPTIONS}
                 appearance="grid"
               />
-              <FilterCheckboxGroup
+              {!filters.closed && <FilterCheckboxGroup
                 label="모집상태"
                 name="applicationStatuses"
                 defaultValues={formFilters.applicationStatuses}
                 options={ANNOUNCEMENT_STATUS_OPTIONS}
-              />
+              />}
               <FilterCheckboxGroup
                 label="공급기관"
                 name="agencyCodes"
@@ -296,7 +307,7 @@ function appliedFilterCount(filters: AnnouncementSearchFilters) {
   return [
     filters.regionCode,
     filters.rentalTypes?.length,
-    filters.applicationStatuses?.length,
+    !filters.closed && filters.applicationStatuses?.length,
     filters.agencyCodes?.length,
     filters.recruitmentTypes?.length,
   ].filter(Boolean).length

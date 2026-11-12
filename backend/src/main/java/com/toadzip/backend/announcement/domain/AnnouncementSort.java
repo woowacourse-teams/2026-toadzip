@@ -4,5 +4,6 @@ public enum AnnouncementSort {
     LATEST,
     LATEST_ASC,
     DEADLINE,
-    DEADLINE_DESC
+    DEADLINE_DESC,
+    CLOSED_RECENT
 }

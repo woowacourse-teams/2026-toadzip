@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.notification.NotificationFixtures;
+import com.toadzip.backend.notification.domain.NotificationRecipient;
 import com.toadzip.backend.notification.repository.UserNotificationRepository;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
@@ -210,6 +211,7 @@ class NotificationApiIntegrationTest {
         var announcement = fixtures.announcement();
         fixtures.link(announcement, fixtures.complex("11140", "1114010100"));
         long eventId = fixtures.event(announcement);
-        return notifications.insertIfAbsent(userId, eventId, announcement.getId(), announcement.getName(), NOW).id();
+        return notifications.insertAllIfAbsent(eventId, announcement.getId(), announcement.getName(),
+                java.util.List.of(new NotificationRecipient(userId, null)), NOW).getFirst();
     }
 }

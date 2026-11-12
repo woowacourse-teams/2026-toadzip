@@ -61,6 +61,9 @@ class NotificationSchemaIntegrationTest {
             var tables = statement.executeQuery("SELECT to_regclass('user_notifications')::text");
             tables.next();
             assertThat(tables.getString(1)).isEqualTo("user_notifications");
+            var claimIndex = statement.executeQuery("SELECT to_regclass('idx_notification_deliveries_claim')::text");
+            claimIndex.next();
+            assertThat(claimIndex.getString(1)).isEqualTo("idx_notification_deliveries_claim");
             var activation = statement.executeQuery("SELECT activated_at = updated_at FROM notification_subscriptions");
             activation.next();
             assertThat(activation.getBoolean(1)).isTrue();

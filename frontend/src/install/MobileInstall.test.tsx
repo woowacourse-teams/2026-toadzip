@@ -136,3 +136,21 @@ it('iOS 홈 화면 앱으로 실행하면 설치 안내를 숨긴다', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   } finally { Reflect.deleteProperty(navigator, 'standalone') }
 })
+
+it('떠 있는 설치 카드는 윗변 위치를 알려 다른 안내가 그 위에 뜨게 하고 닫히면 지운다', () => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ top: 600, bottom: 700, left: 0, right: 375, width: 375, height: 100, x: 0, y: 600, toJSON: () => ({}) })
+  vi.stubGlobal('innerHeight', 812)
+  render(<MobileInstallProvider><MobileInstallCard floating /></MobileInstallProvider>)
+  expect(document.documentElement.style.getPropertyValue('--floating-prompt-bottom')).toBe('220px')
+  fireEvent.click(screen.getByRole('button', { name: '홈 화면 추가 안내 닫기' }))
+  expect(document.documentElement.style.getPropertyValue('--floating-prompt-bottom')).toBe('')
+})
+
+it('떠 있는 설치 카드는 현위치 버튼과 같은 바닥에서 그보다 앞에 놓는다', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const css = readFileSync(resolve(process.cwd(), 'src/install/MobileInstall.module.css'), 'utf8')
+  const floating = css.match(/\.floating\s*\{[^}]*\}/)?.[0] ?? ''
+  expect(floating).toMatch(/bottom:\s*calc\(var\(--explorer-map-control-bottom, 12px\) \+ env\(safe-area-inset-bottom, 0px\)\);/)
+  expect(floating).toMatch(/z-index:\s*110;/)
+})

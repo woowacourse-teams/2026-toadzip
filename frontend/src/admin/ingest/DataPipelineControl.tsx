@@ -6,6 +6,7 @@ import {
   getDataPipelineReadiness,
   getDataPipelineStatus,
   startDataPipeline,
+  retryInitialRegistration,
   stopDataPipeline,
   type DataPipelineExecution,
   type DataPipelineType as SharedDataPipelineType,
@@ -26,6 +27,7 @@ const keyRequiredTypes: readonly DataPipelineType[] = ['COMPLEX_COLLECTION', 'AN
 
 const pollIntervalMilliseconds = 1_000
 const pipelineTypes: readonly DataPipelineType[] = [
+  'COMPLEX_REGISTRATION',
   'COMPLEX_COLLECTION',
   'COMPLEX_REFINEMENT',
   'ANNOUNCEMENT_COLLECTION',
@@ -54,7 +56,7 @@ const pipelineGroups = [
     id: 'complex-pipelines',
     title: '단지 데이터',
     description: '처음 준비하거나 새 단지가 추가되었을 때 아래 순서로 진행해 주세요.',
-    types: ['COMPLEX_SYNC', 'COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT'],
+    types: ['COMPLEX_SYNC', 'COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT', 'COMPLEX_REGISTRATION'],
   },
   {
     id: 'announcement-pipelines',
@@ -75,9 +77,9 @@ const agencySources: readonly { id: string; title: string; runType: DataPipeline
   ...boardSources.map(source => ({ id: source.id, title: source.title, runType: source.type, resultTypes: [source.type] })),
 ]
 
-export function DataPipelineControl({ domain, compact = false, history }: {
+export function DataPipelineControl({ domain, compact = false, history, onShowHistory }: {
   // 공고 수집 화면에서 실행 이력을 실행 카드와 접어 둔 LH 품질 확인 사이에 둔다.
-  domain?: 'complex' | 'announcement'; compact?: boolean; history?: ReactNode
+  domain?: 'complex' | 'announcement'; compact?: boolean; history?: ReactNode; onShowHistory?: () => void
 } = {}) {
   const [selectedType, setSelectedType] = useState<DataPipelineType | null>(null)
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
@@ -90,6 +92,7 @@ export function DataPipelineControl({ domain, compact = false, history }: {
   const [uploadBusy, setUploadBusy] = useState(false)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
+    COMPLEX_REGISTRATION: 0,
     COMPLEX_COLLECTION: 0,
     COMPLEX_REFINEMENT: 0,
     ANNOUNCEMENT_COLLECTION: 0,
@@ -157,7 +160,7 @@ export function DataPipelineControl({ domain, compact = false, history }: {
     }
   }
 
-  async function execute(type: DataPipelineType) {
+  async function execute(type: DataPipelineType, identifiers?: string[]) {
     if (starting.current || isAnyPipelineRunning) return
     starting.current = type
     setStartingType(type)
@@ -170,7 +173,7 @@ export function DataPipelineControl({ domain, compact = false, history }: {
       errorResponse: null,
     })
     try {
-      const execution = await startDataPipeline(type)
+      const execution = identifiers ? await retryInitialRegistration(identifiers) : await startDataPipeline(type)
       if (mounted.current && isLatestGeneration(type, generation)) {
         applyExecution(type, execution)
       }
@@ -311,8 +314,9 @@ export function DataPipelineControl({ domain, compact = false, history }: {
     </p>)}
     <ComplexIngestStages states={pipelineStates} disabled={isAnyPipelineRunning} collectionBlocked={serviceKeyMissing}
       startingType={startingType} stopping={stopping}
-      onStart={type => handleRun(type)} onStop={type => void stop(type)}
-      onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} />
+      onStart={type => handleRun(type)} onRetry={identifiers => void execute('COMPLEX_REGISTRATION', identifiers)}
+      onStop={type => void stop(type)}
+      onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} onShowHistory={onShowHistory} />
   </section>
   function recent(source: typeof agencySources[number]) {
     const latest = source.resultTypes.map(type => pipelineStates[type].execution)
@@ -486,6 +490,7 @@ function latestCollectionExecution(combined: DataPipelineExecution, collection: 
 
 function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
   return {
+    COMPLEX_REGISTRATION: viewState(idleExecution('COMPLEX_REGISTRATION')),
     COMPLEX_COLLECTION: viewState(idleExecution('COMPLEX_COLLECTION')),
     COMPLEX_REFINEMENT: viewState(idleExecution('COMPLEX_REFINEMENT')),
     ANNOUNCEMENT_COLLECTION: viewState(idleExecution('ANNOUNCEMENT_COLLECTION')),

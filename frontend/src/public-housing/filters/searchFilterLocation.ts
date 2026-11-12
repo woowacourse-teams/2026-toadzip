@@ -42,6 +42,7 @@ const COMPLEX_KEYS = [
 ] as const
 
 const ANNOUNCEMENT_KEYS = [
+  'announcementTab',
   'announcementSort',
   'announcementRegionCode',
   'announcementRentalTypes',
@@ -94,6 +95,7 @@ export function parseAnnouncementSearchFilters(
   return {
     ...parseSharedFilters(search, 'announcement'),
     ...(sort === 'DEADLINE' || sort === 'LATEST' || sort === 'LATEST_ASC' ? { sort } : {}),
+    ...(search.get('announcementTab') === 'closed' ? { closed: true } : {}),
   }
 }
 
@@ -123,11 +125,13 @@ export function setAnnouncementSearchFilters(
   ANNOUNCEMENT_KEYS.forEach((key) => next.delete(key))
   appendSharedFilters(next, 'announcement', filters)
   if (filters.sort) next.set('announcementSort', filters.sort)
+  if (filters.closed) next.set('announcementTab', 'closed')
   return next
 }
 
 export function searchFiltersSignature(filters: ComplexSearchFilters & AnnouncementSearchFilters) {
   return JSON.stringify([
+    filters.closed ?? false,
     filters.sort ?? null,
     filters.regionCode ?? null,
     filters.rentalTypes ?? [],

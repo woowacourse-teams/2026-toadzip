@@ -13,6 +13,7 @@ import type {
   RawAnnouncementSupplyComplex,
   RawAnnouncementSupplyRow,
   RawAnnouncementSupplyTarget,
+  SharedTargetCount,
   RawComplexAddress,
   RawComplexCurrentAnnouncement,
   RawComplexDetail,
@@ -182,6 +183,10 @@ function decodeAnnouncementDetail(
       recordField(detail, 'winnerAnnouncementAt', path),
       `${path}.winnerAnnouncementAt`,
     ),
+    // 값이 없는 이전 응답은 그대로 두고(모델에서 NONE), 모르는 값은 목록 탭이 없는 것으로 읽는다.
+    ...(detail.listPhase === undefined ? {} : {
+      listPhase: detail.listPhase === 'RECRUITING' || detail.listPhase === 'CLOSED' ? detail.listPhase : 'NONE',
+    }),
     viewCount: safeIntegerAt(
       recordField(detail, 'viewCount', path),
       `${path}.viewCount`,
@@ -557,6 +562,31 @@ function decodeAnnouncementSupplyTarget(
       recordField(target, 'applicationCondition', path),
       `${path}.applicationCondition`,
     ),
+    ...sharedTargetCounts(target, path),
+  }
+}
+
+/** 공통 모집수가 있는 칸만 읽는다. 없는 칸은 DTO에 넣지 않아 이전 응답과 모양이 같다. */
+function sharedTargetCounts(target: Record<string, unknown>, path: string) {
+  const supply = decodeSharedTargetCount(target, 'sharedSupplyHouseholdCount', path)
+  const waitlist = decodeSharedTargetCount(target, 'sharedWaitlistCount', path)
+  return { ...supply ? { sharedSupplyHouseholdCount: supply } : {}, ...waitlist ? { sharedWaitlistCount: waitlist } : {} }
+}
+
+/** 공통 모집수는 나중에 더한 칸이라 없는 응답(이전 서버)도 묶음 없음으로 읽는다. */
+function decodeSharedTargetCount(
+  target: Record<string, unknown>,
+  field: string,
+  path: string,
+): SharedTargetCount | null {
+  const value = target[field]
+  if (value === undefined || value === null) {
+    return null
+  }
+  const shared = recordAt(value, `${path}.${field}`)
+  return {
+    count: safeIntegerAt(recordField(shared, 'count', `${path}.${field}`), `${path}.${field}.count`),
+    targets: stringArrayAt(recordField(shared, 'targets', `${path}.${field}`), `${path}.${field}.targets`),
   }
 }
 
@@ -808,6 +838,10 @@ function decodeComplexSupplyCondition(
       recordField(condition, 'convertibleDeposit', path),
       `${path}.convertibleDeposit`,
     ),
+    // 게시일을 내려 주기 전 백엔드와 함께 배포되는 동안에는 없을 수 있어 날짜 없음으로 읽는다.
+    postedDate: Object.hasOwn(condition, 'postedDate')
+      ? nullableDateStringAt(condition.postedDate, `${path}.postedDate`)
+      : null,
   }
 }
 
@@ -976,6 +1010,9 @@ function decodeAnnouncementListItem(
       recordField(item, 'dDay', path),
       `${path}.dDay`,
     ),
+    ...(Object.hasOwn(item, 'winnerAnnouncementAt') ? {
+      winnerAnnouncementAt: nullableDateStringAt(item.winnerAnnouncementAt, `${path}.winnerAnnouncementAt`),
+    } : {}),
     viewCount: safeIntegerAt(
       recordField(item, 'viewCount', path),
       `${path}.viewCount`,

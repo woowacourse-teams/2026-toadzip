@@ -267,7 +267,7 @@ export function SearchGroup({
               >
                 {item.applicationStatus && (
                   <span className={styles.status}>
-                    <AnnouncementStatusBadge label={statusLabel(item.applicationStatus)} tone={statusTone(item.applicationStatus)} countdown={null} />
+                    <AnnouncementStatusBadge label={item.pastAnnouncement ? '과거 공고' : statusLabel(item.applicationStatus)} tone={statusTone(item.applicationStatus)} countdown={null} />
                   </span>
                 )}
                 <strong>{item.title}</strong>

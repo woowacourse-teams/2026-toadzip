@@ -20,12 +20,11 @@ def later() -> float:
     return time.monotonic() + 60
 
 
-def client(handler, reasoning_effort="none") -> openai.OpenAI:
-    return openai.OpenAI("test-key", base_url="https://openai.test/v1", transport=httpx.MockTransport(handler),
-                         reasoning_effort=reasoning_effort)
+def client(handler, **options) -> openai.OpenAI:
+    return openai.OpenAI("test-key", base_url="https://openai.test/v1", transport=httpx.MockTransport(handler), **options)
 
 
-def test_sends_prompt_without_reasoning_and_maps_usage():
+def test_sends_prompt_with_medium_reasoning_by_default_and_maps_usage():
     requests = []
 
     def handler(request):
@@ -40,14 +39,15 @@ def test_sends_prompt_without_reasoning_and_maps_usage():
     assert request.headers["Authorization"] == "Bearer test-key"
     assert body["model"] == "gpt-6-luna"
     assert body["messages"] == [{"role": "user", "content": "공고문 쪽 텍스트"}]
-    assert (body["reasoning_effort"], body["response_format"], body["stream"]) == ("none", {"type": "json_object"}, False)
+    assert (body["reasoning_effort"], body["response_format"], body["stream"]) == ("medium", {"type": "json_object"}, False)
     assert body["max_completion_tokens"] == 65536
     assert reply == openai.Reply('{"data": {}}', {"promptTokens": 23790, "outputTokens": 4131, "thinkingTokens": 13688})
 
 
 def test_sends_requested_luna_reasoning_effort():
     requests = []
-    model = client(lambda request: (requests.append(request) or httpx.Response(200, json=completion())), "low")
+    model = client(lambda request: (requests.append(request) or httpx.Response(200, json=completion())),
+                   reasoning_effort="low")
 
     model.chat("표에서 공급행을 정리", later())
 

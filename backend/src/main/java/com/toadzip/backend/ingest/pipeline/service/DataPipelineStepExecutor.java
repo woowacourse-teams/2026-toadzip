@@ -12,14 +12,16 @@ import com.toadzip.backend.ingest.lh.collection.leasecatalog.service.LhLeaseCata
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinementService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
+import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationExecutionService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.dto.BoardCollectionRefinementReport;
 import com.toadzip.backend.ingest.pipeline.dto.LhCollectionRefinementReport;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
-import java.time.Instant;
 import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
+import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -44,9 +46,19 @@ class DataPipelineStepExecutor {
     private final ShAnnouncementRefinementService shAnnouncementRefinementService;
     private final GhAnnouncementRefinementService ghAnnouncementRefinementService;
     private final DataPipelineExecutionRepository executions;
+    private final MyHomeInitialRegistrationExecutionService initialRegistration;
+
+    DataPipelineStepResult registerComplexes(String actor) {
+        return resultAdapter.adapt(initialRegistration.register(actor));
+    }
+
+    DataPipelineStepResult retryComplexes(String actor, List<String> identifiers) {
+        return resultAdapter.adapt(initialRegistration.retry(actor, identifiers));
+    }
 
     DataPipelineStepResult execute(DataPipelineStep step) {
         return switch (step) {
+            case REGISTER_MYHOME_COMPLEXES -> throw new IllegalStateException("신규 단지 등록에는 실행자가 필요합니다.");
             case COLLECT_REFINE_SH_ANNOUNCEMENTS -> collectAndRefineSh();
             case COLLECT_REFINE_GH_ANNOUNCEMENTS -> collectAndRefineGh();
             case COLLECT_REFINE_LH_ANNOUNCEMENTS -> collectAndRefineLh();

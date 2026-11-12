@@ -5,7 +5,7 @@ import com.toadzip.backend.global.security.JsonAccessDeniedHandler;
 import com.toadzip.backend.global.security.JsonAuthenticationEntryPoint;
 import com.toadzip.backend.global.security.SecurityErrorResponseWriter;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
-import com.toadzip.backend.user.configuration.DeletedUserSessionFilter;
+import com.toadzip.backend.user.configuration.SocialUserSessionFilter;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestRepository;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
 import com.toadzip.backend.user.repository.UserRepository;
@@ -73,6 +73,9 @@ public class AdminSecurityConfiguration {
                         .requestMatchers("/api/admin/**").hasRole(AdminRole.ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/logout").hasRole("USER")
                         .requestMatchers("/api/v1/privacy/analytics/me").hasRole("USER")
+                        .requestMatchers("/api/v2/me/eligibility-profile", "/api/v2/eligibility/**",
+                                "/api/v2/announcements/*/basic-comparison",
+                                "/api/v2/announcements/*/eligibility").hasRole("USER")
                         .requestMatchers("/api/v1/notification-subscriptions/**", "/api/v1/bookmarks/**").hasRole("USER")
                         .requestMatchers("/api/v1/notifications", "/api/v1/notifications/**",
                                 "/api/v1/notification-push-devices", "/api/v1/notification-push-devices/**").hasRole("USER")
@@ -84,7 +87,7 @@ public class AdminSecurityConfiguration {
                 )
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
-                .addFilterBefore(new DeletedUserSessionFilter(users, errors), AuthorizationFilter.class);
+                .addFilterBefore(new SocialUserSessionFilter(users, errors), AuthorizationFilter.class);
         if (registrations.getIfAvailable() != null) {
             http.oauth2Login(oauth -> oauth
                     .authorizationEndpoint(endpoint -> endpoint.baseUri("/api/auth/oauth2/authorization")

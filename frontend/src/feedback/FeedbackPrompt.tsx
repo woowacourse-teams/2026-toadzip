@@ -17,10 +17,10 @@ export function FeedbackPrompt() {
       else sessionStorage.setItem(STARTED, String(start))
     } catch { /* Continue without persistent session state. */ }
     const show = () => {
-      if (!dismissed && Date.now() - start >= 60_000 && document.visibilityState === 'visible') setVisible(true)
+      if (!dismissed && Date.now() - start >= 10_000 && document.visibilityState === 'visible') setVisible(true)
     }
     const dismiss = () => { dismissed = true; setVisible(false) }
-    const timer = window.setTimeout(show, Math.max(0, 60_000 - (Date.now() - start)))
+    const timer = window.setTimeout(show, Math.max(0, 10_000 - (Date.now() - start)))
     document.addEventListener('visibilitychange', show)
     window.addEventListener(DISMISS_EVENT, dismiss)
     return () => {

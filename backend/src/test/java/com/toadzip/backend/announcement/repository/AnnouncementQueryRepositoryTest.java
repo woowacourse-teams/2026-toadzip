@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.repository;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -9,6 +10,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
+import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
@@ -606,6 +608,91 @@ class AnnouncementQueryRepositoryTest {
     }
 
     @Test
+    void 검색_조회는_마지막_일정_후_7일까지만_접수마감으로_조회한다() {
+        LocalDate today = LocalDate.of(2026, 11, 11);
+        Announcement lastDay = persist(closedAnnouncement("result-last-day", today.minusDays(60), today.minusDays(7)));
+        persist(closedAnnouncement("result-expired", today.minusDays(60), today.minusDays(8)));
+        Announcement waiting = persist(closedAnnouncement("result-waiting", today.minusDays(3), today.plusDays(40)));
+
+        AnnouncementSearchCondition closed = withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today);
+
+        assertEquals(Set.of(lastDay.getId(), waiting.getId()), new HashSet<>(ids(search(closed, null, null, 20))));
+        assertEquals(2, announcementSearchRepository.countLatestLeaves(closed));
+    }
+
+    @Test
+    void 공고_한_건의_목록_포함_여부는_같은_조건의_목록_조회와_같다() {
+        LocalDate today = LocalDate.of(2026, 11, 11);
+        Announcement lastDay = persist(closedAnnouncement("listed-last-day", today.minusDays(60), today.minusDays(7)));
+        Announcement expired = persist(closedAnnouncement("listed-expired", today.minusDays(60), today.minusDays(8)));
+        Announcement applying = persist(createAnnouncement("listed-applying", today.minusDays(5),
+                today.minusDays(1), today.plusDays(1)));
+        AnnouncementSearchCondition closed = withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today);
+        AnnouncementSearchCondition recruiting = withApplicationStatuses(
+                Set.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.APPLYING), today);
+
+        assertAll(
+                () -> assertTrue(announcementSearchRepository.isListed(lastDay.getId(), closed)),
+                () -> assertFalse(announcementSearchRepository.isListed(expired.getId(), closed)),
+                () -> assertFalse(announcementSearchRepository.isListed(applying.getId(), closed)),
+                () -> assertTrue(announcementSearchRepository.isListed(applying.getId(), recruiting)),
+                () -> assertFalse(announcementSearchRepository.isListed(lastDay.getId(), recruiting)),
+                () -> assertEquals(new HashSet<>(ids(search(closed, null, null, 20))),
+                        Set.of(lastDay.getId()))
+        );
+    }
+
+    @Test
+    void 검색_조회는_당첨자_발표_뒤_일정이_있으면_가장_늦은_일정을_기준으로_접수마감을_조회한다() {
+        LocalDate today = LocalDate.of(2026, 11, 11);
+        Announcement moveInLater = persist(closedAnnouncement("move-in-later",
+                today.minusDays(60), today.minusDays(30)));
+        persist(AnnouncementSchedule.create(moveInLater, ScheduleType.MOVE_IN, "입주 예정",
+                today.minusDays(20).atTime(10, 0), today.minusDays(7).atTime(18, 0), 0));
+        Announcement contractExpired = persist(closedAnnouncement("contract-expired",
+                today.minusDays(60), today.minusDays(30)));
+        persist(AnnouncementSchedule.create(contractExpired, ScheduleType.CONTRACT, "계약",
+                today.minusDays(10).atTime(10, 0), today.minusDays(8).atTime(18, 0), 0));
+
+        List<Announcement> announcements = search(
+                withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today), null, null, 20);
+
+        assertEquals(List.of(moveInLater.getId()), ids(announcements));
+    }
+
+    @Test
+    void 검색_조회는_접수_종료일이_가장_늦은_일정이면_접수_종료일을_기준으로_접수마감을_조회한다() {
+        LocalDate today = LocalDate.of(2026, 11, 11);
+        Announcement extendedApplication = persist(closedAnnouncement("extended-application",
+                today.minusDays(7), today.minusDays(30)));
+        persist(closedAnnouncement("expired-application", today.minusDays(8), today.minusDays(30)));
+
+        List<Announcement> announcements = search(
+                withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today), null, null, 20);
+
+        assertEquals(List.of(extendedApplication.getId()), ids(announcements));
+    }
+
+    @Test
+    void 최근_마감순은_접수_종료일이_늦은_공고부터_커서로_이어_조회한다() {
+        LocalDate today = LocalDate.of(2026, 11, 11);
+        Announcement closedEarlier = persist(closedAnnouncement("closed-earlier", today.minusDays(20), today.plusDays(60)));
+        Announcement closedYesterday = persist(closedAnnouncement("closed-yesterday", today.minusDays(1), today.plusDays(60)));
+        Announcement closedSameDay = persist(closedAnnouncement("closed-same-day", today.minusDays(20), today.plusDays(60)));
+        AnnouncementSearchCondition closed = withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today);
+
+        List<AnnouncementDeadlineRow> firstPage = announcementSearchRepository.findSortedLeaves(
+                closed, null, null, null, null, 2, AnnouncementSort.CLOSED_RECENT);
+        AnnouncementDeadlineRow last = firstPage.getLast();
+        List<AnnouncementDeadlineRow> secondPage = announcementSearchRepository.findSortedLeaves(closed,
+                last.priority(), last.sortDate(), last.announcement().getPostedDate(), last.announcement().getId(),
+                2, AnnouncementSort.CLOSED_RECENT);
+
+        assertEquals(List.of(closedYesterday.getId(), closedSameDay.getId()), rowIds(firstPage));
+        assertEquals(List.of(closedEarlier.getId()), rowIds(secondPage));
+    }
+
+    @Test
     void 검색_조회는_여러_접수상태를_OR로_조회한다() {
         LocalDate today = LocalDate.of(2026, 8, 12);
         Announcement beforeApplicationAnnouncement = persist(createAnnouncement(
@@ -1040,6 +1127,42 @@ class AnnouncementQueryRepositoryTest {
                         "https://apply.lh.or.kr"
                 ))
         );
+    }
+
+    private Announcement closedAnnouncement(String sourceIdentifier, LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate) {
+        return Announcement.create(
+                sourceIdentifier,
+                null,
+                null,
+                sourceIdentifier + " 공고",
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                applicationEndDate.minusDays(10),
+                applicationEndDate.minusDays(3),
+                applicationEndDate,
+                winnerAnnouncementDate,
+                "https://example.com/announcements/" + sourceIdentifier,
+                null,
+                0L,
+                List.of(ReceptionPlace.create(
+                        "LH 청약센터",
+                        ReceptionMethod.ONLINE,
+                        null,
+                        "1600-1004",
+                        "https://apply.lh.or.kr"
+                ))
+        );
+    }
+
+    private List<Long> ids(List<Announcement> announcements) {
+        return announcements.stream().map(Announcement::getId).toList();
+    }
+
+    private List<Long> rowIds(List<AnnouncementDeadlineRow> rows) {
+        return rows.stream().map(row -> row.announcement().getId()).toList();
     }
 
     private List<Announcement> search(

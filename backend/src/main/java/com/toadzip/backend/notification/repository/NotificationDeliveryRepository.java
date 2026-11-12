@@ -27,7 +27,10 @@ public class NotificationDeliveryRepository {
     private final NotificationPushDeviceRepository devices;
     private final NotificationRetryPolicy retry = new NotificationRetryPolicy();
 
-    public int enqueueForCurrentDevices(long notificationId, Instant now) {
+    public int enqueueForCurrentDevices(List<Long> notificationIds, Instant now) {
+        if (notificationIds.isEmpty()) {
+            return 0;
+        }
         return jdbc.update("""
                 INSERT INTO notification_deliveries(notification_id,device_id,device_binding_version,status,
                     attempts,next_attempt_at)
@@ -35,9 +38,10 @@ public class NotificationDeliveryRepository {
                     CASE WHEN n.content::jsonb->>'targetType'='REGION' THEN CAST(? AS timestamptz)+interval '1 minute' ELSE CAST(? AS timestamptz) END
                     FROM user_notifications n
                     JOIN notification_push_devices d ON d.user_id=n.user_id AND d.enabled
-                WHERE n.id=? AND n.deleted_at IS NULL
+                WHERE n.id=ANY(?::bigint[]) AND n.deleted_at IS NULL
+                ORDER BY n.id,d.id
                 ON CONFLICT(notification_id,device_id,device_binding_version) DO NOTHING
-                """, Timestamp.from(now), Timestamp.from(now), notificationId);
+                """, Timestamp.from(now), Timestamp.from(now), notificationIds.toArray(Long[]::new));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -46,11 +50,11 @@ public class NotificationDeliveryRepository {
         if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT pg_try_advisory_xact_lock(hashtextextended('notification-delivery-claim',0))", Boolean.class))) {
             return Optional.empty();
         }
+        // SENDING이 아니면 lease_until이 NULL이므로(ck_notification_delivery_lease) 단일 조건과 정렬 키가 같은 인덱스를 쓴다.
         var candidates = jdbc.query(SELECT + """
-                WHERE (d.status IN ('PENDING','RETRY') AND d.next_attempt_at<=?)
-                    OR (d.status='SENDING' AND d.lease_until<=?)
+                WHERE d.status IN ('PENDING','RETRY','SENDING') AND COALESCE(d.lease_until,d.next_attempt_at)<=?
                 ORDER BY COALESCE(d.lease_until,d.next_attempt_at),d.id LIMIT 1 FOR UPDATE OF d SKIP LOCKED
-                """, this::candidate, Timestamp.from(now), Timestamp.from(now));
+                """, this::candidate, Timestamp.from(now));
         if (candidates.isEmpty()) {
             return Optional.empty();
         }

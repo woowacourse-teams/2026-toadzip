@@ -3,7 +3,7 @@ import type { AnalyticsStopReason } from '../privacy/consentStore'
 
 const day = 24 * 60 * 60 * 1000
 const key = 'toadzip.posthog.browser.v1:phc_testpublictoken'
-const consent = vi.hoisted(() => ({ allowed: true, scope: 'analytics-scope-3', expiresAt: 0,
+const consent = vi.hoisted(() => ({ allowed: true, scope: 'analytics-scope-4', expiresAt: 0,
   stops: [] as Array<(reason: AnalyticsStopReason) => void>, listeners: [] as Array<() => void>,
 }))
 function stop(reason: AnalyticsStopReason) {
@@ -41,7 +41,7 @@ function unload() {
 
 beforeEach(() => {
   vi.resetModules(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-11T00:00:00Z'))
-  consent.allowed = true; consent.scope = 'analytics-scope-3'; consent.expiresAt = Date.now() + 180 * day
+  consent.allowed = true; consent.scope = 'analytics-scope-4'; consent.expiresAt = Date.now() + 180 * day
   consent.stops = []; consent.listeners = []
   network.mockReset().mockResolvedValue(new Response('{}', { status: 200 }))
   vi.stubGlobal('fetch', network)
@@ -61,12 +61,13 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks()
 })
 
-it('requires consent to the persistent-ID scope, with no ID or retroactive event for an older grant', async () => {
-  consent.scope = 'analytics-scope-2'
+// scope-3 is the grant given before the overseas-transfer notice; it must not carry over either.
+it.each(['analytics-scope-2', 'analytics-scope-3'])('requires consent to the current scope, with no ID or retroactive event for an older %s grant', async (olderScope) => {
+  consent.scope = olderScope
   const analytics = await start()
   expect(network).not.toHaveBeenCalled()
   expect(localStorage.getItem(key)).toBeNull()
-  consent.scope = 'analytics-scope-3'; allow()
+  consent.scope = 'analytics-scope-4'; allow()
   await settled()
   expect(network).not.toHaveBeenCalled()
   analytics.captureProductEvent('view_announcement', { announcement_id: '22' })

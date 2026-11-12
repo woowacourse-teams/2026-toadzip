@@ -1,9 +1,24 @@
-.prompt { position: fixed; left: var(--explorer-rail-width, 60px); bottom: 96px; z-index: 30; max-width: calc(100vw - 32px); padding: var(--ds-space-4) 44px var(--ds-space-4) var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); box-shadow: 0 4px 16px rgb(0 0 0 / 10%); color: var(--ds-color-text); font-family: var(--ds-font-family-ui); font-size: var(--ds-text-body); }
-.prompt p { margin: 0 0 var(--ds-space-2); }
-.prompt a { display: inline-flex; min-height: 44px; align-items: center; gap: var(--ds-space-3); color: var(--ds-color-action); text-underline-offset: 4px; }
+.prompt { position: fixed; left: var(--explorer-rail-width, 60px); bottom: var(--floating-prompt-bottom, 96px); z-index: 30; max-width: calc(100vw - 32px); padding: var(--ds-space-4) 44px var(--ds-space-4) var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: 14px; background: var(--ds-color-surface); box-shadow: 0 6px 20px rgb(0 0 0 / 12%); color: var(--ds-color-text); font-family: var(--ds-font-family-ui); font-size: var(--ds-text-body); animation: prompt-in 240ms ease-out; }
+.prompt p { margin: 0 0 var(--ds-space-3); font-weight: 700; }
+.prompt a { display: inline-flex; min-height: 40px; align-items: center; gap: 6px; padding: 0 var(--ds-space-4); border-radius: 999px; background: var(--ds-color-action-soft); color: var(--ds-color-action); font-weight: 600; text-decoration: none; }
+.prompt a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .close { position: absolute; top: 0; right: 0; width: 44px; height: 44px; border: 0; background: transparent; color: var(--ds-color-label); font-size: 24px; cursor: pointer; }
 .prompt :is(a, button):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 
-@media (max-width: 767px) {
-  .prompt { left: var(--explorer-nav-inset, 12px); }
+@keyframes prompt-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* 왼쪽 레일이 보이는 화면(앱 셸의 모바일 배치가 아닐 때)에서만 레일의 '의견 보내기' 아이콘을 가리키는 꼬리를 단다. */
+@media (min-width: 768px) and (not ((hover: none) and (pointer: coarse))) {
+  .prompt { left: calc(var(--explorer-rail-width, 60px) + 10px); }
+  .prompt::before, .prompt::after { content: ""; position: absolute; bottom: 30px; width: 0; height: 0; border-style: solid; border-color: transparent; }
+  .prompt::before { left: -10px; border-width: 9px 10px 9px 0; border-right-color: var(--ds-color-divider); }
+  .prompt::after { left: -8px; border-width: 8px 9px 8px 0; border-right-color: var(--ds-color-surface); bottom: 31px; }
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .prompt { right: var(--explorer-nav-inset, 12px); left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt { animation: none; }
 }

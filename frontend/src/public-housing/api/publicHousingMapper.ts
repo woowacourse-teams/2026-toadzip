@@ -86,6 +86,7 @@ export function toAnnouncementDetail(
     attachments: raw.attachments.map(toAnnouncementAttachment),
     supplyRows: raw.supplyRows.map(toAnnouncementSupplyRow),
     competition: raw.competition,
+    listPhase: raw.listPhase ?? 'NONE',
     raw,
   }
 }
@@ -155,6 +156,7 @@ function toAnnouncementListItem(
     applicationStartAt: raw.applicationStartAt,
     applicationEndAt: raw.applicationEndAt,
     dDay: raw.dDay,
+    winnerAnnouncementAt: raw.winnerAnnouncementAt ?? null,
     viewCount: raw.viewCount,
     supplyComplexCount: raw.supplyComplexCount,
     supplyHouseholdCount: raw.supplyHouseholdCount,
@@ -256,6 +258,8 @@ function toAnnouncementSupplyTarget(
     monthlyRent: raw.monthlyRent,
     convertibleDeposit: raw.convertibleDeposit,
     applicationCondition: raw.applicationCondition,
+    ...raw.sharedSupplyHouseholdCount ? { sharedSupplyHouseholdCount: raw.sharedSupplyHouseholdCount } : {},
+    ...raw.sharedWaitlistCount ? { sharedWaitlistCount: raw.sharedWaitlistCount } : {},
   }
 }
 
@@ -291,6 +295,7 @@ function toComplexHousingType(raw: RawComplexHousingType): ComplexHousingType {
       deposit: condition.deposit,
       monthlyRent: condition.monthlyRent,
       convertibleDeposit: condition.convertibleDeposit,
+      postedDate: condition.postedDate,
     })),
   }
 }

@@ -13,6 +13,7 @@ public record SearchResultItemResponse(
         BigDecimal longitude,
         LocalDate publishedAt,
         String applicationStatus,
-        String regionCode
+        String regionCode,
+        boolean pastAnnouncement
 ) {
 }
