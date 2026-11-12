@@ -295,6 +295,7 @@ function toComplexHousingType(raw: RawComplexHousingType): ComplexHousingType {
       deposit: condition.deposit,
       monthlyRent: condition.monthlyRent,
       convertibleDeposit: condition.convertibleDeposit,
+      postedDate: condition.postedDate,
     })),
   }
 }

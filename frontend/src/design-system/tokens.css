@@ -7,6 +7,7 @@
   --ds-font-family-ui: var(--ds-font-family-base);
   --ds-text-body: 14px;
   --ds-text-caption: 13px;
+  --ds-text-label-md: 12px;
   --ds-text-section: 16px;
   --ds-text-title: 18px;
   --ds-text-money: 17px;
@@ -87,6 +88,7 @@
   --explorer-panel-gap: calc(var(--explorer-ui-unit) * 0.5);
   --ds-text-body: calc(var(--explorer-ui-unit) * 0.875);
   --ds-text-caption: calc(var(--explorer-ui-unit) * 0.8125);
+  --ds-text-label-md: calc(var(--explorer-ui-unit) * 0.75);
   --ds-text-section: var(--explorer-ui-unit);
   --ds-text-title: calc(var(--explorer-ui-unit) * 1.125);
   --ds-text-money: calc(var(--explorer-ui-unit) * 1.0625);

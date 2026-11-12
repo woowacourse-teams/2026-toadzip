@@ -123,6 +123,8 @@ export interface RawComplexSupplyCondition {
   readonly deposit: number | null
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
+  /** 이 조건을 낸 공고의 게시일(YYYY-MM-DD). */
+  readonly postedDate: string | null
 }
 
 export interface ComplexBasicRentalCondition {
@@ -189,6 +191,8 @@ export interface ComplexSupplyCondition {
   readonly deposit: number | null
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
+  /** 이 조건을 낸 공고의 게시일(YYYY-MM-DD). */
+  readonly postedDate: string | null
 }
 
 export interface ComplexHousingType {

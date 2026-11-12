@@ -114,6 +114,7 @@ const COMPLEX_DETAIL = {
           deposit: 0,
           monthlyRent: null,
           convertibleDeposit: null,
+          postedDate: '2026-08-20',
         },
       ],
     },
@@ -1124,6 +1125,28 @@ describe('공공주택 응답 계약', () => {
     } })
     expect(decoded.housingTypes[0].basicRentalCondition).toEqual(basicRentalCondition)
     expect(decoded.housingTypes[0].currentSupplyConditions).toEqual(COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions)
+  })
+
+  it('현재 공급 조건의 공고 게시일을 보존하고 게시일이 없는 이전 응답은 null로 읽는다', () => {
+    const { postedDate: _postedDate, ...previousCondition } = COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions[0]
+    const decoded = decodeComplexDetailEnvelope({ data: COMPLEX_DETAIL })
+    const previous = decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{ ...COMPLEX_DETAIL.housingTypes[0], currentSupplyConditions: [previousCondition] }],
+    } })
+
+    expect(decoded.housingTypes[0].currentSupplyConditions[0].postedDate).toBe('2026-08-20')
+    expect(previous.housingTypes[0].currentSupplyConditions[0].postedDate).toBeNull()
+  })
+
+  it.each(['2026.08.20', 20260820])('잘못된 공고 게시일 %s는 API 경계에서 거절한다', (postedDate) => {
+    expect(() => decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{
+        ...COMPLEX_DETAIL.housingTypes[0],
+        currentSupplyConditions: [{ ...COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions[0], postedDate }],
+      }],
+    } })).toThrow(PublicHousingContractError)
   })
 
   it.each(['185500', 0.5, -1, Number.MAX_SAFE_INTEGER + 1])('잘못된 기본 월 임대료 %s는 API 경계에서 거절한다', (monthlyRent) => {
