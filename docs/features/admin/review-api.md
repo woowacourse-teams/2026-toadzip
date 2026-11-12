@@ -86,7 +86,7 @@ PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부�
 - 일반 일정·첨부의 `admin_modified`는 `V20261019_09`에서 추가한다. 관리자 보정 행은 이후 원천값 덮어쓰기와 오래된 원천 행 정리에서 보호한다.
 - 입력 형식과 운영 절차: [공고 JSON 가져오기](announcement-import.md). 주요 검증: `AnnouncementJsonCorrectionIntegrationTest`, `AnnouncementJsonCorrectionRollbackIntegrationTest`, `AnnouncementChildProtectionMigrationTest`, `VerifiedAnnouncementEnrichmentIntegrationTest`.
 
-PDF 보정의 미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일과 공급·모집 유형을 함께 채워야 저장된다. 날짜는 `접수처·기본정보`, 유형과 공개 요청은 `공개 전 확인`에서 정한다. 미리보기 뒤 유형이나 공개 요청을 바꾸면 미리보기를 다시 받아야 한다.
+PDF 보정의 미확정 공고는 접수 시작일·접수 종료일·당첨자 발표일과 공급·모집 유형을 함께 채우고 공급행을 단지에 연결해야 저장된다. 날짜는 `접수처·기본정보`, 유형은 `공개 전 확인`에서 정한다. 관리자 화면은 미확정 공고의 보정에 항상 공개 요청(`publish: true`)을 함께 보내므로, 보정을 적용하면 공고가 곧바로 공개되고 신규 공고 알림이 쌓이며 이어서 만드는 신청자격도 공개된다. 미리보기 뒤 유형을 바꾸면 미리보기를 다시 받아야 한다.
 
 ### PDF 보정 저장
 

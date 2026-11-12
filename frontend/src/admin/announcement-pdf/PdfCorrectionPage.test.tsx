@@ -157,14 +157,14 @@ function unconfirmedWorkspace() {
     summary: { ...workspace.detail.summary, announcement: { ...(workspace.detail.summary as { announcement?: object }).announcement, releaseStatus: 'UNCONFIRMED' } },
     data: { ...workspace.detail.data, rentalType: null, recruitmentType: null } } }
 }
-it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했다고 공개를 요청해야 공개 요청을 보내고 결과에 공개를 알린다', async () => {
+it('미확정 공고는 임대·모집 유형을 고르고 보정을 적용하면 따로 공개를 요청하지 않아도 공개 요청을 보내고 결과에 공개를 알린다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
   api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true, warnings: ['미확정 공고를 공개합니다. 적용하면 사용자에게 보이고 신규 공고 알림이 나갑니다.'] }))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  fireEvent.click(within(release).getByRole('checkbox', { name: /단지를 확인했고 이 보정과 함께 공개합니다/ }))
+  expect(within(release).queryByRole('checkbox')).not.toBeInTheDocument()
 
   await applyCorrection()
 
@@ -174,22 +174,22 @@ it('미확정 공고는 임대·모집 유형을 고르고 단지를 확인했�
   expect(input.document.announcement).toEqual(expect.objectContaining({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' }))
   expect(await screen.findByRole('heading', { name: '공고를 공개했습니다.' })).toBeInTheDocument()
 })
-it('미확정 공고라도 공개를 요청하지 않으면 공개 요청을 보내지 않고 아직 보이지 않는다고 알린다', async () => {
+it('미확정 공고의 공급행이 단지에 연결되지 않아 공개가 거절되면 저장된 것으로 보지 않고 이유를 알린다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.applyJsonUpdate.mockResolvedValue(unconfirmedWorkspace())
+  api.previewJsonUpdate.mockRejectedValue(new ManagementError('공개하려면 제외하지 않은 공급행을 삭제되지 않은 단지에 연결해야 합니다.', 400, {}, 'INVALID_REQUEST'))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  expect(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox')).not.toBeChecked()
 
   await applyCorrection()
 
-  const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
-  expect(input.publish).toBeFalsy()
-  expect(input.document.announcement).toMatchObject({ rentalType: 'NATIONAL_RENTAL', recruitmentType: 'WAITLIST' })
-  const result = (await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })).closest('section')!
-  expect(result).toHaveTextContent('아직 미확정이라 사용자에게 보이지 않습니다')
+  expect(await screen.findByRole('alert')).toHaveTextContent('공개하려면 제외하지 않은 공급행을 삭제되지 않은 단지에 연결해야 합니다.')
+  expect((api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).publish).toBe(true)
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  expect(eligibility.createEligibilityDraft).not.toHaveBeenCalled()
+  expect(screen.queryByRole('heading', { name: '공고를 공개했습니다.' })).not.toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: '공개 전 확인' })).getByLabelText('공급 유형')).toHaveValue('NATIONAL_RENTAL')
 })
 it('공개된 공고에는 공개 전 확인을 보이지 않는다', async () => {
   await open()
@@ -901,14 +901,13 @@ it('409(ADMIN_DATA_CONFLICT) 뒤 최신값에 이 변경이 없으면 반영되�
   expect(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' })).toBeEnabled()
 })
 
-it.each([true, false])('미확정 공고 저장이 충돌하고 공급행만 같으면 완료 처리하거나 초안을 지우지 않는다 (공개 요청 %s)', async publish => {
+it('미확정 공고 저장(공개)이 충돌하고 공급행만 같으면 완료 처리하거나 초안을 지우지 않는다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true }))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  if (publish) fireEvent.click(within(release).getByRole('checkbox'))
   let sent: JsonUpdateInput | undefined
   api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
     sent = input
@@ -925,14 +924,13 @@ it.each([true, false])('미확정 공고 저장이 충돌하고 공급행만 같
   expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalled()
 })
 
-it.each([true, false])('미확정 공고 저장 응답을 잃고 공급행만 같으면 재조회 뒤에도 성공을 추정하지 않는다 (공개 요청 %s)', async publish => {
+it('미확정 공고 저장(공개) 응답을 잃고 공급행만 같으면 재조회 뒤에도 성공을 추정하지 않는다', async () => {
   api.loadJsonWorkspace.mockResolvedValue(unconfirmedWorkspace())
-  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: publish }))
+  api.previewJsonUpdate.mockResolvedValue(previewResult({ publishes: true }))
   await open()
   const release = screen.getByRole('region', { name: '공개 전 확인' })
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
-  if (publish) fireEvent.click(within(screen.getByRole('region', { name: '공개 전 확인' })).getByRole('checkbox'))
   let sent: JsonUpdateInput | undefined
   api.applyJsonUpdate.mockImplementationOnce(async (_id: string, input: JsonUpdateInput) => {
     sent = input

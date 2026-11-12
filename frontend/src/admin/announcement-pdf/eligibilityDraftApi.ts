@@ -226,6 +226,17 @@ const FIELDS: Record<string, string> = {
   APPLICANT_CAR_VALUE: '본인 차량가액', FAMILY_CAR_VALUE: '가족 차량가액', APPLICANT_MONTHLY_INCOME: '본인 월평균소득',
   HOUSEHOLD_MONTHLY_INCOME: '세대 월평균소득', RESIDENCE_REGION: '거주지역', CURRENT_REGION_RESIDENCE_MONTHS: '현재 지역 거주기간',
   MARRIAGE_EVENT: '혼인기간', FAMILY_TYPE: '가족 형태', HAS_CHILDREN_OR_PREGNANCY: '자녀가 있거나 임신 중', IS_UNIVERSITY_STUDENT: '대학생', IS_JOB_SEEKER: '취업준비생',
+  CHILDREN_COUNT_INCLUDING_FETUS: '자녀 수(태아 포함)', REGISTERED_FAMILY_COUNT: '본인 포함 등본상 가족 수', IS_HOUSEHOLD_SEPARATED: '세대분리',
+  IS_DUAL_INCOME: '맞벌이', PARENTS_MONTHLY_INCOME: '부모님 월평균소득', CURRENT_LEASE_END_DATE: '현재 집 계약 종료일',
+}
+/** 사람 수를 세는 항목. 서버는 상한이 없는 범위를 아주 큰 상한(1800)으로 저장하므로 그 값은 '이상'으로 읽는다. */
+const COUNT_FIELDS = new Set(['CHILDREN_COUNT_INCLUDING_FETUS', 'REGISTERED_FAMILY_COUNT'])
+const NO_UPPER_BOUND = 1_000
+function people(rule: Rule): string {
+  const { minimum, maximum } = rule
+  if (minimum !== null && maximum !== null && minimum === maximum) return `${minimum}명`
+  if (maximum === null || maximum >= NO_UPPER_BOUND) return `${minimum ?? 0}명 이상`
+  return minimum === null || minimum <= 0 ? `${maximum}명 이하` : `${minimum}~${maximum}명`
 }
 const FAMILY: Record<string, string> = { UNMARRIED: '미혼', SINGLE_PARENT: '한부모', COUPLE_OR_ENGAGED: '부부·예비부부' }
 const won = (value: number) => value % 10_000 === 0 ? `${(value / 10_000).toLocaleString('ko-KR')}만원` : `${value.toLocaleString('ko-KR')}원`
@@ -247,11 +258,26 @@ export function ruleText(rule: Rule): string {
     }
     case 'REGION_IN': return `거주지역 코드 ${rule.regions.join(', ')}`
     case 'MONTHS_SINCE': return `혼인 ${Math.round((rule.maximum ?? 0) / 12)}년 이내`
-    case 'NUMBER_RANGE': return rule.field === 'CURRENT_REGION_RESIDENCE_MONTHS' ? `현재 지역 ${rule.minimum}개월 이상 거주` : `${field} ${rule.minimum}~${rule.maximum}`
-    case 'ALL': return rule.children.map(grouped).join(' 그리고 ')
+    case 'NUMBER_RANGE':
+      if (rule.field === 'CURRENT_REGION_RESIDENCE_MONTHS') return `현재 지역 ${rule.minimum}개월 이상 거주`
+      return COUNT_FIELDS.has(rule.field ?? '') ? `${field} ${people(rule)}` : `${field} ${rule.minimum}~${rule.maximum}`
+    case 'ALL': return childTier(rule) ?? rule.children.map(grouped).join(' 그리고 ')
     case 'ANY': return rule.children.map(grouped).join(' 또는 ')
     default: return field || rule.operator
   }
+}
+
+/**
+ * 출산자녀 가산 단계(막내 나이 + 자녀 수 + 높아진 기준)는 '막내 만 3세 이하 자녀 2명 이상이면 …'으로 읽는다.
+ * 나이·자녀 수를 '그리고'로 늘어놓으면 어느 기준이 몇 명일 때인지 읽기 어렵다.
+ */
+function childTier(rule: Rule): string | null {
+  const youngest = rule.children.find(child => child.operator === 'AGE_RANGE' && child.field === 'YOUNGEST_CHILD')
+  const count = rule.children.find(child => child.operator === 'NUMBER_RANGE' && child.field === 'CHILDREN_COUNT_INCLUDING_FETUS')
+  if (!youngest || !count) return null
+  const rest = rule.children.filter(child => child !== youngest && child !== count)
+  if (rest.length === 0) return null
+  return `막내 만 ${youngest.maximum}세 이하 자녀(태아 포함) ${people(count)}이면 ${rest.map(grouped).join(' 그리고 ')}`
 }
 
 /** 묶음 안의 묶음은 괄호로 감싸 '그리고'·'또는'이 어디까지인지 보이게 한다. */

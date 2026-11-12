@@ -13,7 +13,7 @@ export function PipelineNextActions({ execution, onRefine, disabled = false }: {
     const provider = type === 'SH_ANNOUNCEMENT_COLLECTION' ? 'SH' : 'GH'
     return <div className={styles.nextActions} aria-label="다음 작업">
       {status === 'COMPLETED_WITH_SKIPS' && <p>호출 제한으로 남은 글을 받지 못했습니다. 이미 받은 페이지는 정제했으며, 다시 실행하면 남은 글을 이어서 받습니다.</p>}
-      <p>정제로 만든 공고는 미확정이라 사용자에게 보이지 않습니다. PDF 보정에서 단지를 확인하고 공개를 요청해야 사용자에게 보입니다.</p>
+      <p>정제로 만든 공고는 미확정이라 사용자에게 보이지 않습니다. PDF 보정에서 공급행을 단지에 연결하고 보정을 적용하면 곧바로 사용자에게 보입니다.</p>
       <div className={styles.actions}>
         <Link to={`/admin/announcements?unconfirmed=true&provider=${provider}`}>공개 전 확인이 필요한 공고 보기</Link>
       </div>

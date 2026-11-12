@@ -68,6 +68,20 @@ describe('ruleText', () => {
     expect(ruleText({ ...age, operator: 'ANY', field: null, minimum: null, maximum: null, children: [assets, equals('FAMILY_TYPE', 'SINGLE_PARENT'), couple] }))
       .toBe('가족 총자산 41,700만원 이하 또는 가족 형태 한부모 또는 (가족 형태 부부·예비부부 그리고 자녀가 있거나 임신 중)')
   })
+
+  it('출산자녀 가산 단계는 자녀 수 코드·상한 없는 값(1800) 대신 몇 명일 때 어떤 기준인지로 읽는다', () => {
+    const assets = (maximum: number) => ({ ...age, operator: 'MONEY_CEILING', field: 'FAMILY_TOTAL_ASSETS', minimum: null, maximum })
+    const youngest = { ...age, field: 'YOUNGEST_CHILD', minimum: 0, maximum: 3 }
+    const count = (minimum: number, maximum: number) => ({ ...age, operator: 'NUMBER_RANGE', field: 'CHILDREN_COUNT_INCLUDING_FETUS', minimum, maximum })
+    const tier = (minimum: number, maximum: number, money: number) => ({ ...age, operator: 'ALL', field: null, minimum: null, maximum: null,
+      children: [youngest, count(minimum, maximum), assets(money)] })
+    const text = ruleText({ ...age, operator: 'ANY', field: null, minimum: null, maximum: null,
+      children: [assets(345_000_000), tier(1, 1, 379_500_000), tier(2, 1800, 414_000_000)] })
+    expect(text).toBe('가족 총자산 34,500만원 이하 또는 (막내 만 3세 이하 자녀(태아 포함) 1명이면 가족 총자산 37,950만원 이하)'
+      + ' 또는 (막내 만 3세 이하 자녀(태아 포함) 2명 이상이면 가족 총자산 41,400만원 이하)')
+    expect(text).not.toMatch(/CHILDREN_COUNT|1800/)
+    expect(ruleText(count(2, 1800))).toBe('자녀 수(태아 포함) 2명 이상')
+  })
 })
 
 describe('requirementWarnings', () => {

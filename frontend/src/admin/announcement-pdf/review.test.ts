@@ -966,7 +966,7 @@ it('미확정 공고의 필수 일정·유형이 비면 확인 필요로 표시�
   workspace.detail.data.recruitmentType = null
   review.metadata = review.metadata.map(cell => ['applicationStartDate', 'applicationEndDate', 'winnerAnnouncementDate'].includes(cell.field)
     ? { ...cell, before: null, selected: false } : cell)
-  const release = { rentalType: '', recruitmentType: '', publish: false }
+  const release = { rentalType: '', recruitmentType: '' }
   expect(pendingItems(review, true, workspace, release).map(item => item.id)).toEqual(expect.arrayContaining([
     'cell:announcement.applicationStartDate', 'cell:announcement.applicationEndDate', 'cell:announcement.winnerAnnouncementDate',
     'release:rentalType', 'release:recruitmentType',
