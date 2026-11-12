@@ -83,10 +83,6 @@
   word-break: keep-all;
 }
 
-.missingWord {
-  color: var(--ds-color-error-text);
-}
-
 .fillAll {
   margin-top: 12px;
 }
@@ -155,13 +151,12 @@
   word-break: keep-all;
 }
 
-.row dd.missing {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-  color: var(--ds-color-error-text);
-  font-weight: var(--ds-weight-strong);
+.row .fillValue {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 6px var(--ds-space-2);
+  font-size: var(--ds-text-caption);
+  word-break: keep-all;
 }
 
 .danger {
@@ -170,7 +165,8 @@
 }
 
 .clear {
-  padding: 2px 0;
+  min-height: 44px;
+  padding: 0 var(--ds-space-2);
   border: 0;
   background: none;
   color: var(--ds-color-error-text);
@@ -195,7 +191,7 @@
 
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .row {
-    grid-template-columns: 120px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     padding-inline: 14px;
     font-size: 13.5px;
   }

@@ -1,3 +1,4 @@
+import { findCatalogRegion } from '../../public-housing/model/publicHousingRegion'
 import { FIELD_COPY, type StepNumber } from './conditionFieldCopy'
 import {
   LATER,
@@ -62,6 +63,11 @@ export function partialStartDraft(requested: readonly ProfileField[], draft: Con
   if (requested.some(isFamilyDetailField) && next.familyDetails !== 'PROVIDED') next = setFamilyDetails(next, 'PROVIDED')
   const answers = { ...next.answers }
   for (const field of requested) if (answers[field] === LATER) delete answers[field]
+  const region = answers.RESIDENCE_REGION
+  if (requested.includes('RESIDENCE_REGION') && hasValue(region) && typeof region === 'string' && !findCatalogRegion(region)) {
+    delete answers.RESIDENCE_REGION
+    return { ...next, answers, provinceCode: null }
+  }
   return { ...next, answers }
 }
 

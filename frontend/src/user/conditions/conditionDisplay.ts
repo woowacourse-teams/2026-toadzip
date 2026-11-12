@@ -1,3 +1,4 @@
+import { findCatalogRegion } from '../../public-housing/model/publicHousingRegion'
 import { FAMILY_TYPE_COPY, FIELD_COPY } from './conditionFieldCopy'
 import { isDateEvent, NOT_APPLICABLE, type ConditionDraft } from './conditionDraft'
 import { formatAge, formatDots, formatWon } from './conditionFormat'
@@ -14,7 +15,7 @@ export function displayAnswer(field: ProfileField, draft: ConditionDraft, today:
   switch (FIELD_COPY[field].kind) {
     case 'bool': return value ? '예' : '아니요'
     case 'date': return typeof value === 'string' ? field === 'BIRTH_DATE' ? `${formatDots(value)} (${formatAge(value, today)})` : formatDots(value) : null
-    case 'region': return typeof value === 'string' ? regionLabel(value) : null
+    case 'region': return typeof value === 'string' && findCatalogRegion(value) ? regionLabel(value) : null
     case 'money': return typeof value === 'number' ? `${FIELD_COPY[field].monthly ? '월 ' : ''}${formatWon(value)}` : null
     case 'count': return `${String(value)}${FIELD_COPY[field].countUnit ?? '명'}`
     case 'familyType': return FAMILY_TYPE_COPY[value as FamilyType]?.label ?? null

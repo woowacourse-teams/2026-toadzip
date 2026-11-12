@@ -35,7 +35,7 @@ function SummaryGroup({ step, draft, today, missing, onEdit }: { readonly step: 
       {stepFields(step, draft).map((field) => {
         const absent = missing.has(field)
         return <div key={field} className={styles.row}><dt>{FIELD_COPY[field].label}</dt>
-          <dd className={absent ? styles.missing : undefined}>{absent ? '미입력' : displayAnswer(field, draft, today)}</dd></div>
+          <dd className={absent ? styles.missing : undefined}>{absent ? '미입력' : displayAnswer(field, draft, today) ?? '값을 확인해 주세요'}</dd></div>
       })}
     </dl>
   </section>

@@ -25,20 +25,40 @@ function context(extra: Partial<ConditionsContextValue> = {}): ConditionsContext
 const renderManagement = (value: ConditionsContextValue) => render(<ConditionsContext value={value}><ConditionManagement /></ConditionsContext>)
 
 describe('ConditionManagement', () => {
-  it('lists every applicable item in order and marks missing ones in red with an input button', () => {
+  it('lists every applicable item in order and offers an input button for each missing item', () => {
     const value = context()
     renderManagement(value)
     expect(screen.getByText('공고 상세의 자격 비교에 쓰는 정보예요. 내 계정에 저장돼요. 11월 5일 저장')).toBeInTheDocument()
     expect(screen.getByText('입력한 항목 12 / 17')).toBeInTheDocument()
     const money = screen.getByRole('region', { name: '소득·자산' })
     expect(within(money).getAllByRole('term').map((term) => term.textContent)).toEqual(['본인 주택 소유', '본인 자동차 소유', '본인 자산', '본인 월소득'])
-    expect(within(money).getByText('미입력')).toBeInTheDocument()
-    fireEvent.click(within(money).getByRole('button', { name: '본인 자산 입력하기' }))
+    expect(within(money).getByText('값을 입력해 주세요')).toBeInTheDocument()
+    expect(screen.getByText('서울 중구')).toBeInTheDocument()
+    fireEvent.click(within(money).getByRole('button', { name: '본인 자산 값을 입력해 주세요' }))
     expect(value.openInput).toHaveBeenCalledWith({ mode: 'partial', fields: ['APPLICANT_ASSETS'], origin: 'mypage' }, {})
     const family = screen.getByRole('region', { name: '가족·세대' })
-    expect(within(family).getAllByText('미입력')).toHaveLength(4)
-    fireEvent.click(screen.getByRole('button', { name: '미입력 5개 한 번에 입력하기' }))
+    expect(within(family).getAllByText('값을 입력해 주세요')).toHaveLength(4)
+    fireEvent.click(screen.getByRole('button', { name: '빈 항목 5개 한 번에 입력하기' }))
     expect(value.openInput).toHaveBeenLastCalledWith({ mode: 'partial', fields: ['APPLICANT_ASSETS', 'HOUSEHOLD_MONTHLY_INCOME', 'FAMILY_OWNS_HOUSE', 'FAMILY_OWNS_CAR', 'FAMILY_TOTAL_ASSETS'], origin: 'mypage' }, {})
+  })
+
+  it.each([
+    [{ state: 'UNKNOWN' as const }, '11 / 17', '값을 입력해 주세요'],
+    [{ state: 'PROVIDED' as const, value: '99999' }, '12 / 17', '값을 다시 선택해 주세요'],
+    [{ state: 'PROVIDED' as const, value: '29110' }, '12 / 17', '값을 다시 선택해 주세요'],
+  ] as const)('offers to enter a missing or unrecognized residence region (%j)', (region, progress, prompt) => {
+    const profile = partialProfile()
+    const value = context({ stored: {
+      version: 2, savedAt: null, profile: { ...profile, facts: { ...profile.facts, RESIDENCE_REGION: region } },
+    } })
+    renderManagement(value)
+
+    if ('value' in region) expect(screen.queryByText(region.value)).not.toBeInTheDocument()
+    expect(screen.getByText(`입력한 항목 ${progress}`)).toBeInTheDocument()
+    const fillRegion = screen.getByRole('button', { name: `거주지역 ${prompt}` })
+    expect(fillRegion).toHaveTextContent(prompt)
+    fireEvent.click(fillRegion)
+    expect(value.openInput).toHaveBeenCalledWith({ mode: 'partial', fields: ['RESIDENCE_REGION'], origin: 'mypage' }, {})
   })
 
   it('opens the full input at the step of the edit button', () => {
