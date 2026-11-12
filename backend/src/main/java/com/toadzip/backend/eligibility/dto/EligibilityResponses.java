@@ -67,8 +67,8 @@ public final class EligibilityResponses {
             String comparisonVersion,
             String scopeNote) {}
 
-    /** AI 추출로 만든 초안과 관리자가 검토할 때 알아야 할 안내(공개 내용에는 넣지 않음). */
-    public record ExtractionDraft(RuleSet ruleSet, List<String> notices) {}
+    /** PDF 추출로 만든 신청자격. published면 ruleSet은 사용자에게 보이는 공개본이고, 아니면(공고가 공개 전) 저장만 한 초안이다. */
+    public record ExtractionDraft(RuleSet ruleSet, boolean published, List<String> notices) {}
 
     public record RuleSet(
             long id,

@@ -1,7 +1,7 @@
 import { requestManagementApi } from '../management/api'
 import { isRecord } from '../management/managementContract'
 
-/** 신청자격 작성 내용(EligibilityContent). 화면은 보기·직접 확인 전환·검토 표시에 쓰는 칸만 다루고 나머지는 그대로 돌려 저장한다. */
+/** 신청자격 작성 내용(EligibilityContent). 화면은 보기·판정에서 빼기에 쓰는 칸만 다루고 나머지는 그대로 돌려 저장한다. */
 export type Rule = {
   operator: string; field: string | null; expected: string | null; minimum: number | null; maximum: number | null
   regions: string[]; incomeLimit: { standardTableId: number; percent: number; sizeExtraPercent: Record<string, number> } | null
@@ -22,21 +22,29 @@ export type Content = {
 }
 export type RuleSet = { id: number; revision: number; status: string; content: Content }
 
-const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/basic-comparison-rule-set/draft`
+const base = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/basic-comparison-rule-set`
+const path = (id: string) => `${base(id)}/draft`
 
-export async function loadEligibilityDraft(id: string, signal?: AbortSignal): Promise<RuleSet | null> {
-  return ruleSet(await requestManagementApi(path(id), 'GET', undefined, signal))
+/** 관리자 화면에 보일 신청자격. 초안이 있으면(공고 공개 전 등) 초안, 없으면 지금 사용자에게 보이는 공개본이다. */
+export async function loadEligibility(id: string, signal?: AbortSignal): Promise<RuleSet | null> {
+  const draft = ruleSet(await requestManagementApi(path(id), 'GET', undefined, signal))
+  return draft ?? ruleSet(await requestManagementApi(`${base(id)}/published`, 'GET', undefined, signal))
 }
 
-/** AI 초안과, 검토할 때 알아야 할 안내(잇지 못한 경로·경로가 없는 공급대상). 안내는 공개 내용에 들어가지 않는다. */
-export type ExtractionDraft = { ruleSet: RuleSet; notices: string[] }
+/** PDF 추출로 만든 신청자격과, 관리자가 알아야 할 안내(잇지 못한 경로 등). published면 사용자 화면에 반영된 공개본이다. */
+export type ExtractionDraft = { ruleSet: RuleSet; published: boolean; notices: string[] }
 
-/** 최신 PDF 추출의 신청자격으로 초안을 만든다. 초안이 있으면 그 초안의 ID·revision일 때만 덮어쓴다. */
+/**
+ * 최신 PDF 추출의 신청자격으로 만들어 곧바로 사용자에게 반영한다(공고가 공개 전이면 서버가 저장만 한다).
+ * 초안이 있으면 그 초안의 ID·revision일 때만 덮어쓴다. 공개본은 서버가 새 버전으로 바꾸므로 넘기지 않는다.
+ */
 export async function createEligibilityDraft(id: string, pdfSha256: string, current: RuleSet | null): Promise<ExtractionDraft> {
-  const body = { pdfSha256, expectedRevision: current?.revision ?? 0, ...(current ? { expectedDraftId: current.id } : {}) }
+  const draft = current?.status === 'DRAFT' ? current : null
+  const body = { pdfSha256, expectedRevision: draft?.revision ?? 0, ...(draft ? { expectedDraftId: draft.id } : {}) }
   const value = await requestManagementApi(`${path(id)}/from-extraction`, 'POST', body)
-  if (!isRecord(value)) throw new Error('신청자격 초안 응답이 비어 있습니다.')
-  return { ruleSet: required(value.ruleSet), notices: Array.isArray(value.notices) ? value.notices.filter((item): item is string => typeof item === 'string') : [] }
+  if (!isRecord(value)) throw new Error('신청자격 응답이 비어 있습니다.')
+  return { ruleSet: required(value.ruleSet), published: value.published === true,
+    notices: Array.isArray(value.notices) ? value.notices.filter((item): item is string => typeof item === 'string') : [] }
 }
 
 /** 보정 적용 전 미리보기: 최신 PDF 추출을 서버 변환 규칙으로 바꾼 신청자격. 공급행에 잇지 않고 저장하지 않는다. */
@@ -57,6 +65,37 @@ export async function publishEligibilityDraft(id: string, current: RuleSet): Pro
   return required(await requestManagementApi(`${path(id)}/publish`, 'POST', version))
 }
 
+/** 고친 결과. 공개하지 못했으면(공고가 공개 전 등) 저장한 초안과 그 이유다. */
+export type Applied = { ruleSet: RuleSet; published: true } | { ruleSet: RuleSet; published: false; reason: string }
+
+/**
+ * 고친 신청자격을 곧바로 사용자에게 반영한다. 공개본이면 초안으로 복사해 고친 뒤 공개하고, 초안이면 저장한 뒤 공개한다.
+ * 저장은 했는데 공개가 막히면 저장한 초안을 이유와 함께 돌려준다(화면이 그 초안의 revision으로 이어서 고칠 수 있게).
+ */
+export async function applyEligibility(id: string, current: RuleSet, content: Content): Promise<Applied> {
+  const reviewed = { ...content, metadata: { ...content.metadata, reviewStatus: 'REVIEWED' as const } }
+  if (current.status !== 'PUBLISHED') return publishSaved(id, await saveEligibilityDraft(id, current, reviewed))
+  const copied: RuleSet = required(await requestManagementApi(`${path(id)}/copy`, 'POST'))
+  // 복사는 지금 공개본을 가져오므로, 화면이 읽은 뒤 다른 곳에서 바뀐 공개본을 예전 화면 내용으로 덮어쓰지 않게 비교한다.
+  if (JSON.stringify(copied.content) !== JSON.stringify(current.content)) {
+    return { ruleSet: copied, published: false, reason: '다른 곳에서 바뀐 신청자격을 불러왔어요. 다시 확인한 뒤 고쳐 주세요.' }
+  }
+  try {
+    return publishSaved(id, await saveEligibilityDraft(id, copied, reviewed))
+  } catch (error) {
+    // 복사한 초안이 남았으니 화면이 그 초안으로 이어 가게 돌려준다(공개본으로 남으면 다음 복사가 충돌한다).
+    return { ruleSet: copied, published: false, reason: error instanceof Error ? error.message : '저장 요청이 실패했습니다.' }
+  }
+}
+
+async function publishSaved(id: string, saved: RuleSet): Promise<Applied> {
+  try {
+    return { ruleSet: await publishEligibilityDraft(id, saved), published: true }
+  } catch (error) {
+    return { ruleSet: saved, published: false, reason: error instanceof Error ? error.message : '공개 요청이 실패했습니다.' }
+  }
+}
+
 /**
  * 조건을 지우지 않고 그 범위의 필수 확인 자격 안내 항목으로 옮긴다. 판정기는 이 안내가 걸린 선택지를 지원 가능으로 확정하지 않으므로,
  * 잘못 읽힌 조건을 빼도 판정이 넓어지지 않는다.
@@ -73,7 +112,7 @@ export function moveToDirectCheck(content: Content, scopeId: string, checkId: st
   const existing = content.guidances.find(item => item.id === guidanceId)
   const guidance: Guidance = existing
     ? { ...existing, items: [...existing.items, item] }
-    : { id: guidanceId, kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 직접 확인할 신청자격', body: '자동으로 판정하지 못한 요건이에요. 공고문 원문에서 해당하는지 확인해 주세요.',
+    : { id: guidanceId, kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 확인해야 하는 신청자격', body: '입력한 정보로는 판단할 수 없는 자격이에요. 해당하는지 공고문에서 확인해 주세요.',
       items: [item], targets: [common ? { scope: 'ANNOUNCEMENT', pathId: null, supplyUnitId: null } : { scope: 'PATH', pathId: scopeId, supplyUnitId: null }], evidenceIds: check.evidenceIds }
   const remaining = checks.filter(item => item.id !== checkId)
   // 옮긴 조건의 대체 안내만, 다른 조건이 더 쓰지 않을 때 뺀다. 사람이 쓴 다른 안내는 그대로 둔다.
@@ -223,13 +262,13 @@ function grouped(rule: Rule): string {
 function ruleSet(value: unknown): RuleSet | null {
   if (value === null || value === undefined) return null
   if (!isRecord(value) || typeof value.id !== 'number' || typeof value.revision !== 'number' || !isRecord(value.content)) {
-    throw new Error('신청자격 초안 응답이 올바르지 않습니다.')
+    throw new Error('신청자격 응답이 올바르지 않습니다.')
   }
   return value as unknown as RuleSet
 }
 
 function required(value: unknown): RuleSet {
   const result = ruleSet(value)
-  if (!result) throw new Error('신청자격 초안 응답이 비어 있습니다.')
+  if (!result) throw new Error('신청자격 응답이 비어 있습니다.')
   return result
 }

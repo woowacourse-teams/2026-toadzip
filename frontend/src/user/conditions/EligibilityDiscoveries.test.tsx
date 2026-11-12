@@ -8,7 +8,7 @@ vi.mock('../../public-housing/api/publicHousingRepository', () => ({ requestPubl
 vi.mock('../../public-housing/api/publicHousingContract', () => ({ decodeAnnouncementDetailEnvelope: (value: unknown) => value }))
 vi.mock('../../public-housing/api/publicHousingMapper', () => ({ toAnnouncementDetail: (value: unknown) => value }))
 const discovery = { eventId: 'event-1', rootAnnouncementId: '1', announcementId: '5', optionIds: ['unit-path'], discoveredAt: '2026-11-09T00:00:00Z' }
-const view: ComparisonView = { announcementId: '5', availability: 'AVAILABLE', freshness: 'CURRENT', status: 'ELIGIBLE', headline: '지원할 수 있어요', profileVersion: 2, evaluatedProfileVersion: 2, eligibleOptionIdsInRegion: ['unit-path'], referenceDate: '', scopeNote: null,
+const view: ComparisonView = { announcementId: '5', availability: 'AVAILABLE', freshness: 'CURRENT', status: 'ELIGIBLE', profileVersion: 2, evaluatedProfileVersion: 2, eligibleOptionIdsInRegion: ['unit-path'], referenceDate: '', scopeNote: null,
   types: [{ key: 'unit-path', label: '일반입주자 신청자격', units: '사천벌리1 26형', status: 'ELIGIBLE', checks: [], guidances: [] }] }
 function fixture() {
   const repository = { loadDiscoveries: vi.fn(async () => ({ items: [discovery], nextCursor: 1, hasMore: false })), loadComparison: vi.fn(async () => view), acknowledgeDiscovery: vi.fn(async () => {}) }

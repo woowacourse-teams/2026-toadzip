@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
 @RestController
-@RequestMapping("/api/admin/announcements/{announcementId}/basic-comparison-rule-set/draft")
+@RequestMapping("/api/admin/announcements/{announcementId}/basic-comparison-rule-set")
 public class EligibilityRuleSetController {
     private final EligibilityRuleSetService ruleSets;
 
@@ -42,25 +42,31 @@ public class EligibilityRuleSetController {
         this.codec = codec;
     }
 
-    @GetMapping
+    @GetMapping("/draft")
     public ApiResponse<RuleSet> draft(@PathVariable long announcementId) {
         return new ApiResponse<>(ruleSets.draft(announcementId));
     }
 
-    @PutMapping
+    /** 지금 사용자에게 보이는 공개본. 없으면 data null이다. */
+    @GetMapping("/published")
+    public ApiResponse<RuleSet> published(@PathVariable long announcementId) {
+        return new ApiResponse<>(ruleSets.published(announcementId));
+    }
+
+    @PutMapping("/draft")
     public ApiResponse<RuleSet> save(
             @PathVariable long announcementId, @RequestBody JsonNode request) {
         return new ApiResponse<>(
                 ruleSets.save(announcementId, codec.request(request, SaveDraft.class)));
     }
 
-    @PostMapping("/copy")
+    @PostMapping("/draft/copy")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RuleSet> copy(@PathVariable long announcementId) {
         return new ApiResponse<>(ruleSets.copy(announcementId));
     }
 
-    @PostMapping("/from-extraction")
+    @PostMapping("/draft/from-extraction")
     public ApiResponse<ExtractionDraft> fromExtraction(
             @PathVariable long announcementId, @RequestBody JsonNode request) {
         return new ApiResponse<>(
@@ -68,19 +74,19 @@ public class EligibilityRuleSetController {
     }
 
     /** 보정 적용 전 신청자격 탭의 미리보기. 저장하지 않는다. */
-    @GetMapping("/from-extraction/preview")
+    @GetMapping("/draft/from-extraction/preview")
     public ApiResponse<EligibilityContent> previewFromExtraction(
             @PathVariable long announcementId, @RequestParam String pdfSha256) {
         return new ApiResponse<>(extractionDrafts.preview(announcementId, pdfSha256));
     }
 
-    @PostMapping("/validation")
+    @PostMapping("/draft/validation")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void validate(@PathVariable long announcementId, @RequestBody JsonNode request) {
         ruleSets.validate(announcementId, codec.request(request, DraftVersion.class));
     }
 
-    @PostMapping("/publish")
+    @PostMapping("/draft/publish")
     public ApiResponse<RuleSet> publish(
             @PathVariable long announcementId, @RequestBody JsonNode request) {
         return new ApiResponse<>(

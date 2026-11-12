@@ -9,6 +9,7 @@ import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft.Source;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft.Unit;
 import com.toadzip.backend.eligibility.domain.IncomeStandard;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
+import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftVersion;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.SaveDraft;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.ExtractionDraft;
 import com.toadzip.backend.eligibility.dto.EligibilityResponses.RuleSet;
@@ -21,6 +22,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.region.repository.RegionSearchRepository;
 import com.toadzip.backend.region.repository.RegionSearchResult;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,10 +30,11 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * PDF 보정 화면의 최신 추출 결과(AI 신청자격)와 지금 공급행으로 검토 전 신청자격 초안을 만든다.
- * 저장은 관리자 초안 저장(EligibilityRuleSetService.save)을 그대로 타서 검증·잠금·관계형 투영을 함께 한다.
+ * PDF 보정 화면의 최신 추출 결과(AI 신청자격)와 지금 공급행으로 신청자격을 만들어 곧바로 공개한다.
+ * 저장·공개는 관리자 초안 저장·공개(EligibilityRuleSetService)를 그대로 타서 검증·잠금·관계형 투영을 함께 한다.
  */
 @Service
 @PreAuthorize("hasRole('ADMIN')")
@@ -58,6 +61,8 @@ public class EligibilityExtractionDraftService {
         this.regionSearch = regionSearch;
     }
 
+    /** 저장과 공개를 한 트랜잭션으로 묶는다. 공개가 막히면 초안 저장도 남기지 않는다. */
+    @Transactional
     public ExtractionDraft create(long announcementId, DraftFromExtraction request) {
         SavedAnnouncementPdfExtraction latest = latest(announcementId, request.pdfSha256());
         String url = sources.attachmentUrl(announcementId, latest.fileName()).orElseThrow(() ->
@@ -70,9 +75,16 @@ public class EligibilityExtractionDraftService {
         try {
             RuleSet saved = ruleSets.save(announcementId,
                     new SaveDraft(request.expectedDraftId(), request.expectedRevision(), draft.content()));
-            return new ExtractionDraft(saved, draft.notices());
+            // 보정을 적용하면 신청자격도 곧바로 사용자에게 반영한다(사용자 결정). 공고가 아직 공개 전이면 저장만 한다.
+            if (!ruleSets.publishable(announcementId)) {
+                List<String> notices = new ArrayList<>(draft.notices());
+                notices.add("공고가 아직 공개 전이라 신청자격은 저장만 했습니다. 공고를 공개한 뒤 보정을 다시 적용하면 사용자에게 반영됩니다.");
+                return new ExtractionDraft(saved, false, List.copyOf(notices));
+            }
+            RuleSet published = ruleSets.publish(announcementId, new DraftVersion(saved.id(), saved.revision()));
+            return new ExtractionDraft(published, true, draft.notices());
         } catch (InvalidEligibilityException invalid) {
-            // 작성 규칙을 통과하지 못한 초안은 저장하지 않는다. 관리자가 할 일을 이유와 함께 알린다.
+            // 작성 규칙을 통과하지 못한 초안은 저장·공개하지 않는다. 관리자가 할 일을 이유와 함께 알린다.
             throw new EligibilityDraftUnavailableException("AI 추출로 만든 초안이 신청자격 작성 규칙을 통과하지 못했습니다("
                     + invalid.getMessage() + "). 공고문을 확인해 PDF를 다시 추출하거나 직접 작성해 주세요.");
         }

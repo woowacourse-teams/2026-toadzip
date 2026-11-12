@@ -43,7 +43,7 @@ public record ExtractedEligibility(
             Integer incomeBaseYear,
             Integer percent,
             Map<Long, Integer> householdSizeExtraPercent,
-            List<String> adjustments,
+            List<Adjustment> adjustments,
             Long maximumKrw,
             List<String> regions,
             List<String> familyTypes,
@@ -58,6 +58,9 @@ public record ExtractedEligibility(
             options = EligibilityContent.immutable(options);
         }
     }
+
+    /** 출산자녀·맞벌이·장애인 등 가산. asWritten은 가산 원문(예: "출산자녀 2인 이상 20% 가산, 출산자녀 1인 10% 가산")이며 없을 수 있다. */
+    public record Adjustment(String kind, String asWritten) {}
 
     public record Qualification(String exactName, String legalBasis, String conditionsAsWritten, String evidencePath) {}
 

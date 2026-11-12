@@ -65,9 +65,9 @@ export interface CheckView {
   readonly id: string
   readonly label: string
   readonly status: CheckStatus
-  /** 내 값 문구. 입력 필요·직접 확인이면 null */
+  /** 내 값 문구. 입력 필요·공고문 확인이면 null */
   readonly mine: string | null
-  /** "기준" 뒤 문구. 직접 확인이면 안내 문장 */
+  /** 공고 기준 명사구('4,542만 원 이하', '세대원 모두 무주택'). 화면이 상태와 관계없이 앞에 '기준 '을 붙인다. */
   readonly criterion: string
   readonly basis: string | null
   readonly evidence: EvidenceRef | null
@@ -96,8 +96,6 @@ export interface TypeView {
   readonly qualifications?: readonly RequiredQualification[]
   readonly exclusions?: readonly GuidanceView[]
   readonly missingInputs?: readonly ProfileField[]
-  readonly message?: string
-  readonly missingInputMessage?: string | null
   readonly regionCodes?: readonly string[]
 }
 
@@ -135,7 +133,6 @@ export interface ComparisonView {
   readonly availability: ComparisonAvailability
   readonly freshness: ResultFreshness
   readonly status: TypeStatus | null
-  readonly headline: string | null
   readonly profileVersion: number
   readonly evaluatedProfileVersion: number | null
   readonly eligibleOptionIdsInRegion: readonly string[]

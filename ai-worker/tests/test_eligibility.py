@@ -35,6 +35,8 @@ def _unverified(result):
     ("1억원", 100_000_000), ("45,420,000원", 45_420_000), ("24,500만원 이하", 245_000_000), ("약 3억", None), ("만원", None),
     # 빈칸 양식 표기를 모델이 그대로 옮겨도 읽는다(공주옥룡 실측: 이 표기를 읽지 못해 자산·자동차 기준이 비었다).
     ("( 24,500 )만원", 245_000_000), ("( 4,542 )만원 이하", 45_420_000),
+    # 국민임대 표준 양식은 총자산을 백만원 단위로 적는다(인천논현2단지: 이 표기를 읽지 못해 자산 기준이 원문 그대로 목록에 남았다).
+    ("( 345 )백만원 이하", 345_000_000), ("345백만원", 345_000_000),
 ])
 def test_amount_written_in_korean_units_becomes_won(written, expected):
     assert eligibility.amount_krw(written) == expected
@@ -493,6 +495,16 @@ def test_asset_and_car_amounts_written_on_one_line_are_not_swapped():
     reasons = " ".join(_unverified(result))
     assert reasons.count("이 요건의 금액인지 확인하지 못한 금액") == 2
     assert "금액(4,563만원)" in reasons and "금액(34,500만원)" in reasons
+
+
+def test_assets_written_in_millions_on_the_national_rental_form_become_a_checked_limit():
+    """국민임대 표준 양식의 '( 345 )백만원'은 값으로 대조해 원문과 맞는 금액이다. 경고 없이 판정 기준이 된다."""
+    text = "세대구성원 전원이 보유하고 있는 총자산가액 합산기준 ( 345 )백만원 이하"
+    result = _normalize([{"kind": "ASSETS", "scope": "HOUSEHOLD", "amount": "345백만원", "text": text}], pages=[text])
+
+    [assets] = _common(result)
+    assert assets["maximumKrw"] == 345_000_000
+    assert result.warnings == []
 
 
 def test_amount_cut_out_of_a_larger_amount_on_the_page_needs_a_number_check():

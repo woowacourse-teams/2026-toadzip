@@ -169,7 +169,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--ds-color-status-upcoming);
+  color: color-mix(in srgb, var(--ds-color-status-upcoming) 85%, #000);
   font-size: 14.5px;
   font-weight: var(--ds-weight-strong);
 }
@@ -597,4 +597,3 @@
   .tab[aria-selected='true'] { border: 2px solid Highlight; }
 }
 
-.pathLabel { display: block; margin-bottom: 6px; font-size: 0.8125rem; color: var(--ds-color-muted); }

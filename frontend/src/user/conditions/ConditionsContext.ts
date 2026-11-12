@@ -44,7 +44,7 @@ const noop = () => {}
 const disabledRepository: ConditionsRepository = {
   loadProfile: async () => ({ version: 0, savedAt: null, profile: EMPTY_PROFILE }),
   saveProfile: async () => ({ version: 0, savedAt: null, profile: EMPTY_PROFILE }),
-  loadComparison: async (ref) => ({ announcementId: ref.announcementId, availability: 'NOT_STRUCTURED', freshness: 'NOT_AVAILABLE', status: null, headline: null, profileVersion: 0, evaluatedProfileVersion: null, eligibleOptionIdsInRegion: [], scopeNote: null, referenceDate: '', types: [] }),
+  loadComparison: async (ref) => ({ announcementId: ref.announcementId, availability: 'NOT_STRUCTURED', freshness: 'NOT_AVAILABLE', status: null, profileVersion: 0, evaluatedProfileVersion: null, eligibleOptionIdsInRegion: [], scopeNote: null, referenceDate: '', types: [] }),
   loadListResults: async () => new Map(),
   loadProcessing: async () => ({ profileVersion: 0, requestedVersion: 0, state: 'DONE', failedAttempts: 0 }),
   loadDiscoveries: async () => ({ items: [], nextCursor: 0, hasMore: false }),

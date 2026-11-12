@@ -22,7 +22,7 @@ import { ConditionsContext, type ConditionsContextValue } from '../../user/condi
 import { EMPTY_PROFILE, type ComparisonView, type ConditionsRepository } from '../../user/conditions/conditionsModel'
 
 function evidenceConditions(): ConditionsContextValue {
-  const view: ComparisonView = { announcementId: '101', availability: 'AVAILABLE', referenceDate: '2026-11-06', freshness: 'CURRENT', status: 'ELIGIBLE', headline: '지원할 수 있어요', profileVersion: 1, evaluatedProfileVersion: 1, eligibleOptionIdsInRegion: ['youth'], scopeNote: null, types: [{
+  const view: ComparisonView = { announcementId: '101', availability: 'AVAILABLE', referenceDate: '2026-11-06', freshness: 'CURRENT', status: 'ELIGIBLE', profileVersion: 1, evaluatedProfileVersion: 1, eligibleOptionIdsInRegion: ['youth'], scopeNote: null, types: [{
     key: 'youth', label: '청년', status: 'ELIGIBLE', units: '', guidances: [],
     checks: [{ id: 'income', label: '본인 소득', status: 'SATISFIED', mine: '월 230만 원', criterion: '월 256만 원 이하', basis: null, evidence: { page: 6, location: '소득표', fileName: null }, fields: ['APPLICANT_MONTHLY_INCOME'], missingReason: null }],
   }] }

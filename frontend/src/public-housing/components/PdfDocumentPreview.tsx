@@ -34,22 +34,18 @@ function PdfPreview({ url, name, telemetry, focus }: PdfPreviewProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scale, setScale] = useState('page-width')
-  // 근거 위치 찾기 결과를 알리는 동안은 true. 직접 검색을 열면 그 결과로 바뀐다.
-  const [focusSearch, setFocusSearch] = useState(false)
   const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, goToPage, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef, telemetry)
 
   useEffect(() => {
     if (!ready || !focus) return
     // Keep keyboard focus in the review and highlight only on the evidence page.
     goToPage(focus.page)
-    setFocusSearch(true)
     search(focus.query, false, false, focus.page, focus.context ?? null)
   }, [ready, focus, goToPage, search])
 
   const openSearch = useCallback(() => {
     telemetry?.action('search_open')
     setSearchOpen(true)
-    setFocusSearch(false)
     inputRef.current?.focus()
     inputRef.current?.select()
     if (query) search(query)
@@ -117,7 +113,6 @@ function PdfPreview({ url, name, telemetry, focus }: PdfPreviewProps) {
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
-    {focus && focusSearch && !searchOpen && result.notFound && <p role="status" className={styles.focusMissing}>위치를 찾지 못했습니다 · p.{focus.page} 원문과 인용문을 확인하세요{focus.quote ? <q>{focus.quote}</q> : null}</p>}
     {error && <p role="alert" className={styles.error}>PDF를 표시하지 못했어요. 다운로드해서 확인해 주세요.</p>}
     <div className={styles.viewport}>
       <div ref={containerRef} className={`${styles.scroll} ${scrollbarStyles.scrollbar}`} role="region" aria-label={`${name} 문서`} tabIndex={0}>

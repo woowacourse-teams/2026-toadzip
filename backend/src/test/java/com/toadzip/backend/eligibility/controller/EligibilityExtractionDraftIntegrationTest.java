@@ -24,15 +24,16 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     private static final String FILE = "인천석남 공고문.pdf";
 
     @Test
-    void 최신_추출과_공급행으로_검토_전_초안을_만들고_공개는_검토_완료_뒤에만_한다() throws Exception {
+    void 최신_추출과_공급행으로_신청자격을_만들어_곧바로_사용자에게_공개한다() throws Exception {
         long announcement = notice(true);
 
         JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
 
         JsonNode draft = created.path("ruleSet");
         JsonNode content = draft.path("content");
-        assertThat(draft.path("status").asString()).isEqualTo("DRAFT");
-        assertThat(content.path("metadata").path("reviewStatus").asString()).isEqualTo("REVIEWING");
+        assertThat(created.path("published").asBoolean()).isTrue();
+        assertThat(draft.path("status").asString()).isEqualTo("PUBLISHED");
+        assertThat(content.path("metadata").path("reviewStatus").asString()).isEqualTo("REVIEWED");
         assertThat(content.path("metadata").path("referenceDate").asString()).isEqualTo("2026-09-30");
         assertThat(content.path("documents").get(0).path("downloadUrl").asString())
                 .isEqualTo("https://apply.lh.or.kr/notice.pdf");
@@ -45,13 +46,50 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         assertThat(content.path("guidances").get(0).path("kind").asString()).isEqualTo("REQUIRED_QUALIFICATION");
         assertThat(content.path("metadata").path("scopeNote").asString()).doesNotContain("고령자");
         assertThat(texts(created.path("notices"))).containsExactly("공급대상과 잇지 못한 신청자격 경로: 고령자");
-        publish(announcement, draft).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("검토 완료한 내용만 공개할 수 있습니다."));
+        // 공개본만 남고 초안은 남지 않는다. 관리자 화면은 공개본을 그대로 다시 읽는다.
+        String base = "/api/admin/announcements/" + announcement + "/basic-comparison-rule-set";
+        assertThat(response(mvc.perform(get(base + "/draft").with(user("admin").roles("ADMIN")))).isNull()).isTrue();
+        JsonNode published = response(mvc.perform(get(base + "/published").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()));
+        assertThat(published.path("id").asLong()).isEqualTo(draft.path("id").asLong());
+        assertThat(published.path("version").asLong()).isEqualTo(1);
+        mvc.perform(get(base + "/published").with(user(Long.toString(USER)).roles("USER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 다시_적용하면_공개본을_다음_버전으로_바꾼다() throws Exception {
+        long announcement = notice(true);
+        JsonNode first = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk())).path("ruleSet");
+
+        JsonNode second = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk())).path("ruleSet");
+
+        assertThat(second.path("status").asString()).isEqualTo("PUBLISHED");
+        assertThat(second.path("version").asLong()).isEqualTo(first.path("version").asLong() + 1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?",
+                Long.class, announcement)).isOne();
+    }
+
+    @Test
+    void 공개_전_공고는_저장만_하고_그_이유를_알린다() throws Exception {
+        long announcement = notice(true);
+        jdbc.update("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = ?", announcement);
+
+        JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
+
+        assertThat(created.path("published").asBoolean()).isFalse();
+        assertThat(created.path("ruleSet").path("status").asString()).isEqualTo("DRAFT");
+        assertThat(texts(created.path("notices"))).contains(
+                "공고가 아직 공개 전이라 신청자격은 저장만 했습니다. 공고를 공개한 뒤 보정을 다시 적용하면 사용자에게 반영됩니다.");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?"
+                + " AND status = 'PUBLISHED'", Long.class, announcement)).isZero();
     }
 
     @Test
     void 초안이_있으면_그_초안의_버전으로만_다시_만든다() throws Exception {
+        // 공개 전 공고는 초안으로 남으므로, 다시 적용할 때 그 초안의 버전을 맞춰야 한다.
         long announcement = notice(true);
+        jdbc.update("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = ?", announcement);
         JsonNode first = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk())).path("ruleSet");
 
         fromExtraction(announcement, SHA, null, 0).andExpect(status().isConflict());
@@ -135,7 +173,7 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         // 입력으로 판정할 수 없는 청약통장 요건은 판정을 막지 않는 목록으로 근거 쪽과 함께 보인다.
         JsonNode listed = null;
         for (JsonNode guidance : content.path("guidances")) {
-            if (guidance.path("title").asString().equals("공고문에서 확인할 자격")) {
+            if (guidance.path("title").asString().equals("신청 전에 확인할 자격")) {
                 listed = guidance;
             }
         }
