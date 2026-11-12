@@ -3,6 +3,7 @@ package com.toadzip.backend.user.controller;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.user.exception.AdminUserNotFoundException;
+import com.toadzip.backend.user.exception.LastAdminRevokeException;
 import com.toadzip.backend.user.exception.SelfAdminRevokeException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
@@ -26,5 +27,11 @@ public class AdminUserExceptionAdvice {
     public ResponseEntity<ErrorResponse> selfRevoke(SelfAdminRevokeException exception, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
                 "SELF_ADMIN_REVOKE", exception.getMessage(), RequestTraceIdResolver.resolve(request)));
+    }
+
+    @ExceptionHandler(LastAdminRevokeException.class)
+    public ResponseEntity<ErrorResponse> lastAdminRevoke(LastAdminRevokeException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                "LAST_ADMIN_REVOKE", exception.getMessage(), RequestTraceIdResolver.resolve(request)));
     }
 }

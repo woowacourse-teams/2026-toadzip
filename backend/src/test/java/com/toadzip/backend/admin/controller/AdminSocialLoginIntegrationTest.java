@@ -176,6 +176,88 @@ class AdminSocialLoginIntegrationTest {
     }
 
     @Test
+    void 비밀번호_관리자도_마지막_소셜_관리자의_권한은_뺄_수_없다() throws Exception {
+        long last = userIdOf(adminSocialLogin());
+        long other = userIdOf(adminSocialLogin());
+        // 같은 DB를 쓰는 다른 테스트의 관리자 회원은 잠시 빼 두었다가 되돌린다.
+        java.util.List<Long> others = jdbc.queryForList(
+                "SELECT id FROM users WHERE admin = true AND id NOT IN (?, ?)", Long.class, last, other);
+        others.forEach(id -> jdbc.update("UPDATE users SET admin = false WHERE id = ?", id));
+        try {
+            mockMvc.perform(revoke(other).with(user("root").roles("ADMIN")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.admin").value(false));
+
+            mockMvc.perform(revoke(last).with(user("root").roles("ADMIN")))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("LAST_ADMIN_REVOKE"))
+                    .andExpect(jsonPath("$.message").value("관리자 권한이 있는 카카오·구글 계정이 하나는 남아 있어야 합니다."));
+            assertThat(jdbc.queryForObject("SELECT admin FROM users WHERE id = ?", Boolean.class, last)).isTrue();
+            assertThat(changesOf(last)).extracting(AdminDataChange::getAction).containsExactly("GRANT_ADMIN");
+            // 관리자가 아닌 회원을 빼는 요청은 남은 관리자 수와 관계없이 바뀌는 것이 없다.
+            mockMvc.perform(revoke(other).with(user("root").roles("ADMIN"))).andExpect(status().isOk());
+        } finally {
+            others.forEach(id -> jdbc.update("UPDATE users SET admin = true WHERE id = ?", id));
+        }
+    }
+
+    @Test
+    void 남은_두_소셜_관리자를_동시에_빼도_한_명은_남는다() throws Exception {
+        long first = userIdOf(adminSocialLogin());
+        long second = userIdOf(adminSocialLogin());
+        java.util.List<Long> others = jdbc.queryForList(
+                "SELECT id FROM users WHERE admin = true AND id NOT IN (?, ?)", Long.class, first, second);
+        others.forEach(id -> jdbc.update("UPDATE users SET admin = false WHERE id = ?", id));
+        var requests = java.util.List.of(
+                revoke(first).with(user("root").roles("ADMIN")), revoke(second).with(user("other-root").roles("ADMIN")));
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var results = requests.stream().map(request -> pool.submit(() -> {
+                start.await();
+                return mockMvc.perform(request).andReturn().getResponse().getStatus();
+            })).toList();
+            start.countDown();
+            java.util.List<Integer> statuses = new java.util.ArrayList<>();
+            for (var result : results) {
+                statuses.add(result.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE admin = true AND id IN (?, ?)",
+                    Long.class, first, second)).isEqualTo(1L);
+        } finally {
+            pool.shutdownNow();
+            others.forEach(id -> jdbc.update("UPDATE users SET admin = true WHERE id = ?", id));
+        }
+    }
+
+    @Test
+    void 비관리자의_권한을_소셜_관리자와_비밀번호_관리자가_동시에_빼도_둘_다_바뀌는_것_없이_끝난다() throws Exception {
+        long member = userIdOf(socialLogin("kakao", Map.of("id", newSubject()), "id"));
+        MockHttpSession actor = adminSocialLogin();
+        // 회원 번호가 행위자보다 작아야 소셜 경로가 회원 행부터 잠근다.
+        assertThat(member).isLessThan(userIdOf(actor));
+        var requests = java.util.List.of(revoke(member).session(actor), revoke(member).with(user("root").roles("ADMIN")));
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 20; round++) {
+                var roundStart = new java.util.concurrent.CountDownLatch(1);
+                var results = requests.stream().map(request -> pool.submit(() -> {
+                    roundStart.await();
+                    return mockMvc.perform(request).andReturn().getResponse().getStatus();
+                })).toList();
+                roundStart.countDown();
+                for (var result : results) {
+                    assertThat(result.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(200);
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(changesOf(member)).isEmpty();
+    }
+
+    @Test
     void 관리자가_아닌_회원은_권한을_줄_수_없고_없는_회원은_404다() throws Exception {
         MockHttpSession member = socialLogin("google", Map.of("sub", newSubject()), "sub");
         long memberId = userIdOf(member);
