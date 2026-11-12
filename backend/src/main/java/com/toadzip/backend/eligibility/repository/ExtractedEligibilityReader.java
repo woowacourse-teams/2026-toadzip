@@ -47,7 +47,7 @@ public class ExtractedEligibilityReader {
         JsonNode targets = eligibility.path("targets");
         for (int index = 0; index < targets.size(); index++) {
             JsonNode target = targets.get(index);
-            routes.add(new Route(text(target, "target"), texts(target.path("supplyTargets")),
+            routes.add(new Route(text(target, "target"), supplyTargets(target),
                     group(target, "eligibility.targets[" + index + "]")));
         }
         List<Exclusion> exclusions = new ArrayList<>();
@@ -123,6 +123,16 @@ public class ExtractedEligibilityReader {
             }
         }
         return quotes;
+    }
+
+    /**
+     * 워커가 공고문 공급표의 대상과 맞춘 이름(supplyTargets). 표기가 조금 달라 워커가 맞추지 못하면(예: 자격 본문
+     * '신혼부부·한부모가족', 공급표 '신혼부부·한부모') 모델이 적은 공급대상(supplyTarget)을 대신 넘기고, 서버가 이름으로 다시 맞춘다.
+     */
+    private static List<String> supplyTargets(JsonNode target) {
+        List<String> matched = texts(target.path("supplyTargets"));
+        String written = text(target, "supplyTarget");
+        return matched.isEmpty() && written != null ? List.of(written) : matched;
     }
 
     private static String text(JsonNode node, String field) {
