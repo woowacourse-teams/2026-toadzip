@@ -1,10 +1,25 @@
-.section { padding: var(--ds-space-4, 16px); border: 1px solid var(--ds-color-divider); border-radius: 12px; }
-.section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.section h3 { margin: 0; font-size: 1rem; }
-.section p { color: var(--ds-color-muted); font-size: .875rem; }
-.section > ul { list-style: none; margin: 0; padding: 0; }
-.section > ul > li { padding: 12px 0; border-top: 1px solid var(--ds-color-divider); }
-.section a { color: var(--ds-color-action); font-weight: 700; }
-.section li ul { margin: 8px 0; padding-left: 20px; font-size: .875rem; }
-.more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
-.more p { margin: 0; }
+.section { display: grid; gap: var(--ds-space-3); padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); border-radius: 16px; background: var(--ds-color-surface); }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-3); }
+.header h3 { margin: 0; font-size: var(--ds-text-section); }
+.header p { margin: 2px 0 0; color: var(--ds-color-muted); font-size: var(--ds-text-caption); line-height: var(--ds-line-height-caption); }
+.header > button { flex-shrink: 0; margin: -6px -6px 0 0; color: var(--ds-color-muted); }
+
+/* 공고 한 건을 강조 타일로 보여 준다. */
+.card { display: grid; justify-items: start; gap: var(--ds-space-2); padding: var(--ds-space-4); border-radius: 12px; background: var(--ds-color-action-soft); }
+.title { display: flex; align-items: flex-start; gap: var(--ds-space-1); width: 100%; color: var(--ds-color-text); text-decoration: none; }
+.title strong { flex: 1; min-width: 0; font-size: var(--ds-text-section); line-height: var(--ds-line-height-title); overflow-wrap: anywhere; }
+.title .chevron { margin-top: 2px; }
+.title:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.title:focus-visible, .more:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; border-radius: 4px; }
+.meta { margin: 0; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.labels { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.labels li { padding: 3px 10px; border-radius: 999px; background: var(--ds-color-surface); color: var(--ds-color-action); font-size: var(--ds-text-label-md); font-weight: var(--ds-weight-strong); }
+.acknowledge { margin-top: var(--ds-space-1); }
+
+.more { display: inline-flex; align-items: center; justify-self: start; gap: 2px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--ds-color-action); font: inherit; font-size: var(--ds-text-body); font-weight: 600; cursor: pointer; }
+.chevron { flex-shrink: 0; width: 18px; height: 18px; color: currentColor; }
+.empty, .note { margin: 0; color: var(--ds-color-muted); font-size: var(--ds-text-body); }
+
+@media (forced-colors: active) {
+  .card, .labels li { border: 1px solid CanvasText; }
+}
