@@ -199,6 +199,14 @@ it('모바일 OAuth 성공의 복귀 주소가 콜백 로그인 쿼리 정리보
   expect(readLoginReturn(true)).toBeNull()
 })
 
+it('관리자 로그인 화면에서 시작한 소셜 로그인은 성공 뒤 보던 관리자 주소로 돌아간다', async () => {
+  rememberLoginReturn('/admin/announcements?page=2', true)
+  render(<MemoryRouter initialEntries={['/explore']}>
+    <UserSessionControl sessionOverride="signed-in" /><LocationDisplay />
+  </MemoryRouter>)
+  await waitFor(() => expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/admin/announcements?page=2'))
+})
+
 it('마이페이지 진입은 URL에서 소비된 현재 지도 카메라도 보존한다', async () => {
   const { ExplorerReturnContext } = await import('../../public-housing/navigation/ExplorerReturnContext')
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) }))

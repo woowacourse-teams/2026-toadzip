@@ -1,6 +1,7 @@
 package com.toadzip.backend.user.repository;
 
 import com.toadzip.backend.user.domain.User;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -14,4 +15,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.loginIdentifier = :loginIdentifier")
     Optional<User> findForUpdateByLoginIdentifier(String loginIdentifier);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    Optional<User> findForUpdateById(Long id);
+
+    /** 관리자 회원 행을 번호 순서로 모두 잠근다. 마지막 소셜 관리자의 권한을 빼지 못하게 셀 때 쓴다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.admin = true order by u.id")
+    List<User> findAdminsForUpdate();
+
+    /** 회원이 없으면 비어 있다. 세션마다 탈퇴 여부와 관리자 여부를 한 번에 확인할 때 쓴다. */
+    @Query("select u.admin from User u where u.id = :id")
+    Optional<Boolean> findAdminById(Long id);
 }

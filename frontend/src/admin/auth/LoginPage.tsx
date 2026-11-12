@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { BrandLink } from '../../BrandLink'
+import { loginPageUrl } from '../../user/auth/loginReturn'
 import { useAdminAuth } from './useAdminAuth'
 
 export function LoginPage() {
@@ -68,6 +69,8 @@ export function LoginPage() {
         <button disabled={isSubmitting} type="submit">
           {isSubmitting ? '로그인 중…' : '로그인'}
         </button>
+        {/* 관리자 권한을 받은 카카오·구글 계정은 사이트 로그인 뒤 보던 관리자 화면으로 돌아온다. */}
+        <Link className="admin-login-social" to={loginPageUrl(returnTo)}>카카오·구글 계정으로 로그인</Link>
       </form>
     </main>
   )

@@ -17,7 +17,7 @@ import org.springframework.stereotype.Repository;
 public class AdminUserQueryRepository {
 
     private static final String MEMBER_SELECT = """
-            SELECT id, email, created_at,
+            SELECT id, email, created_at, admin,
                 CASE WHEN login_identifier LIKE 'google:%' THEN 'GOOGLE'
                      WHEN login_identifier LIKE 'kakao:%' THEN 'KAKAO'
                      ELSE 'UNKNOWN' END AS provider
@@ -88,7 +88,8 @@ public class AdminUserQueryRepository {
 
     private AdminUserSummary summary(ResultSet row) throws SQLException {
         return new AdminUserSummary(row.getLong("id"), row.getString("email"),
-                AdminUserProvider.valueOf(row.getString("provider")), row.getObject("created_at", LocalDateTime.class));
+                AdminUserProvider.valueOf(row.getString("provider")), row.getObject("created_at", LocalDateTime.class),
+                row.getBoolean("admin"));
     }
 
     private String pattern(String keyword) {

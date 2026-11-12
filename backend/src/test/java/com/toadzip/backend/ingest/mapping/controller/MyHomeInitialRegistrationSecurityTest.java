@@ -45,7 +45,7 @@ class MyHomeInitialRegistrationSecurityTest {
             mvc.perform(post(PATH + "/" + operation).with(user("admin").roles("ADMIN"))
                             .contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isForbidden());
-            when(users.existsById(1L)).thenReturn(true);
+            when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
             mvc.perform(post(PATH + "/" + operation).with(user("1").roles("USER")).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isForbidden());
@@ -69,7 +69,7 @@ class MyHomeInitialRegistrationSecurityTest {
     void 등록은_관리자와_CSRF가_필요하다() throws Exception {
         mvc.perform(post(PATH + "/register").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isForbidden());
-        when(users.existsById(1L)).thenReturn(true);
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
         mvc.perform(post(PATH + "/register").with(user("1").roles("USER")).with(csrf()))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(execution);
@@ -86,7 +86,7 @@ class MyHomeInitialRegistrationSecurityTest {
 
     @Test
     void 일반_사용자는_상태를_갱신할_수_없다() throws Exception {
-        when(users.existsById(1L)).thenReturn(true);
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
         mvc.perform(post(PATH + "/refresh").with(user("1").roles("USER")).with(csrf()))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
@@ -109,7 +109,7 @@ class MyHomeInitialRegistrationSecurityTest {
 
     @Test
     void 일반_사용자는_주소_좌표를_보완할_수_없다() throws Exception {
-        when(users.existsById(1L)).thenReturn(true);
+        when(users.findAdminById(1L)).thenReturn(java.util.Optional.of(false));
         mvc.perform(post(PATH + "/locations").with(user("1").roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden());

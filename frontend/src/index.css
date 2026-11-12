@@ -1657,6 +1657,12 @@ button {
   margin-bottom: 4px;
 }
 
+.admin-login-social {
+  justify-self: center;
+  color: var(--ds-color-action);
+  font-weight: 600;
+}
+
 .admin-login-form label {
   display: grid;
   gap: 8px;

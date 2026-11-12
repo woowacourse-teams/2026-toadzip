@@ -11,6 +11,7 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 @Getter
 @Entity
@@ -31,6 +32,10 @@ public class User {
     @Column(length = 254)
     private String email;
 
+    @ColumnDefault("false")
+    @Column(nullable = false)
+    private boolean admin;
+
     private User(String loginIdentifier, LocalDateTime createdAt) {
         validateLoginIdentifier(loginIdentifier);
         validateCreatedAt(createdAt);
@@ -46,6 +51,14 @@ public class User {
         if (email != null && email.length() <= 254 && email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             this.email = email;
         }
+    }
+
+    public void grantAdmin() {
+        this.admin = true;
+    }
+
+    public void revokeAdmin() {
+        this.admin = false;
     }
 
     private void validateLoginIdentifier(String loginIdentifier) {

@@ -106,6 +106,17 @@ class NotificationPushDeviceIntegrationTest {
     }
 
     @Test
+    void 소셜_관리자가_관리자_화면에서_로그아웃해도_현재_세션의_기기를_끊는다() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        Cookie cookie = register(101, session, null, null);
+        jdbc.update("UPDATE users SET admin = true WHERE id = 101");
+        mvc.perform(post("/api/admin/auth/logout").session(session).cookie(cookie)
+                        .with(user("101").roles("USER")).with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT enabled FROM notification_push_devices", Boolean.class)).isFalse();
+    }
+
+    @Test
     void 다른_세션의_늦은_로그아웃은_A_B_A_재등록을_해제하지_않는다() throws Exception {
         MockHttpSession oldSession = new MockHttpSession();
         Cookie cookie = register(101, oldSession, null, null);
