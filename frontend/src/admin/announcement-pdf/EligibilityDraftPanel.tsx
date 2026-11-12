@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { Evidence } from './extraction'
 import type { ExtractedEligibility } from './extractedEligibility'
+import { EligibilityEditor } from './EligibilityEditor'
 import { applyEligibility, checkedHow, checkTarget, createEligibilityDraft, isNumberWarning, itemTarget, KIND_NAMES, loadEligibility, moveToDirectCheck, previewEligibilityDraft, requirementWarnings, ruleText, unjudgedReason, unmatchedWarnings, type Check, type Content, type NumberCheck, type RuleSet } from './eligibilityDraftApi'
 import styles from './PdfCorrection.module.css'
 
@@ -10,8 +11,9 @@ const RECRUITMENT: Record<string, string> = { RECRUITING: '모집', UNKNOWN: '�
 /**
  * PDF 보정의 신청자격 탭. 보정을 적용하면 최신 추출의 AI 신청자격과 적용한 공급행으로 신청자격을 만들어 곧바로 사용자에게 반영하고(공고가
  * 공개 전이면 저장만 한다), 잘못 읽힌 조건은 지우지 않고 '판정에서 빼기'로 공고문에서 확인할 자격으로 옮겨 곧바로 반영한다.
- * 조건 숫자 고치기는 이 화면에서 하지 않는다.
+ * '직접 수정'을 누르면 탭 이름·조건 값·공고문에서 확인할 자격을 고쳐 곧바로 반영할 수 있다(EligibilityEditor).
  *
+ * pdfActions가 false면(관리자 공고 상세의 신청자격 탭) PDF로 다시 반영하는 버튼과 PDF 안내를 두지 않는다.
  * onEvidence가 없으면(PDF 창이 없는 적용 결과 화면) 근거 버튼을 두지 않는다.
  * autoCreate면(보정 적용 직후) 누르지 않아도 최신 PDF 추출로 신청자격을 다시 만들어 반영한다. 적용한 공급행이 바뀌었을 수 있어 이미 있는 것도 바꾼다.
  * extracted는 보정 적용 전 탭이 넘기는, PDF에서 이미 뽑은 신청자격이다(없으면 null). 아직 신청자격이 없는 동안 서버 변환 미리보기를 보이고,
@@ -19,8 +21,9 @@ const RECRUITMENT: Record<string, string> = { RECRUITING: '모집', UNKNOWN: '�
  * warnings는 워커가 신청자격을 읽으며 남긴 경고('숫자 확인 필요' 등)다. 숫자가 원문과 맞지 않아도 판정에 쓰므로, 요건 문구가 같은 조건·목록 곁에
  * 어떻게 확인했는지와 함께 보이고, 어디에도 붙지 않은 경고만 위에 모은다. warnings가 없으면(적용 결과 화면) 숫자 대조 결과는 말하지 않는다.
  */
-export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, autoCreate = false, extracted, warnings }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void; autoCreate?: boolean; extracted?: ExtractedEligibility | null; warnings?: string[] }) {
+export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, autoCreate = false, extracted, warnings, pdfActions = true }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void; autoCreate?: boolean; extracted?: ExtractedEligibility | null; warnings?: string[]; pdfActions?: boolean }) {
   const [current, setCurrent] = useState<RuleSet | null>(null)
+  const [editing, setEditing] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'notice'; text: string } | null>(null)
@@ -78,8 +81,9 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, a
     void run(async () => {
       const applied = await applyEligibility(announcementId, current, content)
       setCurrent(applied.ruleSet)
-      return applied.published ? '판정에서 뺐어요. 사용자 화면에 반영했어요.'
-        : `판정에서 뺀 내용을 저장했지만 사용자 화면에는 아직 반영하지 못했어요. ${applied.reason}`
+      if (applied.published) return '판정에서 뺐어요. 사용자 화면에 반영했어요.'
+      return applied.saved ? `판정에서 뺀 내용을 저장했지만 사용자 화면에는 아직 반영하지 못했어요. ${applied.reason}`
+        : `판정에서 빼지 못했어요. ${applied.reason}`
     })
   }
 
@@ -92,13 +96,24 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, a
   const loose = unmatchedWarnings(targets, warnings ?? [])
   const numbers: NumberCheck = warnings === undefined ? 'unknown' : loose.some(isNumberWarning) ? 'unmatched' : 'checked'
   const live = current?.status === 'PUBLISHED'
+  if (current && editing) {
+    return <section aria-labelledby="eligibility-draft-title">
+      <h2 id="eligibility-draft-title">신청자격</h2>
+      <EligibilityEditor announcementId={announcementId} ruleSet={current} onCancel={latest => { setCurrent(latest); setEditing(false) }} onSaved={applied => {
+        setCurrent(applied.ruleSet); setEditing(false); setNotices([])
+        setMessage(applied.published ? { kind: 'notice', text: '고친 신청자격을 사용자 화면에 반영했어요.' }
+          : { kind: 'error', text: `고친 내용을 저장했지만 사용자 화면에는 아직 반영하지 못했어요. ${applied.reason}` })
+      }} />
+    </section>
+  }
   return <section aria-labelledby="eligibility-draft-title">
     <h2 id="eligibility-draft-title">신청자격</h2>
-    {current && <p>PDF에서 뽑은 신청자격과 저장된 공급정보로 만들었어요. 잘못 읽힌 조건은 &lsquo;판정에서 빼기&rsquo;를 누르면 그 조건으로 판정하지 않고, 사용자에게는 공고문에서 확인할 자격으로 보여요. 그 신청 경로는 &lsquo;지원 가능&rsquo;으로 확정하지 않아요.</p>}
+    {current && <p>PDF에서 뽑은 신청자격과 저장된 공급정보로 만들었어요. 탭 이름·조건 값이 틀렸으면 &lsquo;직접 수정&rsquo;에서 고쳐요. 잘못 읽힌 조건은 &lsquo;판정에서 빼기&rsquo;를 누르면 그 조건으로 판정하지 않고, 사용자에게는 공고문에서 확인할 자격으로 보여요. 그 신청 경로는 &lsquo;지원 가능&rsquo;으로 확정하지 않아요.</p>}
     <div className={styles.actions}>
-      {(current || autoCreate) && <Button onClick={create} disabled={busy || !loaded || !pdfSha256}>{current ? 'PDF 추출로 다시 반영' : '신청자격 반영하기'}</Button>}
+      {current && <Button variant={pdfActions ? 'secondary' : 'primary'} onClick={() => { setMessage(null); setEditing(true) }} disabled={busy}>직접 수정</Button>}
+      {pdfActions && (current || autoCreate) && <Button onClick={create} disabled={busy || !loaded || !pdfSha256}>{current ? 'PDF 추출로 다시 반영' : '신청자격 반영하기'}</Button>}
     </div>
-    {!pdfSha256 && <p className={styles.hint}>PDF를 열면 신청자격을 반영할 수 있어요.</p>}
+    {pdfActions && !pdfSha256 && <p className={styles.hint}>PDF를 열면 신청자격을 반영할 수 있어요.</p>}
     {message && <p role={message.kind === 'error' ? 'alert' : 'status'} className={message.kind === 'error' ? styles.warningNote : styles.hint}>{message.text}</p>}
     {notices.length > 0 && <div className={styles.warningNote}><p><strong>확인할 점</strong></p><ul>{notices.map(item => <li key={item}>{item}</li>)}</ul></div>}
     {loose.length > 0 && <div className={styles.warningNote}><p><strong>PDF에서 읽으며 확인할 점</strong></p><ul>{loose.map(item => <li key={item}>{item}</li>)}</ul></div>}
@@ -122,7 +137,7 @@ export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, a
         </section>)}
         {extracted.exclusions.length > 0 && <><h3>신청 제한</h3><ul>{extracted.exclusions.map((item, index) => <li key={index}><strong>{item.title}</strong> {item.body}</li>)}</ul></>}
       </>
-      : <p className={styles.hint}>{extracted === null ? '이 PDF 추출 결과에는 신청자격이 없어요. PDF를 다시 추출해 주세요.' : '아직 신청자격이 없어요.'}</p>)}
+      : <p className={styles.hint}>{extracted === null ? '이 PDF 추출 결과에는 신청자격이 없어요. PDF를 다시 추출해 주세요.' : pdfActions ? '아직 신청자격이 없어요.' : '아직 신청자격이 없어요. \'PDF로 보정\'에서 PDF를 추출하고 보정을 적용하면 만들어져요.'}</p>)}
     {loaded && !current && autoCreate && !message && !busy && <p className={styles.hint}>아직 신청자격이 없어요.</p>}
     {content && <>
       <p className={live ? styles.hint : styles.pendingLabel}>{live

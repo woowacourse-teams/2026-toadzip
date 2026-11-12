@@ -39,6 +39,7 @@ import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * AI 추출 신청자격과 PDF 보정을 적용한 공급행으로 신청자격을 만든다. 보정을 적용하면 곧바로 공개하므로(사용자 결정) 검토 완료(REVIEWED)로 만든다.
@@ -155,6 +156,7 @@ public final class ExtractedEligibilityDraft {
         }
         List<SupplyUnit> units = new ArrayList<>();
         List<EligibilityPath> paths = new ArrayList<>();
+        List<String> fullLabels = new ArrayList<>();
         List<ApplicationOption> options = new ArrayList<>();
         List<Scope> scopes = new ArrayList<>();
         for (Route route : routes) {
@@ -171,14 +173,16 @@ public final class ExtractedEligibilityDraft {
                 if (route.name() != null && checks.isEmpty() && alternative.qualificationIds().isEmpty()
                         && scope.direct.isEmpty()) {
                     // 경로 이름이 곧 자격인데 요건을 하나도 못 뽑은 경로다. 공통 조건만으로 지원 가능이 되지 않게 직접 확인을 둔다.
-                    scope.direct.add("신청 대상 '" + route.name() + "'에 해당하는지");
+                    scope.direct.add("신청 대상 '" + displayName(route.name()) + "'에 해당하는지");
                 }
                 paths.add(new EligibilityPath(pathId, alternative.label(), PathKind.APPLICATION, checks,
                         alternative.qualificationIds()));
+                fullLabels.add(alternative.fullLabel());
                 options.addAll(connected);
                 scopes.add(scope);
             }
         }
+        paths = distinctLabels(paths, fullLabels);
         if (paths.isEmpty()) {
             throw new EligibilityDraftUnavailableException("공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다. 공급정보 보정을 먼저 적용해 공급대상 이름을 공고문과 맞춘 뒤 다시 만들어 주세요.");
         }
@@ -258,13 +262,17 @@ public final class ExtractedEligibilityDraft {
         return routes;
     }
 
-    private record Alternative(String label, List<String> qualificationIds) {}
+    /** label은 사용자 탭에 보이는 짧은 이름, fullLabel은 같은 짧은 이름이 여러 경로에 생길 때 쓰는 '경로 · 자격' 이름이다. */
+    private record Alternative(String label, String fullLabel, List<String> qualificationIds) {}
 
-    /** 한 묶음의 직접 확인 자격은 그중 하나만 갖추면 되므로 자격마다 경로를 나눈다. */
+    /**
+     * 한 묶음의 직접 확인 자격은 그중 하나만 갖추면 되므로 자격마다 경로를 나눈다. 탭 이름은 자격 이름만 쓰고
+     * ('마. 북한이탈주민 · 북한이탈주민' 대신 '북한이탈주민'), 공고문 목차 기호('가.', '1)', '(나)', '①')는 뗀다.
+     */
     private List<Alternative> alternatives(Route route, boolean announcementWide) {
-        String base = route.name() == null ? "신청자격" : route.name();
+        String base = route.name() == null ? "신청자격" : displayName(route.name());
         if (route.group().qualifications().isEmpty()) {
-            return List.of(new Alternative(limit(base, 300), List.of()));
+            return List.of(new Alternative(limit(base, 300), limit(base, 300), List.of()));
         }
         List<Alternative> result = new ArrayList<>();
         for (ExtractedEligibility.Qualification qualification : route.group().qualifications()) {
@@ -274,8 +282,9 @@ public final class ExtractedEligibilityDraft {
                     blankToNull(qualification.legalBasis()),
                     limit(firstText(qualification.conditionsAsWritten(), qualification.exactName()), 10000),
                     List.of(), evidence));
-            String label = announcementWide ? qualification.exactName() : base + " · " + qualification.exactName();
-            result.add(new Alternative(limit(label, 300), List.of(id)));
+            String name = displayName(qualification.exactName());
+            String full = announcementWide || compact(base).equals(compact(name)) ? name : base + " · " + name;
+            result.add(new Alternative(limit(name, 300), limit(full, 300), List.of(id)));
         }
         return result;
     }
@@ -672,6 +681,31 @@ public final class ExtractedEligibilityDraft {
 
     private static ProfileRule group(Operator operator, List<ProfileRule> children) {
         return new ProfileRule(operator, null, null, null, null, List.of(), null, children);
+    }
+
+    /** 짧은 이름이 겹치는 경로(다른 경로에 같은 자격이 있는 경우)만 '경로 · 자격' 이름으로 되돌려 탭을 구분한다. */
+    private static List<EligibilityPath> distinctLabels(List<EligibilityPath> paths, List<String> fullLabels) {
+        Map<String, Long> counts = paths.stream()
+                .collect(Collectors.groupingBy(path -> compact(path.label()), Collectors.counting()));
+        List<EligibilityPath> result = new ArrayList<>();
+        for (int index = 0; index < paths.size(); index++) {
+            EligibilityPath path = paths.get(index);
+            result.add(counts.get(compact(path.label())) > 1
+                    ? new EligibilityPath(path.id(), fullLabels.get(index), path.kind(), path.checks(),
+                            path.qualificationIds())
+                    : path);
+        }
+        return result;
+    }
+
+    /** 공고문 목차 기호: 가. 1) A. (나) (1) ① ⅰ. 같은 앞머리. 기호만 있는 이름은 그대로 둔다. */
+    private static final Pattern OUTLINE_MARKER = Pattern.compile(
+            "^\\s*(?:\\(\\s*(?:[가-힣]|\\d{1,2}|[A-Za-z])\\s*\\)|(?:[가-힣]|\\d{1,2}|[A-Za-z]|[ⅰ-ⅹⅠ-Ⅹ])\\s*[.)](?!\\d)|[①-⑳])\\s*");
+
+    private static String displayName(String value) {
+        String text = value == null ? "" : value.strip();
+        String stripped = OUTLINE_MARKER.matcher(text).replaceFirst("").strip();
+        return stripped.isEmpty() ? text : stripped;
     }
 
     private static String compact(String value) {

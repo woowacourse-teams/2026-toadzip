@@ -141,6 +141,9 @@ describe('EligibilityDraftPanel', () => {
     expect(screen.getByText('신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '검토 완료로 표시' })).not.toBeInTheDocument()
+    // PDF 보정 화면에서는 직접 수정과 PDF 다시 반영을 함께 둔다.
+    expect(screen.getByRole('button', { name: '직접 수정' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'PDF 추출로 다시 반영' })).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: '판정에서 빼기' })[1])
     expect(await screen.findByText('판정에서 뺐어요. 사용자 화면에 반영했어요.')).toBeInTheDocument()
@@ -169,7 +172,7 @@ describe('EligibilityDraftPanel', () => {
     api.load.mockResolvedValue(null)
     api.create.mockResolvedValue({ ruleSet: draft(content('REVIEWED')), published: false,
       notices: ['공고가 아직 공개 전이라 신청자격은 저장만 했습니다. 공고를 공개한 뒤 보정을 다시 적용하면 사용자에게 반영됩니다.'] })
-    api.apply.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => ({ ruleSet: draft(value, 2), published: false, reason: '요청이 충돌했습니다.' }))
+    api.apply.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => ({ ruleSet: draft(value, 2), published: false, saved: true, reason: '요청이 충돌했습니다.' }))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
 
     expect(await screen.findByText('신청자격을 저장했어요.')).toBeInTheDocument()
@@ -178,6 +181,18 @@ describe('EligibilityDraftPanel', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: '판정에서 빼기' })[0])
     expect(await screen.findByText(/사용자 화면에는 아직 반영하지 못했어요\. 요청이 충돌했습니다\./)).toBeInTheDocument()
+  })
+
+  it('공개본에서 판정에서 빼기를 서버가 저장하지 않으면 저장했다고 말하지 않고 조건을 그대로 보인다', async () => {
+    api.load.mockResolvedValue(live())
+    api.apply.mockImplementation(async (_id: string, current: RuleSet) => ({ ruleSet: { ...current, id: 8, revision: 0, status: 'DRAFT' }, published: false, saved: false, reason: '검증 실패' }))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} />)
+
+    fireEvent.click((await screen.findAllByRole('button', { name: '판정에서 빼기' }))[0])
+
+    expect(await screen.findByText('판정에서 빼지 못했어요. 검증 실패')).toBeInTheDocument()
+    expect(screen.queryByText(/저장했지만/)).toBeNull()
+    expect(screen.getByText('만 19~39세')).toBeInTheDocument()
   })
 
   it('보정 적용 뒤에는 이미 있는 신청자격도 적용한 공급정보로 다시 만들고, 초안이면 그 버전으로 덮어쓴다', async () => {

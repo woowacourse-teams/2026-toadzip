@@ -254,7 +254,7 @@ class ExtractedEligibilityDraftTest {
         EligibilityContent content = draft(evidence());
 
         assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly(
-                "청년", "신혼부부", "주거급여수급자 · 주거급여 수급자", "주거급여수급자 · 생계급여 수급자");
+                "청년", "신혼부부", "주거급여 수급자", "생계급여 수급자");
         assertThat(content.paths().subList(2, 4)).allSatisfy(path -> assertThat(path.qualificationIds()).hasSize(1));
         assertThat(content.metadata().scopeNote()).doesNotContain("AI").doesNotContain("잇지 못한");
         assertThat(build(evidence()).notices()).containsExactly("공급대상과 잇지 못한 신청자격 경로: 사라진 대상");
@@ -265,7 +265,34 @@ class ExtractedEligibilityDraftTest {
                 .containsExactly(RecruitmentStatus.RECRUITING, RecruitmentStatus.RECRUITING, RecruitmentStatus.UNKNOWN,
                         RecruitmentStatus.RECRUITING, RecruitmentStatus.RECRUITING);
         // 저장된 대상 이름(주거급여  수급자)이 워커가 맞춘 이름(주거급여 수급자)과 공백만 달라도 잇는다.
-        assertThat(status(content, b(), "주거급여수급자 · 주거급여 수급자")).isEqualTo(Status.UNDETERMINED);
+        assertThat(status(content, b(), "주거급여 수급자")).isEqualTo(Status.UNDETERMINED);
+    }
+
+    @Test
+    void 탭_이름은_공고문_목차_기호와_겹친_경로_이름을_떼고_자격_이름만_쓴다() {
+        Route defector = new Route("마. 북한이탈주민", List.of("북한이탈주민"), new Group(WELFARE, List.of(), List.of(
+                new Qualification("북한이탈주민", null, "북한이탈주민", WELFARE + ".qualifications[0]"))));
+        Route youth = new Route("가) 청년", List.of("청년"), new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(defector, youth),
+                List.of(new Target("북한이탈주민", 2), new Target("청년", 3)));
+
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("북한이탈주민", "청년");
+    }
+
+    @Test
+    void 같은_자격이_여러_경로에_있으면_그_경로들만_경로_이름을_앞에_붙여_구분한다() {
+        Function<String, Route> route = name -> new Route(name, List.of(name), new Group(WELFARE, List.of(), List.of(
+                new Qualification("주거급여 수급자", null, "수급자", WELFARE + ".qualifications[0]"),
+                new Qualification(name.equals("1. 우선공급") ? "생계급여 수급자" : "의료급여 수급자", null, "수급자",
+                        WELFARE + ".qualifications[1]"))));
+
+        EligibilityContent content = draft(evidence(), List.of(route.apply("1. 우선공급"), route.apply("2. 일반공급")),
+                List.of(new Target("1. 우선공급", 2), new Target("2. 일반공급", 3)));
+
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly(
+                "우선공급 · 주거급여 수급자", "생계급여 수급자", "일반공급 · 주거급여 수급자", "의료급여 수급자");
     }
 
     @Test
@@ -325,7 +352,7 @@ class ExtractedEligibilityDraftTest {
         validate(built.content());
 
         assertThat(built.content().paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly(
-                "청년", "신혼부부", "주거급여수급자 · 주거급여 수급자", "주거급여수급자 · 생계급여 수급자", "사라진 대상");
+                "청년", "신혼부부", "주거급여 수급자", "생계급여 수급자", "사라진 대상");
         assertThat(built.content().options()).filteredOn(option -> option.pathId().equals("path-1"))
                 .extracting(EligibilityContent.ApplicationOption::supplyUnitId,
                         EligibilityContent.ApplicationOption::recruitmentStatus)
@@ -474,6 +501,18 @@ class ExtractedEligibilityDraftTest {
                 return code != null;
             }
         }, Set.of(1L)).validate(content, false);
+    }
+
+    /** 주어진 경로와, 그 경로 대상을 모두 담은 공급행 하나로 만든 초안. 공통 요건은 기본 픽스처와 같다. */
+    private static EligibilityContent draft(Map<String, Quote> quotes, List<Route> routes, List<Target> targets) {
+        Source base = source(quotes, null, List.of());
+        ExtractedEligibility eligibility = new ExtractedEligibility(base.eligibility().common(), routes, List.of(), quotes);
+        List<Unit> units = List.of(new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택",
+                List.of("28237"), targets));
+        EligibilityContent content = ExtractedEligibilityDraft.build(new Source(base.referenceDate(), base.document(), units,
+                eligibility, base.incomeTables(), base.regionCodes())).content();
+        validate(content);
+        return content;
     }
 
     private static ExtractedEligibilityDraft.Draft build(Map<String, Quote> quotes) {
