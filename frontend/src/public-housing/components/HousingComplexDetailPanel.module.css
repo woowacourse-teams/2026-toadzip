@@ -348,21 +348,7 @@
   background: var(--ds-color-brand-strong);
 }
 
-/* 주택형과 공급 대상별 임대조건을 행으로 비교한다.
-   열 폭은 내용에 맞춘다. 금액·날짜는 줄바꿈하지 않고, 패널보다 넓어지면 표 안에서 가로로 스크롤한다. */
-.comparison table { table-layout: auto; }
-
-.comparison td[data-numeric] { white-space: nowrap; }
-
-/* 글자 단위로 쪼개지 않고 낱말 사이에서만 줄바꿈해, 좁으면 표가 넓어져 스크롤되게 한다. */
-.comparison th,
-.comparison td,
-.comparison .conditionTarget { overflow-wrap: normal; }
-
-/* 면적·공급 대상 열의 최소 폭. 금액 열이 넓어져도 면적이 쪼개지지 않게 하고, 좁으면 낱말 사이에서만 줄바꿈한다.
-   표 셀의 width는 자동 배치에서 최소 폭으로 지켜지지 않아 안쪽 블록에 둔다. */
-.comparisonArea .conditionTarget { min-width: 5em; }
-
+/* 주택형과 공급 대상별 임대조건을 행으로 비교한다. */
 .comparison th,
 .comparison td { padding-inline: 4px; }
 

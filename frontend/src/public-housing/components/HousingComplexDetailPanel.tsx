@@ -263,6 +263,14 @@ export function HousingComplexDetailPanel({
               actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
               <div className={styles.comparison}>
                 <DetailTable caption="주택형별 임대조건 비교" minWidth={340}>
+                  {/* 값 열은 내용 폭에 맞추고 남는 폭은 전용면적·공급 대상 열에 준다. */}
+                  <colgroup>
+                    <col style={{ width: '3em' }} />
+                    <col />
+                    <col style={{ width: '5em' }} />
+                    <col style={{ width: '6.4em' }} />
+                    <col style={{ width: '4.6em' }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th scope="col">주택형</th>
@@ -283,7 +291,7 @@ export function HousingComplexDetailPanel({
                                 {typeLabels.get(housingType.housingTypeId) || '-'}
                               </th>
                             )}
-                            <td className={styles.comparisonArea}>
+                            <td>
                               {formatArea(housingType.exclusiveArea, areaUnit, '-')}
                               <span className={styles.conditionTarget}>{condition?.label ?? ''}</span>
                               {condition?.target && <span className={styles.conditionTarget}>{condition.target}</span>}
