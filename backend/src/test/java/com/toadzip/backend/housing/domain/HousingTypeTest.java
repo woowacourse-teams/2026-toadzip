@@ -101,6 +101,42 @@ class HousingTypeTest {
     }
 
     @Test
+    void 더_늦은_공고가_같은_기본_금액을_다시_내면_공고문_조건의_날짜를_그_공고일로_갱신한다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "24", new BigDecimal("24.72"), null);
+        type.observeAnnouncement(new AnnouncementValues(null, null, null, 8_100_000L, 156_230L), POSTED);
+        Instant later = POSTED.plusSeconds(86_400);
+
+        // 금액이 없는 공고는 금액을 확인한 것이 아니므로 날짜를 바꾸지 않는다.
+        assertFalse(type.observeAnnouncement(new AnnouncementValues(null, null, null), later));
+        assertEquals(POSTED, type.getBasicRentalCondition().collectedAt());
+
+        Instant latest = later.plusSeconds(86_400);
+        assertTrue(type.observeAnnouncement(new AnnouncementValues(null, null, null, 8_100_000L, 156_230L), latest));
+        assertAll(
+                () -> assertEquals(new MyHomeRentalCondition(8_100_000L, 156_230L, latest), type.getBasicRentalCondition()),
+                () -> assertEquals("ANNOUNCEMENT", type.getRentalConditionSource())
+        );
+        // 이미 반영한 공고보다 이른 공고는 같은 금액이어도 날짜를 되돌리지 않는다.
+        assertFalse(type.observeAnnouncement(new AnnouncementValues(null, null, null, 8_100_000L, 156_230L), POSTED));
+        assertEquals(latest, type.getBasicRentalCondition().collectedAt());
+    }
+
+    @Test
+    void 마이홈_기본_임대조건은_같은_금액의_공고로_출처와_날짜를_바꾸지_않는다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "24", new BigDecimal("24.72"), null);
+        Instant myhome = Instant.parse("2026-10-20T00:00:00Z");
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(7_900_000L, 150_000L, myhome));
+
+        assertFalse(type.observeAnnouncement(new AnnouncementValues(null, null, null, 7_900_000L, 150_000L), POSTED));
+        assertAll(
+                () -> assertEquals(myhome, type.getBasicRentalCondition().collectedAt()),
+                () -> assertEquals("MYHOME", type.getRentalConditionSource())
+        );
+    }
+
+    @Test
     void 관리자가_이름을_바꾸면_공고가_이름을_덮지_않고_세대수는_갱신한다() {
         HousingType type = HousingType.createFromMyHome(
                 createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);

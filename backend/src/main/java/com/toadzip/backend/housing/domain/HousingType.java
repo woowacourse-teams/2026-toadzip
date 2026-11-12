@@ -348,18 +348,32 @@ public class HousingType {
         }
         var current = announcementValues();
         var next = afterAnnouncement(incoming, postedAt);
+        boolean reconfirmed = reconfirmsAnnouncementRentalCondition(incoming, postedAt);
         if (announcementObservedAt == null || postedAt.isAfter(announcementObservedAt)) { announcementObservedAt = postedAt; }
-        if (next.equals(current)) { return false; }
+        if (next.equals(current) && !reconfirmed) { return false; }
         name = next.name();
         supplyArea = next.supplyArea();
         totalHouseholdCount = next.householdCount();
         if (!Objects.equals(next.basicDeposit(), current.basicDeposit())
-                || !Objects.equals(next.basicMonthlyRent(), current.basicMonthlyRent())) {
-            // 공고 값으로 바꾼 기본 임대조건의 날짜는 그 공고의 게시 시각이다.
+                || !Objects.equals(next.basicMonthlyRent(), current.basicMonthlyRent()) || reconfirmed) {
+            // 공고 값으로 바꾸거나 다시 확인한 기본 임대조건의 날짜는 그 공고의 게시 시각이다.
             basicRentalCondition = new MyHomeRentalCondition(next.basicDeposit(), next.basicMonthlyRent(), postedAt);
             rentalConditionSource = "ANNOUNCEMENT";
         }
         return true;
+    }
+
+    /**
+     * 공고문 출처 기본 임대조건과 같은 금액을 더 늦은 공고가 다시 낸 경우다. 금액이 없는 공고는 금액을 확인한 것이 아니라 제외한다.
+     * 마이홈 출처 조건은 출처와 날짜를 그대로 둔다.
+     */
+    private boolean reconfirmsAnnouncementRentalCondition(AnnouncementValues incoming, Instant postedAt) {
+        return "ANNOUNCEMENT".equals(rentalConditionSource) && basicRentalCondition != null
+                && incoming.basicDeposit() != null && incoming.basicMonthlyRent() != null
+                && incoming.basicDeposit().equals(basicRentalCondition.deposit())
+                && incoming.basicMonthlyRent().equals(basicRentalCondition.monthlyRent())
+                && postedAt.isAfter(basicRentalCondition.collectedAt())
+                && (announcementObservedAt == null || !postedAt.isBefore(announcementObservedAt));
     }
 
     /**
