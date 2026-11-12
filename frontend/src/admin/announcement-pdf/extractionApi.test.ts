@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.request }))
 
 import { ManagementError } from '../management/api'
-import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, NOT_STARTED_NOTICE_MS, cancelExtraction, extractAnnouncementPdf, pdfSha256 } from './extractionApi'
+import { JOB_POLL_MS, JOB_WAIT_LIMIT_MS, NOT_STARTED_NOTICE_MS, cancelExtraction, extractAnnouncementPdf, pdfSha256, resumeExtraction } from './extractionApi'
 
 const PATH = '/api/admin/announcements/29/pdf-extractions'
 const extraction = { json: '{"data":{}}', pages: [1, 3], totalPages: 9, warnings: [], usage: { promptTokens: 10, outputTokens: 5, thinkingTokens: null } }
@@ -191,4 +191,25 @@ test('작업을 받으면 번호를 알리고, 취소는 서버가 끝냈을 때
   expect(mocks.request).toHaveBeenCalledWith(`${PATH}/jobs/31/cancel`, 'POST')
   mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
   await expect(cancelExtraction('29', 31)).resolves.toBeNull()
+})
+
+test('떠났다 돌아오면 새로 넣지 않고 남긴 작업을 다시 물어 끝날 때까지 기다린다', async () => {
+  mocks.request.mockResolvedValueOnce(job('RUNNING')).mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+
+  const result = resumeExtraction('29', 31, pdf)
+  // PDF 해시 계산은 타이머 밖에서 끝나므로, 두 번째 조회가 나갈 때까지 조회 간격만큼씩 넘긴다.
+  await vi.waitFor(async () => { await vi.advanceTimersByTimeAsync(JOB_POLL_MS); expect(mocks.request).toHaveBeenCalledTimes(2) })
+
+  await expect(result).resolves.toEqual({ ...extraction, jobId: 31 })
+  expect(mocks.request).toHaveBeenCalledTimes(2)
+  expect(mocks.request).toHaveBeenNthCalledWith(1, `${PATH}/jobs/31`, 'GET', undefined, undefined)
+  expect(mocks.request).not.toHaveBeenCalledWith(expect.anything(), 'POST', expect.anything(), expect.anything())
+})
+
+test('떠난 사이 끝난 작업이면 바로 그 결과를 쓰고, 지금 PDF와 다른 파일의 작업이면 쓰지 않는다', async () => {
+  mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+  await expect(resumeExtraction('29', 31, pdf)).resolves.toEqual({ ...extraction, jobId: 31 })
+
+  mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction, pdfSha256: '0'.repeat(64) }))
+  await expect(resumeExtraction('29', 31, pdf)).rejects.toThrow('지금 고른 PDF와 다른 파일입니다')
 })
