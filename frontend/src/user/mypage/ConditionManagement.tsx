@@ -4,14 +4,13 @@ import { ConditionConfirmDialog } from '../conditions/ConditionConfirmDialog'
 import { useConditions } from '../conditions/ConditionsContext'
 import { FIELD_COPY, STEP_COPY, type StepNumber } from '../conditions/conditionFieldCopy'
 import { displayAnswer } from '../conditions/conditionDisplay'
-import { applicableFields, fromProfile, isFamilyDetailField, missingFields, stepFields, todayInSeoul, type ConditionDraft } from '../conditions/conditionDraft'
+import { applicableFields, fromProfile, missingFields, stepFields, todayInSeoul, type ConditionDraft } from '../conditions/conditionDraft'
 import { formatMonthDay } from '../conditions/conditionFormat'
 import type { ProfileField } from '../conditions/conditionsModel'
 import styles from './ConditionManagement.module.css'
 import { RequestError } from '../../public-housing/components/RequestError'
 import { EligibilityDiscoveries } from '../conditions/EligibilityDiscoveries'
 
-/** 마이페이지 > 내 조건 관리. 적용되는 항목을 원래 순서대로 모두 보여 주고 빈 항목은 빨간 "미입력"으로 둔다. */
 export function ConditionManagement() {
   const { stored, hasProfile, openInput, clearProfile, processing, processingError, mode, retryProfile } = useConditions()
   const [confirm, setConfirm] = useState(false)
@@ -46,10 +45,10 @@ export function ConditionManagement() {
       <div className={styles.meterTop}><strong>입력한 항목 {filled} / {total}</strong><span>{percent}%</span></div>
       <div className={styles.track}><span style={{ width: `${percent}%` }} /></div>
       <p>{missing.length
-        ? <>아래 빨간 <b className={styles.missingWord}>미입력</b> 항목을 채우면 더 많은 공고 조건을 비교할 수 있어요.</>
+        ? '아래에서 빈 항목의 값을 입력해 주세요.'
         : '모든 항목을 입력했어요. 상황이 바뀌면 바로 고쳐 주세요.'}</p>
       {missing.length > 1 && <Button size="sm" className={styles.fillAll}
-        onClick={() => openInput({ mode: 'partial', fields: missing, origin: 'mypage' }, {})}>미입력 {missing.length}개 한 번에 입력하기</Button>}
+        onClick={() => openInput({ mode: 'partial', fields: missing, origin: 'mypage' }, {})}>빈 항목 {missing.length}개 한 번에 입력하기</Button>}
     </div>
     {([1, 2, 3] as const).map((step) => <ConditionGroup key={step} step={step} draft={draft} missing={missing} today={today}
       onEdit={() => openInput({ mode: 'full', step, origin: 'mypage' }, {})}
@@ -73,7 +72,6 @@ function ConditionGroup({ step, draft, missing, today, onEdit, onFill }: {
 }) {
   const titleId = useId()
   const name = STEP_COPY[step].name
-  const familySkipped = draft.familyDetails !== 'PROVIDED'
   return <section className={styles.group} aria-labelledby={titleId}>
     <header>
       <h3 id={titleId}><span className={styles.num} aria-hidden="true">{step}</span>{name}</h3>
@@ -81,12 +79,13 @@ function ConditionGroup({ step, draft, missing, today, onEdit, onFill }: {
     </header>
     <dl>
       {stepFields(step, draft).map((field) => {
-        const value = familySkipped && isFamilyDetailField(field) ? null : displayAnswer(field, draft, today)
-        const absent = value === null || missing.includes(field)
+        const absent = missing.includes(field)
+        const value = absent ? null : displayAnswer(field, draft, today)
+        const prompt = absent ? '값을 입력해 주세요' : '값을 다시 선택해 주세요'
         return <div key={field} className={styles.row}>
           <dt>{FIELD_COPY[field].label}</dt>
-          {absent
-            ? <dd className={styles.missing}><span>미입력</span><Button size="sm" variant="secondary" aria-label={`${FIELD_COPY[field].label} 입력하기`} onClick={() => onFill(field)}>입력하기</Button></dd>
+          {value === null
+            ? <dd><Button className={styles.fillValue} size="md" variant="secondary" aria-label={`${FIELD_COPY[field].label} ${prompt}`} onClick={() => onFill(field)}>{prompt}</Button></dd>
             : <dd>{value}</dd>}
         </div>
       })}
