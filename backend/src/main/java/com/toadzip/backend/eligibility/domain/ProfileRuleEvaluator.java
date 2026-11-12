@@ -36,7 +36,7 @@ public final class ProfileRuleEvaluator {
         }
         var access = profile.access(rule.field());
         if (access.state() == EligibilityProfile.AccessState.NOT_COLLECTED) {
-            return RuleReading.manual();
+            return knownFromFamilyType(rule);
         }
         if (access.state() == EligibilityProfile.AccessState.WAITING) {
             return RuleReading.missing(access.dependencies());
@@ -78,6 +78,23 @@ public final class ProfileRuleEvaluator {
         };
     }
 
+    /**
+     * 가족 형태 때문에 묻지 않은 값. 미혼이면 자녀·임신이 없고 부부가 아니면 혼인·맞벌이가 없다고 보고 비교한다.
+     * 일반 사용자가 스스로 판단하는 수준이라 직접 확인으로 미루지 않는다. 그 밖의 값(부모 소득 등)은 직접 확인이다.
+     */
+    private RuleReading knownFromFamilyType(ProfileRule rule) {
+        if (rule.field().flow() != ProfileField.Flow.WITH_FAMILY && rule.field().flow() != ProfileField.Flow.COUPLE) {
+            return RuleReading.manual();
+        }
+        if (rule.field().type() == ProfileField.Type.BOOLEAN) {
+            return equality(rule, false);
+        }
+        if (rule.field() == CHILDREN_COUNT_INCLUDING_FETUS) {
+            return rule.operator() == ProfileRule.Operator.EQUALS ? equality(rule, 0L) : range(rule, 0L);
+        }
+        return RuleReading.matched(false, Map.of("field", rule.field(), "inputState", ValueState.NOT_APPLICABLE));
+    }
+
     private boolean knownAbsentVehicle(ProfileRule rule) {
         if (rule.operator() != ProfileRule.Operator.MONEY_CEILING) {
             return false;
@@ -98,6 +115,10 @@ public final class ProfileRuleEvaluator {
     }
 
     private RuleReading age(ProfileRule rule, Object value) {
+        // 출산 예정이면 기준일에 막 태어난 아이(0세)로 본다. 일반 사용자가 '자녀 있음'으로 지원해 볼 수준이다.
+        if (value instanceof DateEvent event && !event.actual()) {
+            return range(rule, 0L);
+        }
         LocalDate birth = actualDate(value);
         if (birth == null) {
             return RuleReading.manual();
@@ -110,6 +131,13 @@ public final class ProfileRuleEvaluator {
     }
 
     private RuleReading months(ProfileRule rule, Object value) {
+        // 혼인 예정이면 기준일에 막 혼인한 것(0개월)으로 본다. 예비 신혼부부가 신혼부부로 지원해 볼 수준이다.
+        if (value instanceof DateEvent event && !event.actual()) {
+            return RuleReading.matched(rule.minimum() <= 0 && rule.maximum() >= 0, Map.of(
+                    "field", rule.field(), "providedValue", event, "operator", "BETWEEN_INCLUSIVE",
+                    "unit", "MONTHS", "comparedValue", 0L, "minimum", rule.minimum(), "maximum", rule.maximum(),
+                    "referenceDate", referenceDate));
+        }
         LocalDate marriage = actualDate(value);
         if (marriage == null) {
             return RuleReading.manual();

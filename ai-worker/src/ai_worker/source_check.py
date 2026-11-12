@@ -56,7 +56,8 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
         )
         if supported and (not source_pages or evidence_page in source_pages):
             values = source_row_values or {}
-            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values, headings)
+            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values, headings,
+                                        (block_counts or {}).get(path, {}))
             _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, target_values,
                                          (block_counts or {}).get(path, {}))
             continue
@@ -111,11 +112,14 @@ def _check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
                                 source_row_values: dict[str, dict[str, str]],
                                 unresolved: list[dict],
                                 target_values: dict[str, dict[str, dict[str, str]]] | None,
-                                headings: "Headings | None") -> None:
-    """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다. 단지명 칸이 없는 행의 단지명은 표 위 가장 가까운 제목과 비교한다."""
+                                headings: "Headings | None", derived: dict | None = None) -> None:
+    """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다. 단지명 칸이 없는 행의 단지명은 표 위 가장 가까운 제목과 비교한다.
+    derived는 코드가 원문 칸들에서 만든 값(병합 모집 단위의 공통 형명)이라 그 값과 같으면 확인된 것으로 본다."""
     for values, field, source_field in _supply_string_fields_at_path(path, rows):
         value = values.get(field)
         if not isinstance(value, str) or not value:
+            continue
+        if (derived or {}).get(field) == value:
             continue
         if any(normalize_source_text(cell) == normalize_source_text(value)
                for cell in source_texts(source_field, row_ids, source_row_values, target_values)):
@@ -267,20 +271,31 @@ def source_cell_matches(value: object, cells: dict[str, str], field: str) -> boo
     당첨자 칸(예비자 칸이 있으면 둘의 합)과 같으면 확인된 값이다. 예비자 수만은 reserveCount다."""
     if field not in HOUSEHOLD_COUNTS:
         return numeric_cell_matches(value, cells.get(field, ""), field, cells.get(f"{field}Unit"))
-    winners, reserve = count_cell(cells.get("supplyHouseholdCount")), count_cell(cells.get("reserveCount"))
     candidates = [cells.get("totalSupplyHouseholdCount", "")]
-    if winners is not None:
-        candidates.append(str(winners + (reserve or 0)))
+    recruited = recruitment_count(cells)
+    if recruited is not None:
+        candidates.append(str(recruited))
     return any(numeric_cell_matches(value, cell, field) for cell in candidates)
 
 
 def recruitment_count(cells: dict[str, str]) -> int | None:
-    """한 원문 행의 이번 공고 모집수. 모집호수 칸(계)이 있으면 그 값, 없으면 당첨자 칸과 예비자 칸의 합이다(source_cell_matches와 같은 규칙)."""
+    """한 원문 행의 이번 공고 모집수. 모집호수 칸(계)이 있으면 그 값, 없으면 당첨자 칸과 예비자 칸의 합이다(source_cell_matches와 같은 규칙).
+    공급호수를 우선·일반 공급으로 나눈 표는 두 칸의 합이다. 한 칸이라도 비었거나 병합으로 위 행에서 내려왔으면 정하지 않는다."""
     total = count_cell(cells.get("totalSupplyHouseholdCount"))
     if total is not None:
         return total
     winners = count_cell(cells.get("supplyHouseholdCount"))
-    return None if winners is None else winners + (count_cell(cells.get("reserveCount")) or 0)
+    if winners is not None:
+        return winners + (count_cell(cells.get("reserveCount")) or 0)
+    priority, general = count_or_dash(cells.get("priorityCount")), count_or_dash(cells.get("generalCount"))
+    return None if priority is None or general is None else priority + general
+
+
+def count_or_dash(value: object) -> int | None:
+    """수량 칸의 정수. '-'만 적힌 칸은 0이다(그 묶음에 배정한 호수가 없음)."""
+    if isinstance(value, str) and re.fullmatch(r"\s*[-－–]\s*", value):
+        return 0
+    return count_cell(value)
 
 
 def count_cell(value: object) -> int | None:

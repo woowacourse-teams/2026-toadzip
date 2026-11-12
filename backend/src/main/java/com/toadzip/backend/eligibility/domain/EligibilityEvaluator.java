@@ -14,7 +14,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public final class EligibilityEvaluator {
-    public static final String VERSION = "eligibility-1";
+    public static final String VERSION = "eligibility-2";
 
     public EligibilityDecision evaluate(EligibilityContent content, EligibilityProfile profile,
             Map<Long, IncomeStandard> standards, RegionMembership regions) {
@@ -52,11 +52,12 @@ public final class EligibilityEvaluator {
         checks.addAll(pathChecks);
         Set<ProfileField> missing = new LinkedHashSet<>();
         Set<String> directChecks = new LinkedHashSet<>();
+        Set<String> notApplied = new LinkedHashSet<>();
         for (CheckResult check : checks) {
             missing.addAll(check.reading().missingInputs());
             if (check.reading().status() == RuleReading.Status.DIRECT_CHECK_REQUIRED
                     && check.directCheckId() != null) {
-                directChecks.add(check.directCheckId());
+                (check.reading().blocksEligibility() ? directChecks : notApplied).add(check.directCheckId());
             }
         }
         List<Guidance> guides = content.guidances().stream().filter(guide -> guide.appliesTo(option)).toList();
@@ -68,7 +69,20 @@ public final class EligibilityEvaluator {
                 missingMessage(status, missing), missing.stream().sorted().toList(), path.qualificationIds(),
                 List.copyOf(directChecks), guides.stream()
                         .filter(guide -> guide.kind() == GuidanceKind.APPLICATION_EXCLUSION)
-                        .map(Guidance::id).toList());
+                        .map(Guidance::id).toList(), reminders(guides, content, notApplied));
+    }
+
+    /**
+     * 판정을 막지 않고 목록으로만 보이는 신청 전 확인 안내. 조건에 연결되지 않은 안내와, 적용 조건 밖이라
+     * 따지지 않은 조건(가산 대상 등)에 연결한 안내다. 그 밖의 조건에 연결된 안내는 그 조건 결과로 보인다.
+     */
+    private List<String> reminders(List<Guidance> guides, EligibilityContent content, Set<String> notApplied) {
+        Set<String> linked = new LinkedHashSet<>();
+        content.commonChecks().forEach(check -> linked.add(check.fallbackGuidanceId()));
+        content.paths().forEach(path -> path.checks().forEach(check -> linked.add(check.fallbackGuidanceId())));
+        linked.removeAll(notApplied);
+        return guides.stream().filter(guide -> guide.kind() == GuidanceKind.REQUIRED_CHECK)
+                .map(Guidance::id).filter(id -> !linked.contains(id)).toList();
     }
 
     private String optionMessage(Status status, ApplicationOption option, EligibilityPath path,
@@ -109,10 +123,11 @@ public final class EligibilityEvaluator {
             return Status.INELIGIBLE;
         }
         if (!requiredQualifications.isEmpty() || !directChecks.isEmpty()
-                || checks.stream().anyMatch(check -> check.reading().status() != RuleReading.Status.SATISFIED)) {
+                || checks.stream().anyMatch(check -> check.reading().blocksEligibility())) {
             return Status.UNDETERMINED;
         }
-        if (checks.isEmpty()) {
+        // 비교해 충족한 조건이 하나도 없으면(모두 적용 조건 밖 등) 지원 가능으로 확정하지 않는다.
+        if (checks.stream().noneMatch(check -> check.reading().status() == RuleReading.Status.SATISFIED)) {
             return Status.NOT_EVALUATED;
         }
         return Status.ELIGIBLE;

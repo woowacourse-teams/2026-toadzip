@@ -63,6 +63,30 @@ it('법정 필수 자격과 신청 제한 안내를 별도로 보존한다', asy
   expect(view.types[0].exclusions?.[0].title).toBe('불법전대 제한')
 })
 
+it('판정을 막지 않는 신청 전 확인 안내를 지원 가능 선택지에도 보인다', async () => {
+  const data = { ...current, content: { ...content,
+    guidances: [{ id: 'list-path-1', kind: 'REQUIRED_CHECK', title: '공고문에서 확인할 자격', body: '공고문 원문에서 확인',
+      items: ['입주 전까지 주택청약종합저축 가입'], evidenceIds: [] }] },
+    result: { ...current.result, options: [{ ...current.result.options[0], reminderGuidanceIds: ['list-path-1'] }] } }
+  const view = await createEligibilityRepository(vi.fn<typeof fetch>().mockResolvedValue(response(data))).loadComparison(ref)
+  expect(view.types[0].status).toBe('ELIGIBLE')
+  expect(view.types[0].guidances).toEqual([expect.objectContaining({ kind: 'REQUIRED_CHECK', title: '공고문에서 확인할 자격',
+    body: '공고문 원문에서 확인\n입주 전까지 주택청약종합저축 가입' })])
+})
+
+it('가산 대상처럼 기준이 그대로 적용되지 않은 조건은 기본 기준과 확인 안내를 함께 알린다', async () => {
+  const checks = [{ id: 'income', label: '세대 소득', evidenceIds: [],
+    reading: { status: 'DIRECT_CHECK_REQUIRED', missingInputs: [], comparedValues: { reason: 'NOT_APPLIED',
+      field: 'HOUSEHOLD_MONTHLY_INCOME', providedValue: 4000000, comparisonLimit: 3519762, operator: 'LTE', unit: 'KRW_PER_MONTH' } } }]
+  const data = { ...current, content: { ...content, paths: [{ id: 'ordinary', checks: [{ id: 'income',
+    rule: { operator: 'INCOME_CEILING', field: 'HOUSEHOLD_MONTHLY_INCOME' } }] }] },
+    result: { ...current.result, paths: [{ pathId: 'ordinary', checks }] } }
+  const view = await createEligibilityRepository(vi.fn<typeof fetch>().mockResolvedValue(response(data))).loadComparison(ref)
+  expect(view.types[0].status).toBe('ELIGIBLE')
+  expect(view.types[0].checks.at(-1)).toMatchObject({ status: 'DIRECT_CHECK_REQUIRED',
+    criterion: expect.stringMatching(/^기본 기준 월 .+ 이하 · 입력값 월 400만 원 · 가족 상황에 따라 다른 기준이 적용돼요/) })
+})
+
 it('필수 응답 상태가 잘못되면 지원 가능으로 추정하지 않고 실패한다', async () => {
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...current, freshness: 'UNRECOGNIZED' }))
   await expect(createEligibilityRepository(fetcher).loadComparison(ref)).rejects.toThrow()

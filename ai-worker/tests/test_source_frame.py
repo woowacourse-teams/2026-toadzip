@@ -204,3 +204,13 @@ def test_one_subtype_entry_naming_several_house_types_is_not_linked_by_area():
                            supply_row("다산 진건 데시앙", "84B", 84.95)])
 
     assert rows == [f"GH:808:{DASAN}:72A", None, f"GH:808:{DASAN}:84B"]
+
+
+def test_gh_type_written_with_hyeong_matches_the_joined_supply_row():
+    # 탑석센트럴자이 GH 원천은 "49형" 한 줄이고, 공고문 표의 49A·49B·49C는 모집수 하나를 함께 써 공급행 "49"로 묶인다.
+    frame_rows = [gh_row("GH:845:탑석센트럴자이:49형", "탑석센트럴자이", "49형")]
+
+    rows, warnings = link(frame_rows, [supply_row("탑석 센트럴 자이", "49", subtypes=[("49A", 49.9285), ("49B", 49.9091)])])
+
+    assert rows == ["GH:845:탑석센트럴자이:49형"]
+    assert warnings == []

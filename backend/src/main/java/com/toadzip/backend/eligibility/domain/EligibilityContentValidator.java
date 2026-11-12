@@ -265,6 +265,14 @@ public final class EligibilityContentValidator {
         }
     }
 
+    private static boolean directCheckTargets(EligibilityContent content, EligibilityPath path) {
+        return content.guidances().stream()
+                .filter(guidance -> guidance.kind() == GuidanceKind.REQUIRED_QUALIFICATION)
+                .flatMap(guidance -> guidance.targets().stream())
+                .anyMatch(target -> target.scope() == TargetScope.ANNOUNCEMENT
+                        || target.scope() == TargetScope.PATH && path.id().equals(target.pathId()));
+    }
+
     private void access(EligibilityContent content) {
         if (content.metadata().applicantKind() == ApplicantKind.ORGANIZATION) {
             require(
@@ -277,8 +285,9 @@ public final class EligibilityContentValidator {
                             && content.paths().stream().allMatch(path -> path.kind() == PathKind.APPLICATION),
                     "신청 경로 모드에는 실제 신청 경로를 구조화해야 합니다.");
             for (EligibilityPath path : content.paths()) {
+                // 조건을 모두 직접 확인으로 돌린 경로는 직접 확인 안내가 판정을 막으므로 지원 가능으로 나오지 않는다.
                 require(!path.checks().isEmpty() || !content.commonChecks().isEmpty()
-                                || !path.qualificationIds().isEmpty(),
+                                || !path.qualificationIds().isEmpty() || directCheckTargets(content, path),
                         "아무 조건도 구조화하지 않은 경로를 신청 가능으로 판정할 수 없습니다.");
             }
             return;

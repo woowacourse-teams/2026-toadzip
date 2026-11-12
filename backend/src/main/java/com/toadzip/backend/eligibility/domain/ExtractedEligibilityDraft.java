@@ -37,9 +37,13 @@ import java.util.function.Function;
 
 /**
  * AI 추출 신청자격과 PDF 보정을 적용한 공급행으로 검토 전(REVIEWING) 신청자격 초안을 만든다.
- * 자동 판정 조건으로 바꿀 수 없는 요건(기타, 비운 숫자, 없는 소득 기준표, 읽지 못한 지역, 본인·부모 합산 소득, 장애인 등 가산)은
- * 조건으로 만들지 않고 그 범위의 직접 확인 안내 항목으로 남긴다. 조건을 빼서 판정을 넓히지 않는다.
- * 출산자녀·맞벌이 가산이 있는 조건은 해당하지 않는 사람에게만 자동 판정하고, 해당하면 직접 확인으로 넘긴다.
+ * 일반 사용자가 받은 입력으로 '한번 지원해 볼 만한지'를 알 수 있는 수준까지만 판정한다(사용자 결정).
+ * 조건으로 바꾼 요건만 판정하고, 그 밖의 요건(기타: 청약통장·세대원 등재·추천 등, 원문에서 문구를 찾지 못한 요건, 비운 숫자·
+ * 없는 소득 기준표·읽지 못한 지역·본인 소득처럼 바꾸지 못한 요건)은 판정을 막지 않는 '공고문에서 확인할 자격' 목록으로 근거와 함께 보인다.
+ * 워커가 판정에 쓸 요건을 잃었다고 표시한 요건(UNRESOLVED: 경로를 나누지 못한 공고의 경로별 요건, 모델이 빠뜨린 요건)만
+ * 판정을 막는 직접 확인으로 둔다. 목록으로 돌리면 남은 요건만으로 지원 가능이 되기 때문이다.
+ * 출산자녀·맞벌이 가산을 받을 수 있는 사람은 기본 기준을 넘어도 충족으로 보고, 알아볼 입력이 없는 가산(장애인 등)은 기본 기준으로
+ * 판정한다. 가산 내용은 목록에 알린다.
  * 공급표가 대상을 나누지 않은 공급행(대상이 없거나 "전체"뿐)에는 모든 경로를 잇는다. 워커가 경로에 맞출 대상 이름이 없기 때문이다.
  */
 public final class ExtractedEligibilityDraft {
@@ -48,6 +52,22 @@ public final class ExtractedEligibilityDraft {
     private static final long MAXIMUM_AGE = 150;
     private static final long MAXIMUM_MONTHS = 1800;
     private static final String EVERYONE = "전체";
+    /** 워커가 판정에 쓸 요건을 잃은 자리에 둔 요건 종류. 판정을 막는 직접 확인으로 둔다. */
+    private static final String UNRESOLVED = "UNRESOLVED";
+    /** UNRESOLVED 전의 워커가 같은 자리에 OTHER로 둔 문구. 다시 추출하지 않은 결과도 목록으로 새지 않게 판정을 막는다. */
+    /**
+     * 요건 종류 이름(워커 eligibility.py의 _KIND_NAMES와 같다). 관리자 화면은 워커 경고를 문구와 이 이름으로 요건에 붙이므로,
+     * 자산·자동차처럼 같은 원문 문구를 쓰는 요건의 목록 항목은 이 이름을 앞에 붙여 서로 구분한다.
+     */
+    private static final Map<String, String> KIND_NAMES = Map.ofEntries(Map.entry("AGE", "나이"),
+            Map.entry("NO_HOUSE", "무주택"), Map.entry("INCOME", "소득"), Map.entry("ASSETS", "자산"),
+            Map.entry("CAR_VALUE", "자동차가액"), Map.entry("NO_CAR", "자동차 미보유"), Map.entry("RESIDENCE", "거주"),
+            Map.entry("MARRIAGE_PERIOD", "혼인기간"), Map.entry("FAMILY_TYPE", "가족 형태"),
+            Map.entry("UNIVERSITY_STUDENT", "대학생"), Map.entry("JOB_SEEKER", "취업준비생"));
+
+    private static final Set<String> EARLIER_UNRESOLVED_TEXTS = Set.of(
+            "모델 응답에서 빠진 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.",
+            "신청 대상마다 다른 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.");
 
     /** 추출 PDF와 그 공고의 현재 공급행. incomeTables는 "기준표 종류:연도" → 기준표 ID다. */
     public record Source(
@@ -95,6 +115,16 @@ public final class ExtractedEligibilityDraft {
 
     public static Draft build(Source source) {
         return new ExtractedEligibilityDraft(source).content();
+    }
+
+    /**
+     * 보정 적용 전 미리보기. 아직 공급행이 없으므로 대상 구분이 없는 공급행 하나에 모든 경로를 이어 변환 결과(조건·직접 확인·목록)만 보인다.
+     * source.units()는 쓰지 않는다. 저장하지 않으므로 공급행 연결 안내는 돌려주지 않는다.
+     */
+    public static EligibilityContent preview(Source source) {
+        Unit everyone = new Unit(0, "미리보기", null, null, null, null, null, List.of(), List.of(new Target(EVERYONE, null)));
+        return build(new Source(source.referenceDate(), source.document(), List.of(everyone), source.eligibility(),
+                source.incomeTables(), source.regionCodes())).content();
     }
 
     private Draft content() {
@@ -284,12 +314,16 @@ public final class ExtractedEligibilityDraft {
         return "unit-" + unit.rowId();
     }
 
-    /** 범위(공고 전체 또는 경로)의 조건과, 조건으로 바꾸지 못한 요건을 모은 직접 확인 안내. */
+    /** 범위(공고 전체 또는 경로)의 조건과, 조건으로 바꾸지 못한 요건을 모은 안내. */
     private final class Scope {
         private final String id;
         private final GuidanceTarget target;
         private final String evidencePath;
+        /** 판정을 막는 직접 확인 항목. */
         private final List<String> direct = new ArrayList<>();
+        /** 판정을 막지 않고 목록으로만 보이는 항목과 그 근거 ID. */
+        private final List<String> listed = new ArrayList<>();
+        private final Set<String> listedEvidence = new LinkedHashSet<>();
         private boolean referenced;
 
         private Scope(String id, GuidanceTarget target, String evidencePath) {
@@ -304,15 +338,23 @@ public final class ExtractedEligibilityDraft {
             return "check-" + id;
         }
 
+        private void list(String item, String evidenceId) {
+            listed.add(item);
+            if (evidenceId != null) {
+                listedEvidence.add(evidenceId);
+            }
+        }
+
         /**
-         * 조건으로 바꾸지 못한 요건은 필수 확인 자격(REQUIRED_QUALIFICATION)으로 둔다. 판정기는 이 안내가 걸린 선택지를
-         * 지원 가능으로 확정하지 않는다. REQUIRED_CHECK 안내는 조건에 연결될 때만 결과에 반영되므로 여기에 쓰지 않는다.
+         * 직접 확인 항목은 필수 확인 자격(REQUIRED_QUALIFICATION)으로 둔다. 판정기는 이 안내가 걸린 선택지를 지원 가능으로
+         * 확정하지 않는다. 목록 항목은 조건에 연결하지 않은 REQUIRED_CHECK로 둔다. 판정기는 이 안내를 판정에 넣지 않고
+         * 신청 전 확인 안내로만 돌려준다.
          */
         private List<Guidance> guidances() {
             List<Guidance> result = new ArrayList<>();
             if (referenced) {
                 result.add(new Guidance("check-" + id, GuidanceKind.REQUIRED_CHECK, "자동 판정 한계 확인",
-                        "출산자녀·맞벌이 등 가산 대상이거나 가족 정보를 입력하지 않았으면 공고문 기준으로 확인해 주세요.",
+                        "자동으로 비교하지 못한 조건이에요. 공고문 기준으로 확인해 주세요.",
                         List.of(), List.of(target),
                         evidence(null, evidencePath)));
             }
@@ -322,6 +364,14 @@ public final class ExtractedEligibilityDraft {
                         "자동으로 판정하지 못한 요건이에요. 공고문 원문에서 해당하는지 확인해 주세요.", items, List.of(target),
                         evidence(null, evidencePath)));
             }
+            if (!listed.isEmpty()) {
+                List<String> items = listed.stream().map(item -> limit(item, 2000)).distinct().limit(100).toList();
+                List<String> evidence = listedEvidence.isEmpty() ? evidence(null, evidencePath)
+                        : List.copyOf(listedEvidence);
+                result.add(new Guidance("list-" + id, GuidanceKind.REQUIRED_CHECK, "공고문에서 확인할 자격",
+                        "자동 판정에 넣지 않은 요건이에요. 신청 전에 공고문 원문에서 확인해 주세요.", items, List.of(target),
+                        evidence));
+            }
             return result;
         }
     }
@@ -329,43 +379,60 @@ public final class ExtractedEligibilityDraft {
     private List<ProfileCheck> checks(List<Requirement> requirements, Scope scope) {
         List<ProfileCheck> checks = new ArrayList<>();
         for (Requirement requirement : requirements) {
-            Optional<ProfileRule> rule = rule(requirement);
+            String text = firstText(requirement.asWritten(), requirement.kind());
             String evidence = evidenceIds.get(requirement.evidencePath());
-            Optional<ProfileRule> appliesWhen = appliesWhen(requirement);
-            if (rule.isEmpty() || evidence == null || appliesWhen == null) {
-                scope.direct.add(firstText(requirement.asWritten(), requirement.kind()));
+            if (UNRESOLVED.equals(requirement.kind())
+                    || "OTHER".equals(requirement.kind()) && EARLIER_UNRESOLVED_TEXTS.contains(requirement.asWritten())) {
+                scope.direct.add(text);
                 continue;
             }
-            boolean fallback = appliesWhen.isPresent() || EligibilityContentValidator.needsFallback(rule.get());
-            checks.add(new ProfileCheck(scope.id + "-" + (checks.size() + 1), limit(firstText(requirement.asWritten(),
-                    requirement.kind()), 300), rule.get(), appliesWhen.orElse(null), fallback ? scope.fallbackId() : null,
-                    List.of(evidence)));
+            Optional<ProfileRule> rule = evidence == null ? Optional.empty() : rule(requirement);
+            if (rule.isEmpty()) {
+                // 원문에서 문구를 찾지 못했거나, 입력으로 판정할 수 없거나, 조건으로 바꾸지 못한 요건이다.
+                String kindName = KIND_NAMES.get(requirement.kind());
+                scope.list(kindName == null ? text : kindName + ": " + text, evidence);
+                continue;
+            }
+            if (!requirement.adjustments().isEmpty()) {
+                // 요건 문구(text)는 기본 기준 줄이라 가산 기준처럼 보이지 않게 기본 기준으로 밝힌다. 가산 금액은 추출 결과에 없다.
+                // 자산·자동차처럼 같은 원문 문구를 쓰는 요건도 구분되게 어느 기준인지 밝힌다.
+                scope.list(adjustmentNames(requirement.adjustments()) + " 가산 대상은 " + KIND_NAMES.getOrDefault(requirement.kind(), "이")
+                        + " 기준이 더 높아요(기본 기준: " + text + "). 가산 기준은 공고문에서 확인해 주세요.", evidence);
+            }
+            ProfileRule judged = withAdjustments(rule.get(), requirement.adjustments());
+            checks.add(new ProfileCheck(scope.id + "-" + (checks.size() + 1), limit(text, 300), judged, null,
+                    EligibilityContentValidator.needsFallback(judged) ? scope.fallbackId() : null, List.of(evidence)));
         }
         return checks;
     }
 
+    private static String adjustmentNames(List<String> adjustments) {
+        List<String> names = adjustments.stream().map(kind -> switch (kind) {
+            case "CHILDBIRTH" -> "출산자녀";
+            case "DUAL_INCOME" -> "맞벌이";
+            case "DISABILITY" -> "장애인 등";
+            default -> "그 밖의";
+        }).distinct().toList();
+        return String.join("·", names);
+    }
+
     /**
-     * 가산이 있으면 해당하지 않는 사람에게만 자동 판정한다. 알아볼 입력이 없는 가산이면 null(직접 확인)이다.
-     * 자녀·맞벌이 입력은 가족 형태에 따라 받지 않으므로(미혼은 자녀, 미혼·한부모는 맞벌이) 그 가족 형태도 해당하지 않는 사람으로 본다.
+     * 출산자녀·맞벌이 가산은 가산 기준이 추출 결과에 없어, 가산을 받을 수 있는 사람(자녀가 있는 한부모·부부, 맞벌이 부부)은
+     * 기본 기준을 넘어도 충족으로 본다. 지원해 볼 만한 사람을 미충족으로 돌려보내지 않기 위해서다. 알아볼 입력이 없는 가산(장애인 등)은
+     * 기본 기준으로 판정한다. 가산 안내는 목록에 둔다.
      */
-    private static Optional<ProfileRule> appliesWhen(Requirement requirement) {
-        List<ProfileRule> conditions = new ArrayList<>();
-        for (String adjustment : requirement.adjustments()) {
-            switch (adjustment) {
-                case "CHILDBIRTH" -> conditions.add(group(Operator.ANY, List.of(
-                        equal(ProfileField.FAMILY_TYPE, "UNMARRIED"), equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "false"))));
-                case "DUAL_INCOME" -> conditions.add(group(Operator.ANY, List.of(
-                        equal(ProfileField.FAMILY_TYPE, "UNMARRIED"), equal(ProfileField.FAMILY_TYPE, "SINGLE_PARENT"),
-                        equal(ProfileField.IS_DUAL_INCOME, "false"))));
-                default -> {
-                    return null;
-                }
-            }
+    private static ProfileRule withAdjustments(ProfileRule rule, List<String> adjustments) {
+        List<ProfileRule> alternatives = new ArrayList<>(List.of(rule));
+        if (adjustments.contains("CHILDBIRTH")) {
+            alternatives.add(group(Operator.ALL, List.of(group(Operator.ANY, List.of(
+                    equal(ProfileField.FAMILY_TYPE, "SINGLE_PARENT"), equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"))),
+                    equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "true"))));
         }
-        if (conditions.isEmpty()) {
-            return Optional.empty();
+        if (adjustments.contains("DUAL_INCOME")) {
+            alternatives.add(group(Operator.ALL, List.of(equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"),
+                    equal(ProfileField.IS_DUAL_INCOME, "true"))));
         }
-        return Optional.of(conditions.size() == 1 ? conditions.getFirst() : group(Operator.ALL, conditions));
+        return alternatives.size() == 1 ? rule : group(Operator.ANY, alternatives);
     }
 
     private Optional<ProfileRule> rule(Requirement requirement) {
@@ -382,7 +449,7 @@ public final class ExtractedEligibilityDraft {
                     : applicant ? ProfileField.APPLICANT_ASSETS : null);
             case "CAR_VALUE" -> money(requirement, household ? ProfileField.FAMILY_CAR_VALUE
                     : applicant ? ProfileField.APPLICANT_CAR_VALUE : null);
-            // 본인 소득 기준이 몇 인 가구 금액인지 추출 결과에 없어, 등본 가족 수로 넓게 판정하지 않고 직접 확인으로 둔다.
+            // 본인 소득 기준이 몇 인 가구 금액인지 추출 결과에 없어, 등본 가족 수로 판정하지 않고 목록으로 보인다.
             case "INCOME" -> income(requirement, household ? ProfileField.HOUSEHOLD_MONTHLY_INCOME : null);
             case "RESIDENCE" -> residence(requirement);
             case "MARRIAGE_PERIOD" -> requirement.maximum() == null ? Optional.empty()
@@ -457,7 +524,7 @@ public final class ExtractedEligibilityDraft {
         return Optional.of(rules.size() == 1 ? rules.getFirst() : group(Operator.ANY, rules));
     }
 
-    /** 선택 요건 하나라도 조건으로 바꾸지 못하면, 그 선택으로 지원할 수 있는 사람을 놓치지 않게 전체를 직접 확인으로 둔다. */
+    /** 선택 요건 하나라도 조건으로 바꾸지 못하면, 그 선택으로 지원할 수 있는 사람을 놓치지 않게 전체를 판정하지 않고 목록으로 보인다. */
     private Optional<ProfileRule> anyOf(List<Requirement> options) {
         List<ProfileRule> rules = new ArrayList<>();
         for (Requirement option : options) {

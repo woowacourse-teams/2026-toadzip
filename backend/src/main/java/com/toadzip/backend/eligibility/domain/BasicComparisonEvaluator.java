@@ -150,6 +150,16 @@ public final class BasicComparisonEvaluator {
                         check.evidenceIds(),
                         check.fallbackGuidanceId());
             }
+            if (applicability.status() == RuleReading.Status.NOT_SATISFIED) {
+                // 가산 대상처럼 이 기준이 그대로 적용되지 않는 사람이다. 기본 기준 안이면 충족으로 보이고,
+                // 아니면 기본 기준과 비교한 값을 근거로 싣되 판정은 막지 않고 연결한 안내로 확인하게 한다.
+                RuleReading base = evaluator.evaluate(check.rule());
+                if (base.status() == RuleReading.Status.SATISFIED) {
+                    return new CheckResult(check.id(), check.label(), base, check.evidenceIds(), null);
+                }
+                return new CheckResult(check.id(), check.label(), RuleReading.notApplied(base), check.evidenceIds(),
+                        check.fallbackGuidanceId());
+            }
             if (applicability.status() != RuleReading.Status.SATISFIED) {
                 return new CheckResult(
                         check.id(),
