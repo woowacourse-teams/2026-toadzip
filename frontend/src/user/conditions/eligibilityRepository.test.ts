@@ -65,6 +65,18 @@ it('맞지 않는 항목이 하나라도 있으면 선택지 결과가 확인 �
   expect(view.types[0].status).toBe('INELIGIBLE')
 })
 
+it('이번 공고에서 모집하지 않거나 모집 여부를 모르는 선택지는 신청 유형에서 뺀다', async () => {
+  const option = current.result.options[0]
+  const data = { ...current, result: { ...current.result, options: [option,
+    { ...option, optionId: 'unknown', recruitmentStatus: 'UNKNOWN', status: 'NOT_EVALUATED' },
+    { ...option, optionId: 'closed', recruitmentStatus: 'NOT_RECRUITING', status: 'NOT_EVALUATED' },
+    { ...option, optionId: 'cancelled', recruitmentStatus: 'CANCELLED', status: 'NOT_EVALUATED' },
+    { ...option, optionId: 'upcoming', recruitmentStatus: 'UPCOMING' }] } }
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(data))
+  const view = await createEligibilityRepository(fetcher).loadComparison(ref)
+  expect(view.types.map((type) => type.key)).toEqual(['ordinary', 'upcoming'])
+})
+
 it('법정 필수 자격과 신청 제한 안내를 별도로 보존한다', async () => {
   const data = { ...current, content: { ...content,
     qualifications: [{ id: 'single-parent', exactName: '지원대상 한부모가족', conditionsAsWritten: '해당 법정 자격 확인', evidenceIds: [] }],
