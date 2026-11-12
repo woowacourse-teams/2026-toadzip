@@ -132,24 +132,24 @@ button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-o
   .kinds button { padding-inline: var(--ds-space-3); }
 }
 
-/* 넓은 화면에서는 왼쪽 메뉴를 고정하고 관리 카드의 본문만 스크롤한다.
-   창 높이가 왼쪽 메뉴보다 낮으면 메뉴에 따로 스크롤을 두지 않고 페이지 전체를 스크롤한다. */
+/* 넓은 화면에서는 바깥 페이지 대신 관리 카드의 본문만 스크롤한다.
+   높이가 낮거나 확대된 화면에서는 왼쪽 메뉴도 자체 스크롤로 접근할 수 있다. */
 @media (min-width: 1024px) {
-  .page:has(.columns) { overscroll-behavior-y: none; }
-  .columns { height: 100%; min-height: min-content; }
-  .hub { position: static; height: auto; overflow: visible; }
+  .page:has(.columns) { overflow: hidden; overscroll-behavior-y: none; }
+  .columns { height: 100%; min-height: 0; }
+  .hub { position: static; height: 100%; min-height: 0; overscroll-behavior-y: none; }
   .hub > * { flex-shrink: 0; }
-  .lists { min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .lists { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
   .lists > .sub { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .lists > .sub > .subHeader, .lists > .sub > .kinds { flex-shrink: 0; }
   .lists > .sub > :is([role=tabpanel], .subBody) { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
-  .lists > .sub > :is([role=tabpanel], .subBody) { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
+  .hub, .lists > .sub > :is([role=tabpanel], .subBody) { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
   @supports selector(::-webkit-scrollbar) {
-    .lists > .sub > :is([role=tabpanel], .subBody) { scrollbar-width: auto; scrollbar-color: auto; }
-    .lists > .sub > :is([role=tabpanel], .subBody)::-webkit-scrollbar { width: 6px; }
-    .lists > .sub > :is([role=tabpanel], .subBody)::-webkit-scrollbar-track { background: transparent; }
-    .lists > .sub > :is([role=tabpanel], .subBody)::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
-    .lists > .sub > :is([role=tabpanel], .subBody)::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody)) { scrollbar-width: auto; scrollbar-color: auto; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar { width: 6px; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-track { background: transparent; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
   }
   .hub > .counts.card, .hub > .counts.card > .row { border-radius: 0; }
   .hub > .counts.card > .row + .row { border-top: 0; }
