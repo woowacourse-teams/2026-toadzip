@@ -91,7 +91,8 @@ public class HousingComplexDetailMapper {
                 row.target(),
                 toLongExact(row.deposit()),
                 toLongExact(row.monthlyRent()),
-                toLongExact(row.convertibleDeposit())
+                toLongExact(row.convertibleDeposit()),
+                row.postedDate()
         );
     }
 
