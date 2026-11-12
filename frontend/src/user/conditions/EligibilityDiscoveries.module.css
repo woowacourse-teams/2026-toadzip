@@ -6,3 +6,5 @@
 .section > ul > li { padding: 12px 0; border-top: 1px solid var(--ds-color-divider); }
 .section a { color: var(--ds-color-action); font-weight: 700; }
 .section li ul { margin: 8px 0; padding-left: 20px; font-size: .875rem; }
+.more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
+.more p { margin: 0; }
