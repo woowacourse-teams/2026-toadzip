@@ -545,7 +545,12 @@ def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_n
     assert [(target["target"], target["rentalDeposit"], target["monthlyRent"]) for target in row["targets"]] == [
         ("가군", 2520000, 50160), ("나군", 7648000, 115940)]
     assert not any(".targets[" in finding["path"] for finding in tree["data"]["unresolvedFields"])
-    assert len(tree["sharedCounts"]) == 1
+    # 예비자만 모집하는 표라 예비자 110이 모집수이기도 하다. 두 수 모두 가군·나군의 공통 수량이다.
+    assert [(shared["paths"], shared["count"]) for shared in tree["sharedCounts"]] == [
+        (["supplyRows[0].targets[0].supplyHouseholdCount", "supplyRows[0].targets[1].supplyHouseholdCount"], 110),
+        (["supplyRows[0].targets[0].reserveCount", "supplyRows[0].targets[1].reserveCount"], 110)]
+    assert row["totalSupplyHouseholdCount"] == 110
+    assert [(target["supplyHouseholdCount"], target["reserveCount"]) for target in row["targets"]] == [(None, None)] * 2
 
 def test_announcement_wide_application_condition_reaches_each_target_with_its_evidence(monkeypatch):
     """신청자격 단계의 공고 전체 요약이 원문 대조 검산 뒤에도 모든 대상의 신청 조건과 근거로 남는다."""
@@ -992,7 +997,7 @@ ELIGIBILITY_PAGES = (
     "2. 신청자격\n무주택세대구성원으로서 아래 요건을 모두 갖춘 자",
     "전년도 도시근로자 가구원수별 가구당 월평균소득의 100% 이하\n1인 가구 120%, 2인 가구 110%\n출산자녀 1인 10% 가산\n총자산 3억 3,700만원 이하",
     "소득·자산 산정방법 안내",
-    "청년: 만 19세 이상 39세 이하인 사람\n혼인 중이 아닐 것\n고령자: 만 65세 이상인 사람",
+    "청년: 만 19세 이상 39세 이하인 사람\n혼인 중이 아닐 것\n입주 전까지 주택청약종합저축 가입\n고령자: 만 65세 이상인 사람",
     "공공임대주택 불법 양도·전대\n적발 후 4년이 지나지 않은 세대구성원은 신청할 수 없음",
 )
 # 모델은 요건을 한 번씩만 쓰고 경로가 id로 가리킨다. 쪽 번호는 신청자격 단계에 첨부한 순번이다(원본 2~6쪽이 첨부 1~5쪽).
@@ -1006,9 +1011,10 @@ ELIGIBILITY_REPLY = {
         {"id": "r3", "kind": "ASSETS", "scope": "HOUSEHOLD", "amount": "3억 3,700만원", "text": "총자산 3억 3,700만원 이하", "page": 2},
         {"id": "r4", "kind": "AGE", "scope": "APPLICANT", "minimum": 19, "maximum": 39, "text": "만 19세 이상 39세 이하", "page": 4},
         {"id": "r5", "kind": "FAMILY_TYPE", "familyTypes": ["UNMARRIED"], "text": "혼인 중이 아닐 것", "page": 4},
-        {"id": "r6", "kind": "AGE", "scope": "APPLICANT", "minimum": 65, "text": "만 65세 이상", "page": 4}],
+        {"id": "r6", "kind": "AGE", "scope": "APPLICANT", "minimum": 65, "text": "만 65세 이상", "page": 4},
+        {"id": "r7", "kind": "OTHER", "text": "입주 전까지 주택청약종합저축 가입", "page": 4}],
     "routes": [
-        {"name": "청년", "supplyTarget": "청년", "requires": ["r1", "r2", "r3", "r4", "r5"],
+        {"name": "청년", "supplyTarget": "청년", "requires": ["r1", "r2", "r3", "r4", "r5", "r7"],
          "summary": "무주택세대구성원인 만 19~39세 미혼 청년"},
         {"name": "고령자", "supplyTarget": "고령자", "requires": ["r1", "r2", "r3", "r6"],
          "summary": "무주택세대구성원인 만 65세 이상 고령자"}],

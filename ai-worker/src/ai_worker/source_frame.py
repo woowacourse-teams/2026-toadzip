@@ -203,8 +203,8 @@ def _key(value: str) -> str:
 
 
 def _type_key(value: str) -> str:
-    """원천은 여러 주택형을 "24A,B,C"처럼, 공고문 표는 "24ABC"처럼 쓴다."""
-    return _key(value).replace(",", "")
+    """원천은 여러 주택형을 "24A,B,C"처럼, 공고문 표는 "24ABC"처럼 쓴다. 원천은 "49형"처럼 '형'을 붙이기도 한다."""
+    return _key(value).replace(",", "").removesuffix("형")
 
 
 def _district_key(value: str) -> str:

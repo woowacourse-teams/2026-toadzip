@@ -41,17 +41,24 @@ class ExtractionContractDraftTest {
 
         List<ProfileRule> common = content.commonChecks().stream().map(EligibilityContent.ProfileCheck::rule).toList();
         assertThat(common).extracting(ProfileRule::operator).containsExactly(
-                ProfileRule.Operator.EQUALS, ProfileRule.Operator.INCOME_CEILING, ProfileRule.Operator.MONEY_CEILING);
-        assertThat(common.get(1).incomeLimit().standardTableId()).isEqualTo(1L);
-        assertThat(common.get(1).incomeLimit().percent()).isEqualTo(100);
-        assertThat(common.get(1).incomeLimit().sizeExtraPercent()).isEqualTo(Map.of(1L, 20, 2L, 10));
-        // 출산자녀 가산: 미혼이거나 자녀·임신이 없는 사람만 기본 상한으로 자동 판정한다.
-        assertThat(content.commonChecks().get(1).appliesWhen().children()).extracting(ProfileRule::field)
-                .containsExactly(ProfileField.FAMILY_TYPE, ProfileField.HAS_CHILDREN_OR_PREGNANCY);
+                ProfileRule.Operator.EQUALS, ProfileRule.Operator.ANY, ProfileRule.Operator.MONEY_CEILING);
+        // 출산자녀 가산: 기본 상한 이하이거나, 가산을 받을 수 있는 사람(자녀·임신이 있는 한부모·부부)이면 충족이다.
+        ProfileRule income = common.get(1).children().getFirst();
+        assertThat(income.operator()).isEqualTo(ProfileRule.Operator.INCOME_CEILING);
+        assertThat(income.incomeLimit().standardTableId()).isEqualTo(1L);
+        assertThat(income.incomeLimit().percent()).isEqualTo(100);
+        assertThat(income.incomeLimit().sizeExtraPercent()).isEqualTo(Map.of(1L, 20, 2L, 10));
         assertThat(common.get(2).maximum()).isEqualTo(337_000_000L);
         ProfileRule age = content.paths().getFirst().checks().getFirst().rule();
         assertThat(List.of(age.field(), age.minimum(), age.maximum())).containsExactly(ProfileField.BIRTH_DATE, 19L, 39L);
         assertThat(content.guidances()).extracting(EligibilityContent.Guidance::kind)
                 .contains(EligibilityContent.GuidanceKind.APPLICATION_EXCLUSION);
+        // 입력으로 판정할 수 없는 청약통장 요건은 판정을 막지 않는 목록으로만 보인다.
+        EligibilityContent.Guidance listed = content.guidances().stream()
+                .filter(guidance -> guidance.id().equals("list-path-1")).findFirst().orElseThrow();
+        assertThat(listed.kind()).isEqualTo(EligibilityContent.GuidanceKind.REQUIRED_CHECK);
+        assertThat(listed.items()).containsExactly("입주 전까지 주택청약종합저축 가입");
+        assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::fallbackGuidanceId)
+                .doesNotContain(listed.id());
     }
 }

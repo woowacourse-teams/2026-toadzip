@@ -209,13 +209,16 @@ class BasicComparisonQueryIntegrationTest extends EligibilityIntegrationSupport 
     }
 
     @Test
-    void 미확정_자녀가산을_낮은_한도의_미충족이나_확인된_충족으로_만들지_않는다() throws Exception {
+    void 자녀가산_대상이_기본_한도를_넘으면_미충족이나_확인된_충족으로_만들지_않는다() throws Exception {
         long announcement = published(BasicComparisonFixtures.sacheon());
         save(
                 USER,
                 0,
                 BasicComparisonFixtures.with(
-                        BasicComparisonFixtures.singleParent(), ProfileField.RESIDENCE_REGION, "48240"));
+                        BasicComparisonFixtures.with(
+                                BasicComparisonFixtures.singleParent(), ProfileField.RESIDENCE_REGION, "48240"),
+                        ProfileField.HOUSEHOLD_MONTHLY_INCOME,
+                        4000000L));
         detail(USER, announcement)
                 .andExpect(jsonPath("$.data.result.options[0].status").value("PARTIALLY_COMPARED"))
                 .andExpect(

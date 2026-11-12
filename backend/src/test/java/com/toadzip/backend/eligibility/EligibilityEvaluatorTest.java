@@ -60,6 +60,96 @@ class EligibilityEvaluatorTest {
     }
 
     @Test
+    void D05_자녀_가산_대상은_기본_기준을_넘어도_막지_않고_적용_기준_확인을_목록으로_보인다() {
+        var parent = with(with(with(singleParent(), RESIDENCE_REGION, "48240"), HOUSEHOLD_MONTHLY_INCOME, 4000000L),
+                FAMILY_TOTAL_ASSETS, 300000000L);
+        var result = evaluate(EligibilityFixtures.d05(), parent);
+        assertThat(result.status()).isEqualTo(ELIGIBLE);
+        var option = result.options().getFirst();
+        assertThat(option.directCheckGuidanceIds()).isEmpty();
+        assertThat(option.reminderGuidanceIds()).containsExactly("scope");
+        assertThat(result.paths().getFirst().checks()).filteredOn(check -> check.id().equals("income"))
+                .singleElement().satisfies(check -> {
+                    assertThat(check.reading().status()).isEqualTo(RuleReading.Status.DIRECT_CHECK_REQUIRED);
+                    assertThat(check.reading().blocksEligibility()).isFalse();
+                    // 근거: 기본 상한과 입력한 소득을 그대로 싣는다.
+                    assertThat(check.reading().comparedValues()).containsEntry("reason", "NOT_APPLIED")
+                            .containsEntry("providedValue", 4000000L).containsKey("comparisonLimit");
+                });
+        // 기본 기준 안이면 가산 대상이어도 충족으로 보이고 확인 안내는 붙지 않는다.
+        var within = evaluate(EligibilityFixtures.d05(), with(parent, FAMILY_TOTAL_ASSETS, 100000000L));
+        var low = evaluate(EligibilityFixtures.d05(), with(with(parent, FAMILY_TOTAL_ASSETS, 100000000L),
+                HOUSEHOLD_MONTHLY_INCOME, 3000000L));
+        assertThat(within.options().getFirst().reminderGuidanceIds()).containsExactly("scope");
+        assertThat(low.status()).isEqualTo(ELIGIBLE);
+        assertThat(low.paths().getFirst().checks()).allMatch(check ->
+                check.reading().status() == RuleReading.Status.SATISFIED);
+        assertThat(low.options().getFirst().reminderGuidanceIds()).isEmpty();
+        // 공통 조건 미충족은 여전히 막는다.
+        assertThat(evaluate(EligibilityFixtures.d05(), with(parent, RESIDENCE_REGION, "26110")).status())
+                .isEqualTo(INELIGIBLE);
+    }
+
+    @Test
+    void D05_미혼은_묻지_않은_자녀를_없음으로_보고_기본_기준으로_판정한다() {
+        var facts = new EnumMap<>(b().facts());
+        facts.put(FAMILY_TYPE, InputValue.provided("UNMARRIED"));
+        List.of(HAS_CHILDREN_OR_PREGNANCY, CHILDREN_COUNT_INCLUDING_FETUS, YOUNGEST_CHILD, MARRIAGE_EVENT,
+                IS_DUAL_INCOME).forEach(facts::remove);
+        var single = new EligibilityProfile(FamilyDetailsState.PROVIDED, facts);
+        var result = evaluate(EligibilityFixtures.d05(), single);
+        assertThat(result.status()).isEqualTo(ELIGIBLE);
+        assertThat(result.options().getFirst().reminderGuidanceIds()).isEmpty();
+        assertThat(evaluate(EligibilityFixtures.d05(), with(single, HOUSEHOLD_MONTHLY_INCOME, 3519763L)).status())
+                .isEqualTo(INELIGIBLE);
+        var evaluator = new ProfileRuleEvaluator(LocalDate.of(2026, 10, 16), single, STANDARDS, regions);
+        assertThat(evaluator.evaluate(equal(IS_DUAL_INCOME, "false")).status()).isEqualTo(RuleReading.Status.SATISFIED);
+        assertThat(evaluator.evaluate(equal(HAS_CHILDREN_OR_PREGNANCY, "true")).status())
+                .isEqualTo(RuleReading.Status.NOT_SATISFIED);
+        assertThat(evaluator.evaluate(new ProfileRule(ProfileRule.Operator.MONTHS_SINCE, MARRIAGE_EVENT, null, 0L, 84L,
+                List.of(), null, List.of())).status()).isEqualTo(RuleReading.Status.NOT_SATISFIED);
+        // 한부모도 부부가 아니므로 맞벌이가 아니다.
+        var parent = new ProfileRuleEvaluator(LocalDate.of(2026, 10, 16), singleParent(), STANDARDS, regions);
+        assertThat(parent.evaluate(equal(IS_DUAL_INCOME, "false")).status()).isEqualTo(RuleReading.Status.SATISFIED);
+        assertThat(parent.evaluate(equal(IS_DUAL_INCOME, "true")).status()).isEqualTo(RuleReading.Status.NOT_SATISFIED);
+    }
+
+    @Test
+    void 적용_조건_자체를_판단할_수_없으면_지원_가능으로_확정하지_않고_직접_확인으로_막는다() {
+        // 세대분리 여부는 미혼에게만 묻는다. 부부(b)는 적용 조건을 판단할 수 없다.
+        var d05 = EligibilityFixtures.d05();
+        var incomeRule = d05.paths().getFirst().checks().stream().filter(check -> check.id().equals("income"))
+                .findFirst().orElseThrow().rule();
+        var content = pathChecks(d05, List.of(new ProfileCheck("income", "세대 합산 소득",
+                incomeRule, equal(IS_HOUSEHOLD_SEPARATED, "false"), "scope", List.of("source"))));
+        var option = evaluate(content, b()).options().getFirst();
+        assertThat(option.status()).isEqualTo(UNDETERMINED);
+        assertThat(option.directCheckGuidanceIds()).containsExactly("scope");
+        assertThat(option.reminderGuidanceIds()).doesNotContain("scope");
+    }
+
+    @Test
+    void 모든_조건이_적용_조건_밖이면_비교한_조건이_없어_지원_가능으로_확정하지_않는다() {
+        var original = EligibilityFixtures.d05();
+        var content = new EligibilityContent(original.metadata(), original.documents(), original.evidences(),
+                original.supplyUnits(), original.paths(), original.options(), original.guidances(),
+                original.quantities(), original.rentOffers(), original.schedules(), List.of(), original.qualifications());
+        var parent = with(with(singleParent(), HOUSEHOLD_MONTHLY_INCOME, 9000000L), FAMILY_TOTAL_ASSETS, 900000000L);
+        var option = evaluate(content, with(with(parent, FAMILY_OWNS_CAR, true), FAMILY_CAR_VALUE, 90000000L))
+                .options().getFirst();
+        assertThat(option.reminderGuidanceIds()).containsExactly("scope");
+        assertThat(option.status()).isEqualTo(NOT_EVALUATED);
+    }
+
+    private EligibilityContent pathChecks(EligibilityContent content, List<ProfileCheck> checks) {
+        var path = content.paths().getFirst();
+        return new EligibilityContent(content.metadata(), content.documents(), content.evidences(), content.supplyUnits(),
+                List.of(new EligibilityPath(path.id(), path.label(), path.kind(), checks, path.qualificationIds())),
+                content.options(), content.guidances(), content.quantities(), content.rentOffers(), content.schedules(),
+                content.commonChecks(), content.qualifications());
+    }
+
+    @Test
     void D11_한부모_가족형태는_법정_자격을_자동_충족하지_않는다() {
         var result = evaluate(EligibilityFixtures.d11(), singleParent());
         assertThat(result.status()).isEqualTo(UNDETERMINED);

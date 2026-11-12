@@ -82,23 +82,24 @@ class EligibilityProfileTest {
     }
 
     @Test
-    void 혼인예정일이_지나도_실제_혼인기간으로_계산하지_않는다() {
+    void 혼인_예정이면_예정일과_상관없이_기준일에_막_혼인한_것으로_보고_혼인기간을_비교한다() {
+        // 예정일이 지난 예정 입력도 실제 혼인기간으로 계산하지 않는다(2020년 예정이 '6년 전 혼인'이 되지 않게).
         var user = with(b(), MARRIAGE_EVENT, new DateEvent("PLANNED", LocalDate.of(2020, 1, 1)));
         user.validate(TODAY);
-        ProfileRule rule =
-                new ProfileRule(
-                        ProfileRule.Operator.MONTHS_SINCE,
-                        MARRIAGE_EVENT,
-                        null,
-                        0L,
-                        84L,
-                        List.of(),
-                        null,
-                        List.of());
-        var reading = new ProfileRuleEvaluator(TODAY, user, STANDARDS, null).evaluate(rule);
-        assertThat(reading.status()).isEqualTo(RuleReading.Status.DIRECT_CHECK_REQUIRED);
+        var evaluator = new ProfileRuleEvaluator(TODAY, user, STANDARDS, null);
+        var reading = evaluator.evaluate(marriedWithin(0L, 84L));
+        assertThat(reading.status()).isEqualTo(RuleReading.Status.SATISFIED);
+        assertThat(reading.comparedValues()).containsEntry("comparedValue", 0L)
+                .containsEntry("providedValue", new DateEvent("PLANNED", LocalDate.of(2020, 1, 1)));
+        assertThat(evaluator.evaluate(marriedWithin(12L, 84L)).status())
+                .isEqualTo(RuleReading.Status.NOT_SATISFIED);
         assertThat(user.value(MARRIAGE_EVENT).value())
                 .isEqualTo(new DateEvent("PLANNED", LocalDate.of(2020, 1, 1)));
+    }
+
+    private static ProfileRule marriedWithin(long minimum, long maximum) {
+        return new ProfileRule(ProfileRule.Operator.MONTHS_SINCE, MARRIAGE_EVENT, null, minimum, maximum,
+                List.of(), null, List.of());
     }
 
     @Test
@@ -126,7 +127,7 @@ class EligibilityProfileTest {
     }
 
     @Test
-    void 출산예정일과_실제_생년월일을_구분하고_태아를_태어난_아이로_추정하지_않는다() {
+    void 출산_예정이면_기준일에_막_태어난_0세_아이로_보고_실제_생년월일의_미래_날짜는_받지_않는다() {
         var user =
                 with(
                         with(
@@ -140,7 +141,12 @@ class EligibilityProfileTest {
                         new ProfileRuleEvaluator(TODAY, user, STANDARDS, null)
                                 .evaluate(age(YOUNGEST_CHILD, 0, 6))
                                 .status())
-                .isEqualTo(RuleReading.Status.DIRECT_CHECK_REQUIRED);
+                .isEqualTo(RuleReading.Status.SATISFIED);
+        assertThat(
+                        new ProfileRuleEvaluator(TODAY, user, STANDARDS, null)
+                                .evaluate(age(YOUNGEST_CHILD, 1, 6))
+                                .status())
+                .isEqualTo(RuleReading.Status.NOT_SATISFIED);
         assertThatThrownBy(
                         () ->
                                 with(user, YOUNGEST_CHILD, new DateEvent("BORN", TODAY.plusDays(1)))

@@ -2,6 +2,7 @@ package com.toadzip.backend.eligibility.service;
 
 import com.toadzip.backend.announcement.dto.response.SavedAnnouncementPdfExtraction;
 import com.toadzip.backend.announcement.service.AnnouncementPdfExtractionService;
+import com.toadzip.backend.eligibility.domain.EligibilityContent;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft.Document;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft.Source;
@@ -58,27 +59,14 @@ public class EligibilityExtractionDraftService {
     }
 
     public ExtractionDraft create(long announcementId, DraftFromExtraction request) {
-        SavedAnnouncementPdfExtraction latest = extractions.latest(announcementId);
-        if (latest == null) {
-            throw new EligibilityDraftUnavailableException("PDF 추출 결과가 없습니다. 공고 PDF를 먼저 추출해 주세요.");
-        }
-        if (!request.pdfSha256().equalsIgnoreCase(latest.pdfSha256())) {
-            throw new EligibilityDraftUnavailableException(
-                    "화면의 PDF와 최신 추출 결과가 다릅니다. 화면을 새로 고친 뒤 다시 만들어 주세요.");
-        }
+        SavedAnnouncementPdfExtraction latest = latest(announcementId, request.pdfSha256());
         String url = sources.attachmentUrl(announcementId, latest.fileName()).orElseThrow(() ->
                 new EligibilityDraftUnavailableException(
                         "추출한 PDF(" + latest.fileName() + ")가 공고 첨부에 없어 원문 주소를 알 수 없습니다. 공고 첨부의 PDF로 추출해 주세요."));
         LocalDate referenceDate = sources.postedDate(announcementId).orElseThrow(() ->
                 new EligibilityDraftUnavailableException("모집공고일이 없어 신청자격 기준일을 정할 수 없습니다. 공고 정보를 먼저 채워 주세요."));
-        List<RegionSearchResult> catalog = regionSearch.findByKeyword("");
-        ExtractedEligibilityDraft.Draft draft = ExtractedEligibilityDraft.build(new Source(
-                referenceDate,
-                new Document(latest.fileName(), url, latest.extraction().totalPages(), latest.pdfSha256().toLowerCase()),
-                sources.units(announcementId).stream().map(this::normalized).toList(),
-                reader.read(latest.extraction().json()),
-                incomeTables(),
-                name -> regionCodes(catalog, name)));
+        ExtractedEligibilityDraft.Draft draft = ExtractedEligibilityDraft.build(source(latest, url, referenceDate,
+                sources.units(announcementId).stream().map(this::normalized).toList()));
         try {
             RuleSet saved = ruleSets.save(announcementId,
                     new SaveDraft(request.expectedDraftId(), request.expectedRevision(), draft.content()));
@@ -88,6 +76,40 @@ public class EligibilityExtractionDraftService {
             throw new EligibilityDraftUnavailableException("AI 추출로 만든 초안이 신청자격 작성 규칙을 통과하지 못했습니다("
                     + invalid.getMessage() + "). 공고문을 확인해 PDF를 다시 추출하거나 직접 작성해 주세요.");
         }
+    }
+
+    /**
+     * 보정 적용 전 신청자격 탭이 보이는 서버 변환 결과. 공급행에 잇지 않고 저장하지도 않는다.
+     * 적용 전이라 첨부 주소나 모집공고일이 아직 없을 수 있어, 없으면 비운 채 보인다.
+     */
+    public EligibilityContent preview(long announcementId, String pdfSha256) {
+        SavedAnnouncementPdfExtraction latest = latest(announcementId, pdfSha256);
+        return ExtractedEligibilityDraft.preview(source(latest,
+                sources.attachmentUrl(announcementId, latest.fileName()).orElse(null),
+                sources.postedDate(announcementId).orElse(null), List.of()));
+    }
+
+    private SavedAnnouncementPdfExtraction latest(long announcementId, String pdfSha256) {
+        SavedAnnouncementPdfExtraction latest = extractions.latest(announcementId);
+        if (latest == null) {
+            throw new EligibilityDraftUnavailableException("PDF 추출 결과가 없습니다. 공고 PDF를 먼저 추출해 주세요.");
+        }
+        if (pdfSha256 == null || !pdfSha256.equalsIgnoreCase(latest.pdfSha256())) {
+            throw new EligibilityDraftUnavailableException(
+                    "화면의 PDF와 최신 추출 결과가 다릅니다. 화면을 새로 고친 뒤 다시 만들어 주세요.");
+        }
+        return latest;
+    }
+
+    private Source source(SavedAnnouncementPdfExtraction latest, String url, LocalDate referenceDate, List<Unit> units) {
+        List<RegionSearchResult> catalog = regionSearch.findByKeyword("");
+        return new Source(
+                referenceDate,
+                new Document(latest.fileName(), url, latest.extraction().totalPages(), latest.pdfSha256().toLowerCase()),
+                units,
+                reader.read(latest.extraction().json()),
+                incomeTables(),
+                name -> regionCodes(catalog, name));
     }
 
     /** 저장된 공급유형 코드를 화면 이름(행복주택 등)으로, 지역은 판정이 아는 코드만 남긴다. */

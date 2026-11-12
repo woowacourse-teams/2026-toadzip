@@ -1,5 +1,6 @@
 package com.toadzip.backend.eligibility.controller;
 
+import com.toadzip.backend.eligibility.domain.EligibilityContent;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftVersion;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.SaveDraft;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -63,6 +65,13 @@ public class EligibilityRuleSetController {
             @PathVariable long announcementId, @RequestBody JsonNode request) {
         return new ApiResponse<>(
                 extractionDrafts.create(announcementId, codec.request(request, DraftFromExtraction.class)));
+    }
+
+    /** 보정 적용 전 신청자격 탭의 미리보기. 저장하지 않는다. */
+    @GetMapping("/from-extraction/preview")
+    public ApiResponse<EligibilityContent> previewFromExtraction(
+            @PathVariable long announcementId, @RequestParam String pdfSha256) {
+        return new ApiResponse<>(extractionDrafts.preview(announcementId, pdfSha256));
     }
 
     @PostMapping("/validation")

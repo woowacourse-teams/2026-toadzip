@@ -130,6 +130,12 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
             and not re.search(r"잔여|기존|현재|대기", header),
         # 모집호수를 입주자·예비자로 나눈 표의 입주자 열도 당첨자 수다(예비입주자는 아니다). 모집수는 둘의 합이다(source_check).
         "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
+        # 공급호수를 우선·일반 공급으로 나눈 표(행복주택)의 두 하위 열. 모집수는 둘의 합이다(source_check.recruitment_count).
+        # 임대조건을 우선·일반 신청자 묶음으로 나눈 금액 열이나 '예비자 > 일반공급'처럼 다른 수량 아래의 구분은 아니다.
+        "priorityCount": lambda header: bool(re.search(r"우선\s*공급", header)
+            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자", header)),
+        "generalCount": lambda header: bool(re.search(r"일반\s*공급", header)
+            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자", header)),
         "totalSupplyHouseholdCount": lambda header: bool(
             re.search(r"모집\s*(?:호수|인원|세대수)", header)
             # 모집호수 아래로 나뉜 입주자 하위 열("모집호수입주자")만 뺀다. 한 칸짜리 "입주자 모집호수"는 모집호수 열이다.
@@ -180,6 +186,10 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if total is not None and "reserveCount" in columns and "supplyHouseholdCount" not in columns \
             and "계" not in normalized_headers[total]:
         columns["supplyHouseholdCount"] = columns.pop("totalSupplyHouseholdCount")
+    # 우선·일반 공급 열은 둘이 함께 있을 때만 모집수의 두 부분이다.
+    if ("priorityCount" in columns) != ("generalCount" in columns):
+        columns.pop("priorityCount", None)
+        columns.pop("generalCount", None)
     # 단지명(소재지)처럼 한 열이 단지명이면서 위치이면 주소로 쓰지 않는다.
     if columns.get("address") is not None and columns.get("address") == columns.get("complexName"):
         del columns["address"]

@@ -119,7 +119,10 @@ function mapReading(id: string, label: string, raw: Json, rule: Json, source: Ev
     typeof sourceBasis.familyCount === 'number' ? `${sourceBasis.familyCount}인 가구` : '',
     typeof sourceBasis.percent === 'number' ? `${sourceBasis.percent}%` : ''].filter(Boolean).join(' · ') || null
   return { id, label, status: oneOf(raw.status, ['SATISFIED', 'NOT_SATISFIED', 'INPUT_NEEDED', 'DIRECT_CHECK_REQUIRED']),
-    mine, criterion: criterion(compared, rule, name), basis, evidence: source,
+    // NOT_APPLIED: 가산 대상 등 이 기준이 그대로 적용되지 않는 사람이라 비교하지 않았다. 판정은 막지 않는다.
+    mine, criterion: compared.reason === 'NOT_APPLIED'
+      ? `기본 기준 ${criterion(compared, rule, name)}${mine ? ` · 입력값 ${mine}` : ''} · 가족 상황에 따라 다른 기준이 적용돼요. 신청 전 확인할 것을 봐 주세요.`
+      : criterion(compared, rule, name), basis, evidence: source,
     fields: missing.length ? missing : name ? [name] : [], missingReason: missing.length ? 'UNANSWERED' : null, children }
 }
 function mapCheck(raw: unknown, authored: Json[], content: Json): CheckView {
@@ -156,6 +159,8 @@ function mapComparison(value: unknown): ComparisonView {
     const requiredIds = strings(option.requiredQualificationIds)
     const directIds = strings(option.directCheckGuidanceIds)
     const exclusionIds = strings(option.exclusionGuidanceIds)
+    // 판정을 막지 않는 신청 전 확인 안내. 이 필드가 생기기 전에 저장된 결과에는 없다.
+    const reminderIds = option.reminderGuidanceIds == null ? [] : strings(option.reminderGuidanceIds)
     return {
       key: text(option.optionId), label: text(option.pathLabel), units: text(option.unitLabel), status: status(option.status),
       regionCodes: strings(option.regionCodes), message: text(option.message), missingInputMessage: nullableText(option.missingInputMessage),
@@ -165,7 +170,8 @@ function mapComparison(value: unknown): ComparisonView {
         title: text(item.exactName), body: text(item.conditionsAsWritten), items: item.legalBasis ? [text(item.legalBasis)] : [],
         evidence: evidence(content, item.evidenceIds),
       })),
-      guidances: guidances.filter((item) => directIds.includes(text(item.id))).map((item) => guidance(item, content)),
+      guidances: guidances.filter((item) => directIds.includes(text(item.id)) || reminderIds.includes(text(item.id)))
+        .map((item) => guidance(item, content)),
       exclusions: guidances.filter((item) => exclusionIds.includes(text(item.id))).map((item) => guidance(item, content)),
     }
   }) }

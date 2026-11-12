@@ -31,13 +31,16 @@ public record EligibilityDecision(
             String pathId, String pathLabel, RecruitmentStatus recruitmentStatus, Status status,
             String message, String missingInputMessage,
             List<ProfileField> missingInputs, List<String> requiredQualificationIds,
-            List<String> directCheckGuidanceIds, List<String> exclusionGuidanceIds) {
+            List<String> directCheckGuidanceIds, List<String> exclusionGuidanceIds,
+            List<String> reminderGuidanceIds) {
+        /** reminderGuidanceIds: 판정을 막지 않고 신청 전에 확인하라고 보이는 안내. 이 필드 전에 저장한 결과에는 없다. */
         public OptionDecision {
             regionCodes = List.copyOf(regionCodes);
             missingInputs = List.copyOf(missingInputs);
             requiredQualificationIds = List.copyOf(requiredQualificationIds);
             directCheckGuidanceIds = List.copyOf(directCheckGuidanceIds);
             exclusionGuidanceIds = List.copyOf(exclusionGuidanceIds);
+            reminderGuidanceIds = reminderGuidanceIds == null ? List.of() : List.copyOf(reminderGuidanceIds);
         }
     }
 

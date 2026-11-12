@@ -1,7 +1,7 @@
 import { isRecord } from '../management/managementContract'
 import { readExtractionDocument, type Evidence } from './extraction'
 
-export type ExtractedRequirement = { text: string; evidence: Evidence | null }
+export type ExtractedRequirement = { kind: string; text: string; evidence: Evidence | null }
 export type ExtractedGroup = { title: string; requirements: ExtractedRequirement[]; qualifications: string[] }
 /** PDF 추출 결과에 든 신청자격을 보정 적용 전에 그대로 보이기 위한 모양. 판정 조건으로 바꾸는 일은 서버가 초안을 만들 때 한다. */
 export type ExtractedEligibility = { groups: ExtractedGroup[]; exclusions: { title: string; body: string }[] }
@@ -23,7 +23,7 @@ export function readExtractedEligibility(source: string): ExtractedEligibility |
     return {
       title,
       requirements: records(item.requirements).map((requirement, index) => ({
-        text: text(requirement.asWritten), evidence: evidence.get(`${path}.requirements[${index}]`) ?? null,
+        kind: text(requirement.kind), text: text(requirement.asWritten), evidence: evidence.get(`${path}.requirements[${index}]`) ?? null,
       })).filter(requirement => requirement.text),
       qualifications: records(item.qualifications).map(qualification => text(qualification.exactName)).filter(Boolean),
     }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,6 +63,32 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     }
 
     @Test
+    void 자동_판정할_조건이_하나도_없어도_직접_확인으로_초안을_남긴다() throws Exception {
+        // 공통 요건을 하나도 자동 판정할 수 없으면 모두 직접 확인 안내가 되고, 경로는 신청 가능으로 확정되지 않는다.
+        long nothingJudgeable = notice(true);
+        jdbc.update("UPDATE ai_jobs SET result = jsonb_set(result, '{json}', to_jsonb(replace(result->>'json',"
+                + " '\"kind\":\"NO_HOUSE\"', '\"kind\":\"OTHER\"'))) WHERE announcement_id = ?", nothingJudgeable);
+
+        JsonNode content = response(fromExtraction(nothingJudgeable, SHA, null, 0).andExpect(status().isOk()))
+                .path("ruleSet").path("content");
+
+        assertThat(content.path("commonChecks").isEmpty()).isTrue();
+        // 경로마다 그 경로 전체에 걸리는 직접 확인이 있어야 판정이 판단 보류로 남는다.
+        for (JsonNode path : content.path("paths")) {
+            String id = path.path("id").asString();
+            boolean direct = false;
+            for (JsonNode guidance : content.path("guidances")) {
+                for (JsonNode target : guidance.path("targets")) {
+                    direct |= guidance.path("kind").asString().equals("REQUIRED_QUALIFICATION")
+                            && (target.path("scope").asString().equals("ANNOUNCEMENT")
+                            || target.path("scope").asString().equals("PATH") && target.path("pathId").asString().equals(id));
+                }
+            }
+            assertThat(direct).as("경로 %s의 직접 확인", id).isTrue();
+        }
+    }
+
+    @Test
     void 초안을_만들_수_없는_상태는_이유와_함께_거절하고_초안을_남기지_않는다() throws Exception {
         long withoutExtraction = announcement();
         rejected(withoutExtraction, SHA, "PDF 추출 결과가 없습니다");
@@ -76,12 +103,6 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         long olderWorker = notice(false);
         rejected(olderWorker, SHA, "이 추출 결과에는 신청자격이 없습니다");
 
-        // 공통 요건을 하나도 자동 판정할 수 없고 경로에도 조건이 없으면 작성 규칙을 통과하지 못한다(400이 아니라 이유가 담긴 409).
-        long nothingJudgeable = notice(true);
-        jdbc.update("UPDATE ai_jobs SET result = jsonb_set(result, '{json}', to_jsonb(replace(result->>'json',"
-                + " '\"kind\":\"NO_HOUSE\"', '\"kind\":\"OTHER\"'))) WHERE announcement_id = ?", nothingJudgeable);
-        rejected(nothingJudgeable, SHA, "작성 규칙을 통과하지 못했습니다");
-
         // 관리자가 공급대상을 모두 뺀 공급행은 대상 구분이 없는 행이 아니다. 아무 경로도 잇지 않는다.
         long allTargetsExcluded = notice(true);
         jdbc.update("UPDATE supply_targets SET admin_excluded = true WHERE supply_row_id IN"
@@ -95,8 +116,49 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                 .andExpect(status().isForbidden());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id IN (?, ?, ?, ?)",
                 Long.class, withoutExtraction, otherPdf, withoutAttachment, olderWorker)).isZero();
+    }
+
+    @Test
+    void 적용_전_미리보기는_공급행_없이_변환_결과를_보이고_저장하지_않는다() throws Exception {
+        long announcement = notice(true);
+        String rows = "(SELECT id FROM supply_rows WHERE announcement_id = ?)";
+        jdbc.update("DELETE FROM supply_targets WHERE supply_row_id IN " + rows, announcement);
+        jdbc.update("DELETE FROM supply_target_count_groups WHERE supply_row_id IN " + rows, announcement);
+        jdbc.update("DELETE FROM supply_rows WHERE announcement_id = ?", announcement);
+        jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id = ?", announcement);
+
+        JsonNode content = response(mvc.perform(get(admin(announcement) + "/from-extraction/preview")
+                .param("pdfSha256", SHA).with(user("admin").roles("ADMIN"))).andExpect(status().isOk()));
+
+        assertThat(texts(content.path("paths"), "label")).containsExactly("청년", "고령자");
+        assertThat(texts(content.path("commonChecks"), "label")).containsExactly("무주택세대구성원");
+        // 입력으로 판정할 수 없는 청약통장 요건은 판정을 막지 않는 목록으로 근거 쪽과 함께 보인다.
+        JsonNode listed = null;
+        for (JsonNode guidance : content.path("guidances")) {
+            if (guidance.path("title").asString().equals("공고문에서 확인할 자격")) {
+                listed = guidance;
+            }
+        }
+        assertThat(listed).isNotNull();
+        assertThat(listed.path("kind").asString()).isEqualTo("REQUIRED_CHECK");
+        assertThat(texts(listed.path("items"))).containsExactly("입주 전까지 청약통장 가입");
+        String evidence = listed.path("evidenceIds").get(0).asString();
+        List<Integer> pages = new ArrayList<>();
+        content.path("evidences").forEach(item -> {
+            if (item.path("id").asString().equals(evidence)) {
+                pages.add(item.path("firstPage").asInt());
+            }
+        });
+        assertThat(pages).containsExactly(5);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?",
-                Long.class, nothingJudgeable)).isZero();
+                Long.class, announcement)).isZero();
+
+        mvc.perform(get(admin(announcement) + "/from-extraction/preview").param("pdfSha256", "b".repeat(64))
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("화면의 PDF와 최신 추출 결과가 다릅니다")));
+        mvc.perform(get(admin(announcement) + "/from-extraction/preview").param("pdfSha256", SHA)
+                .with(user(Long.toString(USER)).roles("USER"))).andExpect(status().isForbidden());
     }
 
     private void rejected(long announcement, String sha, String message) throws Exception {
