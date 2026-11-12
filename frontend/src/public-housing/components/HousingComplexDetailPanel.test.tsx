@@ -49,6 +49,7 @@ const BASE_DETAIL: HousingComplexDetailData = {
           deposit: 50_000_000,
           monthlyRent: 200_000,
           convertibleDeposit: null,
+          postedDate: null,
         },
       ],
     },
@@ -196,7 +197,7 @@ describe('HousingComplexDetailPanel', () => {
     const { panel } = renderPanel(detailWith({ housingTypes: [{
       ...BASE_DETAIL.housingTypes[0],
       basicRentalCondition: { deposit: 42_000_000, monthlyRent: 185_500, source: 'MYHOME', sourceUrl: null, collectedAt: null },
-      currentSupplyConditions: [{ target: '청년', deposit: null, monthlyRent: 200_000, convertibleDeposit: null }],
+      currentSupplyConditions: [{ target: '청년', deposit: null, monthlyRent: 200_000, convertibleDeposit: null, postedDate: null }],
     }] }))
     const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
     const basicRow = within(table).getByText('기본 임대조건').closest('tr')!
@@ -204,12 +205,34 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(basicRow).getByText('18만 5,500원')).toBeInTheDocument()
     const currentRow = within(table).getByText('청년').closest('tr')!
     expect(within(currentRow).getByText('현재 공급')).toBeInTheDocument()
-    expect(within(currentRow).getByRole('cell', { name: '-' })).toBeInTheDocument()
+    expect(within(currentRow).getAllByRole('cell')[1]).toHaveTextContent(/^-$/)
     expect(within(currentRow).getByText('20만원')).toBeInTheDocument()
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })).not.toHaveTextContent('4,200만원')
     expect(within(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' }))
       .getAllByRole('cell', { name: '-' })).toHaveLength(2)
+  })
+
+  it('임대조건 행마다 값의 업데이트일을 표시하고 표 아래에 출처와 기준 시점을 안내한다', () => {
+    const { panel } = renderPanel(detailWith({ housingTypes: [{
+      ...BASE_DETAIL.housingTypes[0],
+      basicRentalCondition: { deposit: 42_000_000, monthlyRent: 185_500, source: 'MYHOME', sourceUrl: null, collectedAt: '2026-10-09T18:30:00Z' },
+      currentSupplyConditions: [
+        { target: '청년', deposit: 50_000_000, monthlyRent: 200_000, convertibleDeposit: null, postedDate: '2026-08-20' },
+        { target: '대학생', deposit: 40_000_000, monthlyRent: 220_000, convertibleDeposit: null, postedDate: null },
+      ],
+    }] }))
+    const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    const headers = within(table).getAllByRole('columnheader')
+    expect(headers.at(-1)).toHaveTextContent('업데이트일')
+    const basicRow = within(table).getByText('기본 임대조건').closest('tr')!
+    expect(within(basicRow).getByText('26.10.10')).toHaveAttribute('datetime', '2026-10-09T18:30:00Z')
+    const currentRow = within(table).getByText('청년').closest('tr')!
+    expect(within(currentRow).getByText('26.08.20')).toHaveAttribute('datetime', '2026-08-20')
+    const undatedRow = within(table).getByText('대학생').closest('tr')!
+    expect(within(undatedRow).getAllByRole('cell').at(-1)).toHaveTextContent('-')
+    expect(within(section(panel, '주택형별 임대조건')).getByText(/마이홈·LH·SH·GH 공식 정보.*업데이트일 기준/))
+      .toBeInTheDocument()
   })
 
   it.each([null, 'javascript:alert(1)'])('출처 주소 %s는 링크로 만들지 않고 잘못된 수집일은 표시하지 않는다', (sourceUrl) => {
@@ -473,6 +496,7 @@ describe('HousingComplexDetailPanel', () => {
                 deposit: 0,
                 monthlyRent: 0,
                 convertibleDeposit: null,
+                postedDate: null,
               },
             ],
           },
@@ -529,6 +553,7 @@ describe('HousingComplexDetailPanel', () => {
           deposit: 180_000_000,
           monthlyRent: 205_500,
           convertibleDeposit: 18_000_000,
+          postedDate: null,
         }],
       }],
     }))
@@ -661,18 +686,18 @@ describe('HousingComplexDetailPanel', () => {
     expect(screen.getByRole('tabpanel', { name: '36A' })).toBeVisible()
   })
 
-  it('4열 비교표에 대상별 보증금·월세 쌍을 섞지 않고 표시하며 조건 없는 주택형도 선택할 수 있다', () => {
+  it('5열 비교표에 대상별 보증금·월세 쌍을 섞지 않고 표시하며 조건 없는 주택형도 선택할 수 있다', () => {
     const { panel } = renderPanel(detailWith({
       housingTypes: [{
         ...BASE_DETAIL.housingTypes[0],
         currentSupplyConditions: [
-          { target: '청년', deposit: 50_000_000, monthlyRent: 200_000, convertibleDeposit: null },
-          { target: '대학생', deposit: 40_000_000, monthlyRent: 220_000, convertibleDeposit: null },
+          { target: '청년', deposit: 50_000_000, monthlyRent: 200_000, convertibleDeposit: null, postedDate: null },
+          { target: '대학생', deposit: 40_000_000, monthlyRent: 220_000, convertibleDeposit: null, postedDate: null },
         ],
       }, BASE_DETAIL.housingTypes[1]],
     }))
     const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
-    expect(within(table).getAllByRole('columnheader')).toHaveLength(4)
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(5)
     const youngRow = within(table).getByText('청년').closest('tr')!
     expect(within(youngRow).getByText('5,000만원')).toBeInTheDocument()
     expect(within(youngRow).getByText('20만원')).toBeInTheDocument()
@@ -682,7 +707,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     const missingRow = within(table).getByRole('rowheader', { name: '44B' }).closest('tr')!
-    expect(within(missingRow).getAllByRole('cell', { name: '-' })).toHaveLength(2)
+    expect(within(missingRow).getAllByRole('cell', { name: '-' })).toHaveLength(3)
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     expect(within(panel).getByRole('tabpanel', { name: '44B' })).toBeInTheDocument()
   })

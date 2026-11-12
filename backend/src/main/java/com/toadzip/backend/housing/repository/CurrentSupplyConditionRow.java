@@ -1,6 +1,7 @@
 package com.toadzip.backend.housing.repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 public record CurrentSupplyConditionRow(
         long announcementId,
@@ -10,6 +11,7 @@ public record CurrentSupplyConditionRow(
         String target,
         BigDecimal deposit,
         BigDecimal monthlyRent,
-        BigDecimal convertibleDeposit
+        BigDecimal convertibleDeposit,
+        LocalDate postedDate
 ) {
 }

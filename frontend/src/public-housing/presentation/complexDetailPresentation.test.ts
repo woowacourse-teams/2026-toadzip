@@ -103,6 +103,7 @@ function complexDetail(changes: Partial<ComplexDetail> = {}): ComplexDetail {
     housingTypes: [{
       currentSupplyConditions: [{
         convertibleDeposit: null,
+        postedDate: null,
         deposit: 0,
         monthlyRent: 0,
         target: null,

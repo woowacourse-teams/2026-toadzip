@@ -119,6 +119,7 @@ class HousingComplexDetailQueryTest {
                 () -> assertEquals(1000000L,
                         firstType.currentSupplyConditions().getFirst().convertibleDeposit()),
                 () -> assertNull(firstType.currentSupplyConditions().getLast().convertibleDeposit()),
+                () -> assertEquals(TODAY, firstType.currentSupplyConditions().getFirst().postedDate()),
                 () -> assertEquals(
                         new BigDecimal("2.5000"),
                         response.currentAnnouncements().getFirst().actualCompetitionRate()
@@ -234,7 +235,8 @@ class HousingComplexDetailQueryTest {
                         "청년",
                         new BigDecimal("1.50"),
                         new BigDecimal("100000.00"),
-                        null
+                        null,
+                        TODAY
                 )
         ));
 
@@ -356,7 +358,8 @@ class HousingComplexDetailQueryTest {
                         "신혼부부",
                         new BigDecimal("30000000.00"),
                         new BigDecimal("300000.00"),
-                        new BigDecimal("3000000.00")
+                        new BigDecimal("3000000.00"),
+                        TODAY
                 ),
                 new CurrentSupplyConditionRow(
                         201L,
@@ -366,7 +369,8 @@ class HousingComplexDetailQueryTest {
                         "대학생",
                         new BigDecimal("10000000.00"),
                         new BigDecimal("100000.00"),
-                        new BigDecimal("1000000.00")
+                        new BigDecimal("1000000.00"),
+                        TODAY
                 ),
                 new CurrentSupplyConditionRow(
                         201L,
@@ -376,7 +380,8 @@ class HousingComplexDetailQueryTest {
                         "청년",
                         new BigDecimal("20000000.00"),
                         new BigDecimal("200000.00"),
-                        null
+                        null,
+                        TODAY
                 )
         ));
         when(detailRepository.findCurrentAnnouncements(COMPLEX_ID, TODAY)).thenReturn(List.of(

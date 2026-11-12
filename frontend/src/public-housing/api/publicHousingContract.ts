@@ -838,6 +838,10 @@ function decodeComplexSupplyCondition(
       recordField(condition, 'convertibleDeposit', path),
       `${path}.convertibleDeposit`,
     ),
+    // 게시일을 내려 주기 전 백엔드와 함께 배포되는 동안에는 없을 수 있어 날짜 없음으로 읽는다.
+    postedDate: Object.hasOwn(condition, 'postedDate')
+      ? nullableDateStringAt(condition.postedDate, `${path}.postedDate`)
+      : null,
   }
 }
 

@@ -1,9 +1,12 @@
 package com.toadzip.backend.housing.dto.response;
 
+import java.time.LocalDate;
+
 public record CurrentSupplyConditionResponse(
         String target,
         Long deposit,
         Long monthlyRent,
-        Long convertibleDeposit
+        Long convertibleDeposit,
+        LocalDate postedDate
 ) {
 }

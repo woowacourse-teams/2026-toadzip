@@ -94,7 +94,8 @@ public class ComplexDetailQueryRepository {
                    supply_target.target,
                    supply_target.rental_deposit AS deposit,
                    supply_target.monthly_rent,
-                   supply_target.converted_deposit AS convertible_deposit
+                   supply_target.converted_deposit AS convertible_deposit,
+                   announcement.posted_date
             FROM current_leaf announcement
             JOIN supply_rows supply_row
               ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
@@ -277,7 +278,8 @@ public class ComplexDetailQueryRepository {
                 resultSet.getString("target"),
                 resultSet.getBigDecimal("deposit"),
                 resultSet.getBigDecimal("monthly_rent"),
-                resultSet.getBigDecimal("convertible_deposit")
+                resultSet.getBigDecimal("convertible_deposit"),
+                resultSet.getObject("posted_date", LocalDate.class)
         );
     }
 

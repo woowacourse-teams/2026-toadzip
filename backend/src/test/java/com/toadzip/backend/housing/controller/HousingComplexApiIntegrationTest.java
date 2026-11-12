@@ -585,6 +585,8 @@ class HousingComplexApiIntegrationTest {
                         .value(10000000))
                 .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[0].monthlyRent")
                         .value(100000))
+                .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[0].postedDate")
+                        .value(TODAY.minusDays(1).toString()))
                 .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[1].target").value("청년"))
                 .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[1].deposit")
                         .value(20000000))

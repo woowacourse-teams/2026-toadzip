@@ -27,13 +27,18 @@ import { NotificationInterestButton } from '../interest/NotificationInterest'
 import { StreetViewEntry } from '../../street-view/StreetViewEntry'
 import type { StreetViewController } from '../../street-view/useStreetView'
 import type { ComplexBasicRentalCondition } from '../model/publicHousing'
-import { formatRentalConditionCollectedDate, housingTypeLabels } from '../presentation/complexDetailPresentation'
+import {
+  formatRentalConditionCollectedDate,
+  formatRentalConditionUpdatedDate,
+  housingTypeLabels,
+} from '../presentation/complexDetailPresentation'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
   readonly deposit: number | null
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
+  readonly postedDate: string | null
 }
 
 export interface HousingComplexDetailHousingType {
@@ -257,12 +262,14 @@ export function HousingComplexDetailPanel({
             <DetailSection appearance="block" title="주택형별 임대조건"
               actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
               <div className={styles.comparison}>
-                <DetailTable caption="주택형별 임대조건 비교" minWidth={520}>
+                <DetailTable caption="주택형별 임대조건 비교" minWidth={340}>
+                  {/* 값 열은 내용 폭에 맞추고 남는 폭은 전용면적·공급 대상 열에 준다. */}
                   <colgroup>
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '28%' }} />
-                    <col style={{ width: '27%' }} />
-                    <col style={{ width: '27%' }} />
+                    <col style={{ width: '3em' }} />
+                    <col />
+                    <col style={{ width: '5em' }} />
+                    <col style={{ width: '6.4em' }} />
+                    <col style={{ width: '4.6em' }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -270,6 +277,7 @@ export function HousingComplexDetailPanel({
                       <th scope="col">전용면적<span className={styles.conditionTarget}>조건 / 공급 대상</span></th>
                       <th scope="col">보증금</th>
                       <th scope="col">월 임대료</th>
+                      <th scope="col">업데이트일</th>
                     </tr>
                   </thead>
                   {detail.housingTypes.map((housingType) => {
@@ -294,6 +302,9 @@ export function HousingComplexDetailPanel({
                             <td data-numeric data-emphasis={Number.isFinite(condition?.monthlyRent) || undefined}>
                               <DetailMoney value={condition?.monthlyRent} />
                             </td>
+                            <td className={styles.updatedDate}>
+                              <ConditionUpdatedDate value={condition?.updatedAt ?? null} />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -301,6 +312,15 @@ export function HousingComplexDetailPanel({
                   })}
                 </DetailTable>
               </div>
+              <p className={styles.comparisonNote}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                  strokeLinejoin="round" aria-hidden="true" focusable="false">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 11v5" />
+                  <path d="M12 8h.01" />
+                </svg>
+                <span>마이홈·LH·SH·GH 공식 정보에서 가져온 업데이트일 기준 금액이에요. 공고마다 달라질 수 있어요.</span>
+              </p>
             </DetailSection>
             <DetailSection appearance="block" title="주택형 정보">
               <div
@@ -622,10 +642,19 @@ function rentalComparisonConditions(housingType: HousingComplexDetailHousingType
   const conditions = [
     ...(basic === null ? [] : [{
       label: '기본 임대조건', target: null, deposit: basic.deposit, monthlyRent: basic.monthlyRent,
+      updatedAt: basic.collectedAt,
     }]),
-    ...housingType.currentSupplyConditions.map((condition) => ({ ...condition, label: '현재 공급' })),
+    ...housingType.currentSupplyConditions.map((condition) => ({
+      ...condition, label: '현재 공급', updatedAt: condition.postedDate,
+    })),
   ]
   return conditions.length > 0 ? conditions : [null]
+}
+
+/** 기본 조건은 수집 시각(공고 보정이면 공고일), 현재 공급은 공고 게시일을 기준일로 보여 준다. */
+function ConditionUpdatedDate({ value }: { readonly value: string | null }) {
+  const label = formatRentalConditionUpdatedDate(value)
+  return label === null ? <>-</> : <time dateTime={value ?? undefined}>{label}</time>
 }
 
 function SupplyConditionTable({

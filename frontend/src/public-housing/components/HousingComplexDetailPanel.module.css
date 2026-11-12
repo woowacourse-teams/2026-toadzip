@@ -350,7 +350,7 @@
 
 /* 주택형과 공급 대상별 임대조건을 행으로 비교한다. */
 .comparison th,
-.comparison td { padding-inline: 5px; }
+.comparison td { padding-inline: 4px; }
 
 .comparison tbody th { vertical-align: middle; }
 
@@ -364,6 +364,29 @@
 
 .comparison thead th:first-child {
   z-index: 2;
+}
+
+.updatedDate {
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  white-space: nowrap;
+}
+
+.comparisonNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-1);
+  margin: var(--ds-space-2) 0 0;
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-label-md);
+  line-height: var(--ds-line-height-caption);
+}
+
+.comparisonNote svg {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+  margin-top: 0.2em;
 }
 
 .conditionTarget {
