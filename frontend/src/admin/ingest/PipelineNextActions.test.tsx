@@ -35,7 +35,7 @@ it.each([
   render(<MemoryRouter><PipelineNextActions execution={execution(type, 'COMPLETED')} /></MemoryRouter>)
   expect(screen.getByRole('link', { name: '공개 전 확인이 필요한 공고 보기' }))
     .toHaveAttribute('href', `/admin/announcements?unconfirmed=true&provider=${provider}`)
-  expect(screen.getByText(/PDF 보정에서 단지를 확인하고 공개를 요청해야 사용자에게 보입니다/)).toBeVisible()
+  expect(screen.getByText(/PDF 보정에서 공급행을 단지에 연결하고 보정을 적용하면 곧바로 사용자에게 보입니다/)).toBeVisible()
 })
 
 it.each(['IDLE', 'RUNNING', 'FAILED', 'STOPPED'] as const)('SH 수집이 %s이면 공개 전 확인 안내를 보이지 않는다', status => {

@@ -674,8 +674,8 @@ export function assembledCount(row: RowReview): number | null {
   const value = cell?.selected && !cell.locked ? cell.value : cell?.before
   return typeof value === 'number' ? value : null
 }
-/** 미확정 공고의 공개 전 확인. 비어 있는 임대·모집 유형을 정하고, 단지를 확인했으면 이 보정과 함께 공개를 요청한다. */
-export type ReleaseChoice = { rentalType: string; recruitmentType: string; publish: boolean }
+/** 미확정 공고를 보정과 함께 공개할 때 정하는 공급·모집 유형. 미확정 공고는 보정을 적용하면 곧바로 공개한다. */
+export type ReleaseChoice = { rentalType: string; recruitmentType: string }
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }, release?: ReleaseChoice): JsonUpdateInput {
   const unfinished = review.rows.findIndex(row => row.include && row.proposal.createdComplex)
   if (unfinished >= 0) throw new ReviewError('단지는 등록됐지만 주택형·공급행 연결이 끝나지 않았습니다. 단지 정하기에서 이어서 연결하세요.', `row:${unfinished}`)
@@ -811,7 +811,7 @@ export function assembleReview(review: Review, workspace: JsonWorkspace, evidenc
   for (const field of ['rentalType', 'recruitmentType'] as const) {
     if (release?.[field]) { announcement[field] = release[field]; fields.push(field) }
   }
-  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, ...deleted.length ? { deletedRowKeys: deleted } : {}, ...evidence }, housingTypeValues, ...release?.publish ? { publish: true } : {} }
+  return { snapshotToken: workspace.snapshotToken, document, fields, schedules, attachments: [], correction: { operationId: crypto.randomUUID(), snapshotToken: workspace.supply.snapshotToken, rows: ordered, ...deleted.length ? { deletedRowKeys: deleted } : {}, ...evidence }, housingTypeValues, ...release ? { publish: true } : {} }
 }
 
 type TypeValueInput = { name: unknown; supplyArea: unknown; householdCount: unknown }

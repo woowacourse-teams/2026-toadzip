@@ -99,7 +99,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   const [reviewedWith, setReviewedWith] = useState('')
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [attempt, setAttempt] = useState(0)
   const [blocked, setBlocked] = useState(false), [uncertain, setUncertain] = useState(false)
-  const [release, setRelease] = useState<ReleaseChoice>({ rentalType: '', recruitmentType: '', publish: false }), [published, setPublished] = useState(false), [unchanged, setUnchanged] = useState(false)
+  const [release, setRelease] = useState<ReleaseChoice>({ rentalType: '', recruitmentType: '' }), [published, setPublished] = useState(false), [unchanged, setUnchanged] = useState(false)
   const [attachmentId, setAttachmentId] = useState('')
   const [attachmentPdf, setPdf] = useState<SelectedPdf | null>(null), [pdfError, setPdfError] = useState('')
   // 첨부파일이 없는 기관 공고는 관리자가 원문에서 받은 PDF를 직접 골라 같은 흐름으로 쓴다.
@@ -493,7 +493,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
     </>}
     {phase === 'result' && unchanged && <section className={styles.result}><h2>저장할 변경이 없습니다.</h2><p>PDF와 지금 값이 같아 값은 그대로 두고, 공고문으로 확인한 것으로 남겼습니다.{failureReturn ? ' 이 공고의 미해결 오류를 해결로 바꿨습니다.' : ''}</p><div className={styles.actions}><Link to={back}>공고 상세로 돌아가기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div></section>}
-    {phase === 'result' && !unchanged && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 단지를 확인한 뒤 공개를 요청해 다시 적용하세요.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
+    {phase === 'result' && !unchanged && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 보정을 다시 적용하면 공개됩니다.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
       {(typeResult.housingTypes.length > 0 || typeResult.housingTypeWarnings.length > 0) && <section className={styles.renames} aria-labelledby="housing-type-result-title"><h3 id="housing-type-result-title">공고로 갱신한 주택타입</h3><p className={styles.hint}>공급행에 연결한 주택타입의 이름·공급면적·세대수(건설호수)를 이번 공고 값으로 맞췄습니다. 관리자가 직접 고친 값과 더 최근 공고의 값은 유지합니다.</p>
         {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택타입 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
         {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
@@ -553,7 +553,7 @@ function DraftOffer({ draft, workspace, pdfHash, onRestore, onDiscard }: { draft
   </section>
 }
 
-/** GH·SH 원천으로 만든 공고는 관리자가 PDF 보정에서 단지를 확인하고 공개를 요청하기 전까지 사용자에게 보이지 않는다. */
+/** GH·SH 원천으로 만든 공고는 관리자가 PDF 보정을 적용하기 전까지 사용자에게 보이지 않는다. */
 function unconfirmed(workspace: JsonWorkspace | null) {
   return workspace?.detail.summary.announcement?.releaseStatus === 'UNCONFIRMED'
 }
@@ -564,9 +564,8 @@ function keepLabel(current: unknown) {
 }
 function ReleaseCheck({ value, current, needs, disabled, onChange }: { value: ReleaseChoice; current: { rentalType: unknown; recruitmentType: unknown }; needs: Map<string, string>; disabled: boolean; onChange: (next: ReleaseChoice) => void }) {
   return <section className={styles.releaseCheck} aria-label="공개 전 확인"><h2>공개 전 확인</h2>
-    <p className={styles.hint}>미확정 공고라 사용자에게 보이지 않습니다. 저장하려면 접수처·기본정보에서 접수 시작일·접수 종료일·당첨자 발표일을 채우고, 여기서 공급·모집 유형을 정해야 합니다. 공급행에 연결된 단지를 확인한 뒤 공개를 요청하세요. 공개하면 신규 공고 알림이 나갑니다.</p>
+    <p className={styles.hint}>미확정 공고라 아직 사용자에게 보이지 않습니다. 보정을 적용하면 곧바로 공개되고 신규 공고 알림과 신청자격도 함께 반영됩니다. 적용하려면 접수처·기본정보에서 접수 시작일·접수 종료일·당첨자 발표일을 채우고, 여기서 공급·모집 유형을 정하고, 공급행을 단지에 연결해야 합니다.</p>
     <label>공급 유형<select data-review-id="release:rentalType" aria-invalid={needs.has('release:rentalType')} title={needs.get('release:rentalType')} value={value.rentalType} disabled={disabled} onChange={event => onChange({ ...value, rentalType: event.target.value })}><option value="">{keepLabel(current.rentalType)}</option>{rentals.map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
     <label>모집 유형<select data-review-id="release:recruitmentType" aria-invalid={needs.has('release:recruitmentType')} title={needs.get('release:recruitmentType')} value={value.recruitmentType} disabled={disabled} onChange={event => onChange({ ...value, recruitmentType: event.target.value })}><option value="">{keepLabel(current.recruitmentType)}</option>{['NEW', 'WAITLIST', 'ETC'].map(type => <option key={type} value={type}>{labels[type] ?? type}</option>)}</select></label>
-    <label className={styles.releaseConfirmation}><input type="checkbox" checked={value.publish} disabled={disabled} onChange={event => onChange({ ...value, publish: event.target.checked })} />단지를 확인했고 이 보정과 함께 공개합니다</label>
   </section>
 }
