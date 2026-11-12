@@ -307,11 +307,14 @@ function mapComparison(value: unknown): ComparisonView {
     const exclusionIds = strings(option.exclusionGuidanceIds)
     // 판정을 막지 않는 신청 전 확인 안내. 이 필드가 생기기 전에 저장된 결과에는 없다.
     const reminderIds = option.reminderGuidanceIds == null ? [] : strings(option.reminderGuidanceIds)
+    const checks = [...common, ...list(path?.checks ?? []).map((check) => mapCheck(check, list(authored?.checks ?? []).map(object), content))]
+    // 맞지 않는 항목이 하나라도 보이면 유형 결과도 미충족으로 보여 항목과 결과가 어긋나지 않게 한다.
+    const unmet = checks.some((check) => check.status === 'NOT_SATISFIED')
     return {
-      key: text(option.optionId), label: text(option.pathLabel), units: text(option.unitLabel), status: status(option.status),
+      key: text(option.optionId), label: text(option.pathLabel), units: text(option.unitLabel), status: unmet ? 'INELIGIBLE' : status(option.status),
       regionCodes: strings(option.regionCodes),
       missingInputs: fields(option.missingInputs),
-      checks: [...common, ...list(path?.checks ?? []).map((check) => mapCheck(check, list(authored?.checks ?? []).map(object), content))],
+      checks,
       qualifications: qualifications.filter((item) => requiredIds.includes(text(item.id))).map((item) => ({
         title: text(item.exactName), body: text(item.conditionsAsWritten), items: item.legalBasis ? [text(item.legalBasis)] : [],
         evidence: evidence(content, item.evidenceIds),

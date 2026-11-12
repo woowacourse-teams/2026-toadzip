@@ -256,7 +256,20 @@
 .mark[data-mark='no'] { color: var(--ds-color-deadline); }
 .mark[data-mark='tri'] { color: var(--ds-color-status-upcoming); }
 .mark[data-mark='na'] { color: var(--ds-color-muted); }
-.tab[aria-selected='true'] .mark { color: var(--ds-color-on-brand); }
+/* 선택 여부와 관계없이 같은 크기의 칸을 차지해 탭을 눌러도 글자가 움직이지 않게 한다. */
+.tabMark {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
+  border-radius: 50%;
+}
+
+/* 선택된 탭의 초록 바탕에서도 상태 색이 보이도록 표시 뒤에 흰 원을 깐다. */
+.tab[aria-selected='true'] .tabMark {
+  background: var(--ds-color-surface);
+}
 
 .panel {
   overflow: hidden;
@@ -297,9 +310,9 @@
 
 .verdictIcon {
   display: grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   place-items: center;
   border-radius: 50%;
   background: var(--ds-color-surface);
@@ -339,7 +352,7 @@
 
 .check {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) fit-content(48%);
+  grid-template-columns: 34px minmax(0, 1fr) fit-content(48%);
   align-items: stretch;
   gap: 12px;
   padding: 12px 2px;
@@ -360,8 +373,8 @@
 
 .rowMark {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   align-self: start;
   place-items: center;
   border-radius: 50%;
@@ -418,11 +431,6 @@
   font-weight: 600;
   line-height: 1.45;
   word-break: keep-all;
-}
-
-.quiet {
-  color: var(--ds-color-muted);
-  font-weight: 400;
 }
 
 .side {

@@ -54,6 +54,17 @@ it('수치 미충족의 기준·방향·입력값을 보존하며 다른 정보 
   expect(view.types[0].checks[1]).toMatchObject({ status: 'INPUT_NEEDED', fields: ['HOUSEHOLD_MONTHLY_INCOME'] })
 })
 
+it('맞지 않는 항목이 하나라도 있으면 선택지 결과가 확인 필요여도 미충족으로 보인다', async () => {
+  const checks = [
+    { id: 'assets', label: '총자산', evidenceIds: [], reading: { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: {} } },
+    { id: 'income', label: '세대 소득', evidenceIds: [], reading: { status: 'INPUT_NEEDED', missingInputs: ['HOUSEHOLD_MONTHLY_INCOME'], comparedValues: {} } },
+  ]
+  const data = { ...current, result: { ...current.result, status: 'UNDETERMINED', paths: [{ pathId: 'ordinary', checks }], options: [{ ...current.result.options[0], status: 'UNDETERMINED' }] } }
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(data))
+  const view = await createEligibilityRepository(fetcher).loadComparison(ref)
+  expect(view.types[0].status).toBe('INELIGIBLE')
+})
+
 it('법정 필수 자격과 신청 제한 안내를 별도로 보존한다', async () => {
   const data = { ...current, content: { ...content,
     qualifications: [{ id: 'single-parent', exactName: '지원대상 한부모가족', conditionsAsWritten: '해당 법정 자격 확인', evidenceIds: [] }],
