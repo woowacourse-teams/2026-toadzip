@@ -299,8 +299,10 @@ describe('PublicHousingExplorer', () => {
       fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
       expect(screen.getByText('카메라 37.475,126.9')).toBeVisible()
       expect(screen.getByTestId('map-current-location')).toHaveTextContent('35.18,129.07')
+      vi.useFakeTimers()
       fireEvent.change(screen.getByRole('searchbox'), { target: { value: '강남역' } })
-      fireEvent.click(await screen.findByRole('button', { name: /^강남역/ }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(200) })
+      fireEvent.click(screen.getByRole('button', { name: /^강남역/ }))
       expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
       expect(screen.getByTestId('map-current-location')).toHaveTextContent('35.18,129.07')
 
@@ -563,7 +565,7 @@ describe('PublicHousingExplorer', () => {
     const triggerName = tab === '단지 목록' ? /단지 목록 보기$/ : tab
     const trigger = screen.getByRole('button', { name: triggerName })
     trigger.focus()
-    fireEvent.click(trigger)
+    await act(async () => { fireEvent.click(trigger) })
     expect(screen.getByRole('button', { name: triggerName })).toHaveFocus()
     expect(screen.getByRole('region', { name: detailName })).toBe(detail)
     expect(detail.scrollTop).toBe(160)
@@ -3245,8 +3247,8 @@ describe('PublicHousingExplorer', () => {
       expect(within(panel).getByRole('article', { name: '자동 조회 단지 40' }).compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       act(() => current.notify(true))
       expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
-      fireEvent.click(retry)
-      await within(panel).findByRole('article', { name: '자동 조회 단지 41' })
+      await act(async () => { fireEvent.click(retry) })
+      expect(within(panel).getByRole('article', { name: '자동 조회 단지 41' })).toBeVisible()
       expect(within(panel).getByText('모든 단지를 확인했어요.')).toBeVisible()
       expect(repository.findComplexPage).toHaveBeenLastCalledWith(null, 'next-40', 20, expect.any(AbortSignal), { regionCode: '11' })
     })
@@ -3644,20 +3646,21 @@ describe('PublicHousingExplorer', () => {
     expect(firstPanel).not.toBeInTheDocument()
   })
 
-  it('교차 상세을 두 번 중첩해도 각 부모 상세의 호출 버튼으로 차례로 돌아간다', async () => {
+  it('교차 상세를 두 번 중첩해도 각 부모 상세의 호출 버튼으로 차례로 돌아간다', async () => {
+    vi.useFakeTimers()
     const repository = createRepository()
     renderSearchedExplorer(repository)
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '공고 목록' })) })
-    fireEvent.click(await screen.findByRole('button', {
-      name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
-    }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' }))
+    })
 
-    const firstOpenComplex = await screen.findByRole('button', {
+    const firstOpenComplex = screen.getByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
     firstOpenComplex.focus()
     await act(async () => { fireEvent.click(firstOpenComplex) })
-    const complexPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    const complexPanel = screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
     const firstOpenAnnouncement = within(complexPanel).getByRole('button', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
     })
@@ -3665,17 +3668,19 @@ describe('PublicHousingExplorer', () => {
     await act(async () => { fireEvent.click(firstOpenAnnouncement) })
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 단지로 돌아가기' })) })
-    const restoredComplexPanel = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    const restoredComplexPanel = screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
     const restoredOpenAnnouncement = within(restoredComplexPanel).getByRole('button', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
     })
-    await waitFor(() => expect(restoredOpenAnnouncement).toHaveFocus())
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(restoredOpenAnnouncement).toHaveFocus()
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '← 공고로 돌아가기' })) })
-    const restoredOpenComplex = await screen.findByRole('button', {
+    const restoredOpenComplex = screen.getByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
-    await waitFor(() => expect(restoredOpenComplex).toHaveFocus())
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(restoredOpenComplex).toHaveFocus()
     expect(repository.findAnnouncementPage).toHaveBeenCalledOnce()
   })
 
@@ -3764,43 +3769,45 @@ describe('PublicHousingExplorer', () => {
   })
 
   it('교차 상세의 브라우저 뒤로와 앞으로는 공고와 단지를 URL 순서대로 복원한다', async () => {
+    vi.useFakeTimers()
     const repository = createRepository()
     renderExplorer(repository)
-    fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
-    fireEvent.click(await screen.findByRole('button', {
-      name: '성남 청년 행복주택 입주자 모집 공고 상세 보기',
-    }))
-    const openComplex = await screen.findByRole('button', {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '공고 목록' })) })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' }))
+    })
+    const openComplex = screen.getByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
     openComplex.focus()
-    fireEvent.click(openComplex)
-    await screen.findByRole('complementary', {
+    await act(async () => { fireEvent.click(openComplex) })
+    expect(screen.getByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
-    })
+    })).toBeVisible()
 
-    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
-    expect(await screen.findByRole('complementary', {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' })) })
+    expect(screen.getByRole('complementary', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 정보',
     })).toBeVisible()
     const firstRestoredOpenComplex = screen.getByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
-    await waitFor(() => expect(firstRestoredOpenComplex).toHaveFocus())
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(firstRestoredOpenComplex).toHaveFocus()
     expect(screen.getByTestId('location-search')).toHaveTextContent(
       'announcementId=201',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
-    expect(await screen.findByRole('complementary', {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' })) })
+    expect(screen.getByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).toBeVisible()
     expect(screen.getByTestId('location-search')).toHaveTextContent(
       '?complexId=17',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
-    await waitFor(() => expectCurrentSearch({}))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' })) })
+    expectCurrentSearch({})
     expect(screen.queryByRole('complementary', { name: /상세 정보/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '공고 목록' })).toHaveAttribute('aria-expanded', 'true')
   })
