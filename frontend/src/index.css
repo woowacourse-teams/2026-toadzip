@@ -121,6 +121,12 @@ body,
   margin: 0;
 }
 
+/* 지도 앱 화면은 문서가 스크롤되지 않는다. 트랙패드 바운스가 루트에 걸리면
+   absolute인 레일 로고·하단 메뉴만 튀고 fixed인 탭·패널은 그대로라 레일이 어긋나 보인다. */
+html:has(.app-shell) {
+  overscroll-behavior: none;
+}
+
 button,
 a {
   font: inherit;

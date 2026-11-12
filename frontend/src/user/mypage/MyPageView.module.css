@@ -142,14 +142,14 @@ button.item:focus-visible { outline: 2px solid var(--ds-color-action); outline-o
   .lists { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
   .lists > .sub { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .lists > .sub > .subHeader, .lists > .sub > .kinds { flex-shrink: 0; }
-  .lists > .sub > [role=tabpanel] { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
-  .hub, .lists > .sub > [role=tabpanel] { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
+  .lists > .sub > :is([role=tabpanel], .subBody) { flex: 1; min-height: 0; margin-inline-end: calc(-1 * var(--ds-space-3)); padding-inline-end: var(--ds-space-3); overflow-y: auto; overscroll-behavior-y: none; scrollbar-gutter: stable; }
+  .hub, .lists > .sub > :is([role=tabpanel], .subBody) { scrollbar-width: thin; scrollbar-color: var(--ds-color-border-base) transparent; }
   @supports selector(::-webkit-scrollbar) {
-    :is(.hub, .lists > .sub > [role=tabpanel]) { scrollbar-width: auto; scrollbar-color: auto; }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar { width: 6px; }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-track { background: transparent; }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
-    :is(.hub, .lists > .sub > [role=tabpanel])::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody)) { scrollbar-width: auto; scrollbar-color: auto; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar { width: 6px; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-track { background: transparent; }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--ds-color-border-base); }
+    :is(.hub, .lists > .sub > :is([role=tabpanel], .subBody))::-webkit-scrollbar-thumb:hover { background: var(--ds-color-muted); }
   }
   .hub > .counts.card, .hub > .counts.card > .row { border-radius: 0; }
   .hub > .counts.card > .row + .row { border-top: 0; }
