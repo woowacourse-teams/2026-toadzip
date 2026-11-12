@@ -31,7 +31,7 @@ it('초안을 고쳤는데 공개가 막히면(공고가 공개 전 등) 저장�
   request.mockResolvedValueOnce(set(4, 2, 'DRAFT')).mockRejectedValueOnce(new Error('요청이 충돌했습니다.'))
 
   await expect(applyEligibility('12', set(4, 1, 'DRAFT'), content))
-    .resolves.toEqual({ published: false, reason: '요청이 충돌했습니다.', ruleSet: set(4, 2, 'DRAFT') })
+    .resolves.toEqual({ published: false, saved: true, reason: '요청이 충돌했습니다.', ruleSet: set(4, 2, 'DRAFT') })
   expect(request.mock.calls[0][0]).toBe(`${base}/draft`)
 })
 
@@ -40,7 +40,7 @@ it('공개본을 복사했더니 화면이 읽은 뒤 다른 곳에서 바뀌어
   request.mockResolvedValueOnce({ ...set(4, 0, 'DRAFT'), content: changed })
 
   await expect(applyEligibility('12', set(3, 1, 'PUBLISHED'), content)).resolves
-    .toMatchObject({ published: false, ruleSet: { id: 4, revision: 0, content: changed } })
+    .toMatchObject({ published: false, saved: false, ruleSet: { id: 4, revision: 0, content: changed } })
   expect(request.mock.calls.map(call => call[0])).toEqual([`${base}/draft/copy`])
 })
 
@@ -48,7 +48,7 @@ it('공개본을 복사한 뒤 저장이 실패하면 복사한 초안을 돌려
   request.mockResolvedValueOnce(set(4, 0, 'DRAFT')).mockRejectedValueOnce(new Error('검증 실패'))
 
   await expect(applyEligibility('12', set(3, 1, 'PUBLISHED'), content)).resolves
-    .toEqual({ published: false, reason: '검증 실패', ruleSet: set(4, 0, 'DRAFT') })
+    .toEqual({ published: false, saved: false, reason: '검증 실패', ruleSet: set(4, 0, 'DRAFT') })
 })
 
 it('PDF 추출로 다시 만들 때 공개본은 버전 확인에 넘기지 않고, 초안만 그 버전으로 덮어쓴다', async () => {

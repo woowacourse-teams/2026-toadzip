@@ -65,8 +65,11 @@ export async function publishEligibilityDraft(id: string, current: RuleSet): Pro
   return required(await requestManagementApi(`${path(id)}/publish`, 'POST', version))
 }
 
-/** 고친 결과. 공개하지 못했으면(공고가 공개 전 등) 저장한 초안과 그 이유다. */
-export type Applied = { ruleSet: RuleSet; published: true } | { ruleSet: RuleSet; published: false; reason: string }
+/**
+ * 고친 결과. 공개하지 못했으면 이어서 고칠 초안과 그 이유다. saved는 고친 내용이 그 초안에 저장됐는지다(공개만 막힌 경우 true,
+ * 공개본을 복사한 뒤 저장이 거절되거나 다른 곳에서 바뀐 공개본을 불러온 경우 false).
+ */
+export type Applied = { ruleSet: RuleSet; published: true } | { ruleSet: RuleSet; published: false; saved: boolean; reason: string }
 
 /**
  * 고친 신청자격을 곧바로 사용자에게 반영한다. 공개본이면 초안으로 복사해 고친 뒤 공개하고, 초안이면 저장한 뒤 공개한다.
@@ -78,13 +81,13 @@ export async function applyEligibility(id: string, current: RuleSet, content: Co
   const copied: RuleSet = required(await requestManagementApi(`${path(id)}/copy`, 'POST'))
   // 복사는 지금 공개본을 가져오므로, 화면이 읽은 뒤 다른 곳에서 바뀐 공개본을 예전 화면 내용으로 덮어쓰지 않게 비교한다.
   if (JSON.stringify(copied.content) !== JSON.stringify(current.content)) {
-    return { ruleSet: copied, published: false, reason: '다른 곳에서 바뀐 신청자격을 불러왔어요. 다시 확인한 뒤 고쳐 주세요.' }
+    return { ruleSet: copied, published: false, saved: false, reason: '다른 곳에서 바뀐 신청자격을 불러왔어요. 다시 확인한 뒤 고쳐 주세요.' }
   }
   try {
     return publishSaved(id, await saveEligibilityDraft(id, copied, reviewed))
   } catch (error) {
     // 복사한 초안이 남았으니 화면이 그 초안으로 이어 가게 돌려준다(공개본으로 남으면 다음 복사가 충돌한다).
-    return { ruleSet: copied, published: false, reason: error instanceof Error ? error.message : '저장 요청이 실패했습니다.' }
+    return { ruleSet: copied, published: false, saved: false, reason: error instanceof Error ? error.message : '저장 요청이 실패했습니다.' }
   }
 }
 
@@ -92,7 +95,7 @@ async function publishSaved(id: string, saved: RuleSet): Promise<Applied> {
   try {
     return { ruleSet: await publishEligibilityDraft(id, saved), published: true }
   } catch (error) {
-    return { ruleSet: saved, published: false, reason: error instanceof Error ? error.message : '공개 요청이 실패했습니다.' }
+    return { ruleSet: saved, published: false, saved: true, reason: error instanceof Error ? error.message : '공개 요청이 실패했습니다.' }
   }
 }
 
@@ -105,27 +108,38 @@ export function moveToDirectCheck(content: Content, scopeId: string, checkId: st
   const checks = common ? content.commonChecks : content.paths.find(item => item.id === scopeId)?.checks ?? []
   const check = checks.find(item => item.id === checkId)
   if (!check) return content
-  const guidanceId = `direct-${scopeId}`
   // 자산·자동차처럼 같은 원문 문구를 쓰는 조건을 옮겨도 어느 기준인지 알 수 있게 종류를 앞에 붙인다.
   const kind = ruleKind(check.rule)
-  const item = kind ? `${kind}: ${check.label}` : check.label
-  const existing = content.guidances.find(item => item.id === guidanceId)
-  const guidance: Guidance = existing
-    ? { ...existing, items: [...existing.items, item] }
-    : { id: guidanceId, kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 확인해야 하는 신청자격', body: '입력한 정보로는 판단할 수 없는 자격이에요. 해당하는지 공고문에서 확인해 주세요.',
-      items: [item], targets: [common ? { scope: 'ANNOUNCEMENT', pathId: null, supplyUnitId: null } : { scope: 'PATH', pathId: scopeId, supplyUnitId: null }], evidenceIds: check.evidenceIds }
+  const moved = withDirectItem(content, scopeId, kind ? `${kind}: ${check.label}` : check.label, check.evidenceIds)
   const remaining = checks.filter(item => item.id !== checkId)
   // 옮긴 조건의 대체 안내만, 다른 조건이 더 쓰지 않을 때 뺀다. 사람이 쓴 다른 안내는 그대로 둔다.
   const stillUsed = [...content.commonChecks, ...content.paths.flatMap(item => item.checks)]
     .some(item => item.id !== checkId && item.fallbackGuidanceId === check.fallbackGuidanceId)
-  const guidances = [...content.guidances.filter(item => item.id !== guidanceId), guidance]
-    .filter(item => item.id !== check.fallbackGuidanceId || stillUsed)
+  const guidances = moved.guidances.filter(item => item.id !== check.fallbackGuidanceId || stillUsed)
   return {
     ...content, guidances,
     commonChecks: common ? remaining : content.commonChecks,
     paths: content.paths.map(item => item.id === scopeId ? { ...item, checks: remaining } : item),
   }
 }
+
+/**
+ * 그 범위의 '공고문에서 확인해야 하는 신청자격' 안내(id `direct-{범위}`, 서버 PDF 변환과 같은 모양)에 항목을 더한다. 없으면 만든다.
+ * 판정기는 이 안내가 걸린 선택지를 지원 가능으로 확정하지 않는다.
+ */
+export function withDirectItem(content: Content, scopeId: string, item: string, evidenceIds: string[]): Content {
+  const guidanceId = `direct-${scopeId}`
+  const existing = content.guidances.find(guidance => guidance.id === guidanceId)
+  const guidance: Guidance = existing
+    ? { ...existing, items: [...existing.items, item] }
+    : { id: guidanceId, kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 확인해야 하는 신청자격', body: '입력한 정보로는 판단할 수 없는 자격이에요. 해당하는지 공고문에서 확인해 주세요.',
+      items: [item], targets: [scopeId === 'common' ? { scope: 'ANNOUNCEMENT', pathId: null, supplyUnitId: null } : { scope: 'PATH', pathId: scopeId, supplyUnitId: null }], evidenceIds }
+  return { ...content, guidances: [...content.guidances.filter(other => other.id !== guidanceId), guidance] }
+}
+
+/** 상한 없음을 뜻하는 서버 값: 나이 150세, 인원·개월 1800. 화면은 이 값을 보이지 않는다. */
+export const NO_AGE_LIMIT = 150
+export const NO_COUNT_LIMIT = 1800
 
 /** 워커 요건 경고의 머리: 신청자격 요건 '<문구>'(<종류>): . 종류가 없는 것은 이전 워커의 경고다. */
 const REQUIREMENT_WARNING = /^신청자격 요건 '(.+?)'(?:\(([^)]+)\))?: (.+)$/s
@@ -220,7 +234,7 @@ function hasNumber(rule: Rule): boolean {
   return rule.minimum !== null || rule.maximum !== null || rule.incomeLimit !== null || rule.children.some(hasNumber)
 }
 
-const FIELDS: Record<string, string> = {
+export const FIELDS: Record<string, string> = {
   BIRTH_DATE: '나이', YOUNGEST_CHILD: '막내 자녀 나이', APPLICANT_OWNS_HOUSE: '본인 주택', FAMILY_OWNS_HOUSE: '본인 포함 가족 주택',
   APPLICANT_OWNS_CAR: '본인 자동차', FAMILY_OWNS_CAR: '본인 포함 가족 자동차', APPLICANT_ASSETS: '본인 자산', FAMILY_TOTAL_ASSETS: '가족 총자산',
   APPLICANT_CAR_VALUE: '본인 차량가액', FAMILY_CAR_VALUE: '가족 차량가액', APPLICANT_MONTHLY_INCOME: '본인 월평균소득',
@@ -238,15 +252,15 @@ function people(rule: Rule): string {
   if (maximum === null || maximum >= NO_UPPER_BOUND) return `${minimum ?? 0}명 이상`
   return minimum === null || minimum <= 0 ? `${maximum}명 이하` : `${minimum}~${maximum}명`
 }
-const FAMILY: Record<string, string> = { UNMARRIED: '미혼', SINGLE_PARENT: '한부모', COUPLE_OR_ENGAGED: '부부·예비부부' }
-const won = (value: number) => value % 10_000 === 0 ? `${(value / 10_000).toLocaleString('ko-KR')}만원` : `${value.toLocaleString('ko-KR')}원`
+export const FAMILY: Record<string, string> = { UNMARRIED: '미혼', SINGLE_PARENT: '한부모', COUPLE_OR_ENGAGED: '부부·예비부부' }
+const won = (value: number) => !Number.isFinite(value) ? '(금액 미입력)' : value % 10_000 === 0 ? `${(value / 10_000).toLocaleString('ko-KR')}만원` : `${value.toLocaleString('ko-KR')}원`
 
 /** 운영자가 읽는 조건 문장. 판정 규칙의 원본은 서버이며 이 문장은 보기용이다. */
 export function ruleText(rule: Rule): string {
   const field = rule.field ? FIELDS[rule.field] ?? rule.field : ''
   switch (rule.operator) {
     case 'AGE_RANGE': return rule.field === 'YOUNGEST_CHILD' ? `막내 자녀 만 ${rule.maximum}세 이하`
-      : rule.maximum !== null && rule.maximum < 150 ? `만 ${rule.minimum}~${rule.maximum}세` : `만 ${rule.minimum}세 이상`
+      : rule.maximum !== null && rule.maximum < NO_AGE_LIMIT ? `만 ${rule.minimum}~${rule.maximum}세` : `만 ${rule.minimum}세 이상`
     case 'EQUALS':
       if (rule.field === 'FAMILY_TYPE') return `가족 형태 ${FAMILY[rule.expected ?? ''] ?? rule.expected}`
       if (rule.expected === 'false') return `${field} 없음`
