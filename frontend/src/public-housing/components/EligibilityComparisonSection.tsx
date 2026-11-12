@@ -172,7 +172,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={15} className={styles.mark} />{type.label}{type.units && <small>{type.units}</small>}</span>
+        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={19} className={styles.mark} />{type.label}{type.units && <small>{type.units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
@@ -225,7 +225,7 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
   const firstUnmet = checks.find((check) => check.status === 'NOT_SATISFIED' && check.fields.length > 0)
   return <>
     <div className={styles.verdict} data-status={type.status}>
-      <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={26} className={styles.mark} /></span>
+      <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={30} className={styles.mark} /></span>
       <div>
         <strong>{copy.title}</strong>
         <p>{copy.message}</p>
@@ -276,12 +276,12 @@ function CheckRow({ announcementId, check, type, just, onOpenEvidence }: { reado
     : null
   return <li className={styles.check} data-status={check.status} data-just={just || undefined}>
     <span className={styles.rowMark} data-status={check.status}>
-      <StatusMark status={markOfCheck(check.status)} size={18} bold label={CHECK_STATUS_LABEL[check.status]} className={styles.mark} />
+      <StatusMark status={markOfCheck(check.status)} size={22} bold label={CHECK_STATUS_LABEL[check.status]} className={styles.mark} />
     </span>
     <div className={styles.main}>
       <div className={styles.top}><strong>{check.label}</strong>{just && <span className={styles.justTag}>방금 확인했어요</span>}</div>
       <p className={styles.criterion}>기준 {check.criterion}{check.basis ? ` (${check.basis})` : ''}</p>
-      {note && <p className={note.quiet ? `${styles.missing} ${styles.quiet}` : styles.missing}>{note.text}</p>}
+      {note && <p className={styles.missing}>{note}</p>}
     </div>
     <div className={styles.side}>
       {side}

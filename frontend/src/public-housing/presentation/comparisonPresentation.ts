@@ -85,11 +85,10 @@ export function listResultText(result: ListConditionResult): string | null {
 
 const MISSING_REASON_TEXT = { LATER: '나중에 입력하기로 한 항목', FAMILY_SKIPPED: '가족 정보를 건너뛴 항목', UNANSWERED: '아직 입력하지 않은 항목' } as const
 
-/** 입력이 필요한 항목의 안내. 다른 조건이 이미 맞지 않으면 입력해도 결과가 같다고 흐리게 알린다. */
-export function missingNote(check: CheckView, typeStatus: TypeStatus): { text: string; quiet: boolean } | null {
-  if (check.status !== 'INPUT_NEEDED') return null
-  if (typeStatus === 'INELIGIBLE') return { text: '다른 조건이 맞지 않아 입력해도 결과는 같아요', quiet: true }
-  return { text: `${MISSING_REASON_TEXT[check.missingReason ?? 'UNANSWERED']} · 입력하면 바로 확인돼요`, quiet: false }
+/** 입력이 필요한 항목의 안내. 다른 조건이 이미 맞지 않으면 입력해도 결과가 같으므로 안내하지 않는다. */
+export function missingNote(check: CheckView, typeStatus: TypeStatus): string | null {
+  if (check.status !== 'INPUT_NEEDED' || typeStatus === 'INELIGIBLE') return null
+  return `${MISSING_REASON_TEXT[check.missingReason ?? 'UNANSWERED']} · 입력하면 바로 확인돼요`
 }
 
 /** 근거 버튼 문구. PDF 추출로 만든 근거의 위치는 추출 데이터 경로(eligibility.common.requirements[1])라 보이지 않는다. */
