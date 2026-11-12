@@ -106,6 +106,20 @@ describe('EligibilityComparisonSection', () => {
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
   })
 
+  it('keeps a group condition in one row with one input button that opens every missing item', async () => {
+    const group = check('혼인기간 또는 자녀 나이', 'INPUT_NEEDED', { criterion: '혼인 7년 이내 또는 막내 자녀 만 6세 이하',
+      fields: ['MARRIAGE_EVENT', 'YOUNGEST_CHILD'], missingReason: 'UNANSWERED' })
+    const value = context({ loadComparison: vi.fn(async () => happyView([type('newlywed', '신혼부부', 'UNDETERMINED', [group])])) })
+    renderSection(value)
+    const list = await screen.findByRole('list', { name: '신혼부부 항목별 비교' })
+    const rows = within(list).getAllByRole('listitem')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('기준 혼인 7년 이내 또는 막내 자녀 만 6세 이하')
+    expect(within(rows[0]).getAllByText(/입력하면 바로 확인돼요/)).toHaveLength(1)
+    fireEvent.click(within(rows[0]).getByRole('button', { name: '혼인기간 또는 자녀 나이 입력하기' }))
+    expect(value.openInput).toHaveBeenCalledWith({ mode: 'partial', fields: ['MARRIAGE_EVENT', 'YOUNGEST_CHILD'], origin: 'detail' }, { announcementId: '1' })
+  })
+
   it('opens a partial input from a missing item and highlights rows that changed after saving', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const load = vi.fn(async () => happyView([youthNeed]))
