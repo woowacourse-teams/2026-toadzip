@@ -5,6 +5,10 @@ import static com.toadzip.backend.eligibility.BasicComparisonFixtures.b;
 import static com.toadzip.backend.eligibility.BasicComparisonFixtures.with;
 import static com.toadzip.backend.eligibility.domain.ProfileField.APPLICANT_MONTHLY_INCOME;
 import static com.toadzip.backend.eligibility.domain.ProfileField.BIRTH_DATE;
+import static com.toadzip.backend.eligibility.domain.ProfileField.CHILDREN_COUNT_INCLUDING_FETUS;
+import static com.toadzip.backend.eligibility.domain.ProfileField.FAMILY_CAR_VALUE;
+import static com.toadzip.backend.eligibility.domain.ProfileField.FAMILY_OWNS_CAR;
+import static com.toadzip.backend.eligibility.domain.ProfileField.YOUNGEST_CHILD;
 import static com.toadzip.backend.eligibility.domain.ProfileField.FAMILY_TYPE;
 import static com.toadzip.backend.eligibility.domain.ProfileField.HAS_CHILDREN_OR_PREGNANCY;
 import static com.toadzip.backend.eligibility.domain.ProfileField.HOUSEHOLD_MONTHLY_INCOME;
@@ -17,11 +21,13 @@ import com.toadzip.backend.eligibility.domain.EligibilityContentValidator;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.Guidance;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.GuidanceKind;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.RecruitmentStatus;
+import com.toadzip.backend.eligibility.domain.DateEvent;
 import com.toadzip.backend.eligibility.domain.EligibilityDecision;
 import com.toadzip.backend.eligibility.domain.EligibilityDecision.Status;
 import com.toadzip.backend.eligibility.domain.EligibilityEvaluator;
 import com.toadzip.backend.eligibility.domain.EligibilityProfile;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility;
+import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Adjustment;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Group;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Qualification;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Quote;
@@ -98,8 +104,8 @@ class ExtractedEligibilityDraftTest {
         assertThat(noChildren.status()).isEqualTo(Status.UNDETERMINED);
         assertThat(noChildren.missingInputs()).contains(HAS_CHILDREN_OR_PREGNANCY);
         // 가산 기준이 다르다는 것은 판정을 막지 않는 목록으로 알린다.
-        assertThat(guidance(content, "list-common").items()).contains("출산자녀 가산 대상은 소득 기준이 더 높아요(기본 기준: "
-                + "전년도 도시근로자 가구원수별 월평균소득 100% 이하). 가산 기준은 공고문에서 확인해 주세요.");
+        assertThat(guidance(content, "list-common").items()).contains(
+                "출산자녀 가구는 소득 기준이 더 높아요. 얼마나 높은지는 공고문에서 확인해 주세요.");
     }
 
     @Test
@@ -168,15 +174,79 @@ class ExtractedEligibilityDraftTest {
     @Test
     void 알아볼_입력이_없는_가산은_기본_기준으로_판정하고_가산을_목록에_알린다() {
         EligibilityContent content = draft(evidence(), List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null,
-                "URBAN_WORKER_MONTHLY_INCOME", 2025, 100, Map.of(), List.of("DISABILITY"), null, List.of(), List.of(),
+                "URBAN_WORKER_MONTHLY_INCOME", 2025, 100, Map.of(), List.of(new Adjustment("DISABILITY", null)), null, List.of(), List.of(),
                 List.of(), "월평균소득 100% 이하(장애인 120%)", YOUTH + ".requirements[1]")));
 
         // 2인 기본 상한 5,866,270원 기준으로 판정한다. 장애인 가산 대상은 목록의 안내로 확인한다.
         assertThat(youth(content, with(b(), HOUSEHOLD_MONTHLY_INCOME, 5_800_000L))).isEqualTo(Status.ELIGIBLE);
         assertThat(youth(content, with(b(), HOUSEHOLD_MONTHLY_INCOME, 5_900_000L))).isEqualTo(Status.INELIGIBLE);
         assertThat(guidance(content, "list-path-1").items())
-                .containsExactly("장애인 등 가산 대상은 소득 기준이 더 높아요(기본 기준: 월평균소득 100% 이하(장애인 120%)). "
-                        + "가산 기준은 공고문에서 확인해 주세요.");
+                .containsExactly("장애인 등 가구는 소득 기준이 더 높아요. 얼마나 높은지는 공고문에서 확인해 주세요.");
+    }
+
+    @Test
+    void 출산자녀_가산_비율을_읽어_출산자녀_수별로_높아진_자동차가액_기준으로_판정한다() {
+        // 인천논현2단지 국민임대 공고문: 자동차가액 4,542만원 이하, 자산기준 출산자녀 2인 이상 20%·1인 10% 가산.
+        EligibilityContent content = draft(evidence(), List.of(carValue("출산자녀 2인 이상 20% 가산, 출산자녀 1인 10% 가산")));
+        EligibilityProfile owner = with(b(), FAMILY_OWNS_CAR, true);
+        EligibilityProfile oneBirth = withChildren(owner, 1L, LocalDate.of(2024, 5, 1));
+        EligibilityProfile twoBirths = withChildren(owner, 2L, LocalDate.of(2024, 5, 1));
+
+        assertThat(youth(content, with(owner, FAMILY_CAR_VALUE, 45_420_000L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(owner, FAMILY_CAR_VALUE, 45_430_000L))).isEqualTo(Status.INELIGIBLE);
+        // 1명: 4,542만원 × 110% = 4,996.2만원 → 만원 단위 올림 4,997만원.
+        assertThat(youth(content, with(oneBirth, FAMILY_CAR_VALUE, 49_970_000L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(oneBirth, FAMILY_CAR_VALUE, 49_980_000L))).isEqualTo(Status.INELIGIBLE);
+        // 2명 이상: 4,542만원 × 120% = 5,450.4만원 → 5,451만원.
+        assertThat(youth(content, with(twoBirths, FAMILY_CAR_VALUE, 54_510_000L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(twoBirths, FAMILY_CAR_VALUE, 54_520_000L))).isEqualTo(Status.INELIGIBLE);
+        // 막내가 출산자녀 기준일(2023.3.28.)보다 한참 전에 태어났으면 출산자녀 가산을 받지 않는다.
+        EligibilityProfile older = withChildren(owner, 2L, LocalDate.of(2019, 1, 1));
+        assertThat(youth(content, with(older, FAMILY_CAR_VALUE, 49_000_000L))).isEqualTo(Status.INELIGIBLE);
+        // 계산한 가산은 '공고문에서 확인'으로 따로 알리지 않는다.
+        assertThat(content.guidances()).noneMatch(guidance -> guidance.id().equals("list-path-1"));
+    }
+
+    @Test
+    void 출산자녀_가산_비율은_소득_기준에_퍼센트포인트로_더한다() {
+        EligibilityContent content = draft(evidence(), List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null,
+                "URBAN_WORKER_MONTHLY_INCOME", 2025, 100, Map.of(2L, 10), List.of(new Adjustment("CHILDBIRTH",
+                        "출산자녀 수 가산항목 및 비율 : 출산자녀 2인 이상 20% 가산, 출산자녀 1인 10% 가산")), null, List.of(),
+                List.of(), List.of(), "월평균소득 100% 이하", YOUTH + ".requirements[1]")));
+        EligibilityProfile oneBirth = withChildren(b(), 1L, LocalDate.of(2025, 1, 1));
+
+        // 공통 소득 조건(가산 원문 없음)은 자녀가 있는 부부를 넓게 충족으로 보므로, 청년 경로의 소득 조건이 판정을 가른다.
+        // 2인 5,866,270원 × (100% + 2인 10%p + 출산자녀 1명 10%p) = 7,039,524원.
+        assertThat(youth(content, with(oneBirth, HOUSEHOLD_MONTHLY_INCOME, 7_039_524L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(oneBirth, HOUSEHOLD_MONTHLY_INCOME, 7_039_525L))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 출산자녀_가산_비율은_출산자녀_문구에서만_읽는다() {
+        assertThat(ExtractedEligibilityDraft.childbirthPercents("출산자녀 2인 이상 20% 가산, 출산자녀 1인 10% 가산"))
+                .containsExactly(Map.entry(1, 10), Map.entry(2, 20));
+        // 한 명당 비율이면 최대 2자녀까지 센다.
+        assertThat(ExtractedEligibilityDraft.childbirthPercents("출산자녀 1명당 10%p 가산"))
+                .containsExactly(Map.entry(1, 10), Map.entry(2, 20));
+        // 쉼표 뒤 칸에 '자녀'가 다시 적히지 않아도 출산자녀 비율이면 읽는다(2자녀 가구가 1명 비율만 받지 않게).
+        assertThat(ExtractedEligibilityDraft.childbirthPercents("출산자녀 수 가산항목 및 비율 : 1인 10%, 2인 이상 20%"))
+                .containsExactly(Map.entry(1, 10), Map.entry(2, 20));
+        assertThat(ExtractedEligibilityDraft.childbirthPercents("1인 가구 20% 가산, 출산자녀 1인 10% 가산"))
+                .containsExactly(Map.entry(1, 10));
+        assertThat(ExtractedEligibilityDraft.childbirthPercents("1인 가구 20% 가산, 2인 가구 10% 가산")).isEmpty();
+        assertThat(ExtractedEligibilityDraft.childbirthPercents("월평균 소득('23년 3월 28일 이후 출생한 자녀가 있는 가구)"))
+                .isEmpty();
+        assertThat(ExtractedEligibilityDraft.childbirthPercents(null)).isEmpty();
+    }
+
+    @Test
+    void 출산자녀_가산_비율을_읽지_못하면_자녀가_있는_가구를_넓게_보고_목록에_알린다() {
+        EligibilityContent content = draft(evidence(), List.of(carValue("출산가구 자산 기준표 참조")));
+        EligibilityProfile parent = with(withChildren(b(), 1L, LocalDate.of(2024, 5, 1)), FAMILY_OWNS_CAR, true);
+
+        assertThat(youth(content, with(parent, FAMILY_CAR_VALUE, 60_000_000L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(guidance(content, "list-path-1").items())
+                .containsExactly("출산자녀 가구는 자동차가액 기준이 더 높아요. 얼마나 높은지는 공고문에서 확인해 주세요.");
     }
 
     @Test
@@ -468,9 +538,20 @@ class ExtractedEligibilityDraftTest {
                 List.of(), List.of("COUPLE_OR_ENGAGED"), List.of(), "혼인 중인 자", path);
     }
 
+    private static Requirement carValue(String adjustment) {
+        return new Requirement("CAR_VALUE", "HOUSEHOLD", null, null, null, null, null, null, Map.of(),
+                List.of(new Adjustment("CHILDBIRTH", adjustment)), 45_420_000L, List.of(), List.of(), List.of(),
+                "세대구성원 전원이 보유하고 있는 개별 자동차가액 ( 4,542 )만원 이하", YOUTH + ".requirements[1]");
+    }
+
+    private static EligibilityProfile withChildren(EligibilityProfile profile, long count, LocalDate youngest) {
+        return with(with(with(profile, HAS_CHILDREN_OR_PREGNANCY, true), CHILDREN_COUNT_INCLUDING_FETUS, count),
+                YOUNGEST_CHILD, new DateEvent("BORN", youngest));
+    }
+
     private static List<Requirement> dualIncome() {
         return List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null, "URBAN_WORKER_MONTHLY_INCOME", 2025, 100,
-                Map.of(), List.of("DUAL_INCOME"), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
+                Map.of(), List.of(new Adjustment("DUAL_INCOME", null)), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
                 YOUTH + ".requirements[1]"));
     }
 
@@ -481,7 +562,7 @@ class ExtractedEligibilityDraftTest {
 
     private static Requirement income(String path) {
         return new Requirement("INCOME", "HOUSEHOLD", null, null, null, "URBAN_WORKER_MONTHLY_INCOME", 2025, 100,
-                Map.of(1L, 20, 2L, 10), List.of("CHILDBIRTH"), null, List.of(), List.of(), List.of(),
+                Map.of(1L, 20, 2L, 10), List.of(new Adjustment("CHILDBIRTH", null)), null, List.of(), List.of(), List.of(),
                 "전년도 도시근로자 가구원수별 월평균소득 100% 이하", path);
     }
 }

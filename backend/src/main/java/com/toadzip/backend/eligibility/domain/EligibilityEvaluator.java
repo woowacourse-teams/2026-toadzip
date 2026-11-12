@@ -95,7 +95,7 @@ public final class EligibilityEvaluator {
         }
         if (status == Status.UNDETERMINED
                 && (!path.qualificationIds().isEmpty() || !directChecks.isEmpty())) {
-            return "신청자격을 직접 확인해 주세요.";
+            return "공고문에서 확인할 자격이 있어요.";
         }
         if (status == Status.UNDETERMINED) {
             return "필요한 정보를 입력하면 확인해드릴게요.";
@@ -160,7 +160,7 @@ public final class EligibilityEvaluator {
         return switch (status) {
             case ELIGIBLE -> "지원할 수 있어요.";
             case INELIGIBLE -> "이 공고의 신청자격을 충족하지 않아요.";
-            case UNDETERMINED -> "입력할 정보와 직접 확인할 신청자격을 살펴보세요.";
+            case UNDETERMINED -> "입력할 정보와 공고문에서 확인할 자격을 살펴보세요.";
             case NOT_EVALUATED -> "판정할 실제 모집 선택지를 확인해 주세요.";
         };
     }

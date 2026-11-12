@@ -1,6 +1,7 @@
 package com.toadzip.backend.eligibility.repository;
 
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility;
+import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Adjustment;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Exclusion;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Group;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Qualification;
@@ -94,9 +95,9 @@ public class ExtractedEligibilityReader {
                 extra.put(item.path("householdSize").asLong(), item.path("percent").asInt());
             }
         }
-        List<String> adjustments = new ArrayList<>();
+        List<Adjustment> adjustments = new ArrayList<>();
         for (JsonNode item : node.path("adjustments")) {
-            Optional.ofNullable(text(item, "kind")).ifPresent(adjustments::add);
+            Optional.ofNullable(text(item, "kind")).ifPresent(kind -> adjustments.add(new Adjustment(kind, text(item, "asWritten"))));
         }
         List<Requirement> options = new ArrayList<>();
         JsonNode values = node.path("options");

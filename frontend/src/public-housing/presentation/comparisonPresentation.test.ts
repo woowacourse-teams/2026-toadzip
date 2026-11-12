@@ -18,12 +18,17 @@ describe('신청자격 결과 표시', () => {
     expect(sortChecks([check('SATISFIED'), check('DIRECT_CHECK_REQUIRED'), check('INPUT_NEEDED'), check('NOT_SATISFIED')]).map((item) => item.status))
       .toEqual(['NOT_SATISFIED', 'INPUT_NEEDED', 'DIRECT_CHECK_REQUIRED', 'SATISFIED'])
   })
-  it('필수 자격 직접 확인과 수집 가능한 입력 부족을 구분한다', () => {
-    expect(verdictCopy(type('ELIGIBLE')).title).toBe('지원할 수 있어요')
-    expect(verdictCopy(type('UNDETERMINED')).title).toBe('신청자격을 직접 확인해 주세요')
-    expect(verdictCopy(type('UNDETERMINED', { checks: [check('INPUT_NEEDED')] })).title).toBe('입력하면 확인할 수 있어요')
-    expect(verdictCopy(type('INELIGIBLE', { checks: [check('INPUT_NEEDED')] }))).toMatchObject({ title: '청년 미충족', showFix: true })
-    expect(verdictCopy(type('NOT_EVALUATED')).title).toBe('신청자격을 판정하지 않았어요')
+  it('공고문에서 확인할 자격과 수집 가능한 입력 부족을 구분한다', () => {
+    expect(verdictCopy(type('ELIGIBLE'))).toMatchObject({ title: '기본 조건을 충족해요', message: '좋은 집과 인연이 닿길 응원할게요.' })
+    expect(verdictCopy(type('UNDETERMINED'))).toMatchObject({ title: '직접 확인할 항목이 남았어요', bulkInput: false })
+    expect(verdictCopy(type('UNDETERMINED', { checks: [check('INPUT_NEEDED')] })))
+      .toMatchObject({ title: '입력하면 확인할 수 있어요', message: '거의 다 왔어요. 1개만 채우면 바로 알려드릴게요.', bulkInput: false })
+    const two = type('UNDETERMINED', { checks: [check('INPUT_NEEDED'), check('INPUT_NEEDED', { fields: ['FAMILY_OWNS_HOUSE'] })] })
+    expect(verdictCopy(two)).toMatchObject({ message: '거의 다 왔어요. 2개만 채우면 바로 알려드릴게요.', bulkInput: true })
+    // 미충족이면 입력이 남아도 한 번에 입력하기 대신 내 정보 수정을 권한다.
+    expect(verdictCopy(type('INELIGIBLE', { checks: [check('INPUT_NEEDED'), check('INPUT_NEEDED', { fields: ['FAMILY_OWNS_HOUSE'] })] })))
+      .toMatchObject({ title: '맞지 않는 조건이 있어요', showFix: true, bulkInput: false })
+    expect(verdictCopy(type('NOT_EVALUATED')).title).toBe('비교한 조건이 없어요')
   })
   it('필요한 미입력만 중복 없이 모은다', () => {
     const view = type('UNDETERMINED', { checks: [check('INPUT_NEEDED'), check('INPUT_NEEDED', { fields: ['FAMILY_OWNS_HOUSE'] }), check('INPUT_NEEDED')] })
@@ -33,11 +38,12 @@ describe('신청자격 결과 표시', () => {
     const result = (extra: Partial<ListConditionResult> = {}): ListConditionResult => ({ announcementId: '1', availability: 'AVAILABLE', freshness: 'CURRENT', best: { label: '청년', status: 'ELIGIBLE' }, eligibleInRegion: true, missingInputs: [], ...extra })
     expect(listResultText(result())).toBe('청년 지원 가능')
     expect(listResultText(result({ freshness: 'RECHECKING' }))).toBe('현재 정보로 다시 확인 중')
-    expect(listResultText(result({ availability: 'NOT_STRUCTURED' }))).toBe('신청자격 판정 준비 중')
+    expect(listResultText(result({ availability: 'NOT_STRUCTURED' }))).toBe('자격 비교 준비 중')
     expect(listResultText(result({ availability: 'CANCELLED' }))).toBe('취소된 모집이에요')
   })
-  it('미충족 경로에도 소득 조건을 추가로 확인할 수 있다고 안내한다', () => {
-    expect(missingNote(check('INPUT_NEEDED'), 'INELIGIBLE')).toEqual({ text: '입력하면 세대 소득 조건도 확인해드릴게요.', quiet: true })
+  it('입력할 항목의 안내는 이유를 말하고, 이미 미충족이면 입력해도 결과가 같다고 흐리게 알린다', () => {
+    expect(missingNote(check('INPUT_NEEDED'), 'UNDETERMINED')).toEqual({ text: '아직 입력하지 않은 항목 · 입력하면 바로 확인돼요', quiet: false })
+    expect(missingNote(check('INPUT_NEEDED'), 'INELIGIBLE')).toEqual({ text: '다른 조건이 맞지 않아 입력해도 결과는 같아요', quiet: true })
     expect(missingNote(check('INPUT_NEEDED', { missingReason: 'LATER' }), 'UNDETERMINED')?.text).toContain('나중에 입력하기로 한 항목')
     expect(missingNote(check('INPUT_NEEDED', { missingReason: 'FAMILY_SKIPPED' }), 'UNDETERMINED')?.text).toContain('가족 정보를 건너뛴 항목')
     expect(missingNote(check('SATISFIED'), 'ELIGIBLE')).toBeNull()
@@ -47,6 +53,8 @@ describe('신청자격 결과 표시', () => {
     expect(typeStatusText(type('INELIGIBLE'))).toBe('미충족')
     expect(evidenceLabel({ page: 6, location: '소득표', fileName: null })).toBe('6쪽 소득표')
     expect(evidenceLabel({ page: 5, location: null, fileName: null })).toBe('5쪽')
+    // PDF 추출 근거의 위치는 데이터 경로라 쪽수만 보인다.
+    expect(evidenceLabel({ page: 4, location: 'eligibility.common.requirements[1]', fileName: null })).toBe('4쪽')
     expect(GUIDANCE_KIND_LABEL.APPLICATION_EXCLUSION).toBe('신청 불가능한 특수 경우')
   })
   it('안내 칩을 두 줄로 나눈다', () => {

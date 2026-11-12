@@ -4,11 +4,10 @@ import { EligibilityDraftPanel } from './EligibilityDraftPanel'
 import { checkTarget, itemTarget, moveToDirectCheck, requirementWarnings, ruleText, unjudgedReason, type Content, type RuleSet } from './eligibilityDraftApi'
 import { readExtractedEligibility } from './extractedEligibility'
 
-const api = vi.hoisted(() => ({ load: vi.fn(), create: vi.fn(), save: vi.fn(), publish: vi.fn(), preview: vi.fn() }))
+const api = vi.hoisted(() => ({ load: vi.fn(), create: vi.fn(), apply: vi.fn(), preview: vi.fn() }))
 vi.mock('./eligibilityDraftApi', async original => ({
   ...(await original<typeof import('./eligibilityDraftApi')>()),
-  loadEligibilityDraft: api.load, createEligibilityDraft: api.create, saveEligibilityDraft: api.save, publishEligibilityDraft: api.publish,
-  previewEligibilityDraft: api.preview,
+  loadEligibility: api.load, createEligibilityDraft: api.create, applyEligibility: api.apply, previewEligibilityDraft: api.preview,
 }))
 
 const income = { operator: 'INCOME_CEILING', field: 'HOUSEHOLD_MONTHLY_INCOME', expected: null, minimum: null, maximum: null, regions: [],
@@ -30,6 +29,8 @@ function content(reviewStatus: 'REVIEWING' | 'REVIEWED' = 'REVIEWING'): Content 
   }
 }
 const draft = (value: Content = content(), revision = 1): RuleSet => ({ id: 7, revision, status: 'DRAFT', content: value })
+const live = (value: Content = content('REVIEWED'), revision = 1): RuleSet => ({ id: 7, revision, status: 'PUBLISHED', content: value })
+const applied = (value: Content) => ({ ruleSet: live(value, 2), published: true })
 
 afterEach(() => vi.clearAllMocks())
 
@@ -46,7 +47,7 @@ describe('moveToDirectCheck', () => {
     const moved = moveToDirectCheck(content(), 'path-1', 'path-1-2')
 
     expect(moved.paths[0].checks.map(check => check.id)).toEqual(['path-1-1'])
-    expect(moved.guidances).toEqual([{ id: 'direct-path-1', kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 직접 확인할 신청자격',
+    expect(moved.guidances).toEqual([{ id: 'direct-path-1', kind: 'REQUIRED_QUALIFICATION', title: '공고문에서 확인해야 하는 신청자격',
       body: expect.any(String), items: ['소득: 월평균소득 100% 이하'], targets: [{ scope: 'PATH', pathId: 'path-1', supplyUnitId: null }], evidenceIds: ['ev-1'] }])
   })
 })
@@ -112,23 +113,31 @@ describe('requirementWarnings', () => {
 })
 
 describe('EligibilityDraftPanel', () => {
-  it('최신 PDF로 초안을 만들고, 조건을 직접 확인으로 바꿔 저장하며, 검토 완료 전에는 공개할 수 없다', async () => {
+  it('보정 적용 뒤에는 누르지 않아도 최신 PDF 추출로 신청자격을 만들어 반영하고, 검토·공개 버튼 없이 판정에서 빼기도 곧바로 반영한다', async () => {
     api.load.mockResolvedValue(null)
-    api.create.mockResolvedValue({ ruleSet: draft(), notices: ['신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.'] })
-    api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
+    api.create.mockResolvedValue({ ruleSet: live(), published: true, notices: ['신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.'] })
+    api.apply.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => applied(value))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} autoCreate />)
 
     expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
     expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
+    expect(screen.getByText('신청자격을 사용자 화면에 반영했어요.')).toBeInTheDocument()
+    expect(screen.getByText('사용자 화면에 반영됨 · 기준일 2026-09-30')).toBeInTheDocument()
     expect(screen.getByText('신청 단위: 인천석남 21A (모집)')).toBeInTheDocument()
     expect(screen.getByText('신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '공개' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '검토 완료로 표시' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('button', { name: '직접 확인으로 바꾸기' })[1])
-    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1))
-    const saved: Content = api.save.mock.calls[0][2]
+    fireEvent.click(screen.getAllByRole('button', { name: '판정에서 빼기' })[1])
+    expect(await screen.findByText('판정에서 뺐어요. 사용자 화면에 반영했어요.')).toBeInTheDocument()
+    expect(api.apply).toHaveBeenCalledWith('12', expect.objectContaining({ status: 'PUBLISHED', revision: 1 }), expect.anything())
+    const saved: Content = api.apply.mock.calls[0][2]
     expect(saved.paths[0].checks.map(check => check.label)).toEqual(['만 19세 이상 39세 이하'])
     expect(await screen.findByText('소득: 월평균소득 100% 이하')).toBeInTheDocument()
+    // 다음 빼기는 방금 반영한 버전으로 한다(이전 revision으로 409가 나지 않게).
+    fireEvent.click(screen.getByRole('button', { name: '판정에서 빼기' }))
+    await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(2))
+    expect(api.apply.mock.calls[1][1]).toEqual(expect.objectContaining({ revision: 2 }))
   })
 
   it('PDF 창이 없는 곳(적용 결과)에서는 근거 버튼을 두지 않는다', async () => {
@@ -142,83 +151,63 @@ describe('EligibilityDraftPanel', () => {
     expect(screen.queryByText(/숫자를 문구·쪽 글과 대조/)).not.toBeInTheDocument()
   })
 
-  it('공개가 성공하면 초안 다시 읽기가 실패해도 성공으로 보이고 공개를 다시 누를 수 없다', async () => {
-    api.load.mockResolvedValueOnce(draft(content('REVIEWED'))).mockRejectedValueOnce(new Error('네트워크 오류'))
-    api.publish.mockResolvedValue(draft(content('REVIEWED'), 2))
-    render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} onEvidence={vi.fn()} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: '공개' }))
-
-    expect(await screen.findByText(/공개했어요\./)).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
-  })
-
-  it('보정 적용 뒤(autoCreate)에는 초안이 없으면 누르지 않아도 최신 PDF 추출로 초안을 만든다', async () => {
+  it('공고가 공개 전이라 저장만 됐으면 사용자 화면에 아직 반영되지 않았다고 알리고, 빼기를 공개하지 못한 이유도 보인다', async () => {
     api.load.mockResolvedValue(null)
-    api.create.mockResolvedValue({ ruleSet: draft(), notices: ['공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다.'] })
+    api.create.mockResolvedValue({ ruleSet: draft(content('REVIEWED')), published: false,
+      notices: ['공고가 아직 공개 전이라 신청자격은 저장만 했습니다. 공고를 공개한 뒤 보정을 다시 적용하면 사용자에게 반영됩니다.'] })
+    api.apply.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => ({ ruleSet: draft(value, 2), published: false, reason: '요청이 충돌했습니다.' }))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
 
-    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
-    expect(api.create).toHaveBeenCalledTimes(1)
-    expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
-    expect(screen.getByText('공급대상 구분이 없는 공급행 1개에는 모든 신청자격 경로를 이었습니다.')).toBeInTheDocument()
+    expect(await screen.findByText('신청자격을 저장했어요.')).toBeInTheDocument()
+    expect(screen.getByText(/아직 사용자 화면에 반영되지 않았어요/)).toBeInTheDocument()
+    expect(screen.getByText(/공고가 아직 공개 전이라 신청자격은 저장만 했습니다/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: '판정에서 빼기' })[0])
+    expect(await screen.findByText(/사용자 화면에는 아직 반영하지 못했어요\. 요청이 충돌했습니다\./)).toBeInTheDocument()
   })
 
-  it('보정 적용 뒤에도 이미 있는 초안은 덮어쓰지 않고, 자동 만들기가 실패하면 이유를 보이고 다시 만들 수 있게 둔다', async () => {
-    api.load.mockResolvedValueOnce(draft())
+  it('보정 적용 뒤에는 이미 있는 신청자격도 적용한 공급정보로 다시 만들고, 초안이면 그 버전으로 덮어쓴다', async () => {
+    api.load.mockResolvedValueOnce(live())
+    api.create.mockResolvedValue({ ruleSet: live(content('REVIEWED'), 2), published: true, notices: [] })
     const first = render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
-    expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
-    expect(api.create).not.toHaveBeenCalled()
+    expect(await screen.findByText('신청자격을 사용자 화면에 반영했어요.')).toBeInTheDocument()
+    expect(api.create).toHaveBeenLastCalledWith('12', 'a'.repeat(64), expect.objectContaining({ status: 'PUBLISHED' }))
     first.unmount()
 
+    api.load.mockResolvedValueOnce(draft(content(), 4))
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
+    await waitFor(() => expect(api.create).toHaveBeenCalledTimes(2))
+    expect(api.create).toHaveBeenLastCalledWith('12', 'a'.repeat(64), expect.objectContaining({ status: 'DRAFT', revision: 4 }))
+  })
+
+  it('자동 반영이 실패하면 이유를 보이고 다시 반영할 수 있게 둔다', async () => {
     api.load.mockResolvedValueOnce(null)
     api.create.mockRejectedValueOnce(new Error('공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다.'))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('공급대상과 이어지는 신청자격 경로가 없어')
     expect(api.create).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: '초안 만들기' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '신청자격 반영하기' })).toBeEnabled()
   })
 
-  it('열린 PDF가 없으면 보정 적용 뒤에도 초안을 자동으로 만들지 않는다', async () => {
+  it('열린 PDF가 없으면 보정 적용 뒤에도 자동으로 반영하지 않는다', async () => {
     api.load.mockResolvedValue(null)
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} autoCreate />)
 
-    expect(await screen.findByText('PDF를 열면 초안을 만들 수 있어요.')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: '초안 만들기' })).toBeDisabled())
+    expect(await screen.findByText('PDF를 열면 신청자격을 반영할 수 있어요.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: '신청자격 반영하기' })).toBeDisabled())
     expect(api.create).not.toHaveBeenCalled()
   })
 
-  it('첫 조회가 끝나기 전에는 초안을 만들 수 없다', async () => {
+  it('첫 조회가 끝나기 전에는 반영할 수 없다', async () => {
     let finish: (value: RuleSet | null) => void = () => {}
     api.load.mockReturnValue(new Promise(resolve => { finish = resolve }))
     api.create.mockRejectedValue(new Error('공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다.'))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
 
-    expect(screen.getByRole('button', { name: '초안 만들기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '신청자격 반영하기' })).toBeDisabled()
     finish(null)
-    await waitFor(() => expect(screen.getByRole('button', { name: '초안 만들기' })).toBeEnabled())
-  })
-
-  it('검토 완료로 표시한 초안만 공개하고, 공개 뒤에는 초안을 다시 읽는다', async () => {
-    api.load.mockResolvedValueOnce(draft()).mockResolvedValueOnce(null)
-    api.save.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => draft(value, 2))
-    api.publish.mockResolvedValue(draft(content('REVIEWED'), 3))
-    render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} onEvidence={vi.fn()} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: '검토 완료로 표시' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '공개' })).toBeEnabled())
-    expect(api.save.mock.calls[0][2].metadata.reviewStatus).toBe('REVIEWED')
-    expect(screen.getByRole('button', { name: '뽑은 신청자격으로 다시 만들기' })).toBeDisabled()
-
-    fireEvent.click(screen.getByRole('button', { name: '공개' }))
-    expect(await screen.findByText('공개했어요. 사용자 판정이 곧 다시 계산돼요.')).toBeInTheDocument()
-    expect(api.publish).toHaveBeenCalledWith('12', expect.objectContaining({ revision: 2 }))
-    // 공개본을 초안처럼 들고 있지 않아 다음 작업이 이전 revision으로 409가 나지 않는다.
-    expect(api.load).toHaveBeenCalledTimes(2)
-    expect(screen.queryByRole('button', { name: '공개' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /만들기/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: '신청자격 반영하기' })).toBeEnabled())
   })
 
   it('보정 적용 전에는 서버가 바꾼 판정 조건과 판정에 넣지 않은 자격을 근거와 함께 읽기 전용으로 보인다', async () => {
@@ -249,13 +238,13 @@ describe('EligibilityDraftPanel', () => {
     expect(top).not.toHaveTextContent('문구에 없는 숫자(40)')
     expect(api.preview).toHaveBeenCalledWith('12', 'a'.repeat(64), expect.anything())
     expect(youth.getByText('만 19~39세')).toBeInTheDocument()
-    expect(youth.getByText('공고문에서 확인할 자격 (판정에 넣지 않음):', { exact: false })).toBeInTheDocument()
+    expect(youth.getByText('신청 전에 확인할 자격 (판정에 넣지 않음):', { exact: false })).toBeInTheDocument()
     expect(youth.getByText('입주 전까지 주택청약종합저축 가입')).toBeInTheDocument()
     // 조건의 대체 안내(check-path-1)는 판정을 막지 않는 목록으로 보이지 않는다.
     expect(youth.queryByText('소득 기준 직접 확인')).not.toBeInTheDocument()
     expect(screen.queryByText(/신청 단위/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '직접 확인으로 바꾸기' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /만들기/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '판정에서 빼기' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /반영/ })).not.toBeInTheDocument()
   })
 
   it('어느 조건에도 붙이지 못한 숫자 경고가 있으면 숫자가 모두 맞았다고 말하지 않고 위 목록을 함께 보라고 한다', async () => {
@@ -273,7 +262,7 @@ describe('EligibilityDraftPanel', () => {
     expect(screen.getByText('PDF에서 읽으며 확인할 점').closest('div')).toHaveTextContent('4,542만원')
   })
 
-  it('자산과 자동차가 같은 원문 문구를 써도 자동차가액 경고는 자동차 조건에만, 직접 확인으로 옮기면 옮긴 항목에만 붙는다', async () => {
+  it('자산과 자동차가 같은 원문 문구를 써도 자동차가액 경고는 자동차 조건에만, 판정에서 빼면 옮긴 항목에만 붙는다', async () => {
     const text = '그 밖의 경우 - 41,700만원 이하 4,542만원 이하'
     const money = (field: string, maximum: number) => ({ ...age, operator: 'MONEY_CEILING', field, minimum: null, maximum })
     const base = content()
@@ -284,7 +273,7 @@ describe('EligibilityDraftPanel', () => {
       guidances: [{ id: 'list-path-1', kind: 'REQUIRED_CHECK', title: '공고문에서 확인할 자격', body: '확인', items: [`자산: ${text}`],
         targets: [{ scope: 'PATH', pathId: 'path-1', supplyUnitId: null }], evidenceIds: ['ev-1'] }] }
     api.load.mockResolvedValue(draft(value))
-    api.save.mockImplementation(async (_id: string, _current: RuleSet, saved: Content) => draft(saved, 2))
+    api.apply.mockImplementation(async (_id: string, _current: RuleSet, saved: Content) => applied(saved))
     const carWarning = `신청자격 요건 '${text}'(자동차가액): 숫자 확인 필요. 모델이 적은 문구와 원문 p.3 글에 대조했지만 이 숫자가 맞는지 확정하지 못했고, 그대로 판정에 씁니다(4,542만원).`
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} warnings={[carWarning]} />)
 
@@ -294,13 +283,13 @@ describe('EligibilityDraftPanel', () => {
     expect(youth.getByText(`자산: ${text}`).closest('li')).not.toHaveTextContent('숫자 확인 필요')
     expect(screen.queryByText('PDF에서 읽으며 확인할 점')).not.toBeInTheDocument()
 
-    fireEvent.click(within(carItem).getByRole('button', { name: '직접 확인으로 바꾸기' }))
+    fireEvent.click(within(carItem).getByRole('button', { name: '판정에서 빼기' }))
     const moved = await youth.findByText(`자동차가액: ${text}`)
     expect(moved.closest('li')).toHaveTextContent('어떻게 확인했나: 숫자 확인 필요')
     expect(youth.getByText(`자산: ${text}`).closest('li')).not.toHaveTextContent('숫자 확인 필요')
   })
 
-  it('보정 적용 전 미리보기를 받지 못하면 PDF에서 이미 뽑은 신청자격을 그대로 보이고, 초안은 적용할 때 만들어진다고 알린다', async () => {
+  it('보정 적용 전 미리보기를 받지 못하면 PDF에서 이미 뽑은 신청자격을 그대로 보이고, 적용할 때 반영된다고 알린다', async () => {
     api.load.mockResolvedValue(null)
     api.preview.mockRejectedValue(new Error('화면의 PDF와 최신 추출 결과가 다릅니다.'))
     const onEvidence = vi.fn()
@@ -315,16 +304,16 @@ describe('EligibilityDraftPanel', () => {
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={onEvidence} extracted={extracted} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('화면의 PDF와 최신 추출 결과가 다릅니다.')
-    expect(screen.getByText('보정 내용을 적용하면 아래 내용과 저장된 공급정보로 초안이 만들어져요.')).toBeInTheDocument()
+    expect(screen.getByText('보정 내용을 적용하면 아래 내용과 저장된 공급정보로 신청자격이 만들어져 사용자 화면에 곧바로 반영돼요.')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: '모든 신청자에게 적용' })).getByText('무주택세대구성원')).toBeInTheDocument()
     const youth = within(screen.getByRole('region', { name: '청년' }))
     expect(youth.getByText('만 19세 이상 39세 이하')).toBeInTheDocument()
-    expect(youth.getByText('직접 확인 자격: 주거급여 수급자')).toBeInTheDocument()
+    expect(youth.getByText('해당하는지 공고문에서 확인할 자격: 주거급여 수급자')).toBeInTheDocument()
     fireEvent.click(youth.getByRole('button', { name: '근거 p.5 열기' }))
     expect(onEvidence).toHaveBeenCalledWith({ path: 'eligibility.targets[0].requirements[0]', page: 5, quote: '만 19세 이상 39세 이하' })
     expect(screen.getByText('공공임대 당첨자')).toBeInTheDocument()
     // 추출은 이미 끝났다. 다시 추출하는 것처럼 보이는 버튼을 두지 않는다.
-    expect(screen.queryByRole('button', { name: /만들기/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /반영/ })).not.toBeInTheDocument()
     expect(api.create).not.toHaveBeenCalled()
   })
 

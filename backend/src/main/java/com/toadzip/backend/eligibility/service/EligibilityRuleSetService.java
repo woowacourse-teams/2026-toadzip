@@ -66,6 +66,17 @@ public class EligibilityRuleSetService {
         return ruleSets.find(announcementId, "DRAFT").map(this::view).orElse(null);
     }
 
+    /** 지금 사용자에게 보이는 공개본. 없으면 null이다. */
+    public RuleSet published(long announcementId) {
+        announcements.latest(announcementId);
+        return ruleSets.find(announcementId, "PUBLISHED").map(this::view).orElse(null);
+    }
+
+    /** 신청자격을 공개할 수 있는 공고인지(최신 게시물이고 공개 상태이며 삭제·취소되지 않음). 공개는 이 조건을 잠근 뒤 다시 확인한다. */
+    public boolean publishable(long announcementId) {
+        return publishable(announcementId, announcements.latest(announcementId));
+    }
+
     @Transactional
     public RuleSet save(long announcementId, SaveDraft request) {
         String encoded = codec.write(request.content());
@@ -104,11 +115,7 @@ public class EligibilityRuleSetService {
     @Transactional
     public RuleSet publish(long announcementId, DraftVersion request) {
         List<Long> lineage = announcements.lockAncestors(announcementId);
-        var latest = announcements.latest(announcementId);
-        if (latest.id() != announcementId
-                || latest.deleted()
-                || !"PUBLISHED".equals(latest.releaseStatus())
-                || latest.cancelled()) {
+        if (!publishable(announcementId, announcements.latest(announcementId))) {
             throw new EligibilityConflictException();
         }
         StoredEligibilityRuleSet draft = requireVersion(ruleSets.lockDraft(announcementId), request);
@@ -117,6 +124,13 @@ public class EligibilityRuleSetService {
         long version = Math.addExact(ruleSets.currentVersion(announcementId), 1);
         ruleSets.deletePublished(lineage);
         return RuleSet.of(ruleSets.publish(draft.id(), version, clock.instant()), content);
+    }
+
+    private static boolean publishable(long announcementId, EligibilityAnnouncementRepository.Current latest) {
+        return latest.id() == announcementId
+                && !latest.deleted()
+                && "PUBLISHED".equals(latest.releaseStatus())
+                && !latest.cancelled();
     }
 
     private StoredEligibilityRuleSet requireVersion(

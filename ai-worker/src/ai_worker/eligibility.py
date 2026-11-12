@@ -34,9 +34,10 @@ _KIND_NAMES = {"AGE": "나이", "NO_HOUSE": "무주택", "INCOME": "소득", "AS
 _TEXT_LIMIT = 500
 _NUMBERS = ("minimum", "maximum", "percent", "householdSizeExtraPercent", "maximumKrw", "minimumMonths")
 _SPACES = re.compile(r"\s+")
-_AMOUNT = re.compile(r"(?:(\d+)억)?(?:(\d+)만)?(?:(\d+)천)?(\d+)?원")
+_AMOUNT = re.compile(r"(?:(\d+)억)?(?:(\d+)백만)?(?:(\d+)만)?(?:(\d+)천)?(\d+)?원")
 # 글 안의 금액 표기. 10,800만원 안의 800만원처럼 숫자 중간에서 시작하지 않는다.
-_AMOUNT_IN_TEXT = re.compile(r"(?<![\d,억만천])(?:\d[\d,]*억)?(?:\d[\d,]*만)?(?:\d[\d,]*천)?(?:\d[\d,]*)?원")
+_AMOUNT_IN_TEXT = re.compile(
+    r"(?<![\d,억백만천])(?:\d[\d,]*억)?(?:\d[\d,]*백만)?(?:\d[\d,]*만)?(?:\d[\d,]*천)?(?:\d[\d,]*)?원")
 _LIMIT_SUFFIX = re.compile(r"(?:이하|미만|이내|까지)$")
 # 민법상 성년(만 19세)은 원문이 나이를 숫자로 적지 않는다.
 _ADULT = re.compile(r"(?<!미)성년")
@@ -437,13 +438,14 @@ def _income_percents(item: dict, text: str, page_text: str, source: _Source,
 
 
 def amount_krw(written: str) -> int | None:
-    """원문 금액 표기(10,800만원, 3억 3,700만원, 37,080천원, 1억원, 빈칸 양식의 ( 24,500 )만원)를 원으로 바꾼다. 읽을 수 없으면 None이다."""
+    """원문 금액 표기(10,800만원, 3억 3,700만원, 37,080천원, 1억원, 국민임대 양식의 ( 345 )백만원, 빈칸 양식의 ( 24,500 )만원)를
+    원으로 바꾼다. 읽을 수 없으면 None이다."""
     compact = _LIMIT_SUFFIX.sub("", re.sub(r"[\s,()]", "", written))
     match = _AMOUNT.fullmatch(compact)
     if not match or not any(match.groups()):
         return None
-    eok, man, cheon, won = (int(part) if part else 0 for part in match.groups())
-    return eok * 100_000_000 + man * 10_000 + cheon * 1_000 + won
+    eok, baekman, man, cheon, won = (int(part) if part else 0 for part in match.groups())
+    return eok * 100_000_000 + baekman * 1_000_000 + man * 10_000 + cheon * 1_000 + won
 
 
 def _amount_in_text(written: str, text: str, page_text: str, words: tuple[str, ...], found: _Numbers) -> int | None:

@@ -17,6 +17,7 @@ import com.toadzip.backend.eligibility.domain.EligibilityContent.ReviewStatus;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.SourceDocument;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyUnit;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.TargetScope;
+import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Adjustment;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Group;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Requirement;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Route;
@@ -25,6 +26,7 @@ import com.toadzip.backend.eligibility.domain.ProfileRule.Operator;
 import com.toadzip.backend.eligibility.exception.EligibilityDraftUnavailableException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -33,17 +35,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * AI 추출 신청자격과 PDF 보정을 적용한 공급행으로 검토 전(REVIEWING) 신청자격 초안을 만든다.
+ * AI 추출 신청자격과 PDF 보정을 적용한 공급행으로 신청자격을 만든다. 보정을 적용하면 곧바로 공개하므로(사용자 결정) 검토 완료(REVIEWED)로 만든다.
  * 일반 사용자가 받은 입력으로 '한번 지원해 볼 만한지'를 알 수 있는 수준까지만 판정한다(사용자 결정).
  * 조건으로 바꾼 요건만 판정하고, 그 밖의 요건(기타: 청약통장·세대원 등재·추천 등, 원문에서 문구를 찾지 못한 요건, 비운 숫자·
  * 없는 소득 기준표·읽지 못한 지역·본인 소득처럼 바꾸지 못한 요건)은 판정을 막지 않는 '공고문에서 확인할 자격' 목록으로 근거와 함께 보인다.
  * 워커가 판정에 쓸 요건을 잃었다고 표시한 요건(UNRESOLVED: 경로를 나누지 못한 공고의 경로별 요건, 모델이 빠뜨린 요건)만
  * 판정을 막는 직접 확인으로 둔다. 목록으로 돌리면 남은 요건만으로 지원 가능이 되기 때문이다.
- * 출산자녀·맞벌이 가산을 받을 수 있는 사람은 기본 기준을 넘어도 충족으로 보고, 알아볼 입력이 없는 가산(장애인 등)은 기본 기준으로
- * 판정한다. 가산 내용은 목록에 알린다.
+ * 출산자녀 가산은 원문의 비율로 출산자녀 수별 높아진 기준을 계산해 판정한다. 비율을 읽지 못한 출산자녀 가산과 맞벌이 가산은
+ * 가산을 받을 수 있는 사람을 기본 기준을 넘어도 충족으로 보고, 알아볼 입력이 없는 가산(장애인 등)은 기본 기준으로 판정한다.
+ * 계산하지 못한 가산만 목록에 알린다.
  * 공급표가 대상을 나누지 않은 공급행(대상이 없거나 "전체"뿐)에는 모든 경로를 잇는다. 워커가 경로에 맞출 대상 이름이 없기 때문이다.
  */
 public final class ExtractedEligibilityDraft {
@@ -64,6 +70,11 @@ public final class ExtractedEligibilityDraft {
             Map.entry("CAR_VALUE", "자동차가액"), Map.entry("NO_CAR", "자동차 미보유"), Map.entry("RESIDENCE", "거주"),
             Map.entry("MARRIAGE_PERIOD", "혼인기간"), Map.entry("FAMILY_TYPE", "가족 형태"),
             Map.entry("UNIVERSITY_STUDENT", "대학생"), Map.entry("JOB_SEEKER", "취업준비생"));
+
+    /** 공공임대 출산가구 가산의 출산자녀 기준일. 이날 이후 출산한 미성년자녀(태아 포함)를 출산자녀로 센다. */
+    private static final LocalDate CHILDBIRTH_SINCE = LocalDate.of(2023, 3, 28);
+    /** 출산자녀 수별 가산 비율: "2인 이상 20%", "1인 10% 가산", "1명당 10%p". */
+    private static final Pattern CHILDBIRTH_TIER = Pattern.compile("(\\d)\\s*(?:인|명)\\s*(당)?\\s*(이상)?[^\\d%]{0,10}?(\\d{1,3})\\s*(?:%|퍼센트)");
 
     private static final Set<String> EARLIER_UNRESOLVED_TEXTS = Set.of(
             "모델 응답에서 빠진 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.",
@@ -202,7 +213,7 @@ public final class ExtractedEligibilityDraft {
         // scopeNote는 사용자 공고 상세에 그대로 보이고 비울 수 없으므로, AI 초안 안내 대신 사용자에게도 맞는 범위 설명을 둔다.
         EligibilityContent content = new EligibilityContent(
                 new Metadata(source.referenceDate(), ApplicantKind.INDIVIDUAL, AccessMode.APPLICATION_ROUTES,
-                        ReviewStatus.REVIEWING, classification, SCOPE_NOTE),
+                        ReviewStatus.REVIEWED, classification, SCOPE_NOTE),
                 List.of(new SourceDocument(DOCUMENT_ID, source.document().fileName(), source.document().downloadUrl(),
                         source.document().pageCount(), source.document().sha256())),
                 evidences, units, paths, options, guidances, List.of(), List.of(), List.of(), commonChecks,
@@ -353,23 +364,23 @@ public final class ExtractedEligibilityDraft {
         private List<Guidance> guidances() {
             List<Guidance> result = new ArrayList<>();
             if (referenced) {
-                result.add(new Guidance("check-" + id, GuidanceKind.REQUIRED_CHECK, "자동 판정 한계 확인",
-                        "자동으로 비교하지 못한 조건이에요. 공고문 기준으로 확인해 주세요.",
+                result.add(new Guidance("check-" + id, GuidanceKind.REQUIRED_CHECK, "공고문에서 확인할 기준",
+                        "입력한 정보만으로는 비교하기 어려운 조건이에요. 내 경우의 기준은 공고문에서 확인해 주세요.",
                         List.of(), List.of(target),
                         evidence(null, evidencePath)));
             }
             if (!direct.isEmpty()) {
                 List<String> items = direct.stream().map(item -> limit(item, 2000)).distinct().limit(100).toList();
-                result.add(new Guidance("direct-" + id, GuidanceKind.REQUIRED_QUALIFICATION, "공고문에서 직접 확인할 신청자격",
-                        "자동으로 판정하지 못한 요건이에요. 공고문 원문에서 해당하는지 확인해 주세요.", items, List.of(target),
+                result.add(new Guidance("direct-" + id, GuidanceKind.REQUIRED_QUALIFICATION, "공고문에서 확인해야 하는 신청자격",
+                        "입력한 정보로는 판단할 수 없는 자격이에요. 해당하는지 공고문에서 확인해 주세요.", items, List.of(target),
                         evidence(null, evidencePath)));
             }
             if (!listed.isEmpty()) {
                 List<String> items = listed.stream().map(item -> limit(item, 2000)).distinct().limit(100).toList();
                 List<String> evidence = listedEvidence.isEmpty() ? evidence(null, evidencePath)
                         : List.copyOf(listedEvidence);
-                result.add(new Guidance("list-" + id, GuidanceKind.REQUIRED_CHECK, "공고문에서 확인할 자격",
-                        "자동 판정에 넣지 않은 요건이에요. 신청 전에 공고문 원문에서 확인해 주세요.", items, List.of(target),
+                result.add(new Guidance("list-" + id, GuidanceKind.REQUIRED_CHECK, "신청 전에 확인할 자격",
+                        "판정에 넣지 않은 자격이에요. 신청 전에 공고문에서 확인해 주세요.", items, List.of(target),
                         evidence));
             }
             return result;
@@ -393,21 +404,21 @@ public final class ExtractedEligibilityDraft {
                 scope.list(kindName == null ? text : kindName + ": " + text, evidence);
                 continue;
             }
-            if (!requirement.adjustments().isEmpty()) {
-                // 요건 문구(text)는 기본 기준 줄이라 가산 기준처럼 보이지 않게 기본 기준으로 밝힌다. 가산 금액은 추출 결과에 없다.
-                // 자산·자동차처럼 같은 원문 문구를 쓰는 요건도 구분되게 어느 기준인지 밝힌다.
-                scope.list(adjustmentNames(requirement.adjustments()) + " 가산 대상은 " + KIND_NAMES.getOrDefault(requirement.kind(), "이")
-                        + " 기준이 더 높아요(기본 기준: " + text + "). 가산 기준은 공고문에서 확인해 주세요.", evidence);
+            List<Adjustment> uncomputed = new ArrayList<>();
+            ProfileRule judged = withAdjustments(rule.get(), requirement.adjustments(), uncomputed);
+            if (!uncomputed.isEmpty()) {
+                // 높아지는 기준을 계산하지 못한 가산만 알린다. 자산·자동차처럼 같은 원문 문구를 쓰는 요건도 구분되게 어느 기준인지 밝힌다.
+                scope.list(adjustmentNames(uncomputed) + " 가구는 " + KIND_NAMES.getOrDefault(requirement.kind(), "이")
+                        + " 기준이 더 높아요. 얼마나 높은지는 공고문에서 확인해 주세요.", evidence);
             }
-            ProfileRule judged = withAdjustments(rule.get(), requirement.adjustments());
             checks.add(new ProfileCheck(scope.id + "-" + (checks.size() + 1), limit(text, 300), judged, null,
                     EligibilityContentValidator.needsFallback(judged) ? scope.fallbackId() : null, List.of(evidence)));
         }
         return checks;
     }
 
-    private static String adjustmentNames(List<String> adjustments) {
-        List<String> names = adjustments.stream().map(kind -> switch (kind) {
+    private static String adjustmentNames(List<Adjustment> adjustments) {
+        List<String> names = adjustments.stream().map(adjustment -> switch (adjustment.kind()) {
             case "CHILDBIRTH" -> "출산자녀";
             case "DUAL_INCOME" -> "맞벌이";
             case "DISABILITY" -> "장애인 등";
@@ -417,22 +428,102 @@ public final class ExtractedEligibilityDraft {
     }
 
     /**
-     * 출산자녀·맞벌이 가산은 가산 기준이 추출 결과에 없어, 가산을 받을 수 있는 사람(자녀가 있는 한부모·부부, 맞벌이 부부)은
+     * 가산을 판정에 넣는다. 출산자녀 가산은 원문의 비율("출산자녀 2인 이상 20% 가산, 출산자녀 1인 10% 가산")을 읽어
+     * 출산자녀 수별 높아진 기준(금액은 비율만큼 올려 만원 단위 올림, 소득은 비율 %p를 더함)으로 판정한다.
+     * 비율을 읽지 못한 출산자녀 가산과 맞벌이 가산은 가산을 받을 수 있는 사람(자녀가 있는 한부모·부부, 맞벌이 부부)을
      * 기본 기준을 넘어도 충족으로 본다. 지원해 볼 만한 사람을 미충족으로 돌려보내지 않기 위해서다. 알아볼 입력이 없는 가산(장애인 등)은
-     * 기본 기준으로 판정한다. 가산 안내는 목록에 둔다.
+     * 기본 기준으로 판정한다. 계산하지 못한 가산은 uncomputed에 모아 목록으로 알린다.
      */
-    private static ProfileRule withAdjustments(ProfileRule rule, List<String> adjustments) {
+    private ProfileRule withAdjustments(ProfileRule rule, List<Adjustment> adjustments, List<Adjustment> uncomputed) {
         List<ProfileRule> alternatives = new ArrayList<>(List.of(rule));
-        if (adjustments.contains("CHILDBIRTH")) {
-            alternatives.add(group(Operator.ALL, List.of(group(Operator.ANY, List.of(
-                    equal(ProfileField.FAMILY_TYPE, "SINGLE_PARENT"), equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"))),
-                    equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "true"))));
-        }
-        if (adjustments.contains("DUAL_INCOME")) {
-            alternatives.add(group(Operator.ALL, List.of(equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"),
-                    equal(ProfileField.IS_DUAL_INCOME, "true"))));
+        for (Adjustment adjustment : adjustments) {
+            if ("CHILDBIRTH".equals(adjustment.kind())) {
+                List<ProfileRule> tiers = childbirthTiers(rule, adjustment.asWritten());
+                if (!tiers.isEmpty()) {
+                    alternatives.addAll(tiers);
+                    continue;
+                }
+                alternatives.add(group(Operator.ALL, List.of(group(Operator.ANY, List.of(
+                        equal(ProfileField.FAMILY_TYPE, "SINGLE_PARENT"), equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"))),
+                        equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "true"))));
+            } else if ("DUAL_INCOME".equals(adjustment.kind())) {
+                alternatives.add(group(Operator.ALL, List.of(equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"),
+                        equal(ProfileField.IS_DUAL_INCOME, "true"))));
+            }
+            uncomputed.add(adjustment);
         }
         return alternatives.size() == 1 ? rule : group(Operator.ANY, alternatives);
+    }
+
+    /**
+     * 출산자녀 수별 가산 기준. 출산자녀는 정책 기준일(2023.3.28.) 이후 출산한 미성년자녀(태아 포함)이고, 그런 자녀가 있으면
+     * 기존 미성년자녀도 최대 2자녀까지 센다(공공임대 공고 공통 문구). 막내가 기준일 이후 태어났는지는 막내 나이로 본다.
+     * 나이는 만 나이라 기준일보다 최대 1년 일찍 태어난 막내도 출산자녀로 볼 수 있다(넓게 보는 쪽이다).
+     * 비율을 읽지 못했거나 금액·소득 기준이 아니면 빈 목록이다.
+     */
+    private List<ProfileRule> childbirthTiers(ProfileRule rule, String asWritten) {
+        Map<Integer, Integer> percents = childbirthPercents(asWritten);
+        boolean scalable = rule.operator() == Operator.MONEY_CEILING || rule.operator() == Operator.INCOME_CEILING;
+        if (percents.isEmpty() || !scalable) {
+            return List.of();
+        }
+        ProfileRule born = source.referenceDate() == null || source.referenceDate().isBefore(CHILDBIRTH_SINCE)
+                ? equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "true")
+                : range(Operator.AGE_RANGE, ProfileField.YOUNGEST_CHILD, 0L,
+                        Period.between(CHILDBIRTH_SINCE, source.referenceDate()).getYears());
+        List<Integer> counts = new ArrayList<>(percents.keySet());
+        List<ProfileRule> tiers = new ArrayList<>();
+        for (int index = 0; index < counts.size(); index++) {
+            int count = counts.get(index);
+            long until = index + 1 < counts.size() ? counts.get(index + 1) - 1L : MAXIMUM_MONTHS;
+            tiers.add(group(Operator.ALL, List.of(born,
+                    range(Operator.NUMBER_RANGE, ProfileField.CHILDREN_COUNT_INCLUDING_FETUS, count, until),
+                    raised(rule, percents.get(count)))));
+        }
+        return tiers;
+    }
+
+    /**
+     * "출산자녀 2인 이상 20% 가산, 출산자녀 1인 10% 가산" → {1:10, 2:20}(자녀 수 오름차순). "자녀 1명당 10%"처럼 한 명당 비율만 있으면
+     * 최대 2자녀까지 센다는 기준대로 {1:10, 2:20}이다. 읽지 못하면 빈 지도다.
+     */
+    public static Map<Integer, Integer> childbirthPercents(String asWritten) {
+        Map<Integer, Integer> percents = new TreeMap<>();
+        if (asWritten == null || !(asWritten.contains("자녀") || asWritten.contains("출산"))) {
+            return percents;
+        }
+        boolean perChild = false;
+        // 가구원 수 가산("1인 가구 20%")과 섞여 있어도 출산자녀 비율만 읽는다. 쉼표 뒤 칸에 '자녀'가 다시 적히지 않는 표기도 있다.
+        for (String part : asWritten.split("[,;\\n]")) {
+            if (part.contains("가구") && !part.contains("자녀") && !part.contains("출산")) {
+                continue;
+            }
+            Matcher matcher = CHILDBIRTH_TIER.matcher(part);
+            while (matcher.find()) {
+                int count = Integer.parseInt(matcher.group(1));
+                int percent = Integer.parseInt(matcher.group(4));
+                if (count < 1 || percent < 1 || percent > 100) {
+                    return new TreeMap<>();
+                }
+                perChild |= matcher.group(2) != null;
+                percents.putIfAbsent(count, percent);
+            }
+        }
+        if (perChild && percents.size() == 1 && percents.containsKey(1)) {
+            percents.put(2, percents.get(1) * 2);
+        }
+        return percents;
+    }
+
+    private static ProfileRule raised(ProfileRule rule, int percent) {
+        if (rule.operator() == Operator.INCOME_CEILING) {
+            IncomeLimit limit = rule.incomeLimit();
+            return new ProfileRule(Operator.INCOME_CEILING, rule.field(), null, null, null, List.of(),
+                    new IncomeLimit(limit.standardTableId(), limit.percent() + percent, limit.sizeExtraPercent(),
+                            limit.familyCountField(), limit.fixedFamilyCount()), List.of());
+        }
+        long raised = Math.ceilDiv(rule.maximum() * (100 + percent), 100L * 10_000) * 10_000;
+        return new ProfileRule(Operator.MONEY_CEILING, rule.field(), null, null, raised, List.of(), null, List.of());
     }
 
     private Optional<ProfileRule> rule(Requirement requirement) {
