@@ -14,7 +14,7 @@ import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { baseRowChanges, draftBaseRows, draftVersion, loadCorrectionDraft, type CorrectionDraft } from './correctionDraftApi'
 import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
-import { cancelExtraction, extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, preferredPdf, type ExtractionState, type SavedExtraction } from './extractionApi'
+import { cancelExtraction, extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, OtherPdfJobError, preferredPdf, rememberedJob, resumeExtraction, type ExtractionOptions, type ExtractionState, type PdfExtraction, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
 import { applicableCells, assembleReview, fieldNeeds, groupOf, pendingField, pendingJumpTarget, serverFieldError, serverFieldsError, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, receptionCells, upgradeDraftReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
@@ -204,6 +204,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }, [review, reason, sourceUrl, sourcePage, section, selectedRow, draftChecked, draftTick])
   function restoreDraft() {
     if (!storedDraft || !workspace) return
+    // 기다리던 추출 결과가 늦게 와서 복원한 초안을 덮지 않게 한다.
+    extractionRun.current?.abort(); rememberedJob.clear(id)
     const value = storedDraft.payload
     let next = value.review
     try { next = upgradeDraftReview(next, workspace); if (storedDraft.stale) next = rebaseReview(next, workspace, housing) } catch { setDraftError('임시저장본을 최신 공고 값에 맞추지 못해 저장 당시 그대로 복원했습니다. 기존 값을 다시 확인하세요.') }
@@ -242,11 +244,14 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }, [pdf])
   function loadSaved() {
     if (!saved) return
-    extractionRun.current?.abort()
+    extractionRun.current?.abort(); rememberedJob.clear(id)
     setText(saved.extraction.json); setExtraction({ status: 'done', result: saved.extraction, saved })
   }
-  function extract() {
-    if (!pdf) return
+  /**
+   * 추출 작업을 기다려 결과를 화면에 넣는다. 기다리는 작업 번호는 탭에 남겨, 화면을 떠났다 돌아와도 이어서 기다린다.
+   * 화면을 떠나며 기다리기를 멈춘 것은 작업이 끝난 것이 아니므로 남긴 번호를 지우지 않는다.
+   */
+  function runExtraction(target: SelectedPdf, start: (signal: AbortSignal, options: ExtractionOptions) => Promise<PdfExtraction>) {
     extractionRun.current?.abort()
     const controller = new AbortController(); extractionRun.current = controller
     setExtraction({ status: 'running', startedAt: Date.now() }); setText('')
@@ -254,14 +259,37 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, notice: message ?? undefined } : previous)
     }
     const onJob = (jobId: number) => {
-      if (!controller.signal.aborted) setExtraction(previous => previous.status === 'running' ? { ...previous, jobId } : previous)
-    }
-    void extractAnnouncementPdf(id, pdf.file, pdf.name, controller.signal, { attachmentId: pdf.attachmentId, onNotice, onJob }).then(result => {
       if (controller.signal.aborted) return
+      rememberedJob.set(id, jobId)
+      setExtraction(previous => previous.status === 'running' ? { ...previous, jobId } : previous)
+    }
+    void start(controller.signal, { attachmentId: target.attachmentId, onNotice, onJob }).then(result => {
+      if (controller.signal.aborted) return
+      rememberedJob.clear(id)
       setText(result.json); setExtraction({ status: 'done', result })
-      if (pdfHash) setSaved({ fileName: pdf.name, pdfSha256: pdfHash, createdAt: new Date().toISOString(), extraction: result })
-    }).catch(cause => { if (!controller.signal.aborted) setExtraction({ status: 'failed', message: cause instanceof Error ? cause.message : 'PDF에서 값을 추출하지 못했습니다.' }) })
+      void pdfSha256(target.file).then(hash => { if (!controller.signal.aborted) setSaved({ fileName: target.name, pdfSha256: hash, createdAt: new Date().toISOString(), extraction: result }) }).catch(() => {})
+    }).catch(cause => {
+      if (controller.signal.aborted) return
+      rememberedJob.clear(id)
+      if (cause instanceof OtherPdfJobError) { setExtraction({ status: 'idle' }); return }
+      setExtraction({ status: 'failed', message: cause instanceof Error ? cause.message : 'PDF에서 값을 추출하지 못했습니다.' })
+    })
   }
+  function extract() {
+    if (!pdf) return
+    runExtraction(pdf, (signal, options) => extractAnnouncementPdf(id, pdf.file, pdf.name, signal, options))
+  }
+  // 추출을 기다리다 화면을 떠났다 돌아오면, PDF를 다시 받은 뒤 남겨 둔 작업에 이어 붙어 끝난 결과를 넣는다.
+  // 첫 PDF에만 한 번 이어 붙는다. 관리자가 PDF를 바꾸면 이어 붙지 않는다.
+  const resumeChecked = useRef(false)
+  useEffect(() => {
+    if (!pdf || resumeChecked.current) return
+    resumeChecked.current = true
+    const jobId = rememberedJob.get(id)
+    if (jobId !== null) runExtraction(pdf, (signal, options) => resumeExtraction(id, jobId, pdf.file, signal, options))
+    // 첫 PDF가 준비됐을 때만 본다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdf])
   /** 진행 중인 추출을 서버에서 끝내고 기다림을 멈춘다. 그사이 끝난 작업이면 기다리던 결과를 그대로 받는다. */
   async function cancelExtract() {
     if (extraction.status !== 'running' || extraction.jobId === undefined) return
@@ -271,7 +299,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     try {
       const message = await cancelExtraction(id, extraction.jobId)
       if (message === null || !current()) return
-      run!.abort(); setExtraction({ status: 'failed', message })
+      run!.abort(); rememberedJob.clear(id); setExtraction({ status: 'failed', message })
     } catch (cause) {
       if (current()) setExtraction(previous => previous.status === 'running' ? { ...previous, notice: cause instanceof Error ? `추출을 취소하지 못했습니다. ${cause.message}` : '추출을 취소하지 못했습니다.' } : previous)
     }

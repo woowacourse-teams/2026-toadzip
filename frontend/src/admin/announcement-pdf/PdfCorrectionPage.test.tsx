@@ -16,7 +16,7 @@ const lookup = vi.hoisted(() => ({ lookupAddresses: vi.fn(async () => []) }))
 vi.mock('./addressLookupApi', () => lookup)
 const pdfTypes = vi.hoisted(() => ({ createPdfHousingTypes: vi.fn(async () => {}) }))
 vi.mock('./pdfHousingTypes', () => pdfTypes)
-const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), loadLatestExtraction: vi.fn(), cancelExtraction: vi.fn() }))
+const extractor = vi.hoisted(() => ({ extractAnnouncementPdf: vi.fn(), resumeExtraction: vi.fn(), loadLatestExtraction: vi.fn(), cancelExtraction: vi.fn() }))
 vi.mock('./extractionApi', async original => ({ ...await original<typeof import('./extractionApi')>(), ...extractor }))
 const draftApi = vi.hoisted(() => ({ loadCorrectionDraft: vi.fn(), saveCorrectionDraft: vi.fn(), deleteCorrectionDraft: vi.fn() }))
 vi.mock('./correctionDraftApi', async original => ({ ...await original<typeof import('./correctionDraftApi')>(), ...draftApi }))
@@ -33,6 +33,7 @@ const base = scenario('hansville').workspace
 const workspace = { ...base, detail: { ...base.detail, data: { ...base.detail.data, name: '익산한스빌 국민임대주택 예비입주자 자격완화 모집 공고(2026.10.08)', postedDate: '2026-10-08' }, attachments: [{ attachmentId: 68, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }] } }
 beforeEach(() => {
   vi.clearAllMocks()
+  window.sessionStorage.clear()
   matchingTypes.getMatchingHousingTypes.mockImplementation(async (id: number) => fixtures.hansville.complexes.find(item => item.id === id)?.housingTypes ?? [])
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:pdf'; static revokeObjectURL = vi.fn() })
   api.loadJsonWorkspace.mockResolvedValue(workspace)
@@ -314,6 +315,48 @@ it('기다리는 동안 추출 취소를 누르면 서버에서 작업을 끝내
   expect(signal?.aborted).toBe(true)
   expect(screen.getByRole('button', { name: '다시 추출' })).toBeVisible()
   expect(screen.getByText('추출하지 못했습니다')).toBeVisible()
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
+})
+it('돌아왔을 때 남긴 작업이 지금 PDF와 다른 파일이면 실패로 알리지 않고 추출 전으로 둔다', async () => {
+  window.sessionStorage.setItem('pdf-extraction-job:29', '31')
+  const { OtherPdfJobError } = await vi.importActual<typeof import('./extractionApi')>('./extractionApi')
+  extractor.resumeExtraction.mockRejectedValue(new OtherPdfJobError())
+  renderPage()
+  await waitFor(() => expect(extractor.resumeExtraction).toHaveBeenCalledOnce())
+  expect(await screen.findByRole('button', { name: 'PDF에서 값 추출' })).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
+})
+it('추출을 기다리다 화면을 떠났다 돌아오면 그 작업에 이어 붙어 끝난 결과를 넣고, 끝난 뒤에는 다시 이어 붙지 않는다', async () => {
+  let signal: AbortSignal | undefined
+  extractor.extractAnnouncementPdf.mockImplementation((_id: string, _file: Blob, _name: string, given: AbortSignal, options: { onJob?: (jobId: number) => void }) => {
+    signal = given; options.onJob?.(31)
+    return new Promise(() => {})
+  })
+  extractor.resumeExtraction.mockResolvedValue({ json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: [], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
+  renderPage()
+  await startExtraction()
+  expect(await screen.findByText('추출 중입니다')).toBeVisible()
+  cleanup()
+  expect(signal?.aborted).toBe(true)
+
+  renderPage()
+  expect(await screen.findByText('추출을 마쳤습니다')).toBeVisible()
+  expect(extractor.resumeExtraction).toHaveBeenCalledWith('29', 31, expect.any(Blob), expect.any(AbortSignal), expect.objectContaining({ attachmentId: '68' }))
+  expect(extractor.extractAnnouncementPdf).toHaveBeenCalledOnce()
+  cleanup()
+
+  renderPage()
+  expect(await screen.findByRole('button', { name: 'PDF에서 값 추출' })).toBeVisible()
+  expect(extractor.resumeExtraction).toHaveBeenCalledOnce()
+})
+it('떠난 사이 작업이 실패했으면 돌아왔을 때 그 사유를 알리고 다시 추출하게 한다', async () => {
+  window.sessionStorage.setItem('pdf-extraction-job:29', '31')
+  extractor.resumeExtraction.mockRejectedValue(new Error('추출 서비스 응답이 늦습니다.'))
+  renderPage()
+  expect(await screen.findByText('추출 서비스 응답이 늦습니다.')).toBeVisible()
+  expect(screen.getByRole('button', { name: '다시 추출' })).toBeVisible()
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
 })
 it('서버가 칸 경로로 거절하면 화면 칸 이름으로 알리고 그 칸이 있는 접수처·기본정보로 옮긴다', async () => {
   api.previewJsonUpdate.mockRejectedValue(new ManagementError('receptionPlaces[0].name: 필수 값입니다.', 400, {}, 'INVALID_REQUEST'))
@@ -822,6 +865,19 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   expect(screen.queryByText(/복원/)).not.toBeInTheDocument()
   await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
+})
+
+it('돌아와 이어 기다리는 중에 임시저장본을 복원하면 기다리기를 멈춰 늦게 온 추출 결과가 복원한 초안을 덮지 않는다', async () => {
+  window.sessionStorage.setItem('pdf-extraction-job:29', '31')
+  let signal: AbortSignal | undefined
+  extractor.resumeExtraction.mockImplementation((_id: string, _jobId: number, _file: Blob, given: AbortSignal) => { signal = given; return new Promise(() => {}) })
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft())
+  renderPage()
+  await waitFor(() => expect(extractor.resumeExtraction).toHaveBeenCalledOnce())
+  fireEvent.click(within(await screen.findByRole('region', { name: '임시저장한 작업' })).getByRole('button', { name: '임시저장본 복원' }))
+  expect(await screen.findByRole('heading', { name: '공급정보' })).toBeVisible()
+  expect(signal?.aborted).toBe(true)
+  expect(window.sessionStorage.getItem('pdf-extraction-job:29')).toBeNull()
 })
 
 it('LH 행 기준으로 나누던 이전 방식의 임시저장은 복원하지 않고 다시 시작한다고 알리며, 새 검토의 첫 임시저장이 그 초안을 덮어쓴다', async () => {
