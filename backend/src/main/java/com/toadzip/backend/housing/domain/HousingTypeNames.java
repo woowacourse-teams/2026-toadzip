@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 공고문 표기 이름의 비교 키. 공고 주택형(신청형)과 단지 주택타입은 모두 공고문 표기를 따르고 전용면적으로 묶지 않는다
@@ -13,6 +14,8 @@ import java.util.Set;
  * "26A-1형[고령자(주거약자용)]")는 대상이라 떼고, 공백·대소문자·끝 '형'·앞자리 0("055.7200A")은 무시한다.
  */
 public final class HousingTypeNames {
+
+    private static final Pattern HOUSING_VARIANT = Pattern.compile("주거약자(용|형)?");
 
     private HousingTypeNames() {
     }
@@ -74,6 +77,37 @@ public final class HousingTypeNames {
         Arrays.stream(displayName.split("·")).map(HousingTypeNames::key).filter(key -> !key.isEmpty())
                 .forEach(keys::add);
         return keys;
+    }
+
+    /**
+     * 끝 묶음이 신청자가 아니라 주거약자용 주택을 가리키는 형명인지("26A(주거약자)", "37B(주거약자용)", "46A-H1(주거약자형)").
+     * 공고문 공급표에서 이런 형명은 같은 형명("26A")과 다른 주택형이다. "26A-1형[고령자(주거약자용)]"처럼 다른 신청자와 함께 적은
+     * 표기와 이름 전체가 묶음인 표기는 아니다.
+     */
+    public static boolean housingVariant(String typeName) {
+        String value = typeName == null ? "" : typeName.strip();
+        return trailingGroupStart(value) > 0 && HOUSING_VARIANT.matcher(applicant(value).replaceAll("\\s+", "")).matches();
+    }
+
+    /**
+     * 공급행끼리 같은 신청형인지 비교하는 키. {@link #keys}와 같되 주거약자용 형명은 묶음을 붙여 같은 형명과 가른다
+     * ("26A · 26A(주거약자)" → "26a", "26a(주거약자)"). 공급행 식별자에는 쓰지 않는다.
+     */
+    public static Set<String> applicationKeys(String displayName) {
+        if (displayName == null) {
+            return Set.of();
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        Arrays.stream(displayName.split("·")).map(HousingTypeNames::applicationKey).filter(key -> !key.isEmpty())
+                .forEach(keys::add);
+        return keys;
+    }
+
+    /** 형명 하나의 신청형 비교 키({@link #applicationKeys}). */
+    public static String applicationKey(String typeName) {
+        String key = key(typeName);
+        return housingVariant(typeName) && !key.isEmpty()
+                ? key + "(" + applicant(typeName).replaceAll("\\s+", "") + ")" : key;
     }
 
     // 끝의 () 또는 [] 묶음 하나를 뗀다. 이름 전체가 묶음이면 떼지 않는다.
