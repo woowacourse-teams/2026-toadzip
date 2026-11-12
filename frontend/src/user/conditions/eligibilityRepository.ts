@@ -298,7 +298,12 @@ function mapComparison(value: unknown): ComparisonView {
   const common = list(result.commonChecks).map((check) => mapCheck(check, list(content.commonChecks).map(object), content))
   const guidances = list(content.guidances).map(object)
   const qualifications = list(content.qualifications).map(object)
-  return { ...base, types: list(result.options).map((raw) => {
+  // 이번 공고에서 모집하지 않거나 모집 여부를 알 수 없는 선택지는 판정하지 않으므로 신청 유형 탭에 두지 않는다.
+  const recruited = list(result.options).filter((raw) => {
+    const recruitment = object(raw).recruitmentStatus
+    return recruitment == null || recruitment === 'RECRUITING' || recruitment === 'UPCOMING'
+  })
+  return { ...base, types: recruited.map((raw) => {
     const option = object(raw)
     const path = paths.find((item) => item.pathId === option.pathId)
     const authored = authoredPaths.find((item) => item.id === option.pathId)
