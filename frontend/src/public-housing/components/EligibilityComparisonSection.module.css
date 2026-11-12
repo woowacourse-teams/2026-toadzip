@@ -256,11 +256,18 @@
 .mark[data-mark='no'] { color: var(--ds-color-deadline); }
 .mark[data-mark='tri'] { color: var(--ds-color-status-upcoming); }
 .mark[data-mark='na'] { color: var(--ds-color-muted); }
-/* 선택된 탭의 초록 바탕에서도 상태 색이 보이도록 표시 뒤에 흰 원을 깐다. */
-.tab[aria-selected='true'] .mark {
-  box-sizing: content-box;
-  padding: 2px;
+/* 선택 여부와 관계없이 같은 크기의 칸을 차지해 탭을 눌러도 글자가 움직이지 않게 한다. */
+.tabMark {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
   border-radius: 50%;
+}
+
+/* 선택된 탭의 초록 바탕에서도 상태 색이 보이도록 표시 뒤에 흰 원을 깐다. */
+.tab[aria-selected='true'] .tabMark {
   background: var(--ds-color-surface);
 }
 

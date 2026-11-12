@@ -172,7 +172,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={19} className={styles.mark} />{type.label}{type.units && <small>{type.units}</small>}</span>
+        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{type.label}{type.units && <small>{type.units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
