@@ -1,5 +1,6 @@
 package com.toadzip.backend.user.service;
 
+import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
 import com.toadzip.backend.notification.service.NotificationPushDeviceService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,7 +44,8 @@ class SocialLoginSuccessHandlerTest {
         when(userService.findOrCreate("kakao", "123", null, null)).thenReturn(7L);
         SocialLoginSuccessHandler handler = new SocialLoginSuccessHandler(
                 userService, new HttpSessionSecurityContextRepository(), new SocialLoginFailureHandler(),
-                mock(NotificationPushDeviceService.class));
+                mock(NotificationPushDeviceService.class),
+                mock(AdminAuthenticationAuditService.class));
         ReflectionTestUtils.setField(handler, "successUrl", configuredUrl);
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();

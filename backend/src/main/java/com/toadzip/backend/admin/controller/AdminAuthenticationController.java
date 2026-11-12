@@ -8,6 +8,9 @@ import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
 import com.toadzip.backend.admin.service.AdminAuthenticationService;
 import com.toadzip.backend.admin.service.AdminLoginAttemptLimiter;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
+import com.toadzip.backend.user.service.SocialSessions;
+import com.toadzip.backend.user.service.SocialUserService;
+import com.toadzip.backend.user.service.UserLogout;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -35,6 +38,8 @@ public class AdminAuthenticationController {
     private final AdminAuthenticationAuditService adminAuthenticationAuditService;
     private final AdminLoginAttemptLimiter adminLoginAttemptLimiter;
     private final SecurityContextRepository securityContextRepository;
+    private final SocialUserService socialUserService;
+    private final UserLogout userLogout;
 
     @GetMapping("/csrf")
     public CsrfTokenResponse csrf(CsrfToken csrfToken) {
@@ -63,7 +68,7 @@ public class AdminAuthenticationController {
 
     @GetMapping("/me")
     public AdminSessionResponse currentAdmin(Authentication authentication) {
-        return AdminSessionResponse.from(authentication.getName());
+        return AdminSessionResponse.from(loginIdentifierOf(authentication));
     }
 
     @PostMapping("/logout")
@@ -73,11 +78,22 @@ public class AdminAuthenticationController {
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
+        // 소셜 계정 관리자는 사이트 로그인 세션이라 사이트 로그아웃과 같은 절차로 끝낸다.
+        if (SocialSessions.isSocialSession(authentication)) {
+            userLogout.logout(authentication, servletRequest, servletResponse);
+            return;
+        }
         new SecurityContextLogoutHandler().logout(servletRequest, servletResponse, authentication);
         adminAuthenticationAuditService.recordLogout(
                 authentication.getName(),
                 RequestTraceIdResolver.resolve(servletRequest)
         );
+    }
+
+    private String loginIdentifierOf(Authentication authentication) {
+        return SocialSessions.isSocialSession(authentication)
+                ? socialUserService.loginIdentifierOf(Long.valueOf(authentication.getName()))
+                : authentication.getName();
     }
 
     private AdminSessionResponse loginAndCreateSession(

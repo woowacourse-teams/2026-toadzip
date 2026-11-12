@@ -34,7 +34,7 @@ import { hasExplorerState } from './landing/explorerState'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { useMobileViewport } from './public-housing/components/useMobileViewport'
 import { isInvalidExplorerPath, toExplorerQueryLocation, toPublicLocation } from './public-housing/navigation/detailLocation'
-import { clearLoginReturn, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
+import { clearLoginReturn, isAdminPath, loginReturnForBack, safeLoginReturn } from './user/auth/loginReturn'
 import { ExplorerReturnContext } from './public-housing/navigation/ExplorerReturnContext'
 import { MobileInstallProvider } from './install/MobileInstallProvider'
 
@@ -92,8 +92,9 @@ function LegacyLoginRedirect() {
   const { search, hash } = useLocation()
   const mobile = useMobileViewport()
   const params = new URLSearchParams(search)
-  if (mobile) return <UserLoginPage />
   const returnTo = params.get('returnTo')
+  // 관리자 화면에는 소셜 로그인 창이 없으므로 화면 크기와 관계없이 로그인 화면을 연다.
+  if (mobile || isAdminPath(new URL(safeLoginReturn(returnTo), window.location.origin).pathname)) return <UserLoginPage />
   if (returnTo) {
     const target = new URL(safeLoginReturn(returnTo), window.location.origin)
     target.searchParams.set('login', params.get('login') === 'failed' ? 'failed' : 'required')

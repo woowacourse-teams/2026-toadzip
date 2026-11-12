@@ -6,6 +6,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AdminSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [forbidden, setForbidden] = useState(false)
   const sessionStateGeneration = useRef(0)
 
   useEffect(() => {
@@ -20,10 +21,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         setSession(restoredSession)
       }
     } catch (requestError) {
-      if (
-        isLatestSessionStateGeneration(generation)
-        && (!(requestError instanceof AdminApiError) || requestError.status !== 401)
-      ) {
+      const status = requestError instanceof AdminApiError ? requestError.status : null
+      if (isLatestSessionStateGeneration(generation) && status === 403) {
+        setForbidden(true)
+      } else if (isLatestSessionStateGeneration(generation) && status !== 401) {
         setError('관리자 인증 상태를 확인하지 못했습니다.')
       }
     } finally {
@@ -40,6 +41,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       const authenticatedSession = await loginAdmin(loginIdentifier, password)
       if (isLatestSessionStateGeneration(generation)) {
         setSession(authenticatedSession)
+        setForbidden(false)
       }
     } finally {
       if (isLatestSessionStateGeneration(generation)) {
@@ -72,7 +74,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AdminAuthContext.Provider value={{ session, isLoading, error, login, logout }}>
+    <AdminAuthContext.Provider value={{ session, isLoading, error, forbidden, login, logout }}>
       {children}
     </AdminAuthContext.Provider>
   )

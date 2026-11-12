@@ -14,7 +14,7 @@ function setup() {
     if (url.endsWith('/api/admin/auth/me')) return Response.json({ loginIdentifier: 'admin', role: 'ADMIN' })
     if (url.includes('/notification-subscriptions')) return Response.json({ data: result })
     if (url.endsWith('/api/admin/users/7')) return Response.json({ data:
-      { id: 7, email: item.email, provider: 'KAKAO', createdAt: '2026-10-04T09:12:34' } })
+      { id: 7, email: item.email, provider: 'KAKAO', createdAt: '2026-10-04T09:12:34', admin: false } })
     return Response.json([])
   })
   vi.stubGlobal('fetch', fetcher)

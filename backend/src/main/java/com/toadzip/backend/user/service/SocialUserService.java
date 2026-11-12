@@ -48,6 +48,15 @@ public class SocialUserService {
         return userRepository.findById(id).orElseThrow().getEmail();
     }
 
+    public String loginIdentifierOf(Long id) {
+        return userRepository.findById(id).orElseThrow().getLoginIdentifier();
+    }
+
+    /** 관리자 권한을 받은 회원이면 감사 기록용 로그인 식별자를, 아니거나 회원이 없으면 null을 돌려준다. */
+    public String adminLoginIdentifierOf(Long id) {
+        return userRepository.findById(id).filter(User::isAdmin).map(User::getLoginIdentifier).orElse(null);
+    }
+
     private Long updateEmail(User user, String email) {
         user.updateEmail(email);
         userRepository.save(user);

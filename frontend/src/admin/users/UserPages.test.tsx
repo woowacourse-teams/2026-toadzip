@@ -5,13 +5,13 @@ import { UserListPage } from './UserListPage'
 import { UserDetailPage } from './UserDetailPage'
 import type { AdminUser, UserPage } from './api'
 
-const mocks = vi.hoisted(() => ({ listUsers: vi.fn(), getUser: vi.fn() }))
+const mocks = vi.hoisted(() => ({ listUsers: vi.fn(), getUser: vi.fn(), setUserAdmin: vi.fn() }))
 vi.mock('../notifications/api', async original => ({ ...(await original<typeof import('../notifications/api')>()),
   loadNotificationSubscriptions: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0,
     summary: { activeMembers: 0, activeSubscriptions: 0, asOf: '2026-10-13T00:00:00Z' } })),
 }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
-const user: AdminUser = { id: 7, email: 'member@example.test', provider: 'GOOGLE', createdAt: '2026-10-04T09:12:34' }
+const user: AdminUser = { id: 7, email: 'member@example.test', provider: 'GOOGLE', createdAt: '2026-10-04T09:12:34', admin: false }
 function page(item = user, number = 0): UserPage {
   return { items: [item], page: number, hasNext: number < 2, totalElements: 41, totalPages: 3 }
 }
@@ -163,4 +163,39 @@ it('회원 상세 조회 실패와 잘못된 ID를 명확하게 표시한다', a
   mount('/admin/users/invalid')
   expect(await screen.findByRole('alert')).toHaveTextContent('올바른 회원 페이지 주소가 아닙니다.')
   expect(mocks.getUser).toHaveBeenCalledTimes(2)
+})
+
+it('회원 상세에서 브라우저 확인을 거쳐 관리자 권한을 주고 뺀다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  mocks.setUserAdmin.mockResolvedValueOnce({ ...user, admin: true }).mockResolvedValueOnce(user)
+  mount('/admin/users/7')
+  fireEvent.click(await screen.findByRole('button', { name: '관리자 권한 주기' }))
+  expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('회원 7에게 관리자 권한을 줄까요?'))
+  expect(mocks.setUserAdmin).toHaveBeenLastCalledWith(7, true)
+  fireEvent.click(await screen.findByRole('button', { name: '관리자 권한 빼기' }))
+  expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('회원 7의 관리자 권한을 뺄까요?'))
+  expect(mocks.setUserAdmin).toHaveBeenLastCalledWith(7, false)
+  expect(await screen.findByRole('button', { name: '관리자 권한 주기' })).toBeVisible()
+  confirm.mockRestore()
+})
+
+it('확인을 취소하면 권한을 바꾸지 않고, 실패하면 서버 안내를 보인다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  mocks.getUser.mockResolvedValue({ ...user, admin: true })
+  mount('/admin/users/7')
+  fireEvent.click(await screen.findByRole('button', { name: '관리자 권한 빼기' }))
+  expect(mocks.setUserAdmin).not.toHaveBeenCalled()
+
+  confirm.mockReturnValue(true)
+  mocks.setUserAdmin.mockRejectedValue(new Error('자기 자신의 관리자 권한은 뺄 수 없습니다.'))
+  fireEvent.click(screen.getByRole('button', { name: '관리자 권한 빼기' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('자기 자신의 관리자 권한은 뺄 수 없습니다.')
+  expect(screen.getByRole('button', { name: '관리자 권한 빼기' })).toBeEnabled()
+  confirm.mockRestore()
+})
+
+it('관리자 회원은 목록 이메일 칸에 관리자 표시가 붙는다', async () => {
+  mocks.listUsers.mockResolvedValue(page({ ...user, admin: true }))
+  mount()
+  expect(await screen.findByRole('cell', { name: 'member@example.test관리자' })).toBeVisible()
 })

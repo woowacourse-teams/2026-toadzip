@@ -1,9 +1,9 @@
-import { Navigate, Outlet, useLocation } from 'react-router'
+import { Link, Navigate, Outlet, useLocation } from 'react-router'
 import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 
 export function RequireAdmin() {
-  const { session, isLoading, error } = useAdminAuth()
+  const { session, isLoading, error, forbidden } = useAdminAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -11,6 +11,15 @@ export function RequireAdmin() {
   }
   if (error) {
     return <main className="admin-auth-state"><BrandLink /><p>{error}</p></main>
+  }
+  if (forbidden) {
+    return (
+      <main className="admin-auth-state">
+        <BrandLink />
+        <p>관리자 권한이 없는 계정입니다.</p>
+        <Link to="/explore">지도로 돌아가기</Link>
+      </main>
+    )
   }
   if (!session) {
     // 로그인 후 보던 화면(검색 조건·오류 정보 포함)으로 돌아가도록 원래 주소를 넘긴다.

@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import App from '../../App'
 
 afterEach(() => vi.unstubAllGlobals())
-const member = { id: 7, email: 'member@example.test', provider: 'KAKAO', createdAt: '2026-10-04T09:12:34' }
+const member = { id: 7, email: 'member@example.test', provider: 'KAKAO', createdAt: '2026-10-04T09:12:34', admin: false }
 it('관리자 메뉴에서 회원 목록과 상세로 이동하며 직접 상세 접근도 지원한다', async () => {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const path = new URL(String(input)).pathname

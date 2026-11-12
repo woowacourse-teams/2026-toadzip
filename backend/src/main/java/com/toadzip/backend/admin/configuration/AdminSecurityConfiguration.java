@@ -5,7 +5,7 @@ import com.toadzip.backend.global.security.JsonAccessDeniedHandler;
 import com.toadzip.backend.global.security.JsonAuthenticationEntryPoint;
 import com.toadzip.backend.global.security.SecurityErrorResponseWriter;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
-import com.toadzip.backend.user.configuration.DeletedUserSessionFilter;
+import com.toadzip.backend.user.configuration.SocialUserSessionFilter;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestRepository;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
 import com.toadzip.backend.user.repository.UserRepository;
@@ -87,7 +87,7 @@ public class AdminSecurityConfiguration {
                 )
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
-                .addFilterBefore(new DeletedUserSessionFilter(users, errors), AuthorizationFilter.class);
+                .addFilterBefore(new SocialUserSessionFilter(users, errors), AuthorizationFilter.class);
         if (registrations.getIfAvailable() != null) {
             http.oauth2Login(oauth -> oauth
                     .authorizationEndpoint(endpoint -> endpoint.baseUri("/api/auth/oauth2/authorization")

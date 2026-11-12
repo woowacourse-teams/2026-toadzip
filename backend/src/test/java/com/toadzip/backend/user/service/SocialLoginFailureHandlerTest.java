@@ -1,5 +1,6 @@
 package com.toadzip.backend.user.service;
 
+import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
 import com.toadzip.backend.notification.service.NotificationPushDeviceService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -58,7 +59,8 @@ class SocialLoginFailureHandlerTest {
         when(userService.findOrCreate("kakao", "123", null, null))
                 .thenThrow(new IllegalStateException("database unavailable"));
         SocialLoginSuccessHandler successHandler = new SocialLoginSuccessHandler(
-                userService, repository, failureHandler, mock(NotificationPushDeviceService.class));
+                userService, repository, failureHandler, mock(NotificationPushDeviceService.class),
+                mock(AdminAuthenticationAuditService.class));
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpSession session = new MockHttpSession();
         SecurityContext existingContext = SecurityContextHolder.createEmptyContext();

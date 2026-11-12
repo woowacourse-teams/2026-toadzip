@@ -8,12 +8,12 @@ import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.util.WebUtils;
 import com.toadzip.backend.user.dto.UserSessionResponse;
 import com.toadzip.backend.user.service.SocialUserService;
+import com.toadzip.backend.user.service.UserLogout;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +28,7 @@ public class UserAuthenticationController {
 
     private final SocialUserService socialUserService;
     private final NotificationPushDeviceService notificationDevices;
+    private final UserLogout userLogout;
 
     @GetMapping("/csrf")
     public CsrfTokenResponse csrf(CsrfToken csrfToken) {
@@ -58,15 +59,6 @@ public class UserAuthenticationController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        var session = request.getSession(false);
-        if (session == null) {
-            new SecurityContextLogoutHandler().logout(request, response, authentication);
-            return;
-        }
-        synchronized (WebUtils.getSessionMutex(session)) {
-            var binding = (NotificationDeviceBinding) session.getAttribute(NotificationDeviceBinding.SESSION_ATTRIBUTE);
-            notificationDevices.disableSessionBinding(Long.parseLong(authentication.getName()), binding);
-            new SecurityContextLogoutHandler().logout(request, response, authentication);
-        }
+        userLogout.logout(authentication, request, response);
     }
 }

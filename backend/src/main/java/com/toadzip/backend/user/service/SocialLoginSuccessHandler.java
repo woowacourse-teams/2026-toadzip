@@ -1,5 +1,7 @@
 package com.toadzip.backend.user.service;
 
+import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
+import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.notification.dto.NotificationDeviceBinding;
 import com.toadzip.backend.notification.service.NotificationPushDeviceService;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
@@ -36,6 +38,7 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final SecurityContextRepository securityContextRepository;
     private final SocialLoginFailureHandler failureHandler;
     private final NotificationPushDeviceService notificationDevices;
+    private final AdminAuthenticationAuditService adminAudit;
 
     @Value("${app.user.oauth.success-url}")
     private String successUrl;
@@ -47,6 +50,7 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
             Authentication authentication
     ) throws IOException, ServletException {
         Long userId;
+        String adminLoginIdentifier;
         try {
             OAuth2AuthenticationToken oauth = (OAuth2AuthenticationToken) authentication;
             Object kakaoId = oauth.getPrincipal().getAttributes().get("id");
@@ -74,11 +78,13 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
             request.removeAttribute(SocialAuthorizationRequestResolver.CONTEXT_ATTRIBUTE);
             userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject,
                     email, authorization);
+            adminLoginIdentifier = socialUserService.adminLoginIdentifierOf(userId);
         } catch (RuntimeException exception) {
             LOGGER.warn("event=user.login.failed phase=session reason={}", exception.getClass().getSimpleName());
             failureHandler.failAfterProviderAuthentication(response);
             return;
         }
+        // 관리자 권한은 세션에 저장하지 않고 SocialUserSessionFilter가 요청마다 회원 행에서 붙인다.
         Authentication userAuthentication = UsernamePasswordAuthenticationToken.authenticated(
                 userId.toString(), null, AuthorityUtils.createAuthorityList("ROLE_USER"));
         request.getSession();
@@ -88,6 +94,9 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
         context.setAuthentication(userAuthentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
+        if (adminLoginIdentifier != null) {
+            adminAudit.recordLoginSuccess(adminLoginIdentifier, RequestTraceIdResolver.resolve(request));
+        }
         response.sendRedirect(successRedirectUrl());
     }
 

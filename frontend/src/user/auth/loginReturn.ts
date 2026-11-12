@@ -7,11 +7,16 @@ export function safeLoginReturn(value: string | null): string {
   if (!value?.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/explore'
   try {
     const url = new URL(value, window.location.origin)
-    if (url.origin !== window.location.origin || !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info', '/mypage/conditions'].includes(explorerPagePath(url.pathname))) return '/explore'
+    if (url.origin !== window.location.origin || (!isAdminPath(url.pathname) && !['/explore', '/notifications', '/mypage/notifications', '/mypage', '/mypage/bookmarks', '/mypage/account', '/mypage/info', '/mypage/conditions'].includes(explorerPagePath(url.pathname)))) return '/explore'
     url.searchParams.delete('login')
     url.searchParams.delete('reason')
     return url.pathname + url.search + url.hash
   } catch { return '/explore' }
+}
+
+// 관리자 화면도 사이트 로그인으로 들어오므로 로그인 후 돌아갈 수 있다.
+export function isAdminPath(pathname: string) {
+  return pathname === '/admin' || pathname.startsWith('/admin/')
 }
 
 export function rememberLoginReturn(returnTo: string, pending = false) {

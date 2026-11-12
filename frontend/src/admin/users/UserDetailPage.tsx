@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { getUser, type AdminUser } from './api'
+import { getUser, setUserAdmin, type AdminUser } from './api'
 import { joinedAt, providerLabels } from './presentation'
 import { NotificationSubscriptions } from '../notifications/NotificationSubscriptions'
 import styles from './Users.module.css'
@@ -17,6 +17,23 @@ export function UserDetailPage() {
   const query = `${id}#${attempt}`
   const data = loaded?.query === query ? loaded.data : null
   const error = valid ? failure?.query === query ? failure.message : '' : '올바른 회원 페이지 주소가 아닙니다.'
+  const [roleChange, setRoleChange] = useState<{ query: string; saving: boolean; message: string } | null>(null)
+  const roleState = roleChange?.query === query ? roleChange : null
+  async function changeAdmin(target: AdminUser) {
+    const question = target.admin
+      ? `회원 ${target.id}의 관리자 권한을 뺄까요?\n이 계정은 바로 관리자 화면을 쓸 수 없게 됩니다.`
+      : `회원 ${target.id}에게 관리자 권한을 줄까요?\n이 계정은 바로 관리자 화면의 모든 기능을 쓸 수 있습니다.`
+    if (!window.confirm(question)) return
+    setRoleChange({ query, saving: true, message: '' })
+    try {
+      const result = await setUserAdmin(target.id, !target.admin)
+      setLoaded({ query, data: result })
+      setRoleChange({ query, saving: false, message: '' })
+    } catch (cause) {
+      setRoleChange({ query, saving: false,
+        message: cause instanceof Error ? cause.message : '관리자 권한을 바꾸지 못했습니다.' })
+    }
+  }
   useEffect(() => {
     if (!valid) return
     const controller = new AbortController()
@@ -38,6 +55,11 @@ export function UserDetailPage() {
       <tr><th scope="row">로그인 이메일</th><td>{data.email || '미제공'}</td></tr>
       <tr><th scope="row">로그인 방식</th><td>{providerLabels[data.provider]}</td></tr>
       <tr><th scope="row">가입일</th><td><time dateTime={data.createdAt}>{joinedAt(data.createdAt)}</time></td></tr>
+      <tr><th scope="row">관리자 권한</th><td><div className={styles.role}>
+        <span>{data.admin ? '관리자' : '없음'}</span>
+        <button type="button" disabled={roleState?.saving} onClick={() => void changeAdmin(data)}>
+          {data.admin ? '관리자 권한 빼기' : '관리자 권한 주기'}</button>
+      </div>{roleState?.message ? <p className={styles.roleError} role="alert">{roleState.message}</p> : null}</td></tr>
     </tbody></table> : null}
     {data ? <><p><Link to={`/admin/notification-deliveries?userId=${id}`}>이 회원의 알림 발송·열람 기록 확인 →</Link></p>
     <NotificationSubscriptions key={id} userId={id} /></> : null}
