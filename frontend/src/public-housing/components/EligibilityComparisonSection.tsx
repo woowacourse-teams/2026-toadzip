@@ -14,7 +14,6 @@ import {
   missingNote,
   sortChecks,
   sortTypes,
-  typeChipRows,
   typeStatusText,
   verdictCopy,
 } from '../presentation/comparisonPresentation'
@@ -70,7 +69,7 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
 
   let body: React.ReactNode = null
   if (mode === 'guest') {
-    body = <Invite detail={detail} labels={[]} />
+    body = <Invite detail={detail} />
   } else if (mode === 'error') {
     body = <RequestError title="내 조건을 불러오지 못했어요" onRetry={conditions.retryProfile ?? retry} />
   } else if (status === 'error') {
@@ -88,7 +87,7 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
     return <section className={styles.section} aria-labelledby={headingId}>
       {head(<Button size="sm" variant="secondary" onClick={() => conditions.openInput({ mode: 'full', step: 1, origin: 'detail' }, { announcementId: detail.announcementId })}>내 조건 수정</Button>,
         `공고 기준일 ${formatDots(view.referenceDate)}${saved ? ` · ${saved} 저장한 내 조건 기준` : ''}`)}
-      {!compared && <Invite detail={detail} labels={view.types.map((type) => type.label)} />}
+      {!compared && <Invite detail={detail} />}
       <Comparison key={detail.announcementId} announcementId={detail.announcementId} types={view.types} revision={loadedRevision}
         onOpenEvidence={onOpenEvidence} />
       {view.scopeNote && <p className={styles.note}>{view.scopeNote}</p>}
@@ -98,19 +97,13 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
   return <section className={styles.section} aria-labelledby={headingId}>{head()}{body}</section>
 }
 
-function Invite({ detail, labels }: { readonly detail: EligibilitySectionDetail; readonly labels: readonly string[] }) {
+function Invite({ detail }: { readonly detail: EligibilitySectionDetail }) {
   const { memberDraft, mode, openInput, restartInput } = useConditions()
   const draft = mode === 'member' ? memberDraft : null
   const done = draft !== null && draft.step > 3
-  const [top, bottom] = typeChipRows(labels)
-  const chip = (label: string) => <span key={label} className={styles.chip} role="listitem">{label}<i aria-label="미확인">?</i></span>
   return <div className={styles.invite}>
     <p className={styles.inviteTitle}>{done ? '입력 완료! 결과만 남았어요' : draft ? '작성하던 내 조건이 있어요' : '이 공고, 나도 신청할 수 있을까?'}</p>
     <p className={styles.inviteSub}>{done ? '저장한 정보로 신청자격을 확인해 드려요' : draft ? `${draft.step}단계까지 입력했어요` : '모집 선택지별 신청자격을 확인해 드려요'}</p>
-    {labels.length > 0 && <div className={styles.chips} role="list" aria-label="이 공고의 신청 유형">
-      <div className={styles.chipRow}>{top.map(chip)}</div>
-      {bottom.length > 0 && <div className={styles.chipRow}>{bottom.map(chip)}</div>}
-    </div>}
     <Button size="lg" className={styles.wide} onClick={() => openInput({ mode: 'full', step: 1, origin: 'detail' }, { announcementId: detail.announcementId, resume: true })}>
       {done ? '저장하고 결과 보기' : draft ? '이어서 입력하기' : '지금 확인해 보기'}
     </Button>
