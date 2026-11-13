@@ -181,3 +181,26 @@ it('다른 대상 저장이 실패해도 먼저 성공한 해제 결과를 되�
   expect(screen.getByLabelText('저장 목록')).toBeEmptyDOMElement()
   expect(screen.getByRole('button', { name: '서울 주택 북마크 저장' })).toHaveAttribute('aria-pressed', 'false')
 })
+
+it('창 포커스 재확인은 같은 계정이면 회원 상태와 목록을 비우지 않는다', async () => {
+  let resolveUser!: (user: { id: number; email: null } | null) => void
+  const loadUser = vi.fn().mockResolvedValueOnce({ id: 7, email: null }).mockImplementation(() => new Promise(done => { resolveUser = done }))
+  const repository = { list: vi.fn(async () => [item]), save: vi.fn(), remove: vi.fn() }
+  setup(repository, loadUser)
+  await screen.findByText('서울 주택')
+  fireEvent.focus(window)
+  expect(screen.getByText('member')).toBeVisible()
+  expect(screen.getByText('서울 주택')).toBeVisible()
+  await act(async () => resolveUser({ id: 7, email: null }))
+  await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(2))
+  expect(screen.getByText('서울 주택')).toBeVisible()
+})
+
+it('창 포커스 재확인에서 세션이 끝났으면 비회원으로 바꾼다', async () => {
+  const loadUser = vi.fn().mockResolvedValueOnce({ id: 7, email: null }).mockResolvedValue(null)
+  setup({ list: vi.fn(async () => [item]), save: vi.fn(), remove: vi.fn() }, loadUser)
+  await screen.findByText('서울 주택')
+  fireEvent.focus(window)
+  expect(await screen.findByText('guest')).toBeVisible()
+  expect(screen.queryByText('서울 주택')).not.toBeInTheDocument()
+})

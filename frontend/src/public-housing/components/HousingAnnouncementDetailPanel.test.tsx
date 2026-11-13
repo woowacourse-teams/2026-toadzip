@@ -642,7 +642,9 @@ describe('HousingAnnouncementDetailPanel', () => {
     fireEvent.click(within(firstComplex).getByRole('button', { name: /전체 대상 보기/ }))
     const firstHousingType = within(firstComplex).getByRole('article', { name: '새솔마을 36A 주택형' })
     expect(within(firstHousingType).queryByText(/평면도/)).not.toBeInTheDocument()
-    expect(firstHousingType).toHaveTextContent('공급 12세대 · 예비자 30명 · 무주택 세대구성원')
+    expect(firstHousingType).toHaveTextContent('공급 12세대 · 예비자 30명')
+    // 신청자격 원문은 내 조건 비교에서 다루므로 주택형 행에는 보이지 않는다.
+    expect(firstHousingType).not.toHaveTextContent('무주택 세대구성원')
 
     await waitFor(() => {
       expect(within(panel).getByRole('button', { name: '공고문 보기' })).toBeEnabled()

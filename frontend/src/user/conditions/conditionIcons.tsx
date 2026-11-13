@@ -26,7 +26,8 @@ export function StatusMark({ status, size = 20, label, className, bold = false }
   return <svg className={className} data-mark={status} width={size} height={size} viewBox="0 0 24 24" fill="none" {...a11y}>
     {status === 'ok' && <circle cx="12" cy="12" r={bold ? 6.8 : 8} stroke="currentColor" strokeWidth={width} />}
     {status === 'no' && <path d={bold ? 'M7 7l10 10M17 7 7 17' : 'M6.5 6.5l11 11M17.5 6.5l-11 11'} stroke="currentColor" strokeWidth={width} strokeLinecap="round" />}
-    {status === 'tri' && <path d={bold ? 'M12 5.2 19.6 18.6H4.4z' : 'M12 4.5 20.5 19.5h-17z'} stroke="currentColor" strokeWidth={bold ? 3 : 2.4} strokeLinejoin="round" />}
+    {/* 세모는 무게중심이 아래에 있어 상자 가운데에 두면 처져 보이므로 조금 올린다. */}
+    {status === 'tri' && <path d={bold ? 'M12 4.4 19.6 17.8H4.4z' : 'M12 3.5 20.5 18.5h-17z'} stroke="currentColor" strokeWidth={bold ? 3 : 2.4} strokeLinejoin="round" />}
     {status === 'na' && <path d="M6 12h12" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" />}
   </svg>
 }

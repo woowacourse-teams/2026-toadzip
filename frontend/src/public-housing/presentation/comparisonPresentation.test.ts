@@ -41,11 +41,11 @@ describe('신청자격 결과 표시', () => {
     expect(listResultText(result({ availability: 'NOT_STRUCTURED' }))).toBe('자격 비교 준비 중')
     expect(listResultText(result({ availability: 'CANCELLED' }))).toBe('취소된 모집이에요')
   })
-  it('입력할 항목의 안내는 이유를 말하고, 이미 미충족이면 입력해도 결과가 같다고 흐리게 알린다', () => {
-    expect(missingNote(check('INPUT_NEEDED'), 'UNDETERMINED')).toEqual({ text: '아직 입력하지 않은 항목 · 입력하면 바로 확인돼요', quiet: false })
-    expect(missingNote(check('INPUT_NEEDED'), 'INELIGIBLE')).toEqual({ text: '다른 조건이 맞지 않아 입력해도 결과는 같아요', quiet: true })
-    expect(missingNote(check('INPUT_NEEDED', { missingReason: 'LATER' }), 'UNDETERMINED')?.text).toContain('나중에 입력하기로 한 항목')
-    expect(missingNote(check('INPUT_NEEDED', { missingReason: 'FAMILY_SKIPPED' }), 'UNDETERMINED')?.text).toContain('가족 정보를 건너뛴 항목')
+  it('입력할 항목의 안내는 이유를 말하고, 이미 미충족이면 안내하지 않는다', () => {
+    expect(missingNote(check('INPUT_NEEDED'), 'UNDETERMINED')).toBe('아직 입력하지 않은 항목 · 입력하면 바로 확인돼요')
+    expect(missingNote(check('INPUT_NEEDED'), 'INELIGIBLE')).toBeNull()
+    expect(missingNote(check('INPUT_NEEDED', { missingReason: 'LATER' }), 'UNDETERMINED')).toContain('나중에 입력하기로 한 항목')
+    expect(missingNote(check('INPUT_NEEDED', { missingReason: 'FAMILY_SKIPPED' }), 'UNDETERMINED')).toContain('가족 정보를 건너뛴 항목')
     expect(missingNote(check('SATISFIED'), 'ELIGIBLE')).toBeNull()
   })
   it('탭의 상태와 근거 쪽수·안내 분류를 보존한다', () => {
@@ -60,5 +60,7 @@ describe('신청자격 결과 표시', () => {
   it('안내 칩을 두 줄로 나눈다', () => {
     expect(typeChipRows(['청년', '신혼부부', '한부모', '고령자', '대학생'])).toEqual([['청년', '신혼부부'], ['한부모', '고령자', '대학생']])
     expect(typeChipRows(['청년', '신혼부부'])).toEqual([['청년', '신혼부부'], []])
+    // 여러 주택형에 같은 유형이 있어도 칩은 한 번만 보인다.
+    expect(typeChipRows(['대학생', '청년', '대학생', '청년', '대학생'])).toEqual([['대학생', '청년'], []])
   })
 })

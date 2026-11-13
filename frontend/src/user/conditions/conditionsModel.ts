@@ -74,7 +74,6 @@ export interface CheckView {
   /** 이 항목을 고치거나 채울 때 여는 입력 */
   readonly fields: readonly ProfileField[]
   readonly missingReason: MissingReason | null
-  readonly children?: readonly CheckView[]
 }
 
 export type GuidanceKind = 'REQUIRED_QUALIFICATION' | 'APPLICATION_EXCLUSION' | 'REQUIRED_CHECK' | 'OTHER_ROUTE' | 'PRIORITY_OPPORTUNITY' | 'PROCEDURE'

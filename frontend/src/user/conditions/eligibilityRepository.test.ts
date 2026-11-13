@@ -54,6 +54,29 @@ it('수치 미충족의 기준·방향·입력값을 보존하며 다른 정보 
   expect(view.types[0].checks[1]).toMatchObject({ status: 'INPUT_NEEDED', fields: ['HOUSEHOLD_MONTHLY_INCOME'] })
 })
 
+it('맞지 않는 항목이 하나라도 있으면 선택지 결과가 확인 필요여도 미충족으로 보인다', async () => {
+  const checks = [
+    { id: 'assets', label: '총자산', evidenceIds: [], reading: { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: {} } },
+    { id: 'income', label: '세대 소득', evidenceIds: [], reading: { status: 'INPUT_NEEDED', missingInputs: ['HOUSEHOLD_MONTHLY_INCOME'], comparedValues: {} } },
+  ]
+  const data = { ...current, result: { ...current.result, status: 'UNDETERMINED', paths: [{ pathId: 'ordinary', checks }], options: [{ ...current.result.options[0], status: 'UNDETERMINED' }] } }
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(data))
+  const view = await createEligibilityRepository(fetcher).loadComparison(ref)
+  expect(view.types[0].status).toBe('INELIGIBLE')
+})
+
+it('이번 공고에서 모집하지 않거나 모집 여부를 모르는 선택지는 신청 유형에서 뺀다', async () => {
+  const option = current.result.options[0]
+  const data = { ...current, result: { ...current.result, options: [option,
+    { ...option, optionId: 'unknown', recruitmentStatus: 'UNKNOWN', status: 'NOT_EVALUATED' },
+    { ...option, optionId: 'closed', recruitmentStatus: 'NOT_RECRUITING', status: 'NOT_EVALUATED' },
+    { ...option, optionId: 'cancelled', recruitmentStatus: 'CANCELLED', status: 'NOT_EVALUATED' },
+    { ...option, optionId: 'upcoming', recruitmentStatus: 'UPCOMING' }] } }
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(data))
+  const view = await createEligibilityRepository(fetcher).loadComparison(ref)
+  expect(view.types.map((type) => type.key)).toEqual(['ordinary', 'upcoming'])
+})
+
 it('법정 필수 자격과 신청 제한 안내를 별도로 보존한다', async () => {
   const data = { ...current, content: { ...content,
     qualifications: [{ id: 'single-parent', exactName: '지원대상 한부모가족', conditionsAsWritten: '해당 법정 자격 확인', evidenceIds: [] }],
@@ -107,14 +130,54 @@ it('공고문 문장 그대로인 조건 이름 대신 무엇을 비교하는지
     { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { field: 'IS_UNIVERSITY_STUDENT', providedValue: false, expected: 'true', operator: 'EQ' } })
   expect(student).toMatchObject({ criterion: '재학 중인 대학생', mine: '대학생 아님' })
 
-  // 서로 다른 항목을 묶은 조건은 한 이름으로 부를 수 없어 원래 이름을 쓴다.
+  // 서로 다른 항목을 모두 갖춰야 하는 묶음은 항목 이름을 이어 부르고, 기준도 한 줄로 잇는다.
   const mixed = await commonCheck('청년 요건', { operator: 'ALL', children: [{ operator: 'AGE_RANGE', field: 'BIRTH_DATE', minimum: 19, maximum: 39, children: [] },
     { operator: 'EQUALS', field: 'IS_UNIVERSITY_STUDENT', expected: 'true', children: [] }] },
   { status: 'INPUT_NEEDED', missingInputs: ['BIRTH_DATE'], comparedValues: { children: [
     { status: 'INPUT_NEEDED', missingInputs: ['BIRTH_DATE'], comparedValues: {} },
     { status: 'SATISFIED', missingInputs: [], comparedValues: { field: 'IS_UNIVERSITY_STUDENT', providedValue: true, expected: 'true' } }] } })
-  expect(mixed.label).toBe('청년 요건')
-  expect(mixed.children?.[0]).toMatchObject({ label: '나이', criterion: '만 19~39세' })
+  expect(mixed).toMatchObject({ label: '나이 · 대학생', criterion: '만 19~39세 · 재학 중인 대학생', mine: null, fields: ['BIRTH_DATE'] })
+  expect(mixed).not.toHaveProperty('children')
+})
+
+// 공고 상세는 모든 조건을 같은 한 줄(기호 · 이름과 기준 · 내 값이나 행동)로 보인다. 묶음도 하위 줄로 펼치지 않는다.
+it('어느 하나만 맞으면 되는 묶음은 한 줄로 요약하고, 빠진 항목을 한 번에 입력하게 한다', async () => {
+  const rule = { operator: 'ANY', children: [leafRule('MONTHS_SINCE', 'MARRIAGE_EVENT', { maximum: 84 }),
+    leafRule('AGE_RANGE', 'YOUNGEST_CHILD', { minimum: 0, maximum: 6 })] }
+  const check = await commonCheck('혼인기간이 7년 이내일 것 또는 6세 이하 자녀(태아포함)를 둔 자', rule,
+    { status: 'INPUT_NEEDED', missingInputs: ['MARRIAGE_EVENT', 'YOUNGEST_CHILD'], comparedValues: { children: [
+      { status: 'INPUT_NEEDED', missingInputs: ['MARRIAGE_EVENT'], comparedValues: {} },
+      { status: 'INPUT_NEEDED', missingInputs: ['YOUNGEST_CHILD'], comparedValues: {} }] } })
+
+  expect(check).toMatchObject({ label: '혼인기간 또는 자녀 나이', status: 'INPUT_NEEDED', mine: null,
+    criterion: '혼인 7년 이내 또는 막내 자녀 만 6세 이하', fields: ['MARRIAGE_EVENT', 'YOUNGEST_CHILD'], missingReason: 'UNANSWERED' })
+  expect(check).not.toHaveProperty('children')
+
+  // 충족하면 맞은 항목의 내 값을 보인다.
+  const met = await commonCheck('공고문 문장', rule, { status: 'SATISFIED', missingInputs: [], comparedValues: { children: [
+    { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { field: 'MARRIAGE_EVENT', providedValue: { kind: 'REGISTERED', date: '2015-01-01' } } },
+    { status: 'SATISFIED', missingInputs: [], comparedValues: { field: 'YOUNGEST_CHILD', providedValue: '2023-01-01', comparedValue: 3, unit: 'YEARS' } }] } })
+  expect(met).toMatchObject({ status: 'SATISFIED', mine: '만 3세' })
+
+  // 맞지 않으면 고칠 수 있게 내 값을 모두 보이고, 묶음 안의 모든 항목을 고치게 한다.
+  const unmet = await commonCheck('공고문 문장', rule, { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { children: [
+    { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { field: 'MARRIAGE_EVENT', providedValue: { kind: 'REGISTERED', date: '2015-01-01' } } },
+    { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { field: 'YOUNGEST_CHILD', providedValue: '2015-01-01', comparedValue: 11, unit: 'YEARS' } }] } })
+  expect(unmet).toMatchObject({ status: 'NOT_SATISFIED', mine: '2015-01-01 · 만 11세', fields: ['MARRIAGE_EVENT', 'YOUNGEST_CHILD'] })
+})
+
+it('묶음 안의 묶음은 괄호로 감싸 기준을 한 줄로 잇고, 이름은 공고의 조건 이름을 쓴다', async () => {
+  const rule = { operator: 'ANY', children: [
+    { operator: 'ALL', children: [leafRule('EQUALS', 'IS_UNIVERSITY_STUDENT', { expected: 'true' }), leafRule('AGE_RANGE', 'BIRTH_DATE', { minimum: 19, maximum: 39 })] },
+    leafRule('EQUALS', 'IS_JOB_SEEKER', { expected: 'true' })] }
+  const check = await commonCheck('청년 신분', rule, { status: 'INPUT_NEEDED', missingInputs: ['IS_JOB_SEEKER'], comparedValues: { children: [
+    { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { children: [
+      { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { field: 'IS_UNIVERSITY_STUDENT', providedValue: false, expected: 'true' } },
+      { status: 'SATISFIED', missingInputs: [], comparedValues: { field: 'BIRTH_DATE', providedValue: '1996-03-02', comparedValue: 30, unit: 'YEARS' } }] } },
+    { status: 'INPUT_NEEDED', missingInputs: ['IS_JOB_SEEKER'], comparedValues: {} }] } })
+
+  expect(check).toMatchObject({ label: '청년 신분', criterion: '(재학 중인 대학생 · 만 19~39세) 또는 취업준비생', fields: ['IS_JOB_SEEKER'] })
+  expect(check).not.toHaveProperty('children')
 })
 
 const leafRule = (operator: string, field: string, extra: object = {}) => ({ operator, field, children: [], ...extra })
@@ -162,7 +225,7 @@ it('출산자녀 가산 기준은 중첩 줄 대신 기본 기준 한 줄에 자
     { status: 'SATISFIED', missingInputs: [], comparedValues: { children: [over, { status: 'SATISFIED', missingInputs: [], comparedValues: { children: [] } },
       { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { children: [] } }] } })
 
-  expect(check).toMatchObject({ label: '자동차가액', status: 'SATISFIED', mine: '4,800만 원', children: [],
+  expect(check).toMatchObject({ label: '자동차가액', status: 'SATISFIED', mine: '4,800만 원',
     criterion: '4,542만 원 이하 · 출산자녀 1명 4,997만 원 · 2명 이상 5,451만 원' })
 
   // 계산하지 못한 가산(맞벌이 등)은 숫자 없이 더 높을 수 있다고만 덧붙인다.
@@ -173,14 +236,14 @@ it('출산자녀 가산 기준은 중첩 줄 대신 기본 기준 한 줄에 자
   expect(lenient.criterion).toBe('4,542만 원 이하 · 가족 상황에 따라 기준이 더 높을 수 있어요')
 })
 
-it('가산이 아닌 선택 조건(한부모 또는 부부)은 가산 한 줄 요약 대신 선택지를 모두 보인다', async () => {
+it('가산이 아닌 선택 조건(한부모 또는 부부)은 가산 요약 대신 선택지를 모두 기준에 보인다', async () => {
   const rule = { operator: 'ANY', children: [{ operator: 'EQUALS', field: 'FAMILY_TYPE', expected: 'SINGLE_PARENT', children: [] },
     { operator: 'EQUALS', field: 'FAMILY_TYPE', expected: 'COUPLE_OR_ENGAGED', children: [] }] }
   const check = await commonCheck('한부모 또는 부부', rule, { status: 'SATISFIED', missingInputs: [], comparedValues: { children: [
     { status: 'NOT_SATISFIED', missingInputs: [], comparedValues: { field: 'FAMILY_TYPE', providedValue: 'COUPLE_OR_ENGAGED', expected: 'SINGLE_PARENT' } },
     { status: 'SATISFIED', missingInputs: [], comparedValues: { field: 'FAMILY_TYPE', providedValue: 'COUPLE_OR_ENGAGED', expected: 'COUPLE_OR_ENGAGED' } }] } })
 
-  expect(check.children).toHaveLength(2)
+  expect(check).toMatchObject({ label: '가족 형태', criterion: '한부모 또는 부부·예비부부', mine: '부부·예비부부' })
   expect(check.criterion).not.toContain('기준이 더 높을 수 있어요')
 })
 

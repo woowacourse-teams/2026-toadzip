@@ -205,6 +205,37 @@ function titleOf(rule: Json, label: string): string {
   const titles = [...new Set((base ? leafFields(base) : leafFields(rule)).map((name) => TITLES[name]))]
   return titles.length === 1 && titles[0] ? titles[0] : label
 }
+function joiner(rule: Json): string { return rule.operator === 'ANY' ? ' 또는 ' : ' · ' }
+/** 묶음 조건의 제목. 한 단계 묶음이면 항목 이름을 이어 부르고, 묶음 안에 묶음이 있으면 공고의 조건 이름을 쓴다. */
+function groupTitle(rule: Json, label: string): string {
+  const parts = children(rule)
+  const single = titleOf(rule, label)
+  if (single !== label || parts.some((part) => !leaf(part))) return single
+  const titles = [...new Set(parts.map((part) => { const name = field(part.field); return name ? TITLES[name] : '' }))]
+  return titles.every(Boolean) && titles.length <= 3 ? titles.join(joiner(rule)) : label
+}
+/**
+ * 묶음 조건(ANY·ALL)을 다른 조건과 같은 한 줄로 요약한다. 기준은 항목 기준을 '또는'·'·'로 잇고 안쪽 묶음은 괄호로 감싼다.
+ * 내 값은 충족이면 맞은 항목의 값, 미충족이면 고칠 수 있게 모든 항목의 값을 보인다.
+ */
+function mapGroup(id: string, label: string, rule: Json, raw: Json, readings: unknown[], source: EvidenceRef | null): CheckView {
+  const missing = fields(raw.missingInputs)
+  const status = oneOf(raw.status, ['SATISFIED', 'NOT_SATISFIED', 'INPUT_NEEDED', 'DIRECT_CHECK_REQUIRED'])
+  const rules = children(rule)
+  const parts = readings.map((reading, index) => {
+    const partRule = rules[index] ?? {}
+    const partField = field(partRule.field)
+    return { rule: partRule, view: mapReading(`${id}-${index}`, partField ? FIELD_COPY[partField].label : `${label} 조건 ${index + 1}`, object(reading), partRule, source) }
+  })
+  const criterion = parts.map(({ rule: partRule, view }) => {
+    const line = `${view.criterion}${view.basis ? ` (${view.basis})` : ''}`
+    return leaf(partRule) ? line : `(${line})`
+  }).join(joiner(rule))
+  const shown = status === 'SATISFIED' ? parts.filter(({ view }) => view.status === 'SATISFIED') : status === 'NOT_SATISFIED' ? parts : []
+  const mine = [...new Set(shown.map(({ view }) => view.mine).filter((value) => value !== null))].join(' · ') || null
+  return { id, label: groupTitle(rule, label), status, mine, criterion, basis: null, evidence: source,
+    fields: missing.length ? missing : [...new Set(leafFields(rule))], missingReason: missing.length ? 'UNANSWERED' : null }
+}
 function mapReading(id: string, label: string, raw: Json, rule: Json, source: EvidenceRef | null): CheckView {
   const compared = record(raw.comparedValues) ? raw.comparedValues : {}
   const missing = fields(raw.missingInputs)
@@ -221,12 +252,8 @@ function mapReading(id: string, label: string, raw: Json, rule: Json, source: Ev
       criterion: `${base.criterion}${base.basis ? ` (${base.basis})` : ''}${tiers}${other}`,
       fields: missing.length ? missing : base.fields, missingReason: missing.length ? 'UNANSWERED' : null }
   }
+  if (Array.isArray(compared.children) && compared.children.length) return mapGroup(id, label, rule, raw, compared.children, source)
   const name = field(compared.field ?? rule.field)
-  const nested = Array.isArray(compared.children) ? compared.children.map((child, index) => {
-    const childRule = children(rule)[index] ?? {}
-    const childField = field(childRule.field)
-    return mapReading(`${id}-${index}`, childField ? FIELD_COPY[childField].label : `${label} 조건 ${index + 1}`, object(child), childRule, source)
-  }) : []
   const supplied = display(compared.providedValue, name, text(compared.unit))
   const calculated = compared.comparedValue !== undefined && compared.comparedValue !== compared.providedValue
     ? ` (기준일 기준 ${display(compared.comparedValue, null, text(compared.unit))})` : ''
@@ -242,7 +269,7 @@ function mapReading(id: string, label: string, raw: Json, rule: Json, source: Ev
     mine, criterion: compared.reason === 'NOT_APPLIED'
       ? `${criterion(compared, rule, name)}(기본)${mine ? ` · 내 정보 ${mine}` : ''} · 가족 상황에 따라 다른 기준이 적용돼요. 아래 '신청 전 직접 확인할 것'을 봐 주세요.`
       : criterion(compared, rule, name), basis, evidence: source,
-    fields: missing.length ? missing : name ? [name] : [], missingReason: missing.length ? 'UNANSWERED' : null, children: nested }
+    fields: missing.length ? missing : name ? [name] : [], missingReason: missing.length ? 'UNANSWERED' : null }
 }
 function mapCheck(raw: unknown, authored: Json[], content: Json): CheckView {
   const check = object(raw)
@@ -271,7 +298,12 @@ function mapComparison(value: unknown): ComparisonView {
   const common = list(result.commonChecks).map((check) => mapCheck(check, list(content.commonChecks).map(object), content))
   const guidances = list(content.guidances).map(object)
   const qualifications = list(content.qualifications).map(object)
-  return { ...base, types: list(result.options).map((raw) => {
+  // 이번 공고에서 모집하지 않거나 모집 여부를 알 수 없는 선택지는 판정하지 않으므로 신청 유형 탭에 두지 않는다.
+  const recruited = list(result.options).filter((raw) => {
+    const recruitment = object(raw).recruitmentStatus
+    return recruitment == null || recruitment === 'RECRUITING' || recruitment === 'UPCOMING'
+  })
+  return { ...base, types: recruited.map((raw) => {
     const option = object(raw)
     const path = paths.find((item) => item.pathId === option.pathId)
     const authored = authoredPaths.find((item) => item.id === option.pathId)
@@ -280,11 +312,14 @@ function mapComparison(value: unknown): ComparisonView {
     const exclusionIds = strings(option.exclusionGuidanceIds)
     // 판정을 막지 않는 신청 전 확인 안내. 이 필드가 생기기 전에 저장된 결과에는 없다.
     const reminderIds = option.reminderGuidanceIds == null ? [] : strings(option.reminderGuidanceIds)
+    const checks = [...common, ...list(path?.checks ?? []).map((check) => mapCheck(check, list(authored?.checks ?? []).map(object), content))]
+    // 맞지 않는 항목이 하나라도 보이면 유형 결과도 미충족으로 보여 항목과 결과가 어긋나지 않게 한다.
+    const unmet = checks.some((check) => check.status === 'NOT_SATISFIED')
     return {
-      key: text(option.optionId), label: text(option.pathLabel), units: text(option.unitLabel), status: status(option.status),
+      key: text(option.optionId), label: text(option.pathLabel), units: text(option.unitLabel), status: unmet ? 'INELIGIBLE' : status(option.status),
       regionCodes: strings(option.regionCodes),
       missingInputs: fields(option.missingInputs),
-      checks: [...common, ...list(path?.checks ?? []).map((check) => mapCheck(check, list(authored?.checks ?? []).map(object), content))],
+      checks,
       qualifications: qualifications.filter((item) => requiredIds.includes(text(item.id))).map((item) => ({
         title: text(item.exactName), body: text(item.conditionsAsWritten), items: item.legalBasis ? [text(item.legalBasis)] : [],
         evidence: evidence(content, item.evidenceIds),

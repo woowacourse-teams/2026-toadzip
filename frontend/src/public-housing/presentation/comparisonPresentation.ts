@@ -85,11 +85,10 @@ export function listResultText(result: ListConditionResult): string | null {
 
 const MISSING_REASON_TEXT = { LATER: '나중에 입력하기로 한 항목', FAMILY_SKIPPED: '가족 정보를 건너뛴 항목', UNANSWERED: '아직 입력하지 않은 항목' } as const
 
-/** 입력이 필요한 항목의 안내. 다른 조건이 이미 맞지 않으면 입력해도 결과가 같다고 흐리게 알린다. */
-export function missingNote(check: CheckView, typeStatus: TypeStatus): { text: string; quiet: boolean } | null {
-  if (check.status !== 'INPUT_NEEDED') return null
-  if (typeStatus === 'INELIGIBLE') return { text: '다른 조건이 맞지 않아 입력해도 결과는 같아요', quiet: true }
-  return { text: `${MISSING_REASON_TEXT[check.missingReason ?? 'UNANSWERED']} · 입력하면 바로 확인돼요`, quiet: false }
+/** 입력이 필요한 항목의 안내. 다른 조건이 이미 맞지 않으면 입력해도 결과가 같으므로 안내하지 않는다. */
+export function missingNote(check: CheckView, typeStatus: TypeStatus): string | null {
+  if (check.status !== 'INPUT_NEEDED' || typeStatus === 'INELIGIBLE') return null
+  return `${MISSING_REASON_TEXT[check.missingReason ?? 'UNANSWERED']} · 입력하면 바로 확인돼요`
 }
 
 /** 근거 버튼 문구. PDF 추출로 만든 근거의 위치는 추출 데이터 경로(eligibility.common.requirements[1])라 보이지 않는다. */
@@ -98,10 +97,12 @@ export function evidenceLabel(evidence: EvidenceRef): string {
   return readable ? `${evidence.page}쪽 ${evidence.location}` : `${evidence.page}쪽`
 }
 
+/** 초대 칩 두 줄. 같은 유형이 여러 주택형에 걸쳐 모집되면 이름이 반복되므로 한 번만 보인다. */
 export function typeChipRows(targets: readonly string[]): [string[], string[]] {
-  if (targets.length <= 2) return [[...targets], []]
-  const top = Math.floor(targets.length / 2)
-  return [targets.slice(0, top), targets.slice(top)]
+  const names = [...new Set(targets)]
+  if (names.length <= 2) return [names, []]
+  const top = Math.floor(names.length / 2)
+  return [names.slice(0, top), names.slice(top)]
 }
 
 export const GUIDANCE_KIND_LABEL: Record<GuidanceKind, string> = {

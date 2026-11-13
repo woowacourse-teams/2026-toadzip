@@ -172,7 +172,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={15} className={styles.mark} />{type.label}{type.units && <small>{type.units}</small>}</span>
+        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{type.label}{type.units && <small>{type.units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
@@ -222,11 +222,10 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
   const { openInput } = useConditions()
   const copy = verdictCopy(type)
   const checks = sortChecks(type.checks)
-  const editableFailures = (items: readonly CheckView[]): CheckView[] => items.flatMap((check) => check.children?.length ? editableFailures(check.children) : check.status === 'NOT_SATISFIED' && check.fields.length > 0 ? [check] : [])
-  const firstUnmet = editableFailures(checks)[0]
+  const firstUnmet = checks.find((check) => check.status === 'NOT_SATISFIED' && check.fields.length > 0)
   return <>
     <div className={styles.verdict} data-status={type.status}>
-      <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={26} className={styles.mark} /></span>
+      <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={30} className={styles.mark} /></span>
       <div>
         <strong>{copy.title}</strong>
         <p>{copy.message}</p>
@@ -265,25 +264,24 @@ function CheckRow({ announcementId, check, type, just, onOpenEvidence }: { reado
   const { openInput } = useConditions()
   const note = missingNote(check, type.status)
   const field = check.fields[0]
+  // 묶음 조건은 여러 항목을 함께 열므로 항목 이름 대신 줄 이름으로 부른다.
+  const name = field && check.fields.length === 1 ? FIELD_COPY[field].label : check.label
   const side = check.status === 'NOT_SATISFIED' && field
-    ? <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 수정, 지금 값 ${check.mine ?? ''}`}
-      onClick={() => openFix(openInput, check.fields, announcementId)}>{check.mine}<PencilIcon size={14} /></button>
+    ? <button type="button" className={styles.editChip} aria-label={`${name} 수정${check.mine ? `, 지금 값 ${check.mine}` : ''}`}
+      onClick={() => openFix(openInput, check.fields, announcementId)}>{check.mine ?? '수정하기'}<PencilIcon size={14} /></button>
     : check.status === 'INPUT_NEEDED' && field
-    ? <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 입력하기`}
+    ? <button type="button" className={styles.editChip} aria-label={`${name} 입력하기`}
       onClick={() => openInput({ mode: 'partial', fields: check.fields, origin: 'detail' }, { announcementId })}>입력하기<PlusIcon size={14} /></button>
     : check.status === 'SATISFIED' && check.mine ? <b className={styles.mine}>{check.mine}</b>
     : null
   return <li className={styles.check} data-status={check.status} data-just={just || undefined}>
     <span className={styles.rowMark} data-status={check.status}>
-      <StatusMark status={markOfCheck(check.status)} size={18} bold label={CHECK_STATUS_LABEL[check.status]} className={styles.mark} />
+      <StatusMark status={markOfCheck(check.status)} size={22} bold label={CHECK_STATUS_LABEL[check.status]} className={styles.mark} />
     </span>
     <div className={styles.main}>
       <div className={styles.top}><strong>{check.label}</strong>{just && <span className={styles.justTag}>방금 확인했어요</span>}</div>
       <p className={styles.criterion}>기준 {check.criterion}{check.basis ? ` (${check.basis})` : ''}</p>
-      {note && <p className={note.quiet ? `${styles.missing} ${styles.quiet}` : styles.missing}>{note.text}</p>}
-      {Boolean(check.children?.length) && <ul className={styles.checks} aria-label={`${check.label} 세부 조건`}>
-        {check.children?.map((child) => <CheckRow key={child.id} announcementId={announcementId} check={child} type={type} just={false} onOpenEvidence={onOpenEvidence} />)}
-      </ul>}
+      {note && <p className={styles.missing}>{note}</p>}
     </div>
     <div className={styles.side}>
       {side}
