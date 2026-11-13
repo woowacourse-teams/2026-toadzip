@@ -46,6 +46,7 @@ public class EligibilityDraftSourceRepository {
                                COALESCE(r.announcement_exclusive_area, ht.exclusive_area) AS exclusive_area,
                                hc.id AS complex_id, ht.id AS type_id, hc.city_county_district_code AS region_code,
                                COALESCE(a.supply_type, hc.supply_type) AS rental_type,
+                               r.total_supply_household_count AS row_household_count,
                                t.target, COALESCE(t.supply_household_count, g.household_count) AS supply_household_count
                         FROM supply_rows r
                         JOIN announcements a ON a.id = r.announcement_id
@@ -64,7 +65,8 @@ public class EligibilityDraftSourceRepository {
                 .query((result, index) -> {
                     UnitRow read = new UnitRow(result.getLong("id"), string(result, "complex_label"),
                             string(result, "type_label"), decimal(result, "exclusive_area"), number(result, "complex_id"),
-                            number(result, "type_id"), string(result, "rental_type"), string(result, "region_code"));
+                            number(result, "type_id"), string(result, "rental_type"), string(result, "region_code"),
+                            integer(result, "row_household_count"));
                     UnitRow row = rows.computeIfAbsent(read.id(), id -> read);
                     String target = string(result, "target");
                     if (target != null && !target.isBlank()) {
@@ -78,15 +80,17 @@ public class EligibilityDraftSourceRepository {
 
     /** rentalType은 저장된 공급유형 코드 원문이다. 서비스가 화면 이름으로 바꾼다. */
     private record UnitRow(long id, String complexLabel, String typeLabel, BigDecimal exclusiveArea, Long complexId,
-                           Long typeId, String rentalType, String regionCode, List<Target> targets) {
+                           Long typeId, String rentalType, String regionCode, Integer householdCount,
+                           List<Target> targets) {
         private UnitRow(long id, String complexLabel, String typeLabel, BigDecimal exclusiveArea, Long complexId,
-                        Long typeId, String rentalType, String regionCode) {
-            this(id, complexLabel, typeLabel, exclusiveArea, complexId, typeId, rentalType, regionCode, new ArrayList<>());
+                        Long typeId, String rentalType, String regionCode, Integer householdCount) {
+            this(id, complexLabel, typeLabel, exclusiveArea, complexId, typeId, rentalType, regionCode, householdCount,
+                    new ArrayList<>());
         }
 
         private Unit unit() {
             return new Unit(id, complexLabel, typeLabel, exclusiveArea, complexId, typeId, rentalType,
-                    regionCode == null ? List.of() : List.of(regionCode), List.copyOf(targets));
+                    regionCode == null ? List.of() : List.of(regionCode), List.copyOf(targets), householdCount);
         }
     }
 

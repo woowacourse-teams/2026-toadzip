@@ -397,6 +397,28 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 대상별_행_없이_세대수만_있는_공급행은_모집_중으로_본다() {
+        // 공급표가 대상을 나누지 않고 주택형 세대수만 적은 경우(예: 33A 56세대)에도 이번 공고에서 모집하는 주택형이다.
+        var units = List.of(
+                new Unit(1, "대구신서", "26A", new BigDecimal("26.92"), 10L, 20L, "국민임대", List.of("27140"),
+                        List.of(new Target("전체", 52)), 52),
+                new Unit(2, "대구신서", "33A", new BigDecimal("33.97"), 10L, 21L, "국민임대", List.of("27140"),
+                        List.of(), 56),
+                new Unit(3, "대구신서", "46A", new BigDecimal("46.93"), 10L, 22L, "국민임대", List.of("27140"),
+                        List.of(), null));
+
+        var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
+
+        assertThat(built.content().options()).filteredOn(option -> option.pathId().equals("path-1"))
+                .extracting(EligibilityContent.ApplicationOption::supplyUnitId,
+                        EligibilityContent.ApplicationOption::recruitmentStatus)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("unit-1", RecruitmentStatus.RECRUITING),
+                        org.assertj.core.groups.Tuple.tuple("unit-2", RecruitmentStatus.RECRUITING),
+                        org.assertj.core.groups.Tuple.tuple("unit-3", RecruitmentStatus.UNKNOWN));
+    }
+
+    @Test
     void 대상을_나눈_공급행에는_그_대상의_경로만_잇는다() {
         var units = List.of(
                 new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
