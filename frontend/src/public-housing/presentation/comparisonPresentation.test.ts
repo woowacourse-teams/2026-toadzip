@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CheckView, ListConditionResult, TypeView } from '../../user/conditions/conditionsModel'
-import { GUIDANCE_KIND_LABEL, evidenceLabel, listResultText, missingNote, sortChecks, sortTypes, typeChipRows, typeStatusText, verdictCopy } from './comparisonPresentation'
+import { GUIDANCE_KIND_LABEL, evidenceLabel, listResultText, missingNote, sortChecks, sortTypes, typeStatusText, verdictCopy } from './comparisonPresentation'
 
 const check = (status: CheckView['status'], extra: Partial<CheckView> = {}): CheckView => ({
   id: status, label: '세대 소득', status, mine: null, criterion: '', basis: null, evidence: null, fields: ['HOUSEHOLD_MONTHLY_INCOME'], missingReason: null, ...extra,
@@ -56,11 +56,5 @@ describe('신청자격 결과 표시', () => {
     // PDF 추출 근거의 위치는 데이터 경로라 쪽수만 보인다.
     expect(evidenceLabel({ page: 4, location: 'eligibility.common.requirements[1]', fileName: null })).toBe('4쪽')
     expect(GUIDANCE_KIND_LABEL.APPLICATION_EXCLUSION).toBe('신청 불가능한 특수 경우')
-  })
-  it('안내 칩을 두 줄로 나눈다', () => {
-    expect(typeChipRows(['청년', '신혼부부', '한부모', '고령자', '대학생'])).toEqual([['청년', '신혼부부'], ['한부모', '고령자', '대학생']])
-    expect(typeChipRows(['청년', '신혼부부'])).toEqual([['청년', '신혼부부'], []])
-    // 여러 주택형에 같은 유형이 있어도 칩은 한 번만 보인다.
-    expect(typeChipRows(['대학생', '청년', '대학생', '청년', '대학생'])).toEqual([['대학생', '청년'], []])
   })
 })

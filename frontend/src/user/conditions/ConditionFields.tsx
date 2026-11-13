@@ -96,9 +96,11 @@ function digitsToIso(digits: string) {
 
 function DateControl({ field, draft, questionId, today, partial = false, onChange, onFieldError }: ControlProps) {
   const value = draft.answers[field]
-  const [raw, setRaw] = useState(() => (typeof value === 'string' ? formatDots(value) : ''))
   const laterOn = value === LATER
   const notApplicableOn = value === NOT_APPLICABLE
+  // '나중에'·'해당 없음'도 문자열로 저장되므로 날짜 값만 칸에 채운다.
+  const date = typeof value === 'string' && !laterOn && !notApplicableOn ? value : null
+  const [raw, setRaw] = useState(() => (date ? formatDots(date) : ''))
   const change = (text: string) => {
     const digits = text.replace(/\D/g, '').slice(0, 8)
     setRaw(formatDigitsAsDate(digits))
@@ -111,7 +113,7 @@ function DateControl({ field, draft, questionId, today, partial = false, onChang
   return <>
     <input className={styles.input} inputMode="numeric" placeholder={laterOn ? '나중에 입력해요' : '예) 1996.03.02'} aria-labelledby={questionId}
       disabled={laterOn || notApplicableOn} maxLength={10} value={raw} onChange={(event) => change(event.target.value)} />
-    {typeof value === 'string' && field === 'BIRTH_DATE' && <p className={styles.reading}>{formatAge(value, today)}</p>}
+    {date && field === 'BIRTH_DATE' && <p className={styles.reading}>{formatAge(date, today)}</p>}
     {(FIELD_COPY[field].skippable || FIELD_COPY[field].notApplicableLabel) && <div className={styles.foot}>
       {FIELD_COPY[field].notApplicableLabel && <Checkbox checked={notApplicableOn} onToggle={() => { onFieldError(field, null); setRaw(''); onChange(setAnswer(draft, field, notApplicableOn ? undefined : NOT_APPLICABLE)) }}>{FIELD_COPY[field].notApplicableLabel}</Checkbox>}
       {FIELD_COPY[field].skippable && !partial && <Checkbox checked={laterOn} onToggle={() => { onFieldError(field, null); setRaw(''); onChange(setAnswer(draft, field, laterOn ? undefined : LATER)) }}>나중에 입력할게요</Checkbox>}

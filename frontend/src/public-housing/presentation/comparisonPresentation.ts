@@ -97,14 +97,6 @@ export function evidenceLabel(evidence: EvidenceRef): string {
   return readable ? `${evidence.page}쪽 ${evidence.location}` : `${evidence.page}쪽`
 }
 
-/** 초대 칩 두 줄. 같은 유형이 여러 주택형에 걸쳐 모집되면 이름이 반복되므로 한 번만 보인다. */
-export function typeChipRows(targets: readonly string[]): [string[], string[]] {
-  const names = [...new Set(targets)]
-  if (names.length <= 2) return [names, []]
-  const top = Math.floor(names.length / 2)
-  return [names.slice(0, top), names.slice(top)]
-}
-
 export const GUIDANCE_KIND_LABEL: Record<GuidanceKind, string> = {
   REQUIRED_QUALIFICATION: '필수 자격',
   APPLICATION_EXCLUSION: '신청 불가능한 특수 경우',
