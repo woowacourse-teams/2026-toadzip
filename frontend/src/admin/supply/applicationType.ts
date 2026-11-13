@@ -14,9 +14,30 @@ export function withoutApplicant(name: string | null | undefined): string {
   return result
 }
 
+const HOUSING_VARIANT = /^주거약자(용|형)?$/
+
+/**
+ * 끝 묶음이 신청자가 아니라 주거약자용 주택을 가리키는 형명인지("26A(주거약자)", "37B(주거약자용)", "46A-H1(주거약자형)").
+ * 공고문에서 같은 형명("26A")과 다른 주택형이다. 다른 신청자와 함께 적은 "26A-1형[고령자(주거약자용)]"와 이름 전체가 묶음인 표기는 아니다.
+ * 서버 HousingTypeNames.housingVariant와 같은 규칙이다.
+ */
+export function housingVariant(name: string | null | undefined): boolean {
+  const value = (name ?? '').normalize('NFKC').trim()
+  const open = trailingGroupStart(value)
+  return open > 0 && HOUSING_VARIANT.test(value.slice(open + 1, -1).replace(/\s+/g, ''))
+}
+
+/** 공급행끼리 비교하는 신청형 키(서버 HousingTypeNames.applicationKey). 주거약자용 형명은 묶음을 붙여 같은 형명과 가른다. */
+export function applicationRowKey(name: string | null | undefined): string {
+  const key = applicationTypeKey(name)
+  if (!key || !housingVariant(name)) return key
+  const value = (name ?? '').normalize('NFKC').trim()
+  return `${key}(${value.slice(trailingGroupStart(value) + 1, -1).replace(/\s+/g, '')})`
+}
+
 /** 표시명이 가리키는 신청형 키. 여러 표기를 '·'로 이은 이름("55A1 · 55C(주거약자)")은 표기마다 키를 둔다. */
 export function applicationTypeKeys(name: string | null | undefined): Set<string> {
-  return new Set((name ?? '').split('·').map(applicationTypeKey).filter(Boolean))
+  return new Set((name ?? '').split('·').map(applicationRowKey).filter(Boolean))
 }
 
 /**
@@ -35,11 +56,17 @@ export function sameApplicationType(left: string | null | undefined, right: stri
 
 // 끝의 () 또는 [] 묶음 하나를 뗀다. 이름 전체가 묶음이면 떼지 않는다.
 function withoutTrailingGroup(value: string) {
-  if (!value.endsWith(')') && !value.endsWith(']')) return value
+  const open = trailingGroupStart(value)
+  return open <= 0 ? value : value.slice(0, open).trim()
+}
+
+// 끝의 () 또는 [] 묶음(중첩 포함)이 여는 위치. 없거나 짝이 맞지 않으면 -1이다.
+function trailingGroupStart(value: string) {
+  if (!value.endsWith(')') && !value.endsWith(']')) return -1
   let depth = 0
   for (let at = value.length - 1; at >= 0; at--) {
     if (value[at] === ')' || value[at] === ']') depth++
-    else if ((value[at] === '(' || value[at] === '[') && --depth === 0) return at === 0 ? value : value.slice(0, at).trim()
+    else if ((value[at] === '(' || value[at] === '[') && --depth === 0) return at
   }
-  return value
+  return -1
 }

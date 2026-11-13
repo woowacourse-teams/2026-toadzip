@@ -1,6 +1,6 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject } from '../announcement-json/api'
-import { applicationTypeKey, withoutApplicant } from '../supply/applicationType'
+import { applicationRowKey, applicationTypeKey, withoutApplicant } from '../supply/applicationType'
 import { areaKey } from './areas'
 import { type Evidence, type ExtractedRow, type Extraction, type ExtractionNote, type SharedCount, type Subtype } from './extraction'
 
@@ -123,7 +123,8 @@ export function foldSameHousingType(extraction: Extraction): Extraction {
   const root = source.map((_, index) => index)
   const find = (index: number): number => root[index] === index ? index : (root[index] = find(root[index]))
   const join = (left: number, right: number) => { const a = find(left), b = find(right); if (a !== b) root[Math.max(a, b)] = Math.min(a, b) }
-  const types = source.map(row => applicationTypeKey(row.typeName))
+  // 같은 형명의 주거약자용 주택(26A·26A(주거약자))은 다른 주택형이라 접지 않는다.
+  const types = source.map(row => applicationRowKey(row.typeName))
   // 단지가 둘 이상인 공고에서 단지명이 빈 행은 어느 단지인지 모른다. 신청형이 같아도 다른 블록의 행(광주선운2 A-1·A-3블록의
   // 55B-1)일 수 있어 접지 않는다. 행은 따로 두고 저장할 곳·단지 정하기에서 단지를 정한다.
   const complexNames = new Set([...extraction.complexes.map(complex => complex.name.trim()), ...source.map(complexOf)].filter(Boolean))

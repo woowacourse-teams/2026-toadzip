@@ -46,6 +46,27 @@ class HousingTypeNamesTest {
     }
 
     @Test
+    void 끝_묶음이_주거약자용_주택만_가리키면_주거약자용_형명이다() {
+        assertThat(HousingTypeNames.housingVariant("26A(주거약자)")).isTrue();
+        assertThat(HousingTypeNames.housingVariant("37B(주거약자용)")).isTrue();
+        assertThat(HousingTypeNames.housingVariant("46A-H1 (주거약자형)")).isTrue();
+        // 다른 신청자와 함께 적은 표기, 이름 전체가 묶음인 표기, 묶음이 없는 표기는 아니다.
+        assertThat(HousingTypeNames.housingVariant("26A-1형[고령자(주거약자용)]")).isFalse();
+        assertThat(HousingTypeNames.housingVariant("(주거약자)")).isFalse();
+        assertThat(HousingTypeNames.housingVariant("26A")).isFalse();
+        assertThat(HousingTypeNames.housingVariant(null)).isFalse();
+    }
+
+    @Test
+    void 신청형_비교_키는_같은_형명의_주거약자용_주택을_다른_신청형으로_본다() {
+        assertThat(HousingTypeNames.applicationKeys("26A")).containsExactly("26a");
+        assertThat(HousingTypeNames.applicationKeys("26A(주거약자)")).containsExactly("26a(주거약자)");
+        assertThat(HousingTypeNames.applicationKeys("26A · 26A(주거약자)")).containsExactly("26a", "26a(주거약자)");
+        // 신청자 표기만 다른 형명은 지금처럼 같은 신청형이다.
+        assertThat(HousingTypeNames.applicationKeys("59A[청년]")).containsExactly("59a");
+    }
+
+    @Test
     void 단지_주택타입_이름은_면적_숫자로_적은_형명을_공고문_표기와_같게_본다() {
         assertThat(HousingTypeNames.typeKey("059.9100A")).isEqualTo(HousingTypeNames.typeKey("59A"));
         assertThat(HousingTypeNames.typeKey("84.9600B")).isEqualTo(HousingTypeNames.typeKey("84B형"));

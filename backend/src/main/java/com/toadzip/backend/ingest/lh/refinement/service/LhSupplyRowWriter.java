@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +36,8 @@ import org.springframework.stereotype.Component;
 /**
  * LH 공급을 (공고 단지, 주택형(신청형)) 공급행으로 쓴다({@link LhSourceIdentifier#lhOwnedSupplyRow}). LH는 같은 신청형을 신청자 묶음마다
  * 여러 줄로 주므로("36형 일반(고령자)"·"36형 일반(청년)") 줄마다 공급행을 만들지 않고 대상으로 둔다. 같은 전용면적이어도 신청형이 다르면
- * (55A1·55C(주거약자)) 공급행을 따로 두고 같은 단지 주택형을 함께 가리킨다({@link HousingTypeNames}).
+ * (55A1·55C(주거약자)) 공급행을 따로 두고 같은 단지 주택형을 함께 가리킨다({@link HousingTypeNames}). 같은 형명의 주거약자용 줄
+ * ("26A"와 "26A(주거약자)")도 공고문에서는 다른 주택형이라 따로 둔다. 이때만 키에 묶음을 붙여 기존 공급행 식별자를 바꾸지 않는다.
  * 대표 주택형은 연결 단지에서 {@link HousingTypeAreas#pick}으로 고르고,
  * 정제는 주택형을 만들지 않는다(LH 면적은 함께 모집하는 면적 중 하나라 PDF 보정이 확인할 때 만든다). 공고문 소유 공고는 공급행을
  * 만들거나 지우지 않고 비어 있는 공고 단지 참조만 채운다.
@@ -88,11 +90,20 @@ class LhSupplyRowWriter {
 
     /** LH 줄을 공급행 키별로 모은다. LH 순서대로 처음 나온 묶음이 앞선다. 형명이 빈 줄은 줄마다 공급행을 둔다. */
     private static Map<String, List<SupplyLine>> groups(List<SupplyLine> lines, Map<String, AnnouncementComplex> complexes) {
+        // 같은 단지에 주거약자용 표기가 없는 같은 형명이 있으면 주거약자용 줄은 다른 주택형이다("26A"와 "26A(주거약자)").
+        Set<String> plainKeys = lines.stream().filter(line -> !HousingTypeNames.housingVariant(line.source().getTypeName()))
+                .map(line -> complexes.get(line.source().getComplexLabel()).getId() + ":"
+                        + HousingTypeNames.key(line.source().getTypeName()))
+                .collect(Collectors.toSet());
         Map<String, List<SupplyLine>> groups = new LinkedHashMap<>();
         Map<Long, Integer> unnamed = new HashMap<>();
         for (SupplyLine line : lines) {
             AnnouncementComplex complex = complexes.get(line.source().getComplexLabel());
-            String typeKey = HousingTypeNames.key(line.source().getTypeName());
+            String typeName = line.source().getTypeName();
+            String typeKey = HousingTypeNames.key(typeName);
+            if (HousingTypeNames.housingVariant(typeName) && plainKeys.contains(complex.getId() + ":" + typeKey)) {
+                typeKey = HousingTypeNames.applicationKey(typeName);
+            }
             int occurrence = typeKey.isEmpty() ? unnamed.merge(complex.getId(), 1, Integer::sum) : 1;
             String key = LhSourceIdentifier.lhOwnedSupplyRow(complex.getId(), typeKey, occurrence);
             groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(line);

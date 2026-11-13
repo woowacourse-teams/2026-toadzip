@@ -179,6 +179,23 @@ class LhSupplyAreaCorrectionIntegrationTest {
     }
 
     @Test
+    void 같은_형명의_주거약자용_공급행은_따로_고쳐도_저장되고_LH_줄은_자기_행에만_붙는다() {
+        // 공고문 공급표의 "26A"와 "26A(주거약자)"는 다른 주택형이다(대구신서 13단지).
+        long id = refinedAnnouncement(supply("059.9100A", "59.9100", "38"), supply("059.9100A(주거약자)", "59.9100", "14"));
+        var workspace = supplyCorrections.workspace(id);
+        assertThat(workspace.rows()).extracting(Row::householdCount).containsExactlyInAnyOrder(38, 14);
+        // LH 줄은 형명 원문이 같은 행에 붙고 모호하지 않다.
+        assertThat(workspace.lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::ambiguous).containsOnly(false);
+        assertThat(workspace.lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::attachedRowKey).doesNotHaveDuplicates();
+
+        var rows = new ArrayList<>(workspace.rows());
+        var variant = rows.stream().filter(row -> row.householdCount() == 14).findFirst().orElseThrow();
+        rows.set(rows.indexOf(variant), edit(variant, variant.id(), variant.key(), variant.typeName(), type5991, 8));
+        applySupply(id, request(workspace, rows));
+        assertThat(supplyCorrections.workspace(id).rows()).filteredOn(row -> !row.excluded()).hasSize(2);
+    }
+
+    @Test
     void 정제가_같은_주택타입에_붙인_신청형이_다른_LH_행은_한_행만_고쳐도_저장되고_같은_신청형의_새_행은_거절한다() {
         // 두 LH 행은 모두 주택타입 059.9100A(type5991)를 가리켜 작업실 이름이 둘 다 '059.9100A'로 보인다.
         long id = refinedAnnouncement(supply("059.9100A", "59.9100", "25"), supply("059.9100C(주거약자)", "59.9100", "4"));
@@ -201,7 +218,7 @@ class LhSupplyAreaCorrectionIntegrationTest {
                 .containsExactlyInAnyOrder(tuple("059.9100A", strong.key(), false), tuple("059.9100C(주거약자)", weak.key(), false));
 
         var duplicated = new ArrayList<>(workspace.rows());
-        duplicated.add(edit(strong, null, "new-59c", "059.9100C", type5991, 4));
+        duplicated.add(edit(strong, null, "new-59c", "059.9100C(주거약자)", type5991, 4));
         rejects(id, workspace, duplicated, "같은 주택형(신청형)입니다");
 
         var rows = workspace.rows().stream().map(row -> row.key().equals(weak.key())

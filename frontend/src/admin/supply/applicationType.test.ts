@@ -18,6 +18,17 @@ it('신청자 표기를 뗀 이름이 다르면 같은 면적이어도 다른 �
   expect(sameApplicationType('', '')).toBe(false)
 })
 
+it('같은 형명의 주거약자용 주택(26A·26A(주거약자))은 다른 신청형이고, 다른 신청자와 함께 적은 표기는 신청자 표기다(서버 HousingTypeNames.applicationKeys)', () => {
+  expect(sameApplicationType('26A', '26A(주거약자)')).toBe(false)
+  expect(sameApplicationType('26A · 26A(주거약자)', '26A (주거약자)')).toBe(true)
+  expect(sameApplicationType('37B(주거약자용)', '37B')).toBe(false)
+  expect([...applicationTypeKeys('26A · 26A(주거약자형)')]).toEqual(['26a', '26a(주거약자형)'])
+  expect(sameApplicationType('26A-1형[고령자(주거약자용)]', '26A-1형[청년]')).toBe(true)
+  expect(sameApplicationType('(주거약자)', '(주거약자)')).toBe(true)
+  // 단지 주택타입 이름 비교는 그대로 둔다.
+  expect(applicationTypeKey('26A(주거약자)')).toBe('26a')
+})
+
 it('단지 주택타입 이름은 면적 숫자로 적은 형명(059.9100A)을 공고문 표기(59A)와 같게 보고, 신청형 비교는 그대로 둔다', () => {
   expect(housingTypeKey('059.9100A')).toBe(housingTypeKey('59A'))
   expect(sameTypeName('059.9100A', '59A', 59.91, 59.91)).toBe(true)

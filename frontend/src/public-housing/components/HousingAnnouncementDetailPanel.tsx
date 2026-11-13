@@ -34,6 +34,7 @@ import type {
 } from '../model/publicHousing.ts'
 import {
   groupAnnouncementSupplyRows,
+  householdCountMayIncludeWaitlist,
   type HousingAnnouncementSupplyComplexGroup,
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
@@ -265,6 +266,7 @@ export function HousingAnnouncementDetailPanel({
             onToggleAreaUnit={toggleAreaUnit}
             groups={groups}
             supplyHouseholdCount={detail.supplyHouseholdCount}
+            waitlistMayBeIncluded={householdCountMayIncludeWaitlist(detail.supplyRows)}
             onOpenComplex={onOpenComplex}
             onOpenFloorPlan={setFloorPlan}
           />
@@ -457,7 +459,9 @@ function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) 
         <DetailFact term="접수 시작" value={formatDate(detail.applicationStartAt)} />
         <DetailFact term="접수 마감" value={formatDate(detail.applicationEndAt)} />
         <DetailFact term="공급 단지" value={formatNullableCount(detail.supplyComplexCount, '개 단지')} />
-        <DetailFact term="공급 세대" value={formatNullableCount(detail.supplyHouseholdCount, '세대')} />
+        <DetailFact term="공급 세대" value={householdCountMayIncludeWaitlist(detail.supplyRows) && detail.supplyHouseholdCount !== null
+          ? `${formatNullableCount(detail.supplyHouseholdCount, '세대')} · 예비 포함 가능`
+          : formatNullableCount(detail.supplyHouseholdCount, '세대')} />
         <DetailFact term="지역" value={regionLabel(detail.regionNames)} />
         <DetailFact term="공사" value={agencyLabel(detail)} />
         <DetailFact term="신청 대상" value={audiences.join(' · ') || MISSING_DATA_LABEL} wide />
