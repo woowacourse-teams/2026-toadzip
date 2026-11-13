@@ -52,7 +52,7 @@ function renderSection(value: ConditionsContextValue, item = detail(), onOpenEvi
 }
 
 describe('EligibilityComparisonSection', () => {
-  it('invites guests with the type chips of the announcement', async () => {
+  it('invites guests to check their eligibility', async () => {
     const value = context({ loadComparison: vi.fn(async () => happyView([youthNeed, newlywedNot, seniorMatched])) }, { mode: 'guest', hasProfile: false, stored: null })
     renderSection(value)
     expect(await screen.findByText('이 공고, 나도 신청할 수 있을까?')).toBeInTheDocument()
@@ -67,6 +67,8 @@ describe('EligibilityComparisonSection', () => {
     renderSection(value)
     expect(await screen.findByText('작성하던 내 조건이 있어요')).toBeInTheDocument()
     expect(screen.getByText('2단계까지 입력했어요')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '이 공고의 신청 유형' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('미확인')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '처음부터 다시 입력' }))
     expect(value.restartInput).toHaveBeenCalledWith('detail', '1')
   })
@@ -277,7 +279,7 @@ describe('EligibilityComparisonSection', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('keeps a gap above the invite button when no type chips are shown', () => {
+  it('keeps a gap above the invite button', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/public-housing/components/EligibilityComparisonSection.module.css'), 'utf8')
     expect(css).not.toMatch(/\.invite > \.wide:first-of-type/)
     expect(css).toMatch(/\.wide\s*\{[^}]*margin-top:\s*var\(--ds-space-4\);/)

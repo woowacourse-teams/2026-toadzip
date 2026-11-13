@@ -62,57 +62,9 @@
   font-size: var(--ds-text-body);
 }
 
-.chips {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 14px 0 16px;
-}
-
-.chipRow {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-}
-
-.chip {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 12px;
-  border: 1px dashed color-mix(in srgb, var(--ds-color-brand) 70%, var(--ds-color-surface));
-  border-radius: 999px;
-  background: var(--ds-color-surface);
-  font-size: 13.5px;
-  font-weight: var(--ds-weight-strong);
-}
-
-.chip i {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--ds-color-section-divider);
-  color: var(--ds-color-muted);
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 800;
-}
-
-.chips:empty {
-  display: none;
-}
-
 .wide {
   width: 100%;
   margin-top: var(--ds-space-4);
-}
-
-.chips + .wide {
-  margin-top: 0;
 }
 
 .textButton {
