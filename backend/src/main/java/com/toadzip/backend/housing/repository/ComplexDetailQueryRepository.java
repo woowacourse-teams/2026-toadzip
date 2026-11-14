@@ -85,16 +85,17 @@ public class ComplexDetailQueryRepository {
     /**
      * 공급행은 대표와 함께 모집하는 주택형(supply_row_housing_types, 대표 포함) 모두의 공급조건으로 보인다.
      * 연결 표의 기본 키가 (공급행, 주택형)이라 한 주택형 아래 같은 공급행은 한 번만 나온다.
+     * 공급조건은 금액이 있는 공급표 칸(임대조건이 붙은 칸)이다.
      */
     private static final String FIND_CURRENT_SUPPLY_CONDITIONS = CURRENT_LEAF_CTE + """
             SELECT announcement.id AS announcement_id,
                    supply_row.id AS supply_row_id,
                    housing_type.id AS housing_type_id,
-                   supply_target.id AS target_id,
-                   supply_target.target,
-                   supply_target.rental_deposit AS deposit,
-                   supply_target.monthly_rent,
-                   supply_target.converted_deposit AS convertible_deposit,
+                   cell.id AS target_id,
+                   supply_target.label AS target,
+                   lease.rental_deposit AS deposit,
+                   lease.monthly_rent,
+                   lease.converted_deposit AS convertible_deposit,
                    announcement.posted_date
             FROM current_leaf announcement
             JOIN supply_rows supply_row
@@ -104,13 +105,16 @@ public class ComplexDetailQueryRepository {
             JOIN housing_types housing_type
               ON housing_type.id = linked_type.housing_type_id
              AND housing_type.housing_complex_id = :complexId
-            JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
+            JOIN supply_row_targets cell ON cell.supply_row_id = supply_row.id
+            JOIN announcement_supply_targets supply_target ON supply_target.id = cell.supply_target_id
+            JOIN lease_term_members lease_member ON lease_member.supply_row_target_id = cell.id
+            JOIN lease_terms lease ON lease.id = lease_member.lease_terms_id
             ORDER BY announcement.posted_date DESC,
                      announcement.id DESC,
                      supply_row.display_order,
                      supply_row.id,
-                     supply_target.display_order,
-                     supply_target.id,
+                     cell.display_order,
+                     cell.id,
                      housing_type.id
             """;
 
@@ -141,21 +145,23 @@ public class ComplexDetailQueryRepository {
                        announcement.posted_date,
                        supply_row.id AS supply_row_id,
                        supply_row.display_order AS supply_row_display_order,
-                       supply_target.id AS target_id,
-                       supply_target.target,
-                       supply_target.display_order AS target_display_order,
+                       cell.id AS target_id,
+                       supply_target.label AS target,
+                       cell.display_order AS target_display_order,
                        ROW_NUMBER() OVER (
-                           PARTITION BY announcement.id, supply_target.target
+                           PARTITION BY announcement.id, supply_target.label
                            ORDER BY supply_row.display_order,
                                     supply_row.id,
-                                    supply_target.display_order,
-                                    supply_target.id
+                                    cell.display_order,
+                                    cell.id
                        ) AS target_rank
                 FROM current_leaf announcement
                 JOIN supply_rows supply_row
                   ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
                  AND supply_row.housing_complex_id = :complexId
-                JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
+                JOIN supply_row_targets cell ON cell.supply_row_id = supply_row.id
+                JOIN announcement_supply_targets supply_target
+                  ON supply_target.id = cell.supply_target_id AND supply_target.label <> '전체'
             )
             SELECT announcement_id,
                    supply_row_id,

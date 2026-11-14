@@ -175,9 +175,10 @@ class AnnouncementJsonCorrectionIntegrationTest {
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.detail.data.name").value(announcement.getName()));
 
-        assertThat(jdbc.queryForMap("SELECT name, supply_owner, supply_recheck_required FROM announcements WHERE id = ?", id))
+        assertThat(jdbc.queryForMap("SELECT name, supply_owner, supply_recheck_required, supply_sheet_from_document FROM announcements WHERE id = ?", id))
                 .containsEntry("name", announcement.getName()).containsEntry("supply_owner", "ANNOUNCEMENT_DOCUMENT")
-                .containsEntry("supply_recheck_required", false);
+                .containsEntry("supply_recheck_required", false)
+                .containsEntry("supply_sheet_from_document", true);
         assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id = ?", String.class, id))
                 .containsExactly("CONFIRM_FROM_PDF");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_supply_corrections WHERE announcement_id = ?", Long.class, id))
@@ -282,6 +283,99 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .containsExactly(10, 10);
     }
 
+    @Test
+    void PDF로_보정한_공고는_옛_테이블에_원천_값을_써도_공급표가_바뀌지_않는다() throws Exception {
+        long id = incomeSplitRow();
+        long other = incomeSplitRow();
+        var request = request(id);
+        reserve(request, 10);
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT supply_sheet_from_document FROM announcements WHERE id = ?", Boolean.class, id))
+                .isTrue();
+        var sheet = sheet(id);
+        assertThat(sheet).contains("Q:RESERVE:10:청년(소득 없음)", "Q:RESERVE:10:청년(소득 있음)",
+                "L:13780000.00/166640.00:청년(소득 없음)");
+
+        // 원천 정제가 공급행·대상을 다시 쓰는 것처럼 옛 테이블에 수·금액·대상을 쓴다. PDF로 보정하지 않은 공고는 공급표가 따라간다.
+        for (long announcementId : new long[] {id, other}) {
+            jdbc.update("UPDATE supply_rows SET total_supply_household_count = 50 WHERE announcement_id = ?", announcementId);
+            jdbc.update("""
+                    UPDATE supply_targets SET reserve_count = 99, rental_deposit = 1, target = '원천 대상'
+                    WHERE supply_row_id IN (SELECT id FROM supply_rows WHERE announcement_id = ?) AND display_order = 0""",
+                    announcementId);
+        }
+
+        assertThat(sheet(id)).isEqualTo(sheet);
+        assertThat(sheet(other)).contains("Q:WINNER:50:원천 대상,청년(소득 있음)", "Q:RESERVE:99:원천 대상");
+        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].target").value("청년(소득 없음)"))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").value(10));
+    }
+
+    @Test
+    void PDF_보정을_다시_적용해도_표기와_신청_조건이_같은_공급대상은_ID가_그대로다() throws Exception {
+        long id = incomeSplitRow();
+        var first = request(id);
+        reserve(first, 10);
+        apply(id, first, preview(id, first).path("confirmationToken").asText()).andExpect(status().isOk());
+        var ids = targetIds(id);
+        assertThat(ids).hasSize(2);
+
+        var second = request(id);
+        ((ArrayNode) second.path("fields")).removeAll();
+        reserve(second, 7);
+        var renamed = (ObjectNode) second.path("correction").path("rows").get(0).path("targets").get(1);
+        renamed.put("target", "신혼부부");
+        apply(id, second, preview(id, second).path("confirmationToken").asText()).andExpect(status().isOk());
+
+        var after = targetIds(id);
+        assertThat(after).containsEntry("청년(소득 없음)", ids.get("청년(소득 없음)"))
+                .doesNotContainKey("청년(소득 있음)").containsKey("신혼부부");
+        assertThat(sheet(id)).contains("Q:RESERVE:7:청년(소득 없음)", "Q:RESERVE:7:신혼부부");
+        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[1].target").value("신혼부부"))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[1].waitlistCount").value(7));
+    }
+
+    private void reserve(ObjectNode request, int count) {
+        for (var target : (ArrayNode) request.path("correction").path("rows").get(0).path("targets")) {
+            ((ObjectNode) target).putNull("reserveCountGroup").put("reserveCount", count);
+        }
+    }
+
+    private java.util.Map<String, Long> targetIds(long id) {
+        var ids = new java.util.LinkedHashMap<String, Long>();
+        jdbc.query("SELECT label, id FROM announcement_supply_targets WHERE announcement_id = ? ORDER BY display_order",
+                (java.sql.ResultSet result) -> { ids.put(result.getString(1), result.getLong(2)); }, id);
+        return ids;
+    }
+
+    /** 공고 공급표 전체를 ID 없이 읽는다: 공급대상, 칸, 수량 묶음과 임대조건의 멤버(대상 표기). */
+    private List<String> sheet(long id) {
+        return jdbc.queryForList("""
+                SELECT 'T:' || st.label || '/' || st.application_condition || '/' || st.id FROM announcement_supply_targets st
+                WHERE st.announcement_id = ?
+                UNION ALL
+                SELECT 'C:' || c.supply_row_id || ':' || st.label FROM supply_row_targets c
+                JOIN announcement_supply_targets st ON st.id = c.supply_target_id WHERE st.announcement_id = ?
+                UNION ALL
+                SELECT 'Q:' || q.kind || ':' || q.household_count || ':'
+                       || string_agg(st.label, ',' ORDER BY st.label)
+                FROM supply_quotas q JOIN supply_quota_members m ON m.supply_quota_id = q.id
+                JOIN supply_row_targets c ON c.id = m.supply_row_target_id
+                JOIN announcement_supply_targets st ON st.id = c.supply_target_id
+                WHERE q.announcement_id = ? GROUP BY q.id, q.kind, q.household_count
+                UNION ALL
+                SELECT 'L:' || l.rental_deposit || '/' || l.monthly_rent || ':' || string_agg(st.label, ',' ORDER BY st.label)
+                FROM lease_terms l JOIN lease_term_members m ON m.lease_terms_id = l.id
+                JOIN supply_row_targets c ON c.id = m.supply_row_target_id
+                JOIN announcement_supply_targets st ON st.id = c.supply_target_id
+                WHERE l.announcement_id = ? GROUP BY l.id, l.rental_deposit, l.monthly_rent
+                ORDER BY 1""", String.class, id, id, id, id);
+    }
+
     @ParameterizedTest
     @CsvSource(value = {
             "one | 공통 예비자 수는 공급대상 둘 이상이 함께 써야 합니다.",
@@ -356,8 +450,9 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 supplyGroup)).isEqualTo(2);
         mvc.perform(get("/api/v1/announcements/{announcementId}", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount.count").value(10))
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[1].sharedSupplyHouseholdCount.targets.length()").value(2))
+                // 행의 모든 대상이 함께 쓰는 모집수는 행 모집수로 보인다.
+                .andExpect(jsonPath("$.data.supplyRows[0].totalSupplyHouseholdCount").value(10))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount").doesNotExist())
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedWaitlistCount").doesNotExist())
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").value(10));
     }

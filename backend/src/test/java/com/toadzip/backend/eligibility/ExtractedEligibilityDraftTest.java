@@ -311,7 +311,9 @@ class ExtractedEligibilityDraftTest {
                 List.of(new Target("가군(우선)", 3), new Target("예비신혼부부", 2), new Target("신혼부부", 1)));
 
         // 공급행은 하나라 가군(일반)·신혼부부 경로 모두 이 행의 대상과 맞아야 이어진다: 신혼부부만 맞는다.
-        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly("신혼부부");
+        // 맞는 경로가 없는 두 대상은 공통 요건만 담은 자기 경로를 받는다.
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("신혼부부", "가군(우선)", "예비신혼부부");
     }
 
     @Test
@@ -364,13 +366,39 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
-    void 신청자격_경로가_없는_공급대상은_검토_안내로_알린다() {
+    void 신청자격_경로가_없는_공급대상에는_공통_요건만_담은_경로를_두고_검토_안내로_알린다() {
         var units = List.of(new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
                 List.of(new Target("청년", 10), new Target("고령자", 4), new Target("일반", 0))));
 
         var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
 
-        assertThat(built.notices()).contains("신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.");
+        assertThat(built.notices()).contains(
+                "신청자격 경로가 없는 공급대상(고령자)에는 공통 요건만 담은 경로를 두었습니다. 공고문을 확인해 주세요.");
+        // 고령자는 대상 요건을 모르므로 지원 가능으로 확정하지 않고 직접 확인으로 돌린다.
+        EligibilityDecision.OptionDecision elderly = option(built.content(), b(), "고령자");
+        assertThat(elderly.status()).isEqualTo(Status.UNDETERMINED);
+        assertThat(elderly.directCheckGuidanceIds()).isNotEmpty();
+    }
+
+    @Test
+    void 경로가_없는_일반_공급대상도_공통_요건인_무주택세대구성원으로_판정한다() {
+        // 신청자격이 청년·신혼부부 경로만 나뉘어 있어도 일반 공급분 신청자는 무주택세대구성원이어야 한다.
+        var units = List.of(new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                List.of(new Target("청년", 10), new Target("일반", 5))));
+
+        var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
+
+        assertThat(status(built.content(), b(), "일반")).isEqualTo(Status.ELIGIBLE);
+        assertThat(status(built.content(), with(b(), ProfileField.FAMILY_OWNS_HOUSE, true), "일반"))
+                .isEqualTo(Status.INELIGIBLE);
+        assertThat(status(built.content(), with(b(), HOUSEHOLD_MONTHLY_INCOME, 9_000_000L), "일반"))
+                .isEqualTo(Status.INELIGIBLE);
+        String general = built.content().paths().stream().filter(path -> path.label().equals("일반")).findFirst()
+                .orElseThrow().id();
+        assertThat(built.content().options()).filteredOn(option -> option.pathId().equals(general))
+                .extracting(EligibilityContent.ApplicationOption::supplyUnitId).containsExactly("unit-1");
     }
 
     @Test

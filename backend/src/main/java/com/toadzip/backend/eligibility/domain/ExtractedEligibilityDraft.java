@@ -53,6 +53,7 @@ import java.util.stream.Collectors;
  * 가산을 받을 수 있는 사람을 기본 기준을 넘어도 충족으로 보고, 알아볼 입력이 없는 가산(장애인 등)은 기본 기준으로 판정한다.
  * 계산하지 못한 가산만 목록에 알린다.
  * 공급표가 대상을 나누지 않은 공급행(대상이 없거나 "전체"뿐)에는 모든 경로를 잇는다. 워커가 경로에 맞출 대상 이름이 없기 때문이다.
+ * 이어지는 경로가 없는 공급대상(표기 '일반' 등)은 공통 요건만 담은 경로를 받아, 그 대상의 사용자도 무주택 등 공통 요건으로 판정된다.
  */
 public final class ExtractedEligibilityDraft {
     private static final String DOCUMENT_ID = "pdf";
@@ -60,6 +61,8 @@ public final class ExtractedEligibilityDraft {
     private static final long MAXIMUM_AGE = 150;
     private static final long MAXIMUM_MONTHS = 1800;
     private static final String EVERYONE = "전체";
+    /** 별도 신청자격 없이 공통 요건만 갖추면 되는 대상 표기(공백을 뗀 값). */
+    private static final Set<String> GENERAL_TARGETS = Set.of("일반", "일반공급", "일반공급대상");
     /** 워커가 판정에 쓸 요건을 잃은 자리에 둔 요건 종류. 판정을 막는 직접 확인으로 둔다. */
     private static final String UNRESOLVED = "UNRESOLVED";
     /** UNRESOLVED 전의 워커가 같은 자리에 OTHER로 둔 문구. 다시 추출하지 않은 결과도 목록으로 새지 않게 판정을 막는다. */
@@ -183,6 +186,27 @@ public final class ExtractedEligibilityDraft {
                 scopes.add(scope);
             }
         }
+        // 경로를 하나도 잇지 못했으면 대상 이름이 어긋난 것이므로 공통 요건 경로로 덮지 않고 아래에서 초안을 막는다.
+        List<String> uncovered = paths.isEmpty() ? List.of() : uncoveredTargets(routes, paths);
+        for (String target : uncovered) {
+            // 이어지는 경로가 없는 대상(표기 '일반' 등)도 공고 전체의 공통 요건(무주택세대구성원·소득·자산 등)으로 판정한다.
+            // 빠뜨리면 그 대상의 사용자는 다른 대상의 경로로만 판정되어 공고 전체가 미충족으로 보인다.
+            String pathId = "path-" + (paths.size() + 1);
+            List<ApplicationOption> connected = options(pathId, List.of(target));
+            if (connected.isEmpty()) {
+                continue;
+            }
+            Scope scope = new Scope(pathId, new GuidanceTarget(TargetScope.PATH, pathId, null),
+                    source.eligibility().common().evidencePath());
+            if (!GENERAL_TARGETS.contains(compact(target))) {
+                scope.direct.add("신청 대상 '" + displayName(target) + "'에 해당하는지");
+            }
+            String label = limit(displayName(target), 300);
+            paths.add(new EligibilityPath(pathId, label, PathKind.APPLICATION, List.of(), List.of()));
+            fullLabels.add(label);
+            options.addAll(connected);
+            scopes.add(scope);
+        }
         paths = distinctLabels(paths, fullLabels);
         if (paths.isEmpty()) {
             throw new EligibilityDraftUnavailableException("공급대상과 이어지는 신청자격 경로가 없어 초안을 만들 수 없습니다. 공급정보 보정을 먼저 적용해 공급대상 이름을 공고문과 맞춘 뒤 다시 만들어 주세요.");
@@ -210,10 +234,9 @@ public final class ExtractedEligibilityDraft {
         if (!unmatched.isEmpty()) {
             notices.add("공급대상과 잇지 못한 신청자격 경로: " + String.join(", ", unmatched));
         }
-        List<String> uncovered = uncoveredTargets(routes, paths);
         if (!uncovered.isEmpty()) {
-            // 신청자격 경로가 없는 대상의 사용자는 다른 경로에서만 판정되어 공고 전체가 미충족으로 보일 수 있다.
-            notices.add("신청자격 경로가 없는 공급대상: " + String.join(", ", uncovered) + ". 공고문을 확인해 주세요.");
+            notices.add("신청자격 경로가 없는 공급대상(" + String.join(", ", uncovered)
+                    + ")에는 공통 요건만 담은 경로를 두었습니다. 공고문을 확인해 주세요.");
         }
         // scopeNote는 사용자 공고 상세에 그대로 보이고 비울 수 없으므로, AI 초안 안내 대신 사용자에게도 맞는 범위 설명을 둔다.
         EligibilityContent content = new EligibilityContent(

@@ -37,7 +37,11 @@ public class EligibilityDraftSourceRepository {
                 .params(announcementId, fileName).query(String.class).optional();
     }
 
-    /** 관리자가 빼지 않은 공급행과 공급대상. 공급대상을 모두 뺀 공급행은 신청할 대상이 없으므로 함께 뺀다(대상이 처음부터 없는 행은 남긴다). 공통 모집수 묶음에 든 대상은 묶음의 모집수를 쓴다. 단지 지역은 주소의 시군구 코드다. */
+    /**
+     * 관리자가 빼지 않은 공급행(공고 주택형)과 그 공급표 칸의 공급대상. 칸이 없는 공급행(관리자가 대상을 모두 뺀 행)은 신청할
+     * 대상이 없으므로 뺀다. 대상 수는 그 칸만의 모집수이고, 없으면 그 칸이 든
+     * 가장 작은 모집수 묶음(병합된 수량 칸)의 수다. 단지 지역은 주소의 시군구 코드다.
+     */
     public List<Unit> units(long announcementId) {
         Map<Long, UnitRow> rows = new LinkedHashMap<>();
         jdbc.sql("""
@@ -46,19 +50,26 @@ public class EligibilityDraftSourceRepository {
                                COALESCE(r.announcement_exclusive_area, ht.exclusive_area) AS exclusive_area,
                                hc.id AS complex_id, ht.id AS type_id, hc.city_county_district_code AS region_code,
                                COALESCE(a.supply_type, hc.supply_type) AS rental_type,
-                               t.target, COALESCE(t.supply_household_count, g.household_count) AS supply_household_count
+                               t.label AS target, q.household_count AS supply_household_count
                         FROM supply_rows r
                         JOIN announcements a ON a.id = r.announcement_id
                         LEFT JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
                         LEFT JOIN housing_complexes hc ON hc.id = COALESCE(r.housing_complex_id, ac.housing_complex_id)
                             AND NOT hc.admin_deleted
                         LEFT JOIN housing_types ht ON ht.id = r.housing_type_id AND NOT ht.admin_deleted
-                        LEFT JOIN supply_targets t ON t.supply_row_id = r.id AND NOT t.admin_excluded
-                        LEFT JOIN supply_target_count_groups g ON g.id = t.supply_count_group_id
+                        JOIN supply_row_targets c ON c.supply_row_id = r.id
+                        JOIN announcement_supply_targets t ON t.id = c.supply_target_id
+                        LEFT JOIN LATERAL (
+                            SELECT quota.household_count
+                            FROM supply_quota_members member
+                            JOIN supply_quotas quota ON quota.id = member.supply_quota_id AND quota.kind = 'WINNER'
+                            WHERE member.supply_row_target_id = c.id
+                            ORDER BY (SELECT COUNT(*) FROM supply_quota_members other
+                                      WHERE other.supply_quota_id = quota.id), quota.id
+                            LIMIT 1
+                        ) q ON true
                         WHERE r.announcement_id = ? AND NOT r.admin_excluded
-                            AND (t.id IS NOT NULL
-                                OR NOT EXISTS (SELECT 1 FROM supply_targets x WHERE x.supply_row_id = r.id))
-                        ORDER BY r.display_order, r.id, t.display_order, t.id
+                        ORDER BY r.display_order, r.id, c.display_order, c.id
                         """)
                 .param(announcementId)
                 .query((result, index) -> {

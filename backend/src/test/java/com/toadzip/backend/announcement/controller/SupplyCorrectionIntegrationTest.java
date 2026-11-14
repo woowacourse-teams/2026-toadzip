@@ -101,6 +101,24 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void PDF로_보정한_공고의_공급을_보정하면_트리거가_건너뛰어도_공급표가_따라_바뀐다() throws Exception {
+        var row = fixture();
+        long id = row.getAnnouncement().getId();
+        jdbc.update("UPDATE announcements SET supply_sheet_from_document = true WHERE id = ?", id);
+        entities.clear();
+        var request = request(id);
+        ((ObjectNode) request.get("rows").get(0).get("targets").get(0)).put("householdCount", 7).put("rent", "150000");
+        ((ObjectNode) request.get("rows").get(0)).put("householdCount", 7);
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT kind || ':' || household_count FROM supply_quotas WHERE announcement_id = ?",
+                String.class, id)).containsExactly("WINNER:7");
+        assertThat(jdbc.queryForObject("SELECT monthly_rent FROM lease_terms WHERE announcement_id = ?", BigDecimal.class, id))
+                .isEqualByComparingTo("150000");
+    }
+
+    @Test
     void 지번을_모르는_단지의_공급행은_소재지_PNU를_비워_저장한다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         jdbc.update("UPDATE housing_complexes SET pnu = NULL WHERE id = ?", row.getHousingComplex().getId());

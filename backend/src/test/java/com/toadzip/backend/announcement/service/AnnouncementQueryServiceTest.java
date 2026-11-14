@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -26,7 +27,10 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyQuota;
+import com.toadzip.backend.announcement.domain.SupplyRowTarget;
+import com.toadzip.backend.announcement.domain.SupplySheet;
+import com.toadzip.backend.announcement.domain.SupplySheetFixture;
 import com.toadzip.backend.announcement.domain.SupplyType;
 import com.toadzip.backend.announcement.dto.request.AnnouncementSearchRequest;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
@@ -45,7 +49,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -95,17 +98,19 @@ class AnnouncementQueryServiceTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Mock
-    private SupplyTargetRepository supplyTargetRepository;
+    private SupplySheets supplySheets;
 
     @Mock
     private RegionCodeResolver regionCodeResolver;
 
     private final AnnouncementCursorCodec announcementCursorCodec = new AnnouncementCursorCodec();
     private AnnouncementQueryService announcementQueryService;
+    private final SupplySheetFixture sheet = new SupplySheetFixture();
     private long nextId;
 
     @BeforeEach
     void setUp() {
+        lenient().when(supplySheets.read(any(), any())).thenAnswer(invocation -> sheet.sheet());
         announcementQueryService = new AnnouncementQueryService(
                 announcementRepository,
                 applicationScheduleRepository,
@@ -113,7 +118,7 @@ class AnnouncementQueryServiceTest {
                 announcementScheduleRepository,
                 announcementAttachmentRepository,
                 supplyRowRepository,
-                supplyTargetRepository,
+                supplySheets,
                 new AnnouncementResponseMapper(regionCodeResolver, new AnnouncementApplicationStatusCalculator()),
                 announcementCursorCodec,
                 fixedClock(),
@@ -215,6 +220,7 @@ class AnnouncementQueryServiceTest {
                 withId(createSupplyRow(applying, null, null, "all-null", 0, null)),
                 withId(createSupplyRow(beforeApplication, null, null, "known-zero", 0, 0))
         );
+        supplyRows.forEach(row -> sheet.row(row, row.getTotalSupplyHouseholdCount()));
         when(announcementSearchRepository.findSortedLeaves(
                 any(AnnouncementSearchCondition.class), isNull(), isNull(), isNull(), isNull(),
                 eq(21), eq(AnnouncementSort.LATEST)
@@ -373,7 +379,7 @@ class AnnouncementQueryServiceTest {
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
                 mock(SupplyRowRepository.class),
-                mock(SupplyTargetRepository.class),
+                mock(SupplySheets.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
                 fixedClock(),
@@ -453,6 +459,7 @@ class AnnouncementQueryServiceTest {
         when(announcementResponseMapper.toListItemResponses(
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.any(LocalDate.class)
@@ -485,6 +492,7 @@ class AnnouncementQueryServiceTest {
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),
                 org.mockito.ArgumentMatchers.eq(List.of()),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 mapperTodayCaptor.capture()
@@ -585,42 +593,16 @@ class AnnouncementQueryServiceTest {
                 null
         ));
 
-        SupplyTarget duplicateTarget = withId(SupplyTarget.create(
-                unmatchedRow,
-                "청년",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                0
-        ));
-        SupplyTarget youthTarget = withId(SupplyTarget.create(
-                matchedRow,
-                "청년",
-                "2순위",
-                3,
-                6,
-                new BigDecimal("12000000"),
-                new BigDecimal("185000"),
-                new BigDecimal("6000000"),
-                "만 19세 이상",
-                2
-        ));
-        SupplyTarget newlywedTarget = withId(SupplyTarget.create(
-                matchedRow,
-                "신혼부부",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                1
-        ));
+        // 단지 매칭 행의 모집 5 = 청년만의 3 + 대상별로 나뉘지 않은 나머지 2(행의 모든 칸이 함께 쓴다).
+        SupplyRowTarget duplicateTarget = sheet.cell(unmatchedRow, "청년", "", 0);
+        SupplyRowTarget newlywedTarget = sheet.cell(matchedRow, "신혼부부", "", 0);
+        SupplyRowTarget youthTarget = sheet.cell(matchedRow, "청년", "만 19세 이상", 1);
+        sheet.quota(SupplyQuota.Kind.WINNER, 3, youthTarget);
+        sheet.quota(SupplyQuota.Kind.RESERVE, 6, youthTarget);
+        sheet.quota(SupplyQuota.Kind.WINNER, 2, newlywedTarget, youthTarget);
+        sheet.lease(new BigDecimal("12000000"), new BigDecimal("185000"), new BigDecimal("6000000"), youthTarget);
+        sheet.row(complexOnlyRow, 0);
+        sheet.row(housingTypeOnlyRow, null);
         when(announcementRepository.findDetailById(detail.getId())).thenReturn(Optional.of(detail));
         when(announcementScheduleRepository.findAllByAnnouncementIdIn(List.of(detail.getId())))
                 .thenReturn(List.of(earlierSchedule, laterSchedule));
@@ -628,9 +610,6 @@ class AnnouncementQueryServiceTest {
                 .thenReturn(List.of(earlierAttachment, laterAttachment));
         when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(detail.getId())))
                 .thenReturn(List.of(matchedRow, complexOnlyRow, unmatchedRow, housingTypeOnlyRow));
-        when(supplyTargetRepository.findAllBySupplyRowIdIn(List.of(
-                matchedRow.getId(), complexOnlyRow.getId(), unmatchedRow.getId(), housingTypeOnlyRow.getId()
-        ))).thenReturn(List.of(newlywedTarget, youthTarget, duplicateTarget));
         when(regionCodeResolver.resolve("11", "11140")).thenReturn(Optional.of("서울특별시 중구"));
 
         AnnouncementDetailResponse response = announcementQueryService.getAnnouncement(detail.getId());
@@ -725,7 +704,7 @@ class AnnouncementQueryServiceTest {
 
         SupplyTargetResponse exactMoneyResponse = matchedResponse.targets().get(1);
         assertEquals(youthTarget.getId(), exactMoneyResponse.supplyTargetId());
-        assertEquals("2순위", exactMoneyResponse.priority());
+        assertNull(exactMoneyResponse.priority());
         assertEquals(3, exactMoneyResponse.supplyHouseholdCount());
         assertEquals(6, exactMoneyResponse.waitlistCount());
         assertEquals(12_000_000L, exactMoneyResponse.deposit());
@@ -1038,7 +1017,7 @@ class AnnouncementQueryServiceTest {
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
                 mock(SupplyRowRepository.class),
-                mock(SupplyTargetRepository.class),
+                mock(SupplySheets.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
                 fixedClock(),

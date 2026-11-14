@@ -924,6 +924,61 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void PDF로_보정한_공고의_공급대상을_고치면_트리거가_건너뛰어도_공급표가_따라_바뀐다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
+        var target = SupplyTarget.createFromSource(entityManager.find(SupplyRow.class, rowId),
+                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"), new BigDecimal("200000"), 0);
+        entityManager.persist(target);
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET supply_sheet_from_document = true WHERE id = ?1")
+                .setParameter(1, id).executeUpdate();
+        entityManager.clear();
+        long version = getData(path).get("data").get("version").asLong();
+        String body = withExpectedTargetValues(path, """
+                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
+                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
+                 "applicationCondition":null,"documentEvidence":%s}
+                """.formatted(version, documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\"")));
+
+        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        entityManager.flush();
+        assertThat(entityManager.createNativeQuery("SELECT rental_deposit FROM lease_terms WHERE announcement_id = ?1")
+                .setParameter(1, id).getResultList()).singleElement()
+                .satisfies(deposit -> assertThat((BigDecimal) deposit).isEqualByComparingTo("12000000"));
+    }
+
+    @Test
+    void PDF로_보정한_공고의_공급행_모집수를_고치면_트리거가_건너뛰어도_공급표가_따라_바뀐다() throws Exception {
+        long complexId = createComplex();
+        long id = createAnnouncement(complexId);
+        String path = "/api/admin/announcements/" + id;
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET supply_sheet_from_document = true WHERE id = ?1")
+                .setParameter(1, id).executeUpdate();
+        entityManager.clear();
+        var current = getData(path);
+        var supply = current.get("supplyRows").get(0);
+        var values = (ObjectNode) supply.get("data");
+        values.put("totalSupplyHouseholdCount", 17);
+        String request = "{\"version\":" + current.get("data").get("version").asLong() + ",\"housingComplexId\":"
+                + complexId + ",\"supplyRow\":" + values + "}";
+
+        mvc.perform(put(path + "/supply-rows/" + supply.get("id").asLong()).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isOk());
+
+        entityManager.flush();
+        assertThat(entityManager.createNativeQuery(
+                        "SELECT household_count FROM supply_quotas WHERE announcement_id = ?1 AND kind = 'WINNER'")
+                .setParameter(1, id).getResultList()).containsExactly(17);
+    }
+
+    @Test
     void 공급대상_수정은_소속과_권한과_원단위_입력을_검증한다() throws Exception {
         long id = createAnnouncement(createComplex());
         long otherId = createAnnouncement(createComplex());

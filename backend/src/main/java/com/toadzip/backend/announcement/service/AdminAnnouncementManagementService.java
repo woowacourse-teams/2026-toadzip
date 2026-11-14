@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.service;
 
+import com.toadzip.backend.announcement.repository.SupplySheetWriter;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
@@ -62,12 +63,13 @@ public class AdminAnnouncementManagementService {
     private final AnnouncementApplicationScheduleRepository schedules;
     private final SupplyTargetRepository targets;
     private final AnnouncementAttachmentRepository attachments;
+    private final SupplySheetWriter sheets;
 
     public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
             HousingComplexRepository complexes, HousingTypeRepository types,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
             SupplyTargetRepository targets, AnnouncementAttachmentRepository attachments,
-            AnnouncementSearchRepository adminQueries, Clock clock) {
+            AnnouncementSearchRepository adminQueries, Clock clock, SupplySheetWriter sheets) {
         this.announcements = announcements;
         this.rows = rows;
         this.complexes = complexes;
@@ -79,6 +81,7 @@ public class AdminAnnouncementManagementService {
         this.schedules = schedules;
         this.targets = targets;
         this.attachments = attachments;
+        this.sheets = sheets;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
@@ -145,6 +148,7 @@ public class AdminAnnouncementManagementService {
         validateCounts(announcement);
         announcement.recordAdminSupplyChange();
         announcements.flush();
+        sheets.writeFromDocument(announcement);
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY_TARGET", actor, before,
                 auditedData(targetData(target), request.documentEvidence())));
         return detail(id);
@@ -214,6 +218,7 @@ public class AdminAnnouncementManagementService {
         }
         announcement.recordAdminSupplyChange();
         announcements.flush();
+        sheets.writeFromDocument(announcement);
         changes.save(new AdminDataChange("ANNOUNCEMENT", id, "UPDATE_SUPPLY", actor, before,
                 auditedData(auditedRow(row), request.documentEvidence())));
         return detail(id);

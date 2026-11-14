@@ -8,9 +8,11 @@ import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.announcement.domain.LeaseTerms;
+import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
-import com.toadzip.backend.announcement.domain.SupplyTargetCountGroup;
+import com.toadzip.backend.announcement.domain.SupplyRowTarget;
+import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.dto.response.AgencyResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
@@ -30,12 +32,10 @@ import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -57,6 +57,7 @@ final class AnnouncementResponseMapper {
     List<AnnouncementListItemResponse> toListItemResponses(
             List<Announcement> announcements,
             List<SupplyRow> supplyRows,
+            SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             List<AnnouncementSchedule> schedules,
             LocalDate today
@@ -66,6 +67,7 @@ final class AnnouncementResponseMapper {
                 .map(announcement -> toListItem(
                         announcement,
                         rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
+                        sheet,
                         applicationSchedules.stream().filter(schedule ->
                                 schedule.getAnnouncement().getId().equals(announcement.getId())).toList(),
                         resultAnnouncementDate(announcement, schedules),
@@ -79,13 +81,12 @@ final class AnnouncementResponseMapper {
             List<AnnouncementSchedule> schedules,
             List<AnnouncementAttachment> attachments,
             List<SupplyRow> supplyRows,
-            List<SupplyTarget> supplyTargets,
+            SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate today
     ) {
-        Map<Long, List<SupplyTarget>> targetsBySupplyRowId = groupTargetsBySupplyRowId(supplyTargets);
-        ListAggregate aggregate = aggregateRows(supplyRows);
-        SupplyComposition supplyComposition = composeSupplyRows(supplyRows, targetsBySupplyRowId);
+        ListAggregate aggregate = aggregateRows(supplyRows, sheet);
+        SupplyComposition supplyComposition = composeSupplyRows(supplyRows, sheet);
         return new AnnouncementDetailResponse(
                 announcement.getId(),
                 announcement.getStatus(),
@@ -131,26 +132,15 @@ final class AnnouncementResponseMapper {
         return rowsByAnnouncementId;
     }
 
-    private Map<Long, List<SupplyTarget>> groupTargetsBySupplyRowId(List<SupplyTarget> supplyTargets) {
-        Map<Long, List<SupplyTarget>> targetsBySupplyRowId = new HashMap<>();
-        for (SupplyTarget supplyTarget : supplyTargets) {
-            if (supplyTarget.isAdminExcluded() || supplyTarget.getSupplyRow().isAdminExcluded()) { continue; }
-            targetsBySupplyRowId.computeIfAbsent(
-                    supplyTarget.getSupplyRow().getId(),
-                    ignored -> new ArrayList<>()
-            ).add(supplyTarget);
-        }
-        return targetsBySupplyRowId;
-    }
-
     private AnnouncementListItemResponse toListItem(
             Announcement announcement,
             List<SupplyRow> supplyRows,
+            SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate resultAnnouncementDate,
             LocalDate today
     ) {
-        ListAggregate aggregate = aggregateRows(supplyRows);
+        ListAggregate aggregate = aggregateRows(supplyRows, sheet);
         LocalDate start = announcement.getApplicationStartDate();
         LocalDate end = announcement.getApplicationEndDate();
         if (announcement.isApplicationScheduleReviewed()) {
@@ -253,27 +243,28 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyComposition composeSupplyRows(
-            List<SupplyRow> supplyRows,
-            Map<Long, List<SupplyTarget>> targetsBySupplyRowId
-    ) {
+    private SupplyComposition composeSupplyRows(List<SupplyRow> supplyRows, SupplySheet sheet) {
         List<SupplyRowResponse> responses = new ArrayList<>();
         Set<String> targets = new LinkedHashSet<>();
         for (SupplyRow supplyRow : supplyRows) {
             if (supplyRow.isAdminExcluded()) { continue; }
-            List<SupplyTarget> rowTargets = targetsBySupplyRowId.getOrDefault(supplyRow.getId(), List.of());
-            Map<Long, List<String>> sharing = sharingTargets(rowTargets);
-            List<SupplyTargetResponse> targetResponses = rowTargets.stream()
-                    .map(target -> supplyTargetResponse(target, sharing))
+            // 대상 구분이 없는 표의 '전체' 칸은 대상이 아니다. 금액이나 따로 센 수가 있을 때만 그 값을 보이려고 남긴다.
+            List<SupplyRowTarget> cells = sheet.cells(supplyRow.getId()).stream()
+                    .filter(cell -> !cell.getTarget().everyone() || carriesValues(cell, sheet))
                     .toList();
-            responses.add(supplyRowResponse(supplyRow, targetResponses));
-            rowTargets.stream().map(SupplyTarget::getTarget).forEach(targets::add);
+            List<SupplyTargetResponse> targetResponses = cells.stream()
+                    .map(cell -> supplyTargetResponse(cell, sheet))
+                    .toList();
+            responses.add(supplyRowResponse(supplyRow, sheet, targetResponses));
+            cells.stream().filter(cell -> !cell.getTarget().everyone())
+                    .map(cell -> cell.getTarget().getLabel()).forEach(targets::add);
         }
         return new SupplyComposition(List.copyOf(responses), List.copyOf(targets));
     }
 
     private SupplyRowResponse supplyRowResponse(
             SupplyRow supplyRow,
+            SupplySheet sheet,
             List<SupplyTargetResponse> targetResponses
     ) {
         return new SupplyRowResponse(
@@ -284,20 +275,14 @@ final class AnnouncementResponseMapper {
                 housingTypeResponse(supplyRow.getHousingType()),
                 supplyRow.getExpectedMoveInMonth(),
                 supplyRow.getSupplyCategory().toSupplyType(),
-                supplyRow.getTotalSupplyHouseholdCount(),
+                sheet.rowCount(supplyRow.getId(), SupplyQuota.Kind.WINNER),
                 targetResponses,
-                sharedRecruitment(supplyRow),
+                sheet.sharedAcrossRows(supplyRow.getId(), SupplyQuota.Kind.WINNER)
+                        .map(quota -> new SupplyRowResponse.SharedRecruitment(quota.getId(), quota.getHouseholdCount()))
+                        .orElse(null),
                 supplyRow.effectiveExclusiveArea(), supplyRow.effectiveSupplyArea(), supplyRow.isAdminModified(),
                 supplyRow.displayHousingTypeName()
         );
-    }
-
-    private SupplyRowResponse.SharedRecruitment sharedRecruitment(SupplyRow row) {
-        if (row.getSupplyGroup() == null) {
-            return null;
-        }
-        var group = row.getSupplyGroup();
-        return new SupplyRowResponse.SharedRecruitment(group.getId(), group.getSharedHouseholdCount());
     }
 
     private SupplyComplexResponse supplyComplexResponse(HousingComplex housingComplex) {
@@ -327,40 +312,38 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyTargetResponse supplyTargetResponse(SupplyTarget supplyTarget, Map<Long, List<String>> sharing) {
+    private SupplyTargetResponse supplyTargetResponse(SupplyRowTarget cell, SupplySheet sheet) {
+        LeaseTerms.Amounts amounts = sheet.lease(cell).map(LeaseTerms::amounts)
+                .orElse(new LeaseTerms.Amounts(null, null, null));
         return new SupplyTargetResponse(
-                supplyTarget.getId(),
-                supplyTarget.getTarget(),
-                supplyTarget.getSupplyRank(),
-                supplyTarget.getSupplyHouseholdCount(),
-                supplyTarget.getReserveCount(),
-                exactLong(supplyTarget.getRentalDeposit()),
-                exactLong(supplyTarget.getMonthlyRent()),
-                exactLong(supplyTarget.getConvertedDeposit()),
-                supplyTarget.getApplicationCondition(),
-                sharedCount(supplyTarget.getSupplyCountGroup(), sharing),
-                sharedCount(supplyTarget.getReserveCountGroup(), sharing)
+                cell.getId(),
+                cell.getTarget().getLabel(),
+                null,
+                sheet.ownCount(cell, SupplyQuota.Kind.WINNER),
+                sheet.ownCount(cell, SupplyQuota.Kind.RESERVE),
+                exactLong(amounts.rentalDeposit()),
+                exactLong(amounts.monthlyRent()),
+                exactLong(amounts.convertedDeposit()),
+                blankToNull(cell.getTarget().getApplicationCondition()),
+                sharedCount(sheet, cell, SupplyQuota.Kind.WINNER),
+                sharedCount(sheet, cell, SupplyQuota.Kind.RESERVE)
         );
     }
 
-    /** 공급행 안의 공통 모집수 묶음마다 그 수를 함께 쓰는 대상 이름(표시 순서). */
-    private Map<Long, List<String>> sharingTargets(List<SupplyTarget> rowTargets) {
-        Map<Long, List<String>> sharing = new HashMap<>();
-        for (SupplyTarget target : rowTargets) {
-            for (SupplyTargetCountGroup group : Arrays.asList(target.getSupplyCountGroup(), target.getReserveCountGroup())) {
-                if (group != null) {
-                    sharing.computeIfAbsent(group.getId(), id -> new ArrayList<>()).add(target.getTarget());
-                }
-            }
-        }
-        return sharing;
+    private SupplyTargetResponse.SharedCount sharedCount(SupplySheet sheet, SupplyRowTarget cell, SupplyQuota.Kind kind) {
+        return sheet.sharedInRow(cell, kind)
+                .map(shared -> new SupplyTargetResponse.SharedCount(shared.count(), shared.members().stream()
+                        .map(member -> member.getTarget().getLabel()).toList()))
+                .orElse(null);
     }
 
-    private SupplyTargetResponse.SharedCount sharedCount(SupplyTargetCountGroup group, Map<Long, List<String>> sharing) {
-        if (group == null) {
-            return null;
-        }
-        return new SupplyTargetResponse.SharedCount(group.getHouseholdCount(), sharing.getOrDefault(group.getId(), List.of()));
+    private static boolean carriesValues(SupplyRowTarget cell, SupplySheet sheet) {
+        return sheet.lease(cell).isPresent() || sheet.ownCount(cell, SupplyQuota.Kind.RESERVE) != null
+                || sheet.ownCount(cell, SupplyQuota.Kind.WINNER) != null && sheet.cells(cell.getSupplyRow().getId()).size() > 1;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private Long exactLong(BigDecimal amount) {
@@ -370,25 +353,14 @@ final class AnnouncementResponseMapper {
         return amount.longValueExact();
     }
 
-    private ListAggregate aggregateRows(List<SupplyRow> supplyRows) {
+    private ListAggregate aggregateRows(List<SupplyRow> supplyRows, SupplySheet sheet) {
         Set<String> regionNames = new LinkedHashSet<>();
         Set<Long> complexIds = new HashSet<>();
-        Integer supplyHouseholdCount = null;
         String thumbnailImageUrl = null;
-        Set<Long> countedGroups = new HashSet<>();
+        Set<Long> visibleRows = new HashSet<>();
         for (SupplyRow supplyRow : supplyRows) {
             if (supplyRow.isAdminExcluded()) { continue; }
-            Integer count = supplyRow.getTotalSupplyHouseholdCount();
-            if (supplyRow.getSupplyGroup() != null) {
-                count = null;
-                if (countedGroups.add(supplyRow.getSupplyGroup().getId())) {
-                    count = supplyRow.getSupplyGroup().getSharedHouseholdCount();
-                }
-            }
-            supplyHouseholdCount = addHouseholdCount(
-                    supplyHouseholdCount,
-                    count
-            );
+            visibleRows.add(supplyRow.getId());
             HousingComplex housingComplex = supplyRow.getHousingComplex();
             if (housingComplex == null) {
                 continue;
@@ -402,19 +374,9 @@ final class AnnouncementResponseMapper {
         return new ListAggregate(
                 List.copyOf(regionNames),
                 complexIds.size(),
-                supplyHouseholdCount,
+                sheet.total(SupplyQuota.Kind.WINNER, visibleRows::contains),
                 thumbnailImageUrl
         );
-    }
-
-    private Integer addHouseholdCount(Integer total, Integer rowCount) {
-        if (rowCount == null) {
-            return total;
-        }
-        if (total == null) {
-            return rowCount;
-        }
-        return Math.addExact(total, rowCount);
     }
 
     private void addRegionName(Set<String> regionNames, Address address) {

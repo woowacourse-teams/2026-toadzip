@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.service;
 
+import com.toadzip.backend.announcement.repository.SupplySheetWriter;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.exception.AdminDataStaleException;
@@ -80,6 +81,7 @@ public class SupplyCorrectionService {
     private final AnnouncementComplexAdminLinks adminLinks;
     private final AnnouncementComplexRepository announcementComplexRepository;
     private final SupplyTargetCountGroups countGroups;
+    private final SupplySheetWriter sheets;
 
     public SupplyCorrection.Workspace workspace(long id) {
         return snapshot(id).workspace();
@@ -332,6 +334,7 @@ public class SupplyCorrectionService {
                 request.correction().reason(), actor);
         announcement.recordAdminSupplyChange();
         announcements.flush();
+        sheets.writeFromDocument(announcement);
         return written;
     }
 

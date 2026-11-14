@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.service;
 
+import com.toadzip.backend.announcement.repository.SupplySheetWriter;
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
@@ -74,6 +75,7 @@ public class AnnouncementJsonCorrectionService {
     private final NotificationOutboxRepository notificationOutbox;
     private final SupplyRowRepository supplyRows;
     private final HousingComplexRepository complexes;
+    private final SupplySheetWriter sheets;
 
     public Workspace workspace(long id) {
         find(id);
@@ -114,12 +116,14 @@ public class AnnouncementJsonCorrectionService {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
         }
         announcement.recordAdminSupplyChange();
+        announcement.takeSupplySheetFromDocument();
         writeEvents(announcement, plan.preview().schedules());
         writeAttachments(announcement, plan.preview().attachments());
         if (plan.preview().publishes()) {
             publish(announcement);
         }
         announcements.flush();
+        sheets.writeFromDocument(announcement);
         var after = workspace(id);
         // PDF 보정 한 번은 공급행·기본정보·일정 변경을 이력 한 건으로 남긴다.
         var audit = new LinkedHashMap<String, Object>(supplies.audit(after.supply(), request.correction()));
@@ -144,7 +148,9 @@ public class AnnouncementJsonCorrectionService {
      */
     private Workspace confirmUnchanged(Announcement announcement, long id, Prepared plan, Request request, String actor) {
         announcement.recordAdminSupplyChange();
+        announcement.takeSupplySheetFromDocument();
         announcements.flush();
+        sheets.writeFromDocument(announcement);
         var after = workspace(id);
         var audit = new LinkedHashMap<String, Object>();
         audit.put("unchanged", true);
