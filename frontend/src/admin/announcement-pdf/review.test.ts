@@ -90,6 +90,28 @@ describe('공고 공급표 검토', () => {
     expect(sheet.cells.filter(cell => cell.target === target.key && cell.id !== null).map(cell => [cell.key, cell.id])).toEqual(cells)
   })
 
+  it('워커가 대상 구분 없는 칸에 더한 근거 없는 전체 대상은 이름을 고르지 않아도 저장되고, LH가 조건을 붙여 둔 전체 대상과 짝지어 대상·칸 ID를 지킨다', () => {
+    const extraction = structuredClone(fixtures.hansville.extraction) as typeof fixtures.hansville.extraction & { data: { supplySheet: { targets: unknown[]; cells: unknown[] } } }
+    extraction.data.supplySheet.targets.push({ key: 't1', label: '전체', applicationCondition: null })
+    extraction.data.supplySheet.cells.push({ housingType: 'h0', target: 't1' }, { housingType: 'h1', target: 't1' })
+    const lh = scenario('hansville', extraction, extracted => {
+      const sheet = savedSheet(extracted, { id: 9, name: '한스빌' })
+      return { ...sheet, targets: sheet.targets.map(target => target.label === '전체' ? { ...target, applicationCondition: '공고문 참조' } : target) }
+    })
+    const everyone = lh.workspace.supply.sheet.targets.find(target => target.label === '전체')!
+    const cells = lh.workspace.supply.sheet.cells.filter(cell => cell.target === everyone.key).map(cell => [cell.key, cell.id])
+    const sheet = assembledSheet(lh.review, lh.workspace)
+    expect(sheet.targets.filter(target => target.label === '전체').map(target => [target.key, target.id])).toEqual([[everyone.key, everyone.id]])
+    expect(sheet.cells.filter(cell => cell.target === everyone.key).map(cell => [cell.key, cell.id])).toEqual(cells)
+
+    const fresh = scenario('hansville', extraction, extracted => {
+      const sheet = hansvilleLinked(extracted), kept = sheet.targets.filter(target => target.label !== '전체').map(target => target.key)
+      return { ...sheet, targets: sheet.targets.filter(target => kept.includes(target.key)), cells: sheet.cells.filter(cell => kept.includes(cell.target)),
+        quotas: [], leaseTerms: [] }
+    })
+    expect(assembledSheet(fresh.review, fresh.workspace).targets.map(target => [target.id, target.label, target.applicationCondition])).toEqual([[1, '일반', ''], [null, '전체', '']])
+  })
+
   it('공급대상 이름을 읽지 못하면 그 대상을 쓰는 첫 칸으로 보내 저장을 막고, 이름을 넣으면 풀린다', () => {
     const extraction = structuredClone(fixtures.hansville.extraction)
     extraction.data.supplySheet.targets[0].label = ''

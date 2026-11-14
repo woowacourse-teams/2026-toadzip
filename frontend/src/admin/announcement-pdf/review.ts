@@ -169,6 +169,7 @@ const keepTypeNote = '지금 연결한 주택타입을 유지합니다. 다른 �
 const autoTypeNote = '저장하면 같은 단지에서 이름이 같은 주택타입에 연결하고, 없으면 PDF 주택타입·면적으로 새로 만듭니다. 다른 주택타입에 연결할 때만 직접 고르세요.'
 const protectedNote = '관리자가 직접 고친 값입니다. 기본은 지금 값을 유지합니다. 공고문 값이 맞으면 PDF 값을 고르세요.'
 const noConditionNote = '공고문에 이 대상의 신청 조건이 없습니다.'
+const addedEveryoneNote = '대상 구분이 없는 칸을 묶는 대상이라 공고문 근거가 없습니다.'
 const acrossTypesNote = '다른 주택형과 함께 모집하는 수라 주택형 모집수는 따로 두지 않습니다. 함께 쓰는 수에서 확인하세요.'
 /** 공고문에 없는 값. 저장하면 공고문을 따라 그 값을 두지 않는다(직접 입력하면 그 값). */
 function notApplicable(cell: Cell, note: string): Cell {
@@ -199,9 +200,20 @@ const targetKeyOf = (label: string, condition: string) => `${canonicalTarget(lab
 function sameTarget(left: Pick<SheetTarget, 'label' | 'applicationCondition'>, right: Pick<SheetTarget, 'label' | 'applicationCondition'>) {
   return Boolean(left.label.trim()) && targetKeyOf(left.label, left.applicationCondition) === targetKeyOf(right.label, right.applicationCondition)
 }
-/** 지금 공급표의 이 주택형 칸 중 공급대상이 같은 칸 */
+const EVERYONE = '전체'
+/** 워커가 대상 구분 없는 칸을 묶으려고 더한 '전체' 대상. 공고문에서 읽은 대상이 아니라 근거와 신청 조건이 없다. */
+const addedEveryone = (target: Pick<SheetTarget, 'label' | 'applicationCondition'>) => canonicalTarget(target.label) === EVERYONE && !target.applicationCondition.trim()
+/**
+ * 지금 공급표에서 이 PDF 대상과 짝지을 대상. 같은 대상이 먼저다. 없으면 워커가 더한 '전체'는 신청 조건과 상관없이 지금 '전체'와 짝짓는다.
+ * LH 원천은 같은 '전체' 대상을 신청 조건 '공고문 참조'로 둔다.
+ */
+function pairedTarget<T extends Pick<SheetTarget, 'label' | 'applicationCondition'>>(saved: T[], target: Pick<SheetTarget, 'label' | 'applicationCondition'>) {
+  return saved.find(item => sameTarget(item, target)) ?? (addedEveryone(target) ? saved.find(item => canonicalTarget(item.label) === EVERYONE) : undefined)
+}
+/** 지금 공급표의 이 주택형 칸 중 공급대상이 짝인 칸 */
 function sameTargetCell(sheet: SupplySheet, housingTypeKey: string, target: Pick<SheetTarget, 'label' | 'applicationCondition'>) {
-  return cellsOf(sheet, housingTypeKey).find(cell => { const item = sheet.targets.find(entry => entry.key === cell.target); return item && sameTarget(item, target) }) ?? null
+  const cells = cellsOf(sheet, housingTypeKey), paired = pairedTarget(sheet.targets.filter(item => cells.some(cell => cell.target === item.key)), target)
+  return paired ? cells.find(cell => cell.target === paired.key)! : null
 }
 /** 단지 묶음 키. 공급 표에 단지 이름이 없는 주택형은 이름 없는 묶음('')이다. */
 export const complexKey = (name: string | null | undefined) => name?.trim() ?? ''
@@ -303,14 +315,17 @@ function rowReview(extraction: Extraction, index: number, workspace: JsonWorkspa
   })
   return { source: index, key: existing?.key ?? `new:t${index}`, existing, candidates, cells: typeValues, targets }
 }
-/** 공급대상 이름·신청 조건. 지금 공급표에 같은 대상이 있으면 그 값과 비교한다. 이름을 읽지 못한 대상은 이름을 넣어야 저장된다. */
+/**
+ * 공급대상 이름·신청 조건. 지금 공급표에 짝인 대상이 있으면 그 값과 비교한다. 이름을 읽지 못한 대상은 이름을 넣어야 저장된다.
+ * 워커가 더한 '전체'는 공고문 근거가 없어도 그 이름을 쓴다.
+ */
 function labelReviews(extraction: Extraction, workspace: JsonWorkspace): TargetLabelReview[] {
   return extraction.sheet.targets.map((target, at) => {
-    const label = target.label ? canonicalTarget(target.label) : ''
-    const existing = workspace.supply.sheet.targets.find(item => sameTarget(item, { label, applicationCondition: target.applicationCondition }))
-    const values = cells(extraction, `targets[${at}]`, targetFields, { label, applicationCondition: target.applicationCondition },
-      existing ? { label: existing.label, applicationCondition: existing.applicationCondition } : {})
-    return { target: at, cells: values.map(cell => cell.field === 'applicationCondition' && !target.applicationCondition ? notApplicable(cell, noConditionNote) : cell) }
+    const label = target.label ? canonicalTarget(target.label) : '', value = { label, applicationCondition: target.applicationCondition }
+    const existing = pairedTarget(workspace.supply.sheet.targets, value)
+    const values = cells(extraction, `targets[${at}]`, targetFields, value, existing ? { label: existing.label, applicationCondition: existing.applicationCondition } : {})
+    return { target: at, cells: values.map(cell => cell.field === 'applicationCondition' && !target.applicationCondition ? notApplicable(cell, noConditionNote)
+      : cell.field === 'label' && addedEveryone(value) && cell.state === 'confirm' ? { ...cell, state: 'new', selected: true, mode: 'extracted', note: addedEveryoneNote } : cell) }
   })
 }
 /** 함께 쓰는 수의 이름. 다른 주택형과 함께 쓰면 주택형 이름을("49A·49B·49C 일반 함께 모집"), 한 주택형 안이면 대상 이름을 잇는다("49A 일반·신혼부부 함께 예비"). */
