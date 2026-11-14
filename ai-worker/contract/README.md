@@ -22,6 +22,17 @@ Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파�
 - PDF 모집수가 LH 모집수와 달라도 그 필드를 `unresolvedFields`에 넣지 않고 `warnings`로만 알린다. 워커는 값을 고치지 않고, 공급행마다 그 행의 전용면적(세부 주택형 포함) 가운데 하나와 면적이 같은 같은 단지 LH 행의 모집수 합계가 PDF 모집수와 다를 때만 `warnings`에 남긴다. 면적이 없는 LH 행, PDF 모집수가 빈 행, LH 모집수를 모르는(0) 줄이 붙은 행, 단지를 하나로 맞추지 못한 행은 비교하지 않는다.
 - GH 틀과 맞추지 못한 것도 `warnings`로만 알린다: 같은 지구·주택형 틀 행이 없거나 여럿인 공급행, 여러 공급행이 맞은 틀 행, 맞는 공급행이 없는 틀 행. GH 모집수는 비교하지 않는다.
 
+### 공고 공급표 (`data.supplySheet`)
+
+- 공급행 결과(`supplyRows`·`sharedCounts`)를 공고문 표의 칸 단위로 옮긴 같은 내용이다. 워커는 값을 새로 읽거나 고치지 않고, 서버가 옛 공급 테이블에서 공급표를 만드는 규칙(`supply_sheet_rebuild`)과 같은 규칙으로 옮긴다. 다른 점은 아래의 묶은 주택형을 나누는 것과 빈 표기 대상을 남기는 것뿐이다. 화면이 공급표를 읽게 되기 전까지는 `supplyRows`·`sharedCounts`도 그대로 싣는다.
+- `housingTypes[n]`은 주택형(신청형) 하나다(`key`, `complexName`, `name`, 면적·건설호수, `expectedMoveInMonth`, `sourceRow`). 주택형 하나가 단지 주택타입 여럿을 묶으면(84 = 84A·84B) 주택타입은 `houseTypes`(이름·면적·건설호수)로 둔다. 모집 칸 하나를 함께 쓰는 주택형들(49A·49B·49C의 모집 70)은 공급행에서는 하나로 묶였지만 공급표에서는 주택형마다 하나이고, 함께 쓰는 수는 멤버가 여럿인 수량 묶음이 담는다.
+- `targets[n]`은 공급대상 하나다(`key`, `label`, `applicationCondition`). 공고 안에서 표기와 신청 조건이 모두 같으면 같은 대상이다. 대상 구분이 없는 표는 `전체` 대상 하나다. 표기를 원문에서 확인하지 못한 대상은 버리지 않고 `label`이 빈 문자열이며 `unresolvedFields`에 남는다. 서버 공급표는 빈 표기를 받지 않으므로(옛 테이블에서 만들 때도 그런 대상은 버린다) 적용 전에 관리자가 표기를 정해야 한다.
+- `cells[n]`은 주택형×공급대상 칸(`housingType`·`target`은 키)이다. 수량 묶음과 임대조건은 칸을 멤버로 가진다.
+- `quotas[n]`은 수량 칸 하나다(`kind` `WINNER`·`RESERVE`, `count`, `members`). 대상별 모집수(`supplyHouseholdCount`)는 `WINNER`, 예비자 수(`reserveCount`)는 `RESERVE`이고 그 대상 칸 하나가 멤버다. 여러 대상·공급행이 함께 쓰는 수(`sharedCounts`)는 그 칸들을 멤버로 가진 묶음 하나다. 공급행 모집수 중 대상별 수로 나뉘지 않은 나머지는 그 주택형의 모든 칸이 함께 쓰는 `WINNER` 묶음이고, 칸의 대상이 하나뿐이면 `전체` 칸을 더해 그 대상의 수로 읽히지 않게 한다. 대상별 수의 합이 공급행 모집수보다 크면 공급행 모집수는 싣지 않는다. `WINNER`는 공급행 모집수와 같은 뜻(당첨자와 예비자를 함께 적은 표는 그 합)이다.
+- `leaseTerms[n]`은 금액 칸 한 세트다(`rentalDeposit`·`monthlyRent`·`convertedDeposit`, `members`). 금액이 하나라도 있는 칸마다 하나이고 그 칸을 만든 첫 대상의 금액이다(같은 행에 같은 대상이 다시 나오면 칸도 임대조건도 하나). 금액이 같아도 합치지 않는다. 묶은 주택형들은 금액도 한 세트를 함께 쓴다(공급행 결과에 주택형별 금액이 없다).
+- `unresolvedFields`·`evidence`는 공급행 결과의 같은 항목을 공급표 경로로 옮긴 것이다(`supplyRows[0].targets[1].reserveCount` → 그 수량 묶음의 `quotas[n].count`, 묶음이 없으면 그 칸의 `cells[n].reserve`, 금액은 `leaseTerms[n].rentalDeposit`이나 `cells[n].rentalDeposit`). 여러 공급행에 나온 같은 공급대상의 표기 미확인은 그 대상 하나(`targets[n].label`)로 합친다. 공급행 밖의 경로(`complexes[n]` 등)는 옮기지 않는다.
+- 신청자격 경로마다 `supplyTargetKeys`에 `supplyTargets`와 표기가 같은(공백만 무시) 공급표 대상의 키를 싣는다. 표기가 같으면 신청 조건이 달라도 모두 잇는다.
+
 ### 신청자격 (`data.eligibility`)
 
 - 워커의 신청자격 단계가 신청자격·입주자격 장(그 장의 쪽만 모델에 보낸다)에서 뽑은 요건이다. 서버는 이것을 신청자격 초안(`EligibilityContent`)으로 바꾸고, 관리자가 검토해 공개한다. 그 단계는 일시 오류(연결 실패, 429, 5xx)면 한 번 다시 부르고, 그래도 실패하면 `null`이고 `warnings`에 이유가 남는다(작업은 성공으로 끝난다). 필드를 모르는 이전 결과도 그대로 읽을 수 있어야 한다.

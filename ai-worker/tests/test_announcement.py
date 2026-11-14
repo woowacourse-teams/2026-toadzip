@@ -71,8 +71,13 @@ def test_result_has_contract_keys_and_original_page_numbers():
     assert tree["data"]["supplyRows"][0]["totalSupplyHouseholdCount"] is None
     assert tree["data"]["supplyRows"][0]["targets"] == []
     assert {key: value for key, value in tree["data"].items()
-            if key not in ("supplyRows", "unresolvedFields", "eligibility")} == {
+            if key not in ("supplyRows", "unresolvedFields", "eligibility", "supplySheet")} == {
         key: value for key, value in EXTRACTION["data"].items() if key != "supplyRows"}
+    # 공급행 결과는 공급표 모양으로도 실린다. 대상 구분이 없는 공급행은 '전체' 칸 하나다.
+    sheet = tree["data"]["supplySheet"]
+    assert [(item["key"], item["name"]) for item in sheet["housingTypes"]] == [("h0", None)]
+    assert sheet["cells"] == [{"housingType": "h0", "target": "t0"}]
+    assert sheet["targets"] == [{"key": "t0", "label": "전체", "applicationCondition": None}]
     assert tree["data"]["eligibility"] == EMPTY_ELIGIBILITY_DATA
     # 인식된 원문 표 행은 남지만, 모델 값이 해당 열과 일치하지 않아 미확인으로 둔다.
     assert tree["evidence"] and tree["evidence"][0]["page"] == 3
@@ -877,7 +882,13 @@ def test_source_check_findings_reach_the_result_once():
 
     result = AnnouncementPdfExtractor(StageReplyModel(supply, notice)).extract(job(structured_table_pdf()))
 
-    assert json.loads(result["json"]) == SOURCE_CHECKED_TREE
+    tree = json.loads(result["json"])
+    sheet = tree["data"].pop("supplySheet")
+    assert tree == SOURCE_CHECKED_TREE
+    # 공급행 결과의 미확인 항목은 공급표에서 그 값이 된 자리(주택형·대상·칸)를 가리킨다.
+    assert [item["path"] for item in sheet["unresolvedFields"]] == [
+        "housingTypes[0].complexName", "housingTypes[0].name", "targets[0].label", "cells[1].reserve",
+        "housingTypes[0]", "cells[0]", "cells[0].reserve", "cells[1].winner"]
     # 원문 대조 검산을 공급 단계 조립에서 한 번만 하므로 그 경고는 본문 쪽 번호·단지 병합 경고보다 앞에 온다.
     # 내용과 개수는 두 번 검산하던 때(SOURCE_CHECKED_WARNINGS)와 같다.
     assert sorted(result["warnings"]) == sorted(SOURCE_CHECKED_WARNINGS)
@@ -1134,3 +1145,42 @@ def test_eligibility_quote_read_across_the_columns_of_a_two_up_page_is_not_warne
     tree = json.loads(result["json"])
     assert [item["page"] for item in tree["evidence"] if item["path"] == "eligibility.common.requirements[0]"] == [2]
     assert not [warning for warning in result["warnings"] if "근거 인용문" in warning]
+
+
+def merged_count_pdf():
+    """모집호수 칸 하나(70)가 49A·49B·49C 세 주택형 행에 세로 병합된 표. 병합 칸 안에는 가로선이 없다."""
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((20, 30), "Sample Notice", fontname="korea", fontsize=8)
+    xs, ys = [20, 130, 220, 310, 400, 490, 575], [48, 78, 108, 138, 168]
+    rows = [["단지명", "주택형", "주거전용", "모집호수", "임대보증금(천원)", "월임대료(원)"],
+            ["Test", "49A", "49.92", "70", "46,920", "178,670"], ["", "49B", "49.90"], ["", "49C", "49.94"]]
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]))
+    for y in (ys[0], ys[1], ys[-1]):
+        page.draw_line((xs[0], y), (xs[-1], y))
+    for y in ys[2:4]:
+        page.draw_line((xs[1], y), (xs[3], y))
+    for row_index, row in enumerate(rows):
+        for column, value in enumerate(row):
+            if value:
+                page.insert_text((xs[column] + 2, ys[row_index] + 18), value, fontname="korea", fontsize=7)
+    return document.tobytes()
+
+
+def test_rows_joined_by_a_merged_count_are_split_into_housing_types_in_the_supply_sheet():
+    # 공급행 결과는 세 주택형을 공급행 하나(49)로 묶지만, 공급표는 주택형마다 하나이고 모집 70은 셋이 함께 쓰는 묶음 하나다.
+    supply = {"data": {"rows": [{"rowIds": [f"P1:T1:R{number}"], "complexName": "Test", "housingType": label,
+                                 "target": "일반"} for number, label in ((2, "49A"), (3, "49B"), (4, "49C"))]}}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, NOTICE_REPLY, ELIGIBILITY_REPLY), FakeJudge()).extract(
+        job(merged_count_pdf()))
+
+    tree = json.loads(result["json"])
+    assert [row["sourceHousingTypeName"] for row in tree["data"]["supplyRows"]] == ["49"]
+    sheet = tree["data"]["supplySheet"]
+    assert [item["name"] for item in sheet["housingTypes"]] == ["49A", "49B", "49C"]
+    assert [(quota["kind"], quota["count"], [member["housingType"] for member in quota["members"]])
+            for quota in sheet["quotas"]] == [("WINNER", 70, ["h0", "h1", "h2"])]
+    # 묶은 공급행 표시는 내부 값이라 결과에 남지 않는다.
+    assert "_joinedSupplyRows" not in tree

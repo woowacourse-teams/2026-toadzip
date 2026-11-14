@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
-                       supply_sources)
+                       supply_assembly, supply_sheet, supply_sources)
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 
@@ -99,6 +99,7 @@ class AnnouncementPdfExtractor:
         warnings += checks.review(tree, list(range(1, len(texts) + 1)), quote_texts, rows, selected.rental_rows)
         warnings += frame.link(tree)
         checks.normalize_note_paths(tree, warnings)
+        supply_sheet.attach(tree, supply.tree.get(supply_assembly.JOINED_ROWS, []))
         usage = _combined_usage(*supply.usage, notice_reply.usage, *([eligibility_reply.usage] if eligibility_reply else []))
         log.info("작업 %d 추출 완료 pages=%d/%d eligibilityPages=%d%s tableRows=%d frameRows=%d warnings=%d supply=%s "
                  "usage=%s", job.id, len(selection.pages), len(texts), len(eligibility_source.pages),

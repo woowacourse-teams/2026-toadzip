@@ -18,6 +18,11 @@ from ai_worker.source_check import (
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
+# 여러 주택형 행을 모집 칸 하나 때문에 한 공급행으로 묶은(공통 형명 49, 주택형마다 subtypes) 공급행 번호를 공급 tree에 남기는 키.
+# 공급표(supply_sheet)는 그 공급행을 주택형마다 나눈다. merge가 결과 tree를 새로 만들며 버리므로 결과 계약에 남지 않는다.
+JOINED_ROWS = "_joinedSupplyRows"
+
+
 def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tuple[dict, list[str]]:
     """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다.
     source_names는 LH 공급행의 단지명이다. 표 위 블록 제목과 단지명을 대조할 때 후보로 쓴다(Headings)."""
@@ -309,6 +314,7 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
         "notApplicable": [],
         "evidence": evidence,
         "sourceRows": source_rows,
+        JOINED_ROWS: sorted(merged),
     }
     # 문자열·수치는 동일 의미의 머리글 열에서 확인할 수 있을 때만 유지한다.
     row_source_map = source_row_map(source_rows)
