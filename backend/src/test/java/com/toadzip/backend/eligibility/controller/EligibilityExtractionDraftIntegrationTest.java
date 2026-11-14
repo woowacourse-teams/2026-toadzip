@@ -104,8 +104,8 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     void 워커가_공급대상을_맞추지_못해도_자격_본문의_대상_이름으로_공급표_대상에_잇는다() throws Exception {
         // 공고문 공급표는 '신혼부부·한부모', 자격 본문은 '신혼부부·한부모가족'이라 워커가 supplyTargets를 비워 둔 추출(인천산곡 A1).
         long announcement = notice(true);
-        jdbc.update("UPDATE supply_targets SET target = '신혼부부·한부모' WHERE supply_row_id IN"
-                + " (SELECT id FROM supply_rows WHERE announcement_id = ?) AND display_order = 0", announcement);
+        jdbc.update("UPDATE announcement_supply_targets SET label = '신혼부부·한부모' WHERE announcement_id = ?"
+                + " AND display_order = 0", announcement);
         List<Map<String, Object>> targets = new java.util.ArrayList<>();
         for (String route : List.of("신혼부부", "예비신혼부부", "한부모가족")) {
             targets.add(Map.of("target", route, "supplyTarget", "신혼부부·한부모가족", "supplyTargets", List.of(),
@@ -171,9 +171,9 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         long olderWorker = notice(false);
         rejected(olderWorker, SHA, "이 추출 결과에는 신청자격이 없습니다");
 
-        // 관리자가 공급대상을 모두 뺀 공급행은 대상 구분이 없는 행이 아니다. 아무 경로도 잇지 않는다.
+        // 공급표에 칸이 하나도 없는 공급행은 대상 구분이 없는 행이 아니다. 아무 경로도 잇지 않는다.
         long allTargetsExcluded = notice(true);
-        jdbc.update("UPDATE supply_targets SET admin_excluded = true WHERE supply_row_id IN"
+        jdbc.update("DELETE FROM supply_row_targets WHERE supply_row_id IN"
                 + " (SELECT id FROM supply_rows WHERE announcement_id = ?)", allTargetsExcluded);
         rejected(allTargetsExcluded, SHA, "공급대상과 이어지는 신청자격 경로가 없어");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?",
@@ -189,9 +189,6 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     @Test
     void 적용_전_미리보기는_공급행_없이_변환_결과를_보이고_저장하지_않는다() throws Exception {
         long announcement = notice(true);
-        String rows = "(SELECT id FROM supply_rows WHERE announcement_id = ?)";
-        jdbc.update("DELETE FROM supply_targets WHERE supply_row_id IN " + rows, announcement);
-        jdbc.update("DELETE FROM supply_target_count_groups WHERE supply_row_id IN " + rows, announcement);
         jdbc.update("DELETE FROM supply_rows WHERE announcement_id = ?", announcement);
         jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id = ?", announcement);
 
@@ -235,6 +232,21 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                 .andExpect(jsonPath("$.message").value(containsString(message)));
     }
 
+    /** 공급표 칸 하나와 그 칸만의 당첨 수. */
+    private void cell(long announcement, long row, String label, int order, int winnerCount) {
+        Long target = jdbc.queryForObject("""
+                INSERT INTO announcement_supply_targets (announcement_id, label, application_condition, display_order,
+                    admin_modified) VALUES (?, ?, '', ?, false) RETURNING id
+                """, Long.class, announcement, label, order);
+        Long cell = jdbc.queryForObject("INSERT INTO supply_row_targets (supply_row_id, supply_target_id, display_order)"
+                + " VALUES (?, ?, ?) RETURNING id", Long.class, row, target, order);
+        Long quota = jdbc.queryForObject("""
+                INSERT INTO supply_quotas (announcement_id, kind, household_count, admin_modified)
+                VALUES (?, 'WINNER', ?, false) RETURNING id
+                """, Long.class, announcement, winnerCount);
+        jdbc.update("INSERT INTO supply_quota_members (supply_quota_id, supply_row_target_id) VALUES (?, ?)", quota, cell);
+    }
+
     /** 공고 하나: 공급행 1개(청년 10명, 고령자 대상), PDF 첨부, 신청자격이 든(또는 이전 워커라 없는) 성공 추출. */
     private long notice(boolean withEligibility) throws Exception {
         long announcement = announcement();
@@ -248,11 +260,8 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                     source_housing_type_name, supply_category, announcement_exclusive_area)
                 VALUES (?, 0, ?, '인천석남', '21A', 'NEW_SUPPLY', 21.00) RETURNING id
                 """, Long.class, announcement, "row-" + announcement);
-        Long group = jdbc.queryForObject("INSERT INTO supply_target_count_groups (supply_row_id, kind, household_count)"
-                + " VALUES (?, 'SUPPLY', 10) RETURNING id", Long.class, row);
-        jdbc.update("INSERT INTO supply_targets (supply_row_id, display_order, target, supply_household_count,"
-                + " supply_count_group_id, admin_excluded) VALUES (?, 0, '청년', NULL, ?, false),"
-                + " (?, 1, '고령자(주거약자용)', 0, NULL, false), (?, 2, '청년', 5, NULL, true)", row, group, row, row);
+        cell(announcement, row, "청년", 0, 10);
+        cell(announcement, row, "고령자(주거약자용)", 1, 0);
         Map<String, Object> data = new LinkedHashMap<>(Map.of("announcement", Map.of("name", "인천석남 행복주택")));
         if (withEligibility) {
             data.put("eligibility", Map.of(

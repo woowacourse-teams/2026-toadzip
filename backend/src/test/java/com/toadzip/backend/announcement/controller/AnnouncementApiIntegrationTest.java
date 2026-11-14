@@ -24,7 +24,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -112,7 +112,6 @@ class AnnouncementApiIntegrationTest {
                 housingType,
                 "matched-row",
                 0,
-                5,
                 null
         ));
         SupplyRow unmatchedRow = persist(createSupplyRow(
@@ -121,33 +120,11 @@ class AnnouncementApiIntegrationTest {
                 null,
                 "unmatched-row",
                 1,
-                null,
                 "단지 매칭 실패"
         ));
-        persist(SupplyTarget.create(
-                matchedRow,
-                "청년",
-                "1순위",
-                5,
-                2,
-                new BigDecimal("12000000"),
-                new BigDecimal("180000"),
-                null,
-                null,
-                0
-        ));
-        persist(SupplyTarget.create(
-                unmatchedRow,
-                "신혼부부",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                "혼인 기간 7년 이내",
-                0
-        ));
+        SupplySheetSeed sheet = new SupplySheetSeed(entityManager);
+        sheet.target(matchedRow, "청년", null, 5, 2, new BigDecimal("12000000"), new BigDecimal("180000"), null, 0);
+        sheet.target(unmatchedRow, "신혼부부", "혼인 기간 7년 이내", null, null, null, null, null, 0);
         persist(AnnouncementSchedule.create(
                 correction,
                 ScheduleType.APPLICATION,
@@ -708,8 +685,8 @@ class AnnouncementApiIntegrationTest {
                 null, null, "https://example.com/schedule", 2));
         Announcement legacy = persist(deadlineAnnouncement("schedule-order-legacy", 1, 9, 15));
         persistSearchSupplyRows(seoul, reviewed, legacy);
-        persist(createSupplyRow(reviewed, other, null, "reviewed-other", 1, 1, null));
-        persist(createSupplyRow(legacy, other, null, "legacy-other", 1, 1, null));
+        persistCountedSupplyRow(createSupplyRow(reviewed, other, null, "reviewed-other", 1, null));
+        persistCountedSupplyRow(createSupplyRow(legacy, other, null, "legacy-other", 1, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -1024,7 +1001,6 @@ class AnnouncementApiIntegrationTest {
             HousingType housingType,
             String sourceIdentifier,
             int displayOrder,
-            Integer totalSupplyHouseholdCount,
             String matchingFailureReason
     ) {
         return SupplyRow.create(
@@ -1038,24 +1014,27 @@ class AnnouncementApiIntegrationTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason,
-                totalSupplyHouseholdCount
-        );
+                matchingFailureReason);
     }
 
     private void persistSearchSupplyRows(HousingComplex housingComplex, Announcement... announcements) {
         for (int index = 0; index < announcements.length; index++) {
             Announcement announcement = announcements[index];
-            persist(createSupplyRow(
+            persistCountedSupplyRow(createSupplyRow(
                     announcement,
                     housingComplex,
                     null,
                     announcement.getSourceAnnouncementIdentifier() + "-supply",
                     index,
-                    1,
                     null
             ));
         }
+    }
+
+    /** 대상 구분 없이 1세대를 모집하는 공급행. */
+    private void persistCountedSupplyRow(SupplyRow row) {
+        persist(row);
+        new SupplySheetSeed(entityManager).row(row, 1);
     }
 
     private MockHttpServletRequestBuilder combinedSearchRequest() {

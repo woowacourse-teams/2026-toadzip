@@ -12,7 +12,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.ComplexSort;
@@ -1929,9 +1929,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                null,
-                10
-        );
+                null);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
@@ -1950,18 +1948,8 @@ class ComplexSummaryQueryRepositoryTest {
             String monthlyRent,
             int displayOrder
     ) {
-        entityManager.persist(SupplyTarget.create(
-                supplyRow,
-                target,
-                "1순위",
-                5,
-                5,
-                new BigDecimal(rentalDeposit),
-                new BigDecimal(monthlyRent),
-                null,
-                "신청 조건",
-                displayOrder
-        ));
+        new SupplySheetSeed(entityManager).target(supplyRow, target, "신청 조건", 5, 5, new BigDecimal(rentalDeposit),
+                new BigDecimal(monthlyRent), null, displayOrder);
     }
 
     private void persistNullableSupplyTarget(
@@ -1971,18 +1959,8 @@ class ComplexSummaryQueryRepositoryTest {
             BigDecimal monthlyRent,
             int displayOrder
     ) {
-        entityManager.persist(SupplyTarget.create(
-                supplyRow,
-                target,
-                "1순위",
-                5,
-                5,
-                rentalDeposit,
-                monthlyRent,
-                null,
-                "신청 조건",
-                displayOrder
-        ));
+        new SupplySheetSeed(entityManager).target(supplyRow, target, "신청 조건", 5, 5, rentalDeposit, monthlyRent, null,
+                displayOrder);
     }
 
     private void persistUnmatchedSupplyRow(Announcement announcement) {
@@ -1997,9 +1975,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                "단지 매칭 실패",
-                10
-        );
+                "단지 매칭 실패");
         entityManager.persist(supplyRow);
     }
 

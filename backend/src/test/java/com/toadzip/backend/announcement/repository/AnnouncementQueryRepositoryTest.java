@@ -19,7 +19,6 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -72,9 +71,6 @@ class AnnouncementQueryRepositoryTest {
     @Autowired
     private SupplyRowRepository supplyRowRepository;
 
-    @Autowired
-    private SupplyTargetRepository supplyTargetRepository;
-
     private Announcement originalAnnouncement;
     private Announcement correctionAnnouncement;
     private Announcement cancellationAnnouncement;
@@ -89,10 +85,6 @@ class AnnouncementQueryRepositoryTest {
     private SupplyRow matchedSupplyRow;
     private SupplyRow unmatchedSupplyRow;
     private SupplyRow sameDateLeafSupplyRow;
-    private SupplyTarget firstMatchedTarget;
-    private SupplyTarget secondMatchedTarget;
-    private SupplyTarget unmatchedTarget;
-    private SupplyTarget sameDateLeafTarget;
 
     @BeforeEach
     void setUp() {
@@ -937,27 +929,6 @@ class AnnouncementQueryRepositoryTest {
     }
 
     @Test
-    void 공급대상은_공급행_ID와_표시순서와_ID_오름차순으로_조회한다() {
-        List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRowIdIn(
-                List.of(
-                        sameDateLeafSupplyRow.getId(),
-                        unmatchedSupplyRow.getId(),
-                        matchedSupplyRow.getId()
-                )
-        );
-
-        assertEquals(
-                List.of(
-                        firstMatchedTarget.getId(),
-                        secondMatchedTarget.getId(),
-                        unmatchedTarget.getId(),
-                        sameDateLeafTarget.getId()
-                ),
-                targets.stream().map(SupplyTarget::getId).toList()
-        );
-    }
-
-    @Test
     void 공고_목록_정렬_인덱스는_게시일과_ID를_순서대로_사용한다() {
         List<?> indexColumns = entityManager.createNativeQuery(
                         """
@@ -1021,10 +992,6 @@ class AnnouncementQueryRepositoryTest {
                 0,
                 "단지 매칭 실패"
         ));
-        firstMatchedTarget = persist(createTarget(matchedSupplyRow, "청년", 1));
-        secondMatchedTarget = persist(createTarget(matchedSupplyRow, "신혼부부", 1));
-        unmatchedTarget = persist(createTarget(unmatchedSupplyRow, "일반", 0));
-        sameDateLeafTarget = persist(createTarget(sameDateLeafSupplyRow, "고령자", 0));
     }
 
     private Announcement createAnnouncement(
@@ -1410,24 +1377,7 @@ class AnnouncementQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason,
-                10
-        );
-    }
-
-    private SupplyTarget createTarget(SupplyRow supplyRow, String target, int displayOrder) {
-        return SupplyTarget.create(
-                supplyRow,
-                target,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                displayOrder
-        );
+                matchingFailureReason);
     }
 
     private <T> T persist(T entity) {

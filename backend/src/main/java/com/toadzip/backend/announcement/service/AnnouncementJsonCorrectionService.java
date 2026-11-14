@@ -113,7 +113,6 @@ public class AnnouncementJsonCorrectionService {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
         }
         announcement.recordAdminSupplyChange();
-        announcement.takeSupplySheetFromDocument();
         writeEvents(announcement, plan.preview().schedules());
         writeAttachments(announcement, plan.preview().attachments());
         if (plan.preview().publishes()) {
@@ -144,7 +143,6 @@ public class AnnouncementJsonCorrectionService {
      */
     private Workspace confirmUnchanged(Announcement announcement, long id, Prepared plan, Request request, String actor) {
         announcement.recordAdminSupplyChange();
-        announcement.takeSupplySheetFromDocument();
         announcements.flush();
         var after = workspace(id);
         var audit = new LinkedHashMap<String, Object>();

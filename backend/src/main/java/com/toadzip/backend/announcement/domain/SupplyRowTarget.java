@@ -5,6 +5,8 @@ import static lombok.AccessLevel.PROTECTED;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -26,8 +28,9 @@ import org.hibernate.annotations.OnDeleteAction;
 @NoArgsConstructor(access = PROTECTED)
 public class SupplyRowTarget {
 
-    /** 옛 대상에서 온 칸은 옛 대상 ID, 그 밖의 칸은 옛 대상 시퀀스에서 받은 ID다(공급표 다시 만들기가 정한다). */
+    /** 옛 대상에서 온 칸은 옛 대상 ID를 그대로 갖는다. 새 칸의 ID는 옛 대상 ID 다음부터 이어진다(V20261114_01). */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = LAZY, optional = false)

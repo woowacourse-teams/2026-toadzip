@@ -42,8 +42,6 @@ beforeEach(() => {
     unlinkedLhCandidates: [],
     preservedSourceRequestCount: 0,
     preservedReasons: {},
-    preservedAmountTargetCount: 0,
-    preservedAmountReasons: {},
     heldRequests: [],
   })
   apiMocks.getDataPipelineStatus.mockImplementation(

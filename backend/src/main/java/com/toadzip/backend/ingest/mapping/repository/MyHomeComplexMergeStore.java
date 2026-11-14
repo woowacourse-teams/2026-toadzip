@@ -171,9 +171,7 @@ public class MyHomeComplexMergeStore {
     }
 
     public long countAdminRecords(List<Long> ids) {
-        return jdbc.sql("""
-                SELECT (SELECT count(*) FROM announcement_supply_match_decisions WHERE complex_id IN (:ids))
-                """ + ADMIN_RECORD_TABLES.stream()
+        return jdbc.sql("SELECT 0" + ADMIN_RECORD_TABLES.stream()
                 .map(table -> " + (SELECT count(*) FROM " + table + " WHERE housing_complex_id IN (:ids))")
                 .collect(Collectors.joining())).param("ids", ids).query(Long.class).single();
     }
@@ -197,8 +195,6 @@ public class MyHomeComplexMergeStore {
             jdbc.sql("UPDATE " + table + " SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
                     .param("target", representativeId).param("donors", donorIds).update();
         }
-        jdbc.sql("UPDATE announcement_supply_match_decisions SET complex_id = :target WHERE complex_id IN (:donors)")
-                .param("target", representativeId).param("donors", donorIds).update();
         jdbc.sql("UPDATE myhome_complex_links SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
                 .param("target", representativeId).param("donors", donorIds).update();
         jdbc.sql("UPDATE housing_complex_aliases SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")

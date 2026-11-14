@@ -13,7 +13,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementAttachmentReposit
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -55,9 +54,6 @@ class AdminAnnouncementImportIntegrationTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
-    private SupplyTargetRepository supplyTargetRepository;
-
-    @Autowired
     private AnnouncementScheduleRepository scheduleRepository;
 
     @Autowired
@@ -81,7 +77,6 @@ class AdminAnnouncementImportIntegrationTest {
     void cleanDatabase() {
         notificationJdbc.update("DELETE FROM notification_outbox_events");
         importRepository.deleteAll();
-        supplyTargetRepository.deleteAll();
         attachmentRepository.deleteAll();
         scheduleRepository.deleteAll();
         supplyRowRepository.deleteAll();
@@ -135,12 +130,8 @@ class AdminAnnouncementImportIntegrationTest {
         assertEquals(java.util.List.of("0|LH 청약플러스|ONLINE|1600-1004"), notificationJdbc.queryForList(
                 "SELECT display_order || '|' || name || '|' || method || '|' || contact FROM announcement_reception_places",
                 String.class));
-        // 공급대상은 옛 대상 테이블이 아니라 공고 공급표에 쓴다. 대상 모집수(10)가 공급행 모집수(20)보다 적으면
-        // 나머지 10은 공급행의 칸('청년'과 더한 '전체')이 함께 쓴다.
+        // 대상 모집수(10)가 공급행 모집수(20)보다 적으면 나머지 10은 공급행의 칸('청년'과 더한 '전체')이 함께 쓴다.
         long announcementId = announcementRepository.findAll().getFirst().getId();
-        assertEquals(0, notificationJdbc.queryForObject("""
-                SELECT count(*) FROM supply_targets target JOIN supply_rows row ON row.id = target.supply_row_id
-                WHERE row.announcement_id = ?""", Integer.class, announcementId));
         var detail = announcementQueries.getAnnouncement(announcementId);
         assertEquals(20, detail.supplyRows().getFirst().totalSupplyHouseholdCount());
         // '전체' 칸은 대상이 아니라 보이지 않고, 나머지 10은 청년 몫으로 읽히지 않고 공급행 모집수(20)에만 든다.

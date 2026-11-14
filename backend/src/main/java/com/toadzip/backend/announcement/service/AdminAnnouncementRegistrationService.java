@@ -56,8 +56,6 @@ public class AdminAnnouncementRegistrationService {
         validateApplicationPeriod(request);
         HousingComplex housingComplex = findHousingComplex(request.housingComplexId());
         Announcement created = createAnnouncement(request);
-        // 공급표를 이 등록이 쓰므로 처음부터 공급표 정본으로 만든다. 저장 뒤에 표시하면 새 공고의 버전이 바로 올라간다.
-        created.takeSupplySheetFromDocument();
         Announcement announcement = announcementRepository.save(created);
         SupplyRow createdSupplyRow = createSupplyRow(request.supplyRow(), announcement, housingComplex);
         SupplyRow supplyRow = supplyRowRepository.save(createdSupplyRow);
@@ -117,8 +115,7 @@ public class AdminAnnouncementRegistrationService {
                 request.supplyPnu(),
                 request.expectedMoveInMonth(),
                 request.supplyCategory(),
-                null,
-                request.totalSupplyHouseholdCount()
+                null
         );
     }
 

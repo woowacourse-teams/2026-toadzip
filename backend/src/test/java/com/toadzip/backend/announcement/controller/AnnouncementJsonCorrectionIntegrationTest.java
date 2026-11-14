@@ -15,7 +15,7 @@ import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -151,10 +151,9 @@ class AnnouncementJsonCorrectionIntegrationTest {
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.detail.data.name").value(announcement.getName()));
 
-        assertThat(jdbc.queryForMap("SELECT name, supply_owner, supply_recheck_required, supply_sheet_from_document FROM announcements WHERE id = ?", id))
+        assertThat(jdbc.queryForMap("SELECT name, supply_owner, supply_recheck_required FROM announcements WHERE id = ?", id))
                 .containsEntry("name", announcement.getName()).containsEntry("supply_owner", "ANNOUNCEMENT_DOCUMENT")
-                .containsEntry("supply_recheck_required", false)
-                .containsEntry("supply_sheet_from_document", true);
+                .containsEntry("supply_recheck_required", false);
         assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id = ?", String.class, id))
                 .containsExactly("CONFIRM_FROM_PDF");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_supply_corrections WHERE announcement_id = ?", Long.class, id))
@@ -168,9 +167,11 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var complex = fixtures.complex("11140", "1114010100");
         int order = 0;
         for (var name : new String[] {"26A", "36A"}) {
-            entities.persist(SupplyRow.create(announcement, complex, type(complex, name, name.substring(0, 2) + ".5000"),
+            var row = SupplyRow.create(announcement, complex, type(complex, name, name.substring(0, 2) + ".5000"),
                     UUID.randomUUID().toString(), order++, complex.getName(), name, "1114010100100010000", null,
-                    SupplyCategory.NEW_SUPPLY, null, 10));
+                    SupplyCategory.NEW_SUPPLY, null);
+            entities.persist(row);
+            new SupplySheetSeed(entities).row(row, 10);
         }
         entities.flush(); entities.clear();
         long id = announcement.getId();
@@ -270,37 +271,6 @@ class AnnouncementJsonCorrectionIntegrationTest {
         apply(id, split, preview(id, split).path("confirmationToken").asText()).andExpect(status().isOk());
         assertThat(sheet(id)).contains("Q:RESERVE:10:청년(소득 없음)", "Q:RESERVE:10:청년(소득 있음)")
                 .doesNotContain("Q:RESERVE:20:청년(소득 없음),청년(소득 있음)");
-    }
-
-    @Test
-    void PDF로_보정한_공고는_옛_테이블에_원천_값을_써도_공급표가_바뀌지_않는다() throws Exception {
-        long id = incomeSplitRow();
-        long other = incomeSplitRow();
-        var request = request(id);
-        each(request, "RESERVE", 10);
-        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
-        entities.flush();
-        assertThat(jdbc.queryForObject("SELECT supply_sheet_from_document FROM announcements WHERE id = ?", Boolean.class, id))
-                .isTrue();
-        var sheet = sheet(id);
-        assertThat(sheet).contains("Q:RESERVE:10:청년(소득 없음)", "Q:RESERVE:10:청년(소득 있음)",
-                "L:13780000.00/166640.00:청년(소득 없음)");
-
-        // 원천 정제가 공급행·대상을 다시 쓰는 것처럼 옛 테이블에 수·금액·대상을 쓴다. PDF로 보정하지 않은 공고는 공급표가 따라간다.
-        for (long announcementId : new long[] {id, other}) {
-            jdbc.update("UPDATE supply_rows SET total_supply_household_count = 50 WHERE announcement_id = ?", announcementId);
-            jdbc.update("""
-                    UPDATE supply_targets SET reserve_count = 99, rental_deposit = 1, target = '원천 대상'
-                    WHERE supply_row_id IN (SELECT id FROM supply_rows WHERE announcement_id = ?) AND display_order = 0""",
-                    announcementId);
-        }
-
-        assertThat(sheet(id)).isEqualTo(sheet);
-        assertThat(sheet(other)).contains("Q:WINNER:50:원천 대상,청년(소득 있음)", "Q:RESERVE:99:원천 대상");
-        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].target").value("청년(소득 없음)"))
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").value(10));
     }
 
     @Test
@@ -459,12 +429,12 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var announcement = fixtures.announcement();
         var complex = fixtures.complex("11140", "1114010100");
         var row = SupplyRow.create(announcement, complex, type(complex, "36A", "36.5000"), UUID.randomUUID().toString(), 0,
-                complex.getName(), "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, null);
+                complex.getName(), "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(row);
         int order = 0;
         for (var target : new String[] {"청년(소득 없음)", "청년(소득 있음)"}) {
-            entities.persist(SupplyTarget.create(row, target, null, null, null, new BigDecimal("13780000"),
-                    new BigDecimal("166640"), null, null, order++));
+            new SupplySheetSeed(entities).target(row, target, null, null, null, new BigDecimal("13780000"),
+                    new BigDecimal("166640"), null, order++);
         }
         entities.flush(); entities.clear();
         return announcement.getId();
@@ -476,10 +446,10 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var announcement = fixtures.announcement();
         var complex = fixtures.complex("11140", "1114010100");
         var row = SupplyRow.create(announcement, complex, type(complex, "26", "26.4673"), UUID.randomUUID().toString(), 0,
-                complex.getName(), "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10);
+                complex.getName(), "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(row);
-        entities.persist(SupplyTarget.create(row, "일반", null, 10, null, new BigDecimal("100000000"),
-                new BigDecimal("200000"), null, "공고문 확인", 0));
+        new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 10, null, new BigDecimal("100000000"),
+                new BigDecimal("200000"), null, 0);
         entities.flush(); entities.clear();
         return announcement.getId();
     }

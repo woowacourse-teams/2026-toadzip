@@ -30,7 +30,6 @@ class QueryLookupIndexMigrationTest {
                 id bigint PRIMARY KEY, pnu text, supply_type text, admin_deleted boolean NOT NULL DEFAULT false);
             CREATE TABLE supply_rows (
                 id bigint PRIMARY KEY, announcement_id bigint, housing_complex_id bigint, display_order integer);
-            CREATE TABLE supply_targets (id bigint PRIMARY KEY, supply_row_id bigint, display_order integer);
             """;
 
     @Autowired
@@ -51,19 +50,14 @@ class QueryLookupIndexMigrationTest {
                         INSERT INTO supply_rows
                         SELECT id, id % 1000 + 1, id % 20000 + 1, id / 1000
                         FROM generate_series(1, 20000) id;
-                        INSERT INTO supply_targets
-                        SELECT id, id % 1000 + 1, id / 1000 FROM generate_series(1, 20000) id;
                         ANALYZE housing_complexes;
                         ANALYZE supply_rows;
-                        ANALYZE supply_targets;
                         """);
                 List<Lookup> lookups = List.of(
                         new Lookup("SELECT id FROM supply_rows WHERE announcement_id = 42 ORDER BY display_order, id",
                                 "idx_supply_rows_announcement_order"),
                         new Lookup("SELECT id FROM supply_rows WHERE housing_complex_id = 42 AND announcement_id = 42",
                                 "idx_supply_rows_complex_announcement"),
-                        new Lookup("SELECT id FROM supply_targets WHERE supply_row_id = 42 ORDER BY display_order, id",
-                                "idx_supply_targets_row_order"),
                         new Lookup("SELECT id FROM housing_complexes WHERE pnu = '0000000000000000042'"
                                 + " AND supply_type = 'HAPPY_HOUSING' AND NOT admin_deleted",
                                 "idx_housing_complexes_pnu_supply_type"));

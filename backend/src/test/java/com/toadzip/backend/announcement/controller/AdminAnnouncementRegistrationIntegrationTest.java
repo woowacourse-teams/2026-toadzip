@@ -112,10 +112,9 @@ class AdminAnnouncementRegistrationIntegrationTest {
         assertAnnouncement(announcement);
         assertSupplyRow(supplyRow, announcementId, housingComplex.getId());
         // 대상 구분 없는 모집수(20)는 공급표의 '전체' 칸 하나가 갖는다. 등록이 공급표를 직접 쓴다.
-        assertEquals(java.util.List.of("전체:WINNER:20:true"), notificationJdbc.queryForList("""
-                SELECT t.label || ':' || q.kind || ':' || q.household_count || ':' || a.supply_sheet_from_document
+        assertEquals(java.util.List.of("전체:WINNER:20"), notificationJdbc.queryForList("""
+                SELECT t.label || ':' || q.kind || ':' || q.household_count
                 FROM supply_rows r
-                JOIN announcements a ON a.id = r.announcement_id
                 JOIN supply_row_targets c ON c.supply_row_id = r.id
                 JOIN announcement_supply_targets t ON t.id = c.supply_target_id
                 JOIN supply_quota_members m ON m.supply_row_target_id = c.id
@@ -251,7 +250,12 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 () -> assertEquals("1114010100100010000", supplyRow.getSupplyPnu()),
                 () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory()),
                 () -> assertNull(supplyRow.getMatchingFailureReason()),
-                () -> assertEquals(20, supplyRow.getTotalSupplyHouseholdCount())
+                // 대상 구분이 없는 등록의 모집수는 공급표의 '전체' 칸이 갖는다.
+                () -> assertEquals(20, notificationJdbc.queryForObject("""
+                        SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND q.id IN (
+                            SELECT m.supply_quota_id FROM supply_quota_members m
+                            JOIN supply_row_targets c ON c.id = m.supply_row_target_id WHERE c.supply_row_id = ?)
+                        """, Integer.class, supplyRow.getId()))
         );
     }
 

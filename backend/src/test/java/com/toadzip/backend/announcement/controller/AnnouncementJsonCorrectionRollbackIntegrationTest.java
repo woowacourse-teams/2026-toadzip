@@ -83,8 +83,6 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
                 .isEqualTo("관심 단지 새 공고");
         assertThat(jdbc.queryForList("SELECT household_count FROM supply_quotas WHERE announcement_id=? AND kind='WINNER'",
                 Integer.class, announcementId)).containsExactly(10);
-        assertThat(jdbc.queryForObject("SELECT supply_sheet_from_document FROM announcements WHERE id=?", Boolean.class,
-                announcementId)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_schedules WHERE announcement_id=?",
                 Long.class, announcementId)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_attachments WHERE announcement_id=?",

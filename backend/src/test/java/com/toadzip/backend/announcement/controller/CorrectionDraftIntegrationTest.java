@@ -144,7 +144,7 @@ class CorrectionDraftIntegrationTest {
         long id = fixture().getId();
         save("admin", id, body(null, snapshotToken(id), payload("작업"))).andExpect(status().isOk());
 
-        jdbc.update("UPDATE supply_rows SET total_supply_household_count = 3 WHERE announcement_id = ?", id);
+        jdbc.update("UPDATE supply_quotas SET household_count = 3 WHERE announcement_id = ?", id);
         entities.clear();
 
         assertThat(draft("admin", id).path("stale").asBoolean()).isTrue();

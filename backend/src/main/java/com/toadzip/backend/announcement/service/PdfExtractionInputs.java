@@ -8,7 +8,7 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
+import com.toadzip.backend.ingest.lh.refinement.domain.LhSourceIdentifier;
 import com.toadzip.backend.ingest.lh.refinement.service.LhCurrentSupplies;
 import java.math.BigDecimal;
 import java.util.Comparator;
@@ -48,7 +48,7 @@ class PdfExtractionInputs {
 
     private List<SourceSupplyRow> lhRows(String panId) {
         return lhSupplies.of(panId).stream().map(supply -> new SourceSupplyRow("LH", supply.getSourceOrder(),
-                LhSupplyRowLinks.identifier(supply), supply.getComplexLabel(), supply.getTypeName(),
+                LhSourceIdentifier.supply(supply.getPanId(), supply.getSourceOrder()), supply.getComplexLabel(), supply.getTypeName(),
                 supply.getExclusiveArea(), supply.getSupplyArea(), supply.getSuppliedUnitCount(),
                 supply.getTotalUnitCount())).toList();
     }

@@ -118,7 +118,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
         changeSourceSupplyCount();
         assertThat(owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources)).supplyRecheckRequired()).isOne();
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
-        assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
+        assertThat(rows(id)).extracting(row -> row.get("winner_count")).containsExactly(120, 60);
         assertThat(supplyRecheckRequired(id)).isTrue();
 
         var correction = request(id);
@@ -139,7 +139,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT source_review_required FROM announcements WHERE id = ?",
                 Boolean.class, id)).isTrue();
         assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
-        assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
+        assertThat(rows(id)).extracting(row -> row.get("winner_count")).containsExactly(120, 60);
         assertThat(supplyRecheckRequired(id)).isFalse();
     }
 
@@ -197,8 +197,12 @@ class GhAnnouncementPublishFlowIntegrationTest {
 
     private List<Map<String, Object>> rows(long id) {
         return jdbc.queryForList("""
-                SELECT housing_complex_id, announcement_complex_id, total_supply_household_count, supply_category
-                FROM supply_rows WHERE announcement_id = ? ORDER BY display_order
+                SELECT r.housing_complex_id, r.announcement_complex_id,
+                    (SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND EXISTS (
+                        SELECT 1 FROM supply_quota_members m JOIN supply_row_targets c ON c.id = m.supply_row_target_id
+                        WHERE m.supply_quota_id = q.id AND c.supply_row_id = r.id))::int AS winner_count,
+                    r.supply_category
+                FROM supply_rows r WHERE r.announcement_id = ? ORDER BY r.display_order
                 """, id);
     }
 

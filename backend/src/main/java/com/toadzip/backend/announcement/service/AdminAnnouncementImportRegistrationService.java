@@ -95,8 +95,6 @@ public class AdminAnnouncementImportRegistrationService {
         ensureJsonSize(originalJson);
 
         Announcement created = createAnnouncement(request);
-        // 공급표를 이 등록이 쓰므로 처음부터 공급표 정본으로 만든다. 저장 뒤에 표시하면 새 공고의 버전이 바로 올라간다.
-        created.takeSupplySheetFromDocument();
         Announcement announcement = announcementRepository.save(created);
         List<SupplyRow> supplyRows = saveSupplyRows(request, announcement, selectedComplexes);
         int supplyTargetCount = writeSupplySheet(request, announcement, supplyRows);
@@ -212,8 +210,7 @@ public class AdminAnnouncementImportRegistrationService {
                     row.complexReference().pnu(),
                     row.expectedMoveInMonth(),
                     row.supplyCategory(),
-                    null,
-                    row.totalSupplyHouseholdCount()
+                    null
             );
             if (row.exclusiveArea() != null || row.supplyArea() != null) {
                 supplyRow.correctPresentation(false, index, true, row.exclusiveArea(), row.supplyArea());

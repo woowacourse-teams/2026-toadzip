@@ -28,13 +28,12 @@ it('수집 성공률과 제품 충족률 및 보류 사유를 서로 구분해 �
   expect(screen.getAllByText('1/3 (33%)')).toHaveLength(2)
   expect(screen.getByText('주택형 후보 모호: 2행')).toBeVisible()
   expect(screen.getByText(/빈 응답·공급행 감소로 교체하지 않은 현재 요청 수/)).toBeVisible()
-  expect(screen.getByText('LH 신규 금액 미제공: 1건')).toBeVisible()
   expect(screen.getByText('원천 선택 충돌 1건')).toBeVisible()
   expect(screen.getByText('공급 원천 확보')).toBeVisible()
   expect(screen.getByText('상세 원천 확보')).toBeVisible()
   expect(screen.getByText(/과거 성공도 포함하며 이번 실행의 성공률이나 현재 값의 최신성을 뜻하지 않습니다/)).toBeVisible()
   expect(screen.getAllByText(/^가장 최근 실제 수집 /)).toHaveLength(2)
-  expect(screen.getByText('주택형·공고 매핑 보류: 1건')).toBeVisible()
+  expect(screen.queryByText(/기존 숫자 금액 유지/)).not.toBeInTheDocument()
   expect(screen.getByText('미수집 LH 임대 공고 조사 후보 4건')).toBeVisible()
   fireEvent.click(screen.getByText('미수집 LH 임대 공고 조사 후보 4건'))
   expect(screen.getByText(/수집 대상 중 공급·상세 원천이 현재 조회 조건으로 아직 수집되지 않은 공고입니다/)).toBeVisible()
@@ -161,8 +160,6 @@ function quality(): LhAnnouncementQuality {
       changedAt: '2026-09-28T00:00:00Z' }],
     preservedSourceRequestCount: 1,
     preservedReasons: { IncompleteLhSupplyReplacementException: 1 },
-    preservedAmountTargetCount: 2,
-    preservedAmountReasons: { LH_AMOUNT_NOT_PROVIDED: 1, MYHOME_MAPPING_REJECTED: 1 },
     heldRequests: [{ requestDescription: 'PAN_ID=pan-1', reason: '기존 공급행 감소',
       lastOccurredAt: '2026-09-28T00:00:00Z', proposedFingerprint: 'a'.repeat(64) }],
   }

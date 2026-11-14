@@ -158,14 +158,6 @@ public class Announcement {
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean supplyRecheckRequired;
 
-    /**
-     * PDF로 보정한 공고는 공고문이 공급표(announcement_supply_targets 등)의 정본이다. 옛 대상·수 테이블에 쓸 때 DB 트리거가 공급표를
-     * 다시 만들지 않고, 공고문으로 공급을 고치는 쪽이 {@code SupplySheetWriter}로 직접 쓴다.
-     */
-    @Column(nullable = false)
-    @org.hibernate.annotations.ColumnDefault("false")
-    private boolean supplySheetFromDocument;
-
     @Column(nullable = false)
     private boolean lhReceptionPlaceOwned;
 
@@ -471,11 +463,6 @@ public class Announcement {
     public void takeSupplyFromDocument() {
         supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
         supplyRecheckRequired = false;
-    }
-
-    /** PDF 보정을 적용하거나 공고문과 같다고 확인하면 공급표의 정본이 공고문이 된다. 되돌리지 않는다. */
-    public void takeSupplySheetFromDocument() {
-        supplySheetFromDocument = true;
     }
 
     public boolean suppliedByLh() {

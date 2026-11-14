@@ -9,9 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 공고 공급표 읽기 모델을 불러온다. 호출하는 쪽의 트랜잭션 안에서 쓴다.
- * 공급표 테이블은 옛 대상·수 테이블에 쓸 때 DB 트리거(V20261113_02)가 다시 만든다. PDF로 보정한 공고는 트리거가 건너뛰고
- * {@link com.toadzip.backend.announcement.repository.SupplySheetWriter}가 쓴다.
+ * 공고 공급표 읽기 모델을 불러온다. 호출하는 쪽의 트랜잭션 안에서 쓴다. 공급표는
+ * {@link com.toadzip.backend.announcement.repository.SupplySheetStore}가 쓴다.
  */
 @Component
 @RequiredArgsConstructor

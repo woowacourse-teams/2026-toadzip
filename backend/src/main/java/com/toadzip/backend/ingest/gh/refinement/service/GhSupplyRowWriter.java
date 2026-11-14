@@ -5,10 +5,13 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplySheetStore;
+import com.toadzip.backend.announcement.service.SupplySheets;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -42,6 +45,7 @@ class GhSupplyRowWriter {
     private final SupplyRowRepository supplyRows;
     private final AnnouncementComplexRepository announcementComplexes;
     private final SupplySheetStore sheets;
+    private final SupplySheets currentSheets;
     private final EntityManager entityManager;
 
     /** 관리자가 맡은 공고의 원천 공급이 바뀌어 공급 재확인이 새로 켜졌으면 true다. */
@@ -54,34 +58,36 @@ class GhSupplyRowWriter {
             return recheck;
         }
         List<SupplyRow> stored = supplyRows.findAllByAnnouncement(announcement);
-        if (stored.stream().map(Line::of).toList().equals(planned)) {
+        SupplySheet sheet = currentSheets.read(List.of(announcement.getId()), stored.stream().map(SupplyRow::getId).toList());
+        List<Line> current = stored.stream().map(row -> Line.of(row, sheet)).toList();
+        if (current.equals(planned)) {
             return false;
         }
-        if (onlyAreasDiffer(stored, planned)) {
+        if (onlyAreasDiffer(current, planned)) {
             fillAreas(stored, planned);
             return false;
         }
         supplyRows.deleteAll(stored);
         entityManager.flush();
-        List<SourceSupplySheet.Row> sheet = new ArrayList<>();
+        List<SourceSupplySheet.Row> rows = new ArrayList<>();
         for (Line line : planned) {
             SupplyRow row = SupplyRow.create(announcement, line.complex(), null, line.key(), line.order(),
-                    line.complexName(), line.typeName(), null, null, line.category(), null, line.householdCount());
+                    line.complexName(), line.typeName(), null, null, line.category(), null);
             row.fillAnnouncementComplex(line.announcementComplex());
             row.recordSourceArea(line.exclusiveArea());
-            sheet.add(new SourceSupplySheet.Row(supplyRows.save(row), line.householdCount(), List.of()));
+            rows.add(new SourceSupplySheet.Row(supplyRows.save(row), line.householdCount(), List.of()));
         }
-        sheets.replace(announcement, SourceSupplySheet.draft(sheet));
+        sheets.replace(announcement, SourceSupplySheet.draft(rows));
         return false;
     }
 
     /** 면적만 다르면 틀을 지우고 다시 만들지 않는다. 행 ID가 바뀌면 작업실 초안이 낡은 것으로 보인다. */
-    private static boolean onlyAreasDiffer(List<SupplyRow> stored, List<Line> planned) {
-        if (stored.size() != planned.size()) {
+    private static boolean onlyAreasDiffer(List<Line> current, List<Line> planned) {
+        if (current.size() != planned.size()) {
             return false;
         }
-        for (int index = 0; index < stored.size(); index++) {
-            if (!Line.of(stored.get(index)).withArea(planned.get(index).exclusiveArea()).equals(planned.get(index))) {
+        for (int index = 0; index < current.size(); index++) {
+            if (!current.get(index).withArea(planned.get(index).exclusiveArea()).equals(planned.get(index))) {
                 return false;
             }
         }
@@ -181,9 +187,11 @@ class GhSupplyRowWriter {
             BigDecimal exclusiveArea, SupplyCategory category, AnnouncementComplex announcementComplex,
             HousingComplex complex) {
 
-        static Line of(SupplyRow row) {
+        /** 틀 행의 세대수는 공급표의 그 행 당첨 모집수다(틀을 쓸 때 원천 세대수를 그 행 하나의 묶음으로 둔다). */
+        static Line of(SupplyRow row, SupplySheet sheet) {
             return new Line(row.getSourceSupplyRowIdentifier(), row.getDisplayOrder(), row.getSourceComplexName(),
-                    row.getSourceHousingTypeName(), row.getTotalSupplyHouseholdCount(), row.getAnnouncementExclusiveArea(),
+                    row.getSourceHousingTypeName(), sheet.rowCount(row.getId(), SupplyQuota.Kind.WINNER),
+                    row.getAnnouncementExclusiveArea(),
                     row.getSupplyCategory(), row.getAnnouncementComplex(), row.getHousingComplex());
         }
 

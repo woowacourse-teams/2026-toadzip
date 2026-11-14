@@ -803,7 +803,7 @@ class MyHomeComplexMergeIntegrationTest {
             HousingType type = housingTypes.findAllByHousingComplex(complex).getFirst();
             supplies.save(SupplyRow.create(announcement, complex, type, "supply-" + id, 1,
                     complex.getName(), type.getName(), complex.getAddress().getPnu(), YearMonth.of(2027, 3),
-                    SupplyCategory.NEW_SUPPLY, null, 10));
+                    SupplyCategory.NEW_SUPPLY, null));
             schedules.save(AnnouncementApplicationSchedule.verified(
                     announcement, complex, null, ApplicationScheduleState.CONFIRMED, null,
                     LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 14), null, null,

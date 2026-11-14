@@ -35,7 +35,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 공급표 쓰기 진입점이 draft 그대로 공급표를 쓰고, 다시 써도 ID를 지키며, 옛 테이블 트리거가 덮지 않고, 공개 상세가 그 공급표를 읽는지 본다.
+ * 공급표 쓰기 진입점이 draft 그대로 공급표를 쓰고, 다시 써도 ID를 지키며, 공개 상세가 그 공급표를 읽는지 본다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -69,7 +69,7 @@ class SupplySheetStoreIntegrationTest {
     }
 
     @Test
-    void 새_공급표를_쓰면_주택형_대상_칸_묶음_임대조건이_draft대로_저장되고_공고가_공급표_정본이_된다() {
+    void 새_공급표를_쓰면_주택형_대상_칸_묶음_임대조건이_draft대로_저장된다() {
         SupplySheetStore.Saved saved = replace(sheet());
 
         assertThat(saved.housingTypes()).containsOnlyKeys("h1", "h2", "h3");
@@ -82,8 +82,6 @@ class SupplySheetStoreIntegrationTest {
                 WHERE announcement_id = ? ORDER BY display_order""")).containsExactly("청년/", "신혼부부/소득 있음", "고령자/");
         assertThat(quotas()).containsExactlyInAnyOrder("WINNER:103:c1,c3", "RESERVE:20:c1,c2", "WINNER:5:c5");
         assertThat(leases()).containsExactlyInAnyOrder("100000000/200000:c1,c2,c3,c4", "null/50000:c5");
-        assertThat(jdbc.queryForObject("SELECT supply_sheet_from_document FROM announcements WHERE id = ?",
-                Boolean.class, announcement.getId())).isTrue();
         assertThat(jdbc.queryForObject("SELECT admin_modified FROM lease_terms WHERE monthly_rent = 50000 AND announcement_id = ?",
                 Boolean.class, announcement.getId())).isTrue();
     }
@@ -103,7 +101,7 @@ class SupplySheetStoreIntegrationTest {
     @Test
     void 기존_공급행은_자연_키로_찾아_고치고_공급표가_다루지_않는_열은_그대로_둔다() {
         SupplyRow stored = SupplyRow.create(announcement, null, null, "LH:existing", 3, "행복단지2", "84", null, null,
-                SupplyCategory.NEW_SUPPLY, null, 10);
+                SupplyCategory.NEW_SUPPLY, null);
         entities.persist(stored);
         entities.flush();
 
@@ -113,9 +111,8 @@ class SupplySheetStoreIntegrationTest {
         SupplyRow row = entities.find(SupplyRow.class, stored.getId());
         assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("LH:existing");
         assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("84");
-        assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(10);
         assertThat(row.getDisplayOrder()).isEqualTo(2);
-        // 트리거가 옛 모집수로 만든 '전체' 칸은 draft에 없으므로 남지 않는다.
+        // 공급표에는 draft의 칸만 남는다.
         assertThat(rows("""
                 SELECT st.label FROM supply_row_targets c JOIN announcement_supply_targets st ON st.id = c.supply_target_id
                 JOIN supply_rows r ON r.id = c.supply_row_id WHERE r.announcement_id = ? AND r.source_housing_type_name = '84'
@@ -125,7 +122,7 @@ class SupplySheetStoreIntegrationTest {
     @Test
     void 공고_표시명이_없는_LH_공급행은_원천_주택형명이_신청형_이름과_같으면_그_행을_고친다() {
         SupplyRow lhRow = SupplyRow.create(announcement, null, null, "LH:26A", 0, "행복단지", "26A", null, null,
-                SupplyCategory.NEW_SUPPLY, null, null);
+                SupplyCategory.NEW_SUPPLY, null);
         entities.persist(lhRow);
         entities.flush();
 
@@ -144,9 +141,9 @@ class SupplySheetStoreIntegrationTest {
                 new BigDecimal("26.3700"), null);
         entities.persist(type26);
         SupplyRow same = SupplyRow.create(lhOwned, housing, type26, "LH:26A(청년)", 0, "행복단지", "26A(청년)", null, null,
-                SupplyCategory.NEW_SUPPLY, null, null);
+                SupplyCategory.NEW_SUPPLY, null);
         SupplyRow renamed = SupplyRow.create(lhOwned, housing, type26, "LH:26A(고령자)", 1, "행복단지", "26A(고령자)", null,
-                null, SupplyCategory.NEW_SUPPLY, null, null);
+                null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(same);
         entities.persist(renamed);
         entities.flush();
@@ -169,7 +166,7 @@ class SupplySheetStoreIntegrationTest {
     @Test
     void 공고_표시명이_있는_공급행은_원천_주택형명이_아니라_공고_표시명으로_찾고_원천_주택형명은_그대로_둔다() {
         SupplyRow labeled = SupplyRow.create(announcement, null, null, "LH:26", 0, "행복단지", "26", null, null,
-                SupplyCategory.NEW_SUPPLY, null, null);
+                SupplyCategory.NEW_SUPPLY, null);
         entities.persist(labeled);
         entities.flush();
         jdbc.update("UPDATE supply_rows SET announcement_housing_type_name = '26A' WHERE id = ?", labeled.getId());
@@ -211,7 +208,7 @@ class SupplySheetStoreIntegrationTest {
     void 다른_공고의_공급행_ID를_가리키면_거부한다() {
         Announcement other = fixtures.announcement();
         SupplyRow foreign = SupplyRow.create(other, null, null, UUID.randomUUID().toString(), 0, "다른 단지", "36A", null,
-                null, SupplyCategory.NEW_SUPPLY, null, null);
+                null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(foreign);
         entities.flush();
         HousingTypeRow pointing = new HousingTypeRow("h1", foreign.getId(), null, null, null, "다른 단지", "36A", null,
@@ -220,18 +217,6 @@ class SupplySheetStoreIntegrationTest {
         assertThatThrownBy(() -> replace(SupplySheetDraft.of(List.of(pointing), List.of(youth()),
                 List.of(new Cell("c1", "h1", "t1", 0)), List.of(), List.of())))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("이 공고의 공급행이 아니다");
-    }
-
-    @Test
-    void 공급표를_쓴_뒤_공급행을_고쳐도_트리거가_옛_테이블로_공급표를_덮지_않는다() {
-        replace(sheet());
-        List<String> before = sheetSnapshot();
-
-        jdbc.update("UPDATE supply_rows SET total_supply_household_count = 99, display_order = display_order + 10 "
-                + "WHERE announcement_id = ?", announcement.getId());
-
-        assertThat(sheetSnapshot()).isEqualTo(before);
-        assertThat(quotas()).containsExactlyInAnyOrder("WINNER:103:c1,c3", "RESERVE:20:c1,c2", "WINNER:5:c5");
     }
 
     @Test

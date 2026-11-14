@@ -20,7 +20,10 @@ import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyOwner;
+import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
+import com.toadzip.backend.announcement.service.SupplySheets;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
@@ -65,6 +68,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -97,6 +101,8 @@ class LhAnnouncementRefinementIntegrationTest {
     @Autowired private AnnouncementQueryService publicAnnouncements;
     @Autowired private TransactionTemplate transactions;
     @Autowired private JdbcClient jdbc;
+    @Autowired private SupplySheets sheets;
+    @Autowired private jakarta.persistence.EntityManager entities;
     @MockitoSpyBean private NotificationOutboxRepository outbox;
     @MockitoSpyBean private LhScheduleAttachmentWriter scheduleWriter;
 
@@ -153,9 +159,8 @@ class LhAnnouncementRefinementIntegrationTest {
             SupplyRow area59Row = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":59a#1"))
                     .findFirst().orElseThrow();
             assertThat(area59Row.getSourceHousingTypeName()).isEqualTo("59A(청년) · 59A(고령자)");
-            assertThat(area59Row.getTotalSupplyHouseholdCount()).isEqualTo(14);
+            assertThat(winner(area59Row)).isEqualTo(14);
             assertThat(area59Row.getHousingType().getId()).isEqualTo(area59.getId());
-            assertThat(area59Row.getHousingTypes()).extracting(HousingType::getId).containsExactly(area59.getId());
             assertThat(area59Row.getSupplyPnu()).isNull();
             assertThat(area59Row.getSupplyCategory()).isEqualTo(SupplyCategory.NEW_SUPPLY);
             // 금액을 주지 않은 줄이 있으면 공고문으로 채워야 한다.
@@ -166,7 +171,6 @@ class LhAnnouncementRefinementIntegrationTest {
             // 단지에 없는 대표 면적의 행은 주택형 없이 면적 미일치로 둔다. 다른 면적의 주택형을 고르지 않는다.
             SupplyRow unmatched = rows.stream().filter(row -> row != area59Row).findFirst().orElseThrow();
             assertThat(unmatched.getHousingType()).isNull();
-            assertThat(unmatched.getHousingTypes()).isEmpty();
             assertThat(unmatched.getLhMatchStatus()).isEqualTo(LhSupplyMatchStatus.AREA_UNMATCHED);
             assertThat(cells(announcement.getId(), unmatched)).containsExactly("전체|공고문 참조|WINNER:3|20000000/100000");
             return announcement.getId();
@@ -242,7 +246,7 @@ class LhAnnouncementRefinementIntegrationTest {
         assertThat(sheetIds(id)).isEqualTo(sheetIds);
         inTransaction(() -> {
             SupplyRow row = supplyRows.findAllByAnnouncement(announcements.findById(id).orElseThrow()).getFirst();
-            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(16);
+            assertThat(winner(row)).isEqualTo(16);
             assertThat(cells(id, row)).containsExactly("청년|공고문 참조|WINNER:12|31000000/210000",
                     "고령자|공고문 참조|WINNER:4|30000000/200000");
         });
@@ -284,7 +288,7 @@ class LhAnnouncementRefinementIntegrationTest {
             long complexId = announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement).getFirst().getId();
             List<SupplyRow> rows = supplyRows.findAllByAnnouncement(announcement);
             assertThat(rows).extracting(SupplyRow::getSourceSupplyRowIdentifier, SupplyRow::getSourceHousingTypeName,
-                    SupplyRow::getTotalSupplyHouseholdCount).containsExactlyInAnyOrder(
+                    this::winner).containsExactlyInAnyOrder(
                     tuple("LHROW:" + complexId + ":84.9600a#1", "84.9600A", 16),
                     tuple("LHROW:" + complexId + ":84.9600b#1", "84.9600B", 3),
                     tuple("LHROW:" + complexId + ":아파트#1", "아파트", 5),
@@ -314,25 +318,31 @@ class LhAnnouncementRefinementIntegrationTest {
         long complexId = jdbc.sql("SELECT id FROM announcement_complexes WHERE announcement_id = ?").param(id)
                 .query(Long.class).single();
         // 이전 정제가 LH 줄마다 만든 공급행과 그 대상을 흉내 낸다.
-        jdbc.sql("DELETE FROM supply_targets WHERE supply_row_id IN (SELECT id FROM supply_rows WHERE announcement_id = ?)")
-                .param(id).update();
-        jdbc.sql("DELETE FROM supply_row_housing_types WHERE supply_row_id IN (SELECT id FROM supply_rows WHERE announcement_id = ?)")
-                .param(id).update();
         jdbc.sql("DELETE FROM supply_rows WHERE announcement_id = ?").param(id).update();
+        jdbc.sql("DELETE FROM supply_quotas WHERE announcement_id = ?").param(id).update();
+        jdbc.sql("DELETE FROM lease_terms WHERE announcement_id = ?").param(id).update();
+        jdbc.sql("DELETE FROM announcement_supply_targets WHERE announcement_id = ?").param(id).update();
+        long everyone = jdbc.sql("""
+                INSERT INTO announcement_supply_targets (announcement_id, label, application_condition, display_order,
+                    admin_modified) VALUES (?, '전체', '', 0, false) RETURNING id""").param(id).query(Long.class).single();
         for (var name : List.of("59A(청년)", "59A(고령자)")) {
             String key = "LHROW:" + complexId + ":" + name + "#1";
             jdbc.sql("""
                     INSERT INTO supply_rows (announcement_id, display_order, source_complex_name, source_housing_type_name,
                         source_supply_row_identifier, supply_category, housing_complex_id, housing_type_id, announcement_complex_id,
-                        total_supply_household_count, admin_modified, admin_excluded, area_override, target_counts_comparable,
-                        lh_total_supply_household_count_owned, lh_total_supply_household_count_enriched)
-                    VALUES (?, 0, '동탄 행복주택 단지', ?, ?, 'NEW_SUPPLY', ?, ?, ?, 10, false, false, false, false, true, true)""")
+                        admin_modified, admin_excluded, area_override)
+                    VALUES (?, 0, '동탄 행복주택 단지', ?, ?, 'NEW_SUPPLY', ?, ?, ?, false, false, false)""")
                     .params(id, name, key, complex.getId(), area59.getId(), complexId).update();
-            jdbc.sql("""
-                    INSERT INTO supply_targets (supply_row_id, target, supply_rank, supply_household_count, display_order,
-                        source_supply_target_identifier, admin_modified, admin_excluded)
-                    SELECT id, '전체', '전체', 10, 1, ? , false, false FROM supply_rows WHERE source_supply_row_identifier = ?""")
-                    .params(key + ":TARGET", key).update();
+            // 옛 행마다 '전체' 칸 하나가 모집수 10을 갖는다.
+            long cell = jdbc.sql("""
+                    INSERT INTO supply_row_targets (supply_row_id, supply_target_id, display_order)
+                    SELECT id, ?, 1000 FROM supply_rows WHERE source_supply_row_identifier = ? RETURNING id""")
+                    .params(everyone, key).query(Long.class).single();
+            long quota = jdbc.sql("""
+                    INSERT INTO supply_quotas (announcement_id, kind, household_count, admin_modified)
+                    VALUES (?, 'WINNER', 10, false) RETURNING id""").params(id).query(Long.class).single();
+            jdbc.sql("INSERT INTO supply_quota_members (supply_quota_id, supply_row_target_id) VALUES (?, ?)")
+                    .params(quota, cell).update();
         }
 
         refinement.refineAll();
@@ -341,15 +351,13 @@ class LhAnnouncementRefinementIntegrationTest {
             var rows = supplyRows.findAllByAnnouncement(announcements.findById(id).orElseThrow());
             assertThat(rows).singleElement().satisfies(row -> {
                 assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("LHROW:" + complexId + ":59a#1");
-                assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(14);
+                assertThat(winner(row)).isEqualTo(14);
                 assertThat(cells(id, row)).containsExactly("청년|공고문 참조|WINNER:10|30000000/200000",
                         "고령자|공고문 참조|WINNER:4|30000000/200000");
             });
             // 옛 공급행의 칸은 남지 않는다.
             assertThat(sheetViews.read(id).cells()).hasSize(2);
         });
-        assertThat(jdbc.sql("SELECT count(*) FROM supply_targets WHERE source_supply_target_identifier LIKE 'LHROW:%'")
-                .query(Long.class).single()).isZero();
     }
 
     @Test
@@ -364,7 +372,7 @@ class LhAnnouncementRefinementIntegrationTest {
         inTransaction(() -> {
             Announcement announcement = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst();
             assertThat(supplyRows.findAllByAnnouncement(announcement)).extracting(SupplyRow::getSourceComplexName,
-                    SupplyRow::getTotalSupplyHouseholdCount).containsExactlyInAnyOrder(
+                    this::winner).containsExactlyInAnyOrder(
                     tuple("동탄 행복주택 단지", 10), tuple("다른 단지", 7));
         });
     }
@@ -424,7 +432,7 @@ class LhAnnouncementRefinementIntegrationTest {
                     0L, null));
             existing.enrichFromLh("P1", null, null);
             supplyRows.save(SupplyRow.create(existing, complex, area59, "21026:1", 0, "동탄 행복주택", "59A",
-                    "1111010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10));
+                    "1111010100100010000", null, SupplyCategory.NEW_SUPPLY, null));
             return existing.getId();
         });
         // 다른 주소지만 기존 공급행이 이 단지를 가리켜 주소 규칙 대신 옮긴다.
@@ -461,9 +469,10 @@ class LhAnnouncementRefinementIntegrationTest {
             existing.enrichFromLh("P1", null, null);
             existing.recordAdminSupplyChange();
             SupplyRow corrected = SupplyRow.create(existing, complex, area59, "21026:1", 0, "동탄 행복주택", "공고문 59",
-                    "1111010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 7);
-            corrected.protectConditionsByAdmin();
+                    "1111010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+            ReflectionTestUtils.setField(corrected, "adminModified", true);
             supplyRows.save(corrected);
+            new SupplySheetSeed(entities).row(corrected, 7);
             return existing.getId();
         });
         // 공고문이 정한 공급표('전체' 칸 하나에 모집수 7)를 LH 정제가 덮지 않는다.
@@ -483,7 +492,7 @@ class LhAnnouncementRefinementIntegrationTest {
             assertThat(supplyRows.findAllByAnnouncement(announcement)).singleElement().satisfies(row -> {
                 assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("21026:1");
                 assertThat(row.getSourceHousingTypeName()).isEqualTo("공고문 59");
-                assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(7);
+                assertThat(winner(row)).isEqualTo(7);
                 assertThat(row.getAnnouncementComplex()).isNotNull();
             });
         });
@@ -497,7 +506,7 @@ class LhAnnouncementRefinementIntegrationTest {
             assertThat(announcement.isSupplyRecheckRequired()).isTrue();
             assertThat(supplyRows.findAllByAnnouncement(announcement)).singleElement()
                     .satisfies(row -> {
-                        assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(7);
+                        assertThat(winner(row)).isEqualTo(7);
                         assertThat(cells(existingId, row)).isEqualTo(documentSheet);
                     });
         });
@@ -700,18 +709,6 @@ class LhAnnouncementRefinementIntegrationTest {
                     new SupplyCorrection.ComplexLinkRequest(latest, complex.getId()), "operator"))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("이 공고의 공고 단지가 아닙니다");
 
-            // 공통 모집 묶음 행은 묶음째 옮길 수 없으므로 거절하고 연결을 바꾸지 않는다.
-            long group = jdbc.sql("""
-                    INSERT INTO supply_row_groups(version, announcement_id, source_row_identifier, source_fingerprint, source_url, reason, actor,
-                        updated_at, review_required)
-                    VALUES (0, :id, 'GROUP', 'f', 'https://example.com', '묶음', 'operator', CURRENT_TIMESTAMP, false) RETURNING id
-                    """).param("id", id).query(Long.class).single();
-            jdbc.sql("UPDATE supply_rows SET supply_group_id = :group, total_supply_household_count = NULL WHERE announcement_id = :id")
-                    .param("group", group).param("id", id).update();
-            var grouped = supplyCorrections.workspace(id).snapshotToken();
-            assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, view.id(),
-                    new SupplyCorrection.ComplexLinkRequest(grouped, complex.getId()), "operator"))
-                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("공통 모집 묶음");
             assertThat(supplyCorrections.workspace(id).announcementComplexes().getFirst().housingComplexId()).isEqualTo(other.getId());
         } finally {
             if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
@@ -725,7 +722,7 @@ class LhAnnouncementRefinementIntegrationTest {
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
         refinement.refineAll();
-        jdbc.sql("UPDATE supply_rows SET admin_modified = true, total_supply_household_count = 7").update();
+        jdbc.sql("UPDATE supply_rows SET admin_modified = true").update();
         supplies("P1", supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"),
                 supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
 
@@ -735,7 +732,6 @@ class LhAnnouncementRefinementIntegrationTest {
             SupplyRow corrected = supplyRows.findAllByAnnouncement(announcements.findAllByLhPanIdOrderByIdAsc("P1")
                     .getFirst()).stream().filter(row -> row.getSourceHousingTypeName().equals("59A")).findFirst().orElseThrow();
             assertThat(corrected.getLhSourceSupplyRowIdentifier()).isEqualTo(LhSourceIdentifier.supply("P1", 1));
-            assertThat(corrected.getTotalSupplyHouseholdCount()).isEqualTo(7);
         });
     }
 
@@ -836,6 +832,12 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     /** 공급행의 공급표 칸을 표시 순서대로 "대상|신청 조건|수량 묶음|임대조건(보증금/월임대료)"으로 읽는다. */
+    /** 공급표에서 읽은 이 공급행의 당첨 모집수. */
+    private Integer winner(SupplyRow row) {
+        return sheets.read(List.of(row.getAnnouncement().getId()), List.of(row.getId()))
+                .rowCount(row.getId(), SupplyQuota.Kind.WINNER);
+    }
+
     private List<String> cells(long announcementId, SupplyRow row) {
         SupplySheetView sheet = sheetViews.read(announcementId);
         Map<String, SupplySheetView.Target> targets = new java.util.HashMap<>();

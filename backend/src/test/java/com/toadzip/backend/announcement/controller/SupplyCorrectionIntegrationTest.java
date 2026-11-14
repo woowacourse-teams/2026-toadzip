@@ -15,7 +15,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -487,27 +487,8 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
-    void 함께_모집하는_주택형으로만_연결된_주택형도_전용면적을_바꿀_수_없다() throws Exception {
+    void 공급행이_가리키는_주택형은_전용면적을_바꿀_수_없다() throws Exception {
         var row = fixture();
-        var joint = HousingType.createFromMyHome(row.getHousingComplex(), UUID.randomUUID().toString(), "26B",
-                new BigDecimal("26.7000"), null);
-        entities.persist(joint); entities.flush();
-        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)",
-                row.getId(), joint.getId());
-        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId() + "/housing-types/" + joint.getId();
-        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
-                .put("name", "26B").put("exclusiveArea", 27).put("impactToken", impactToken(path));
-        mvc.perform(MockMvcRequestBuilders.put(path)
-                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
-                .content(json.writeValueAsString(update))).andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value(containsString("전용면적을 바꿀 수 없습니다")));
-    }
-
-    @Test
-    void 연결_없이_대표로만_쓰인_주택형도_전용면적을_바꿀_수_없다() throws Exception {
-        // 연결 표를 모르는 이전 애플리케이션이 만든 공급행도 대표 주택형으로 면적을 지킨다.
-        var row = fixture();
-        jdbc.update("DELETE FROM supply_row_housing_types WHERE supply_row_id = ?", row.getId());
         String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId()
                 + "/housing-types/" + row.getHousingType().getId();
         var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
@@ -529,10 +510,10 @@ class SupplyCorrectionIntegrationTest {
         var type = HousingType.createFromMyHome(complex, UUID.randomUUID().toString(), "26", new BigDecimal("26.4673"), null);
         entities.persist(type);
         var row = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 0, complex.getName(),
-                "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10);
+                "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(row);
-        entities.persist(SupplyTarget.create(row, "일반", null, 10, null, new BigDecimal("100000000"),
-                new BigDecimal("200000"), null, "공고문 확인", 0));
+        new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 10, null, new BigDecimal("100000000"),
+                new BigDecimal("200000"), null, 0);
         entities.flush();
         return row;
     }
@@ -543,10 +524,10 @@ class SupplyCorrectionIntegrationTest {
                 new BigDecimal("36.9100"), null);
         entities.persist(type);
         var row = SupplyRow.create(first.getAnnouncement(), first.getHousingComplex(), type, UUID.randomUUID().toString(), 1,
-                first.getSourceComplexName(), "36", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 5);
+                first.getSourceComplexName(), "36", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(row);
-        entities.persist(SupplyTarget.create(row, "일반", null, 5, null, new BigDecimal("150000000"),
-                new BigDecimal("250000"), null, "공고문 확인", 0));
+        new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 5, null, new BigDecimal("150000000"),
+                new BigDecimal("250000"), null, 0);
         entities.flush(); entities.clear();
         return row;
     }

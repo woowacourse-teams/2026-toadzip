@@ -392,7 +392,7 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                 100, "LH", LocalDate.of(2020, 1, 1), "개별난방", "아파트", "계단식", true, 80, null, null);
         entityManager.persist(complex);
         entityManager.persist(SupplyRow.create(announcement, complex, null, "review:" + regionCode, 0,
-                complex.getName(), "주택형", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10));
+                complex.getName(), "주택형", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null));
         entityManager.flush();
         return complex;
     }

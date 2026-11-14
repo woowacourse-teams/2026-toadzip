@@ -138,8 +138,7 @@ class AdminAnnouncementRegistrationServiceTest {
                 () -> assertEquals("36A", supplyRow.getSourceHousingTypeName()),
                 () -> assertEquals("1114010100100010000", supplyRow.getSupplyPnu()),
                 () -> assertEquals(YearMonth.of(2027, 3), supplyRow.getExpectedMoveInMonth()),
-                () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory()),
-                () -> assertEquals(20, supplyRow.getTotalSupplyHouseholdCount())
+                () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory())
         );
     }
 

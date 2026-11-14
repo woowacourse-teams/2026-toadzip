@@ -17,7 +17,8 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyRowTarget;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -98,8 +99,7 @@ class DomainJpaPersistenceTest {
             "housing_complex_id",
             "housing_type_id",
             "expected_move_in_month",
-            "matching_failure_reason",
-            "total_supply_household_count"
+            "matching_failure_reason"
     })
     void 공급행의_선택_컬럼은_null을_허용한다(String columnName) {
         Object isNullable = entityManager.createNativeQuery(
@@ -130,7 +130,7 @@ class DomainJpaPersistenceTest {
             "supply_rows, announcement_id, NO",
             "supply_rows, housing_complex_id, YES",
             "supply_rows, housing_type_id, YES",
-            "supply_targets, supply_row_id, NO",
+            "supply_row_targets, supply_row_id, NO",
             "announcement_schedules, announcement_id, NO",
             "announcement_attachments, announcement_id, NO"
     })
@@ -237,10 +237,11 @@ class DomainJpaPersistenceTest {
         entityManager.persist(matchedSupplyRow);
         entityManager.persist(unmatchedSupplyRow);
 
-        SupplyTarget supplyTarget = createSupplyTarget(matchedSupplyRow);
+        SupplyRowTarget supplyTarget = new SupplySheetSeed(entityManager).target(matchedSupplyRow, "청년",
+                "소득 기준 충족", 10, 20, new BigDecimal("50000000"), new BigDecimal("250000"),
+                new BigDecimal("70000000"), 1);
         AnnouncementSchedule announcementSchedule = createAnnouncementSchedule(correctedAnnouncement);
         AnnouncementAttachment announcementAttachment = createAnnouncementAttachment(correctedAnnouncement);
-        entityManager.persist(supplyTarget);
         entityManager.persist(announcementSchedule);
         entityManager.persist(announcementAttachment);
 
@@ -287,7 +288,7 @@ class DomainJpaPersistenceTest {
         Announcement foundCorrectedAnnouncement = entityManager.find(Announcement.class, correctedAnnouncementId);
         SupplyRow foundMatchedSupplyRow = entityManager.find(SupplyRow.class, matchedSupplyRowId);
         SupplyRow foundUnmatchedSupplyRow = entityManager.find(SupplyRow.class, unmatchedSupplyRowId);
-        SupplyTarget foundSupplyTarget = entityManager.find(SupplyTarget.class, supplyTargetId);
+        SupplyRowTarget foundSupplyTarget = entityManager.find(SupplyRowTarget.class, supplyTargetId);
         AnnouncementSchedule foundAnnouncementSchedule = entityManager.find(
                 AnnouncementSchedule.class,
                 announcementScheduleId
@@ -385,23 +386,9 @@ class DomainJpaPersistenceTest {
                 "1114010100100010000",
                 null,
                 SupplyCategory.NEW_SUPPLY,
-                "미매칭",
-                null
-        );
+                "미매칭");
         entityManager.persist(supplyRow);
 
-        SupplyTarget supplyTarget = SupplyTarget.create(
-                supplyRow,
-                "청년",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                1
-        );
         AnnouncementSchedule schedule = AnnouncementSchedule.create(
                 announcement,
                 ScheduleType.APPLICATION,
@@ -417,7 +404,6 @@ class DomainJpaPersistenceTest {
                 "https://example.com/files/announcement.pdf",
                 1
         );
-        entityManager.persist(supplyTarget);
         entityManager.persist(schedule);
         entityManager.persist(attachment);
         entityManager.flush();
@@ -470,7 +456,6 @@ class DomainJpaPersistenceTest {
 
         Announcement foundAnnouncement = entityManager.find(Announcement.class, announcement.getId());
         SupplyRow foundSupplyRow = entityManager.find(SupplyRow.class, supplyRow.getId());
-        SupplyTarget foundSupplyTarget = entityManager.find(SupplyTarget.class, supplyTarget.getId());
         AnnouncementSchedule foundSchedule = entityManager.find(AnnouncementSchedule.class, schedule.getId());
         AnnouncementAttachment foundAttachment = entityManager.find(AnnouncementAttachment.class, attachment.getId());
 
@@ -484,15 +469,7 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals(new BigDecimal("2.5000"), foundAnnouncement.getPredictedCompetitionRate()),
                 () -> assertEquals(ScheduleType.APPLICATION, foundSchedule.getScheduleType()),
                 () -> assertEquals(AttachmentType.ANNOUNCEMENT, foundAttachment.getFileType()),
-                () -> assertNull(foundSupplyRow.getExpectedMoveInMonth()),
-                () -> assertNull(foundSupplyRow.getTotalSupplyHouseholdCount()),
-                () -> assertNull(foundSupplyTarget.getSupplyRank()),
-                () -> assertNull(foundSupplyTarget.getSupplyHouseholdCount()),
-                () -> assertNull(foundSupplyTarget.getReserveCount()),
-                () -> assertNull(foundSupplyTarget.getRentalDeposit()),
-                () -> assertNull(foundSupplyTarget.getMonthlyRent()),
-                () -> assertNull(foundSupplyTarget.getConvertedDeposit()),
-                () -> assertNull(foundSupplyTarget.getApplicationCondition())
+                () -> assertNull(foundSupplyRow.getExpectedMoveInMonth())
         );
     }
 
@@ -678,24 +655,7 @@ class DomainJpaPersistenceTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason,
-                20
-        );
-    }
-
-    private SupplyTarget createSupplyTarget(SupplyRow supplyRow) {
-        return SupplyTarget.create(
-                supplyRow,
-                "청년",
-                "1순위",
-                10,
-                20,
-                new BigDecimal("50000000"),
-                new BigDecimal("250000"),
-                new BigDecimal("70000000"),
-                "소득 기준 충족",
-                1
-        );
+                matchingFailureReason);
     }
 
     private AnnouncementSchedule createAnnouncementSchedule(Announcement announcement) {

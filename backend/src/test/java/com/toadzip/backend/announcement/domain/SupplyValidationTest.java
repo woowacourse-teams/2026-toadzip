@@ -3,7 +3,6 @@ package com.toadzip.backend.announcement.domain;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
@@ -26,8 +25,7 @@ class SupplyValidationTest {
                         fields,
                         1,
                         YearMonth.of(2027, 3),
-                        SupplyCategory.NEW_SUPPLY,
-                        20
+                        SupplyCategory.NEW_SUPPLY
                 )
         );
     }
@@ -41,112 +39,21 @@ class SupplyValidationTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createSupplyRow(null, fields, 1, expectedMoveInMonth, SupplyCategory.NEW_SUPPLY, 20)
+                        () -> createSupplyRow(null, fields, 1, expectedMoveInMonth, SupplyCategory.NEW_SUPPLY)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, 1, expectedMoveInMonth, null, 20)
+                        () -> createSupplyRow(announcement, fields, 1, expectedMoveInMonth, null)
                 )
         );
     }
 
     @Test
-    void 공급행의_표시순서와_전체_공급세대수는_음수일_수_없다() {
-        Announcement announcement = createAnnouncement();
-        String[] fields = validSupplyRowStringFields();
-        YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
-
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, -1, expectedMoveInMonth,
-                                SupplyCategory.NEW_SUPPLY, 20)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, 1, expectedMoveInMonth,
-                                SupplyCategory.NEW_SUPPLY, -1)
-                )
-        );
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
-    void 공급대상의_문자열은_비어_있을_수_없다(int blankFieldIndex) {
-        String[] fields = validSupplyTargetStringFields();
-        fields[blankFieldIndex] = " ";
-
+    void 공급행의_표시순서는_음수일_수_없다() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> createSupplyTarget(
-                        createSupplyRow(),
-                        fields,
-                        10,
-                        20,
-                        new BigDecimal("50000000"),
-                        new BigDecimal("250000"),
-                        new BigDecimal("70000000"),
-                        1
-                )
-        );
-    }
-
-    @Test
-    void 공급대상의_공급행은_필수다() {
-        String[] fields = validSupplyTargetStringFields();
-        BigDecimal amount = new BigDecimal("1000000");
-
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(null, fields, 10, 20, amount, amount, amount, 1)
-                )
-        );
-    }
-
-    @Test
-    void 공급대상의_수량과_금액과_표시순서는_음수일_수_없다() {
-        SupplyRow supplyRow = createSupplyRow();
-        String[] fields = validSupplyTargetStringFields();
-        BigDecimal amount = new BigDecimal("1000000");
-        BigDecimal negative = BigDecimal.ONE.negate();
-
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, -1, 20, amount, amount, amount, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, -1, amount, amount, amount, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, 20, negative, amount, amount, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, 20, amount, negative, amount, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, 20, amount, amount, negative, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, 20, amount, amount, amount, -1)
-                )
-        );
-    }
-
-    private SupplyRow createSupplyRow() {
-        return createSupplyRow(
-                createAnnouncement(),
-                validSupplyRowStringFields(),
-                1,
-                YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                20
+                () -> createSupplyRow(createAnnouncement(), validSupplyRowStringFields(), -1, YearMonth.of(2027, 3),
+                        SupplyCategory.NEW_SUPPLY)
         );
     }
 
@@ -155,8 +62,7 @@ class SupplyValidationTest {
             String[] fields,
             int displayOrder,
             YearMonth expectedMoveInMonth,
-            SupplyCategory supplyCategory,
-            int totalSupplyHouseholdCount
+            SupplyCategory supplyCategory
     ) {
         return SupplyRow.create(
                 announcement,
@@ -169,33 +75,7 @@ class SupplyValidationTest {
                 fields[3],
                 expectedMoveInMonth,
                 supplyCategory,
-                "단지 식별자 불일치",
-                totalSupplyHouseholdCount
-        );
-    }
-
-    private SupplyTarget createSupplyTarget(
-            SupplyRow supplyRow,
-            String[] fields,
-            int supplyHouseholdCount,
-            int reserveCount,
-            BigDecimal rentalDeposit,
-            BigDecimal monthlyRent,
-            BigDecimal convertedDeposit,
-            int displayOrder
-    ) {
-        return SupplyTarget.create(
-                supplyRow,
-                fields[0],
-                fields[1],
-                supplyHouseholdCount,
-                reserveCount,
-                rentalDeposit,
-                monthlyRent,
-                convertedDeposit,
-                fields[2],
-                displayOrder
-        );
+                "단지 식별자 불일치");
     }
 
     private Announcement createAnnouncement() {
@@ -228,7 +108,4 @@ class SupplyValidationTest {
         };
     }
 
-    private String[] validSupplyTargetStringFields() {
-        return new String[]{"청년", "1순위", "소득 기준 충족"};
-    }
 }

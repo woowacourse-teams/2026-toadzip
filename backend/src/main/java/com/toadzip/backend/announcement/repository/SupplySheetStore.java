@@ -27,17 +27,15 @@ import org.springframework.stereotype.Component;
 /**
  * 공고 하나의 공급표(주택형·공급대상·칸·수량 묶음·임대조건)를 {@link SupplySheetDraft} 그대로 바꾼다. 부르는 쪽의 트랜잭션에서 쓴다.
  *
- * <p>주택형(supply_rows)은 엔티티로 쓴다. 함께 모집하는 주택형 연결과 공고 버전이 엔티티 규칙을 따라야 하기 때문이다. 공급대상·칸·묶음·
+ * <p>주택형(supply_rows)은 엔티티로 쓴다. 주택형 연결 검사와 공고 버전이 엔티티 규칙을 따라야 하기 때문이다. 공급대상·칸·묶음·
  * 임대조건은 JdbcClient로 정한 순서대로 쓴다. Hibernate는 flush에서 삽입을 삭제보다 먼저 보내 "칸 하나에 임대조건 하나" 유일 제약에
- * 걸리고, 칸 ID는 옛 대상 시퀀스에서 받아야 하기 때문이다(V20261113_01 supply_row_targets 주석).
+ * 걸리기 때문이다.
  *
  * <p>ID는 다시 써도 유지한다. 주택형은 draft의 공급행 ID나 (공고 단지 또는 단지명, 신청형 이름)으로, 공급대상은 (표기, 신청 조건)으로,
  * 칸은 (주택형, 공급대상)으로 기존 행을 찾는다. 신청자격 단위(unit-{공급행 ID})와 공개 응답의 대상 ID가 이 ID를 가리킨다.
  * 수량 묶음과 임대조건은 공고 단위로 지우고 다시 넣는다.
  *
- * <p>쓰기 전에 공고를 공급표 정본으로 표시한다(supply_sheet_from_document). 그래야 같은 트랜잭션이나 뒤의 supply_rows 쓰기에
- * 붙은 DB 트리거(V20261113_02)가 옛 테이블로 공급표를 다시 만들어 덮지 않는다. JDBC로 쓰므로 같은 영속성 컨텍스트에 이미 읽어 둔
- * 공급표 엔티티(공급대상·칸·묶음·임대조건)는 낡는다. 쓴 뒤 공급표를 다시 읽으려면 영속성 컨텍스트를 비우고 읽는다.
+ * <p>JDBC로 쓰므로 같은 영속성 컨텍스트에 이미 읽어 둔 공급표 엔티티(공급대상·칸·묶음·임대조건)는 낡는다. 쓴 뒤 공급표를 다시 읽으려면 영속성 컨텍스트를 비우고 읽는다.
  *
  * <p>{@code @Repository}의 예외 변환을 받지 않게 {@code @Component}로 둔다. 다른 공고의 공급행 거부는 IllegalArgumentException 그대로 전한다.
  */
@@ -52,10 +50,9 @@ public class SupplySheetStore {
     private final JdbcClient jdbc;
 
     public Saved replace(Announcement announcement, SupplySheetDraft draft) {
-        announcement.takeSupplySheetFromDocument();
         entities.flush();
         long announcementId = announcement.getId();
-        // 같은 공고를 함께 쓰면 자연 키로 찾지 못한 주택형이 두 번 생긴다. 공급표 다시 만들기 함수와 같은 잠금으로 차례로 쓴다.
+        // 같은 공고를 함께 쓰면 자연 키로 찾지 못한 주택형이 두 번 생긴다. 공고 행을 잠가 차례로 쓴다.
         jdbc.sql("SELECT 1 FROM announcements WHERE id = ? FOR NO KEY UPDATE").param(announcementId).query().singleRow();
         Rows rows = writeRows(announcement, draft.housingTypes());
         entities.flush();
@@ -69,7 +66,6 @@ public class SupplySheetStore {
                 WHERE st.announcement_id = ?
                   AND NOT EXISTS (SELECT 1 FROM supply_row_targets c WHERE c.supply_target_id = st.id)
                 """).param(announcementId).update();
-        // 칸을 먼저 지웠으므로 공급행 삭제 트리거(supply_sheet_drop_row_cells, supply_sheet_prune)가 지울 것이 남지 않는다.
         rows.stale().forEach(entities::remove);
         entities.flush();
         return new Saved(rows.ids(), targetIds, cellIds);
@@ -156,7 +152,7 @@ public class SupplySheetStore {
         jdbc.sql("DELETE FROM lease_terms WHERE announcement_id = ?").param(announcementId).update();
     }
 
-    /** 이미 있는 (주택형, 공급대상) 칸은 ID를 그대로 두고, 새 칸은 옛 대상 시퀀스에서 ID를 받는다. 공급표에 없는 칸은 지운다. */
+    /** 이미 있는 (주택형, 공급대상) 칸은 ID를 그대로 두고, 새 칸은 새 ID를 받는다. 공급표에 없는 칸은 지운다. */
     private Map<String, Long> writeCells(long announcementId, List<Cell> cells, Map<String, Long> rowIds,
             Map<String, Long> targetIds) {
         Map<Place, Long> stored = new HashMap<>();
@@ -184,8 +180,8 @@ public class SupplySheetStore {
             return storedId;
         }
         return jdbc.sql("""
-                INSERT INTO supply_row_targets (id, supply_row_id, supply_target_id, display_order)
-                VALUES (nextval(pg_get_serial_sequence('supply_targets', 'id')), ?, ?, ?)
+                INSERT INTO supply_row_targets (supply_row_id, supply_target_id, display_order)
+                VALUES (?, ?, ?)
                 RETURNING id
                 """).params(place.rowId(), place.targetId(), displayOrder).query(Long.class).single();
     }

@@ -25,107 +25,42 @@ class SupplyNullableValidationTest {
                 "1114010100100010000",
                 null,
                 SupplyCategory.NEW_SUPPLY,
-                "미매칭",
-                null
-        );
-        SupplyTarget supplyTarget = SupplyTarget.create(
-                supplyRow,
-                "청년",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                1
-        );
+                "미매칭");
+        LeaseTerms.Amounts amounts = new LeaseTerms.Amounts(null, null, null);
 
         assertAll(
                 () -> assertNull(supplyRow.getExpectedMoveInMonth()),
-                () -> assertNull(supplyRow.getTotalSupplyHouseholdCount()),
-                () -> assertNull(supplyTarget.getSupplyRank()),
-                () -> assertNull(supplyTarget.getSupplyHouseholdCount()),
-                () -> assertNull(supplyTarget.getReserveCount()),
-                () -> assertNull(supplyTarget.getRentalDeposit()),
-                () -> assertNull(supplyTarget.getMonthlyRent()),
-                () -> assertNull(supplyTarget.getConvertedDeposit()),
-                () -> assertNull(supplyTarget.getApplicationCondition())
-        );
-    }
-
-    @Test
-    void 선택_수량은_음수일_수_없다() {
-        SupplyRow supplyRow = createSupplyRow();
-
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> SupplyRow.create(
-                                createAnnouncement(), null, null, "row-2", 1, "원문 단지", "36A",
-                                "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, -1
-                        )
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> SupplyTarget.create(supplyRow, "청년", null, -1, null, null, null, null, null, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> SupplyTarget.create(supplyRow, "청년", null, null, -1, null, null, null, null, 1)
-                )
+                () -> assertNull(amounts.rentalDeposit()),
+                () -> assertNull(amounts.monthlyRent()),
+                () -> assertNull(amounts.convertedDeposit())
         );
     }
 
     @Test
     void 선택_금액은_Long_범위의_음이_아닌_정수여야_한다() {
-        SupplyRow supplyRow = createSupplyRow();
-
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> SupplyTarget.create(
-                                supplyRow, "청년", null, null, null, new BigDecimal("1.5"), null, null, null, 1
-                        )
+                        () -> new LeaseTerms.Amounts(new BigDecimal("1.5"), null, null)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> SupplyTarget.create(
-                                supplyRow,
-                                "청년",
-                                null,
-                                null,
-                                null,
-                                null,
-                                new BigDecimal("9223372036854775808"),
-                                null,
-                                null,
-                                1
-                        )
+                        () -> new LeaseTerms.Amounts(null, new BigDecimal("9223372036854775808"), null)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> new LeaseTerms.Amounts(null, null, new BigDecimal("-1"))
                 )
         );
     }
 
     @Test
     void 선택_문자열은_존재하면_비어_있을_수_없다() {
-        SupplyRow supplyRow = createSupplyRow();
-
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> SupplyRow.create(
-                                createAnnouncement(), null, null, "row-2", 1, "원문 단지", "36A",
-                                "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, " ", null
-                        )
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> SupplyTarget.create(supplyRow, "청년", " ", null, null, null, null, null, null, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> SupplyTarget.create(supplyRow, "청년", null, null, null, null, null, null, " ", 1)
-                )
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SupplyRow.create(
+                        createAnnouncement(), null, null, "row-2", 1, "원문 단지", "36A",
+                        "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, " ")
         );
     }
 
@@ -142,23 +77,6 @@ class SupplyNullableValidationTest {
                         IllegalArgumentException.class,
                         () -> createAnnouncement(null, new BigDecimal("-0.0001"))
                 )
-        );
-    }
-
-    private SupplyRow createSupplyRow() {
-        return SupplyRow.create(
-                createAnnouncement(),
-                null,
-                null,
-                "row-1",
-                1,
-                "원문 단지",
-                "36A",
-                "1114010100100010000",
-                null,
-                SupplyCategory.NEW_SUPPLY,
-                "미매칭",
-                null
         );
     }
 

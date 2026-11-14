@@ -8,7 +8,9 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.LeaseTerms;
+import com.toadzip.backend.announcement.domain.SupplyRowTarget;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -204,13 +206,13 @@ class ComplexDetailQueryRepositoryTest {
         SupplyRow laterRow = persistSupplyRow(newer, complex, housingType, "later-row", 2);
         persistSupplyTarget(laterRow, "청년", "3", "300", null, 1);
         SupplyRow firstRow = persistSupplyRow(newer, complex, housingType, "first-row", 1);
-        SupplyTarget first = persistSupplyTarget(firstRow, "신혼부부", "1", "100", null, 2);
-        SupplyTarget second = persistSupplyTarget(firstRow, "청년", "2", "200", null, 3);
+        SupplyRowTarget first = persistSupplyTarget(firstRow, "신혼부부", "1", "100", null, 2);
+        SupplyRowTarget second = persistSupplyTarget(firstRow, "청년", "2", "200", null, 3);
         Announcement older = persistAnnouncement(
                 null, "ORIGINAL", "older", TODAY.minusDays(1), TODAY, TODAY.plusDays(1)
         );
         SupplyRow olderRow = persistSupplyRow(older, complex, housingType, "older-row", 1);
-        SupplyTarget olderTarget = persistSupplyTarget(olderRow, "고령자", "4", "400", null, 1);
+        SupplyRowTarget olderTarget = persistSupplyTarget(olderRow, "고령자", "4", "400", null, 1);
         entityManager.flush();
 
         List<CurrentAnnouncementTargetRow> rows = repository.findCurrentAnnouncementTargets(
@@ -234,10 +236,10 @@ class ComplexDetailQueryRepositoryTest {
                 null, "ORIGINAL", "active", TODAY, TODAY, TODAY.plusDays(2)
         );
         SupplyRow laterRow = persistSupplyRow(active, complex, secondType, "later-row", 2);
-        SupplyTarget laterTarget = persistSupplyTarget(laterRow, "신혼부부", "30", "300", "3000", 1);
+        SupplyRowTarget laterTarget = persistSupplyTarget(laterRow, "신혼부부", "30", "300", "3000", 1);
         SupplyRow firstRow = persistSupplyRow(active, complex, firstType, "first-row", 1);
-        SupplyTarget secondTarget = persistSupplyTarget(firstRow, "청년", "20", "200", null, 2);
-        SupplyTarget firstTarget = persistSupplyTarget(firstRow, "대학생", "10", "100", "1000", 1);
+        SupplyRowTarget secondTarget = persistSupplyTarget(firstRow, "청년", "20", "200", null, 2);
+        SupplyRowTarget firstTarget = persistSupplyTarget(firstRow, "대학생", "10", "100", "1000", 1);
 
         SupplyRow missingType = persistSupplyRow(active, complex, null, "missing-type", 3);
         persistSupplyTarget(missingType, "주택형 미매칭", "40", "400", null, 1);
@@ -272,7 +274,7 @@ class ComplexDetailQueryRepositoryTest {
     }
 
     @Test
-    void 현재공급조건은_공급행이_함께_모집하는_주택형마다_한_번씩_보인다() {
+    void 현재공급조건은_여러_주택형_행이_함께_쓰는_임대조건을_행마다_한_번씩_보인다() {
         HousingComplex complex = persistComplex("세부 타입 단지", null);
         HousingType typeA = persistHousingType(complex, "26A", "26.46", null, "floor-a", false, null);
         HousingType typeB = persistHousingType(complex, "26B", "26.70", null, "floor-b", false, null);
@@ -281,19 +283,25 @@ class ComplexDetailQueryRepositoryTest {
         Announcement active = persistAnnouncement(
                 null, "ORIGINAL", "subtypes", TODAY, TODAY, TODAY.plusDays(2)
         );
-        SupplyRow jointRow = persistSupplyRow(active, complex, typeA, "joint-row", 1);
-        jointRow.linkHousingTypesByAdmin(List.of(typeB, typeC));
-        SupplyTarget jointTarget = persistSupplyTarget(jointRow, "청년", "10", "100", null, 1);
+        // 접힌 행을 나눈 뒤(V20261114_01)처럼 26A·26B·26C가 행마다 칸을 갖고 임대조건 하나를 함께 쓴다.
+        SupplySheetSeed seed = new SupplySheetSeed(entityManager);
+        SupplyRow rowA = persistSupplyRow(active, complex, typeA, "joint-row-a", 1);
+        SupplyRow rowB = persistSupplyRow(active, complex, typeB, "joint-row-b", 1);
+        SupplyRow rowC = persistSupplyRow(active, complex, typeC, "joint-row-c", 1);
+        SupplyRowTarget cellA = seed.cell(rowA, "청년", "신청 조건", 1);
+        SupplyRowTarget cellB = seed.cell(rowB, "청년", "신청 조건", 1);
+        SupplyRowTarget cellC = seed.cell(rowC, "청년", "신청 조건", 1);
+        seed.lease(new LeaseTerms.Amounts(new BigDecimal("10"), new BigDecimal("100"), null), cellA, cellB, cellC);
         SupplyRow otherRow = persistSupplyRow(active, complex, other, "other-row", 2);
-        SupplyTarget otherTarget = persistSupplyTarget(otherRow, "신혼부부", "20", "200", null, 1);
+        SupplyRowTarget otherTarget = persistSupplyTarget(otherRow, "신혼부부", "20", "200", null, 1);
         entityManager.flush();
 
         List<CurrentSupplyConditionRow> rows = repository.findCurrentSupplyConditions(complex.getId(), TODAY);
 
         assertEquals(List.of(
-                condition(active, jointRow, typeA, jointTarget, "10", "100", null),
-                condition(active, jointRow, typeB, jointTarget, "10", "100", null),
-                condition(active, jointRow, typeC, jointTarget, "10", "100", null),
+                condition(active, rowA, typeA, cellA, "10", "100", null),
+                condition(active, rowB, typeB, cellB, "10", "100", null),
+                condition(active, rowC, typeC, cellC, "10", "100", null),
                 condition(active, otherRow, other, otherTarget, "20", "200", null)
         ), rows);
     }
@@ -326,7 +334,7 @@ class ComplexDetailQueryRepositoryTest {
             Announcement announcement,
             SupplyRow supplyRow,
             HousingType housingType,
-            SupplyTarget target,
+            SupplyRowTarget target,
             String deposit,
             String monthlyRent,
             String convertibleDeposit
@@ -340,7 +348,7 @@ class ComplexDetailQueryRepositoryTest {
                 supplyRow.getId(),
                 housingType.getId(),
                 target.getId(),
-                target.getTarget(),
+                target.getTarget().getLabel(),
                 new BigDecimal(deposit + ".00"),
                 new BigDecimal(monthlyRent + ".00"),
                 converted,
@@ -482,9 +490,7 @@ class ComplexDetailQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                null,
-                10
-        );
+                null);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
@@ -501,14 +507,12 @@ class ComplexDetailQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                "매칭 실패",
-                10
-        );
+                "매칭 실패");
         entityManager.persist(supplyRow);
         return supplyRow;
     }
 
-    private SupplyTarget persistSupplyTarget(
+    private SupplyRowTarget persistSupplyTarget(
             SupplyRow supplyRow,
             String target,
             String deposit,
@@ -520,20 +524,8 @@ class ComplexDetailQueryRepositoryTest {
         if (convertibleDeposit != null) {
             converted = new BigDecimal(convertibleDeposit);
         }
-        SupplyTarget supplyTarget = SupplyTarget.create(
-                supplyRow,
-                target,
-                "1순위",
-                5,
-                5,
-                new BigDecimal(deposit),
-                new BigDecimal(monthlyRent),
-                converted,
-                "신청 조건",
-                displayOrder
-        );
-        entityManager.persist(supplyTarget);
-        return supplyTarget;
+        return new SupplySheetSeed(entityManager).target(supplyRow, target, "신청 조건", 5, 5, new BigDecimal(deposit),
+                new BigDecimal(monthlyRent), converted, displayOrder);
     }
 
     private String sourceHousingTypeName(HousingType housingType) {

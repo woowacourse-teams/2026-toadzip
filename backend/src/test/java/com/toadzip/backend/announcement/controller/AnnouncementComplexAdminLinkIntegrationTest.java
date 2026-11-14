@@ -14,6 +14,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -113,7 +114,6 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         apply(id, first, preview(id, first)).andExpect(status().isOk());
         // 다음 정제 전 단지가 비어 들어온 같은 공고 단지 행을 흉내 낸다.
         jdbc.update("UPDATE supply_rows SET housing_complex_id = NULL, housing_type_id = NULL WHERE id = ?", emptyRow.getId());
-        jdbc.update("DELETE FROM supply_row_housing_types WHERE supply_row_id = ?", emptyRow.getId());
         entities.clear();
 
         var second = request(id);
@@ -292,41 +292,6 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         assertThat(stored.getHousingComplex().getId()).isEqualTo(chosen.getId());
     }
 
-    @Test
-    void 공고_단지를_다른_단지로_다시_연결하면_함께_모집하던_주택형도_새_단지의_같은_면적_주택형으로_옮긴다() throws Exception {
-        long id = announcement.getId();
-        var joint = type(entities.find(HousingComplex.class, autoComplex.getId()), "36", "36.9100");
-        // 새 단지에 없는 면적의 함께 모집하던 주택형은 옮길 곳이 없어 빠진다.
-        var orphan = type(entities.find(HousingComplex.class, autoComplex.getId()), "44", "44.7000");
-        entities.flush();
-        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", linkedRow.getId(), joint.getId());
-        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", linkedRow.getId(), orphan.getId());
-        entities.clear();
-        var workspace = json.readTree(mvc.perform(get(root(id)).with(user("admin").roles("ADMIN")))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var body = json.createObjectNode().put("snapshotToken", workspace.get("snapshotToken").asText())
-                .put("housingComplexId", chosen.getId());
-
-        mvc.perform(post(root(id) + "/announcement-complexes/" + announcementComplex.getId() + "/link")
-                .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
-                .content(body.toString())).andExpect(status().isOk());
-        entities.flush(); entities.clear();
-
-        // 주택형은 공급표의 주택형 줄 그 자체라 다시 연결한 단지가 공급표에 바로 보인다.
-        assertThat(typeOf(request(id), linkedRow).get("housingComplexId").asLong()).isEqualTo(chosen.getId());
-        long chosen36 = jdbc.queryForObject("SELECT id FROM housing_types WHERE housing_complex_id = ? AND name = '36'", Long.class,
-                chosen.getId());
-        assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
-                linkedRow.getId())).containsExactlyInAnyOrder(chosenType.getId(), chosen36);
-        var before = json.readTree(jdbc.queryForObject("SELECT before_value FROM admin_data_changes WHERE resource_type = "
-                + "'ANNOUNCEMENT_COMPLEX' AND resource_id = ?", String.class, announcementComplex.getId()));
-        var linkedBefore = new java.util.ArrayList<Long>();
-        for (var row : before.get("rows")) {
-            if (row.get("id").asLong() == linkedRow.getId()) { row.get("housingTypeIds").forEach(item -> linkedBefore.add(item.asLong())); }
-        }
-        assertThat(linkedBefore).containsExactlyInAnyOrder(linkedRow.getHousingType().getId(), joint.getId(), orphan.getId());
-    }
-
     private HousingType type(HousingComplex complex, String name, String area) {
         var type = HousingType.createFromMyHome(complex, UUID.randomUUID().toString(), name, new BigDecimal(area), null);
         entities.persist(type);
@@ -344,9 +309,10 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     private SupplyRow row(HousingComplex complex, HousingType type, int order, AnnouncementComplex target) {
         var row = SupplyRow.create(entities.find(Announcement.class, announcement.getId()), complex, type,
                 UUID.randomUUID().toString(), order, "화성 리츠", order == 0 ? "26" : "36", null, null,
-                SupplyCategory.NEW_SUPPLY, null, 10);
+                SupplyCategory.NEW_SUPPLY, null);
         row.fillAnnouncementComplex(target);
         entities.persist(row);
+        new SupplySheetSeed(entities).row(row, 10);
         return row;
     }
 

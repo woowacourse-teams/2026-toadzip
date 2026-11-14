@@ -211,16 +211,19 @@ class AnnouncementQueryServiceTest {
                 null
         ));
         List<SupplyRow> supplyRows = List.of(
-                withId(createSupplyRow(correction, seoulComplex, null, "row-1", 0, null)),
-                withId(createSupplyRow(correction, seoulComplex, null, "row-2", 1, 0)),
-                withId(createSupplyRow(correction, busanComplex, null, "row-3", 2, 7)),
-                withId(createSupplyRow(correction, null, null, "row-4", 3, 3)),
-                withId(createSupplyRow(correction, unresolvedComplex, null, "row-5", 4, null)),
-                withId(createSupplyRow(correction, unresolvedComplex, null, "row-6", 5, null)),
-                withId(createSupplyRow(applying, null, null, "all-null", 0, null)),
-                withId(createSupplyRow(beforeApplication, null, null, "known-zero", 0, 0))
+                withId(createSupplyRow(correction, seoulComplex, null, "row-1", 0)),
+                withId(createSupplyRow(correction, seoulComplex, null, "row-2", 1)),
+                withId(createSupplyRow(correction, busanComplex, null, "row-3", 2)),
+                withId(createSupplyRow(correction, null, null, "row-4", 3)),
+                withId(createSupplyRow(correction, unresolvedComplex, null, "row-5", 4)),
+                withId(createSupplyRow(correction, unresolvedComplex, null, "row-6", 5)),
+                withId(createSupplyRow(applying, null, null, "all-null", 0)),
+                withId(createSupplyRow(beforeApplication, null, null, "known-zero", 0))
         );
-        supplyRows.forEach(row -> sheet.row(row, row.getTotalSupplyHouseholdCount()));
+        List<Integer> counts = java.util.Arrays.asList(null, 0, 7, 3, null, null, null, 0);
+        for (int index = 0; index < supplyRows.size(); index++) {
+            sheet.row(supplyRows.get(index), counts.get(index));
+        }
         when(announcementSearchRepository.findSortedLeaves(
                 any(AnnouncementSearchCondition.class), isNull(), isNull(), isNull(), isNull(),
                 eq(21), eq(AnnouncementSort.LATEST)
@@ -581,16 +584,15 @@ class AnnouncementQueryServiceTest {
                 "https://example.com/detail-complex.png"
         ));
         HousingType housingType = withId(createHousingType(complex));
-        SupplyRow unmatchedRow = withId(createSupplyRow(detail, null, null, "unmatched", 3, null));
-        SupplyRow matchedRow = withId(createSupplyRow(detail, complex, housingType, "matched", 1, 5));
-        SupplyRow complexOnlyRow = withId(createSupplyRow(detail, complex, null, "complex-only", 2, 0));
+        SupplyRow unmatchedRow = withId(createSupplyRow(detail, null, null, "unmatched", 3));
+        SupplyRow matchedRow = withId(createSupplyRow(detail, complex, housingType, "matched", 1));
+        SupplyRow complexOnlyRow = withId(createSupplyRow(detail, complex, null, "complex-only", 2));
         SupplyRow housingTypeOnlyRow = withId(createSupplyRow(
                 detail,
                 null,
                 housingType,
                 "housing-type-only",
-                3,
-                null
+                3
         ));
 
         // 단지 매칭 행의 모집 5 = 청년만의 3 + 대상별로 나뉘지 않은 나머지 2(행의 모든 칸이 함께 쓴다).
@@ -909,8 +911,7 @@ class AnnouncementQueryServiceTest {
             HousingComplex housingComplex,
             HousingType housingType,
             String sourceIdentifier,
-            int displayOrder,
-            Integer totalSupplyHouseholdCount
+            int displayOrder
     ) {
         return SupplyRow.create(
                 announcement,
@@ -923,9 +924,7 @@ class AnnouncementQueryServiceTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason(housingComplex),
-                totalSupplyHouseholdCount
-        );
+                matchingFailureReason(housingComplex));
     }
 
     private String roadAddress(String provinceCode) {

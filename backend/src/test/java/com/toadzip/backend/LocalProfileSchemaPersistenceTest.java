@@ -93,7 +93,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertEquals(1, countColumn(connection, "sh_announcement_source", "body_text")),
-                        () -> assertEquals(1, countColumn(connection, "supply_targets", "admin_modified")),
+                        () -> assertEquals(1, countColumn(connection, "announcement_supply_targets", "admin_modified")),
                         () -> assertTrue(history.next()),
                         () -> assertEquals(migrationCount(), history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
@@ -295,7 +295,7 @@ class LocalProfileSchemaPersistenceTest {
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00," + versionedMigrationHistory(), history.getString(1));
                 assertEquals(1, countColumn(connection, "verified_lh_supply_replacements", "evidence_url"));
-                assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
+                assertEquals(0, countColumn(connection, "supply_rows", "total_supply_household_count"));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "notification_interest_events", "event_id"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
@@ -311,7 +311,7 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "myhome_complex_links", "approved_household_count"));
                 assertEquals(1, countColumn(connection, "myhome_complex_merges", "before_state"));
                 assertEquals(1, countColumn(connection, "housing_complex_aliases", "housing_complex_id"));
-                assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
+                assertEquals(1, countColumn(connection, "supply_rows", "lh_match_status"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_rows", "winner_announcement_date"));
                 assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));

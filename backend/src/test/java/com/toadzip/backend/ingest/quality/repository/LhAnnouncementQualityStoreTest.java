@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 import static org.assertj.core.api.Assertions.tuple;
 
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
@@ -21,6 +23,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHo
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService;
 import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
@@ -87,11 +90,10 @@ class LhAnnouncementQualityStoreTest {
                 """).query(Long.class).single();
         long linkedRow = row(announcementId, "linked", null);
         row(announcementId, "unlinked", "주택형 후보 모호");
-        jdbc.sql("""
-                INSERT INTO supply_targets (supply_row_id, target, display_order, rental_deposit, monthly_rent,
-                                            lh_amount_preserved_reason, source_supply_target_identifier)
-                VALUES (:rowId, '전체', 1, 10000000, 0, 'LH_AMOUNT_NOT_PROVIDED', 'LH:quality-pan:SUPPLY:0:TARGET')
-                """).param("rowId", linkedRow).update();
+        SupplySheetSeed sheet = new SupplySheetSeed(entityManager);
+        sheet.target(entityManager.find(SupplyRow.class, linkedRow), "전체", null, null, null,
+                new BigDecimal("10000000"), BigDecimal.ZERO, null, 1);
+        entityManager.flush();
         checkpoint("quality-pan", OBSERVED_AT.minusSeconds(600));
         jdbc.sql("""
                 INSERT INTO external_data_collection_failures
@@ -117,8 +119,6 @@ class LhAnnouncementQualityStoreTest {
                 .extracting(LhAnnouncementQualityResponse.UnlinkedLhCandidate::panId)
                 .containsExactly("quality-pan");
         assertThat(result.preservedSourceRequestCount()).isOne();
-        assertThat(result.preservedAmountTargetCount()).isOne();
-        assertThat(result.preservedAmountReasons()).containsEntry("LH_AMOUNT_NOT_PROVIDED", 1L);
         assertThat(result.heldRequests()).extracting(LhAnnouncementQualityResponse.HeldRequest::requestDescription)
                 .contains("quality-held-request");
 
@@ -335,10 +335,9 @@ class LhAnnouncementQualityStoreTest {
         return jdbc.sql("""
                 INSERT INTO supply_rows
                     (announcement_id, display_order, source_supply_row_identifier, source_complex_name,
-                     source_housing_type_name, supply_pnu, supply_category, matching_failure_reason,
-                     lh_total_supply_household_count_enriched, lh_total_supply_household_count_owned)
+                     source_housing_type_name, supply_pnu, supply_category, matching_failure_reason)
                 VALUES (:announcementId, 1, :key, '단지', '주택형', '0000000000000000000', 'NEW_SUPPLY',
-                        :reason, false, false)
+                        :reason)
                 RETURNING id
                 """).param("announcementId", announcementId).param("key", key)
                 .param("reason", failureReason).query(Long.class).single();

@@ -300,11 +300,10 @@ class IngestFailureReviewControllerIntegrationTest {
         long complexId = complex("complex", "연결 단지", false);
         jdbc.sql("""
                 INSERT INTO supply_rows (announcement_id, housing_complex_id, source_supply_row_identifier,
-                    display_order, source_complex_name, source_housing_type_name, supply_pnu, supply_category,
-                    lh_total_supply_household_count_enriched, lh_total_supply_household_count_owned)
-                VALUES (:notice, :complex, 'row-1', 1, '단지', '36형', 'pnu', 'NEW_SUPPLY', FALSE, FALSE),
-                       (:notice, :complex, 'row-2', 2, '단지', '46형', 'pnu', 'NEW_SUPPLY', FALSE, FALSE),
-                       (:notice, NULL, 'row-3', 3, '미연결 단지', '56형', 'pnu', 'NEW_SUPPLY', FALSE, FALSE)
+                    display_order, source_complex_name, source_housing_type_name, supply_pnu, supply_category)
+                VALUES (:notice, :complex, 'row-1', 1, '단지', '36형', 'pnu', 'NEW_SUPPLY'),
+                       (:notice, :complex, 'row-2', 2, '단지', '46형', 'pnu', 'NEW_SUPPLY'),
+                       (:notice, NULL, 'row-3', 3, '미연결 단지', '56형', 'pnu', 'NEW_SUPPLY')
                 """).param("notice", notice).param("complex", complexId).update();
         jdbc.sql("""
                 INSERT INTO announcement_application_schedules (announcement_id, state, start_date, end_date,

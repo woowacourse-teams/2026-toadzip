@@ -5,6 +5,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -41,8 +42,10 @@ public record NotificationFixtures(EntityManager entities, JdbcTemplate jdbc) {
     }
 
     public void link(Announcement announcement, HousingComplex complex) {
-        entities.persist(SupplyRow.create(announcement, complex, null, UUID.randomUUID().toString(), 0,
-                "알림 테스트 단지", "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10));
+        SupplyRow row = SupplyRow.create(announcement, complex, null, UUID.randomUUID().toString(), 0,
+                "알림 테스트 단지", "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+        entities.persist(row);
+        new SupplySheetSeed(entities).row(row, 10);
         entities.flush();
     }
 

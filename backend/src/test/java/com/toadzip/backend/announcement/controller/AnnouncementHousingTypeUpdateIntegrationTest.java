@@ -72,7 +72,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         type = HousingType.createFromMyHome(complex, "source-36", "36", new BigDecimal("36.91"), new BigDecimal("50.1"));
         entities.persist(type);
         row = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 0, "알림 테스트 단지", "36A",
-                null, null, SupplyCategory.NEW_SUPPLY, null, 10);
+                null, null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(row);
         entities.flush();
     }
@@ -137,7 +137,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 같은_주택형을_고른_행들의_기본_임대조건이_다르면_지금_값을_유지한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36B", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+                "36B", null, null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -235,7 +235,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 한_주택형에_서로_다른_공고_값이_오면_그_필드만_지금_값을_유지한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36B", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+                "36B", null, null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -257,7 +257,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 같은_주택형을_고른_행들이_함께_비운_값은_지금_값을_유지하고_나머지는_반영한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36B", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+                "36B", null, null, SupplyCategory.NEW_SUPPLY, null);
         entities.persist(second);
         entities.flush();
         var request = request();

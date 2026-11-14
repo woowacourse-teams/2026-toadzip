@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 단지 하나의 주택형을 들어온 마이홈 주택형에 맞춘다. 같은 원천 식별자는 갱신하고, 식별자가 바뀐 같은 원천 주택형과
- * 관리자가 만든 주택형은 이어받으며, 원천에서 사라진 주택형은 공급행·저장 매칭·관리자 수정이 참조하지 않을 때만 지운다.
+ * 관리자가 만든 주택형은 이어받으며, 원천에서 사라진 주택형은 공급행·관리자 수정이 참조하지 않을 때만 지운다.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,7 +30,6 @@ class MyHomeHousingTypeSynchronizer {
 
     private final HousingTypeRepository housingTypeRepository;
     private final SupplyRowRepository supplyRowRepository;
-    private final SavedSupplyMatches savedMatches;
 
     Result synchronize(HousingComplex complex, List<MyHomeHousingTypeMappingData> incoming) {
         return synchronize(complex, incoming, false);
@@ -170,7 +169,6 @@ class MyHomeHousingTypeSynchronizer {
         List<HousingType> deletable = stale.stream()
                 .filter(type -> !type.isAdminModified())
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
-                .filter(type -> !savedMatches.references(type))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
                 .toList();
         housingTypeRepository.deleteAll(deletable);

@@ -5,9 +5,6 @@ import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollect
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceView;
-import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import com.toadzip.backend.ingest.quality.repository.LhAnnouncementQualityStore;
@@ -26,19 +23,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class LhAnnouncementQualityService {
 
     private final LhAnnouncementQualityStore store;
-    private final MyHomeAnnouncementSourceReader sourceRepository;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final LhAnnouncementCollectedAtReader collectedAtReader;
     private final LhAnnouncementCollectionLinkRepository linkRepository;
     private final Clock clock;
 
     public LhAnnouncementQualityService(LhAnnouncementQualityStore store,
-            MyHomeAnnouncementSourceReader sourceRepository,
             LhAnnouncementCollectionCandidateResolver candidateResolver,
             LhAnnouncementCollectedAtReader collectedAtReader,
             LhAnnouncementCollectionLinkRepository linkRepository, Clock clock) {
         this.store = store;
-        this.sourceRepository = sourceRepository;
         this.candidateResolver = candidateResolver;
         this.collectedAtReader = collectedAtReader;
         this.linkRepository = linkRepository;
@@ -62,17 +56,7 @@ public class LhAnnouncementQualityService {
         return store.snapshot(now,
                 collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, requestHashes),
                 collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requestHashes),
-                unlinkedCatalogSourceKeys, currentMyHomeSourceKeys());
-    }
-
-    /** 금액 보존 사유가 지난 마이홈 공고의 보류 이력을 읽을 때만 쓴다. 원천 확보와 미연결 후보에는 쓰지 않는다. */
-    private Set<String> currentMyHomeSourceKeys() {
-        return sourceRepository.findAllByOrderByIdAsc().stream()
-                .filter(source -> source.getPblancId() != null && !source.getPblancId().isBlank())
-                .collect(Collectors.groupingBy(MyHomeAnnouncementSourceView::getPblancId))
-                .values().stream()
-                .flatMap(group -> MyHomeAnnouncementCurrentSources.select(group).stream())
-                .map(MyHomeAnnouncementSourceView::getSourceKey).collect(Collectors.toSet());
+                unlinkedCatalogSourceKeys);
     }
 
     private CollectionCoverage collectionCoverage(ExternalDataSource source, Set<String> requestHashes) {

@@ -6,9 +6,11 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ class PdfExtractionInputsIntegrationTest {
     @Autowired private PdfExtractionInputs inputs;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private SupplyRowRepository supplyRows;
+    @Autowired private EntityManager entities;
 
     @Test
     void GH_공고는_제외하지_않은_GH_공급행_틀을_작업실과_같은_행_키로_담는다() {
@@ -62,7 +65,9 @@ class PdfExtractionInputsIntegrationTest {
     }
 
     private SupplyRow frame(Announcement announcement, String key, int order, String typeName, Integer count) {
-        return supplyRows.save(SupplyRow.create(announcement, null, null, key, order, "다산", typeName, null, null,
-                SupplyCategory.NEW_SUPPLY, null, count));
+        SupplyRow row = supplyRows.save(SupplyRow.create(announcement, null, null, key, order, "다산", typeName, null,
+                null, SupplyCategory.NEW_SUPPLY, null));
+        new SupplySheetSeed(entities).row(row, count);
+        return row;
     }
 }

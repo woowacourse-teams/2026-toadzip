@@ -2,9 +2,7 @@ package com.toadzip.backend.ingest.mapping.controller;
 
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.ComplexOption;
 import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.HousingTypeOption;
-import com.toadzip.backend.ingest.mapping.dto.AnnouncementSupplyMatching.Row;
 import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyCandidateService;
-import com.toadzip.backend.ingest.mapping.service.AnnouncementSupplyRowQueryService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,13 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/ingest/announcement-supply-matches")
 public class AnnouncementSupplyMatchingController {
-    private final AnnouncementSupplyRowQueryService rowQuery;
     private final AnnouncementSupplyCandidateService candidates;
-
-    @GetMapping("/{identifier}")
-    public List<Row> rows(@PathVariable String identifier) {
-        return rowQuery.rows(identifier);
-    }
 
     @GetMapping("/complexes")
     public List<ComplexOption> complexes(@RequestParam String query,

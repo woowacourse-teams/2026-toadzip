@@ -101,8 +101,7 @@ class AnnouncementComplexAdminLinks {
 
     /**
      * 공고 단지 하나의 연결 단지를 관리자가 바꾼다. 그 공고 단지의 제외하지 않은 공급행도 새 단지의 같은 전용면적 주택형으로 옮긴다.
-     * 지금 연결과 같은 단지로 확인만 하면 공급행의 주택형 연결은 건드리지 않는다. 공통 모집 묶음 행이 있으면 묶음을 함께 옮길 수 없어
-     * 공급정보 보정에서 바꾸게 한다.
+     * 지금 연결과 같은 단지로 확인만 하면 공급행의 주택형 연결은 건드리지 않는다.
      */
     void relink(Announcement announcement, long announcementComplexId, long housingComplexId, String actor) {
         var target = announcementComplexes.findById(announcementComplexId)
@@ -112,37 +111,19 @@ class AnnouncementComplexAdminLinks {
                 .orElseThrow(() -> new IllegalArgumentException("연결할 단지가 없거나 휴지통에 있습니다."));
         var members = rows.findAllByAnnouncement(announcement).stream().filter(row -> !row.isAdminExcluded()
                 && row.getAnnouncementComplex() != null && row.getAnnouncementComplex().getId().equals(target.getId())).toList();
-        if (members.stream().anyMatch(row -> row.getSupplyGroup() != null)) {
-            throw new IllegalArgumentException(target.getSourceComplexName() + ": 공통 모집 묶음 행이 있어 여기서 단지를 바꿀 수 없습니다. "
-                    + "공급정보 보정에서 묶음 행과 함께 바꾸세요.");
-        }
         boolean confirmOnly = target.linkedComplex() != null && target.linkedComplex().getId().equals(complex.getId());
         link(target, complex, confirmOnly ? List.of() : members, actor);
     }
 
-    /**
-     * 공급행 대표 주택형은 LH 대표 전용면적(없으면 공고 면적)으로, 함께 모집하는 주택형은 이전에 연결된 주택형 면적마다 새 단지에서
-     * {@link HousingTypeAreas#pick}으로 고른다. 면적이 여럿인 공급행(26A/B/C)을 다시 연결해도 나머지 면적 연결이 남게 하려는 것이다.
-     */
+    /** 공급행 주택형은 LH 대표 전용면적(없으면 공고 면적)으로 새 단지에서 {@link HousingTypeAreas#pick}으로 고른다. */
     private void link(AnnouncementComplex target, HousingComplex complex, Collection<SupplyRow> rows, String actor) {
         String before = linkData(target, rows);
         boolean changed = target.linkByAdmin(complex, actor, clock.instant());
         var candidates = types.findAllByHousingComplex(complex);
         for (var row : rows) {
             BigDecimal area = row.getLhExclusiveArea() != null ? row.getLhExclusiveArea() : row.effectiveExclusiveArea();
-            var previous = row.getHousingTypes();
-            HousingType representative = HousingTypeAreas.pick(candidates, area, row.displayHousingTypeName()).orElse(null);
-            changed |= row.relinkByAdminMatch(complex, representative);
-            if (representative != null && row.getSupplyGroup() == null) {
-                var others = previous.stream().map(type -> HousingTypeAreas.pick(candidates, type.getExclusiveArea(), type.getName()))
-                        .flatMap(java.util.Optional::stream).filter(type -> !type.getId().equals(representative.getId()))
-                        .distinct().toList();
-                if (!others.isEmpty()) {
-                    var linkedBefore = ids(row.getHousingTypes());
-                    row.linkHousingTypesByAdmin(others);
-                    changed |= !linkedBefore.equals(ids(row.getHousingTypes()));
-                }
-            }
+            HousingType type = HousingTypeAreas.pick(candidates, area, row.displayHousingTypeName()).orElse(null);
+            changed |= row.relinkByAdminMatch(complex, type);
         }
         if (changed) {
             changes.save(new AdminDataChange("ANNOUNCEMENT_COMPLEX", target.getId(), "LINK_BY_ADMIN", actor, before, linkData(target, rows)));
@@ -162,13 +143,8 @@ class AnnouncementComplexAdminLinks {
             value.put("id", row.getId());
             value.put("housingComplexId", row.getHousingComplex() == null ? null : row.getHousingComplex().getId());
             value.put("housingTypeId", row.getHousingType() == null ? null : row.getHousingType().getId());
-            value.put("housingTypeIds", row.getHousingTypes().stream().map(HousingType::getId).sorted().toList());
             return value;
         }).toList());
         return json.writeValueAsString(data);
-    }
-
-    private static java.util.Set<Long> ids(Collection<HousingType> linked) {
-        return linked.stream().map(HousingType::getId).collect(java.util.stream.Collectors.toSet());
     }
 }

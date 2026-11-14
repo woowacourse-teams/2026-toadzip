@@ -45,8 +45,8 @@ import org.springframework.stereotype.Component;
  * 정제는 주택형을 만들지 않는다(LH 면적은 함께 모집하는 면적 중 하나라 PDF 보정이 확인할 때 만든다). 공고문 소유 공고는 공급행을
  * 만들거나 지우지 않고 비어 있는 공고 단지 참조만 채운다.
  *
- * <p>대상·모집수·금액은 공급표 쓰기({@link SupplySheetStore})로 공고 공급표에 바로 쓴다({@link SourceSupplySheet}). 공급행의 LH 열
- * (원천 식별자·대응 상태·모집수)은 아직 읽는 곳이 있어 공급행에 함께 적는다.
+ * <p>대상·모집수·금액은 공급표 쓰기({@link SupplySheetStore})로 공고 공급표에 바로 쓴다({@link SourceSupplySheet}). 공급행에는 LH 열
+ * (첫 LH 줄 식별자·대표 면적·대응 상태)만 적는다.
  */
 @Component
 @RequiredArgsConstructor
@@ -88,12 +88,12 @@ class LhSupplyRowWriter {
                             complex.linkedComplex())), area, first.source().getTypeName()).orElse(null);
             LhSupplyMatchStatus status = status(complex, type, members);
             SupplyRow incoming = SupplyRow.createFromLh(announcement, complex, type, key, first.data().sourceIdentifier(),
-                    order++, typeName, area, first.data().expectedMoveInMonth(), category, totalCount(members), status);
+                    order++, typeName, area, first.data().expectedMoveInMonth(), category, status);
             SupplyRow row = upsert(stored.remove(key), incoming, tally);
             sheet.add(new SourceSupplySheet.Row(row, totalCount(members), targets(members)));
             tally.count(status);
         }
-        // 이번 LH 공급에 없는 공급행은 공급표 쓰기가 지운다(옛 대상은 외래 키로 함께 지워진다).
+        // 이번 LH 공급에 없는 공급행은 공급표 쓰기가 지운다.
         tally.deletedRows += stored.size();
         sheets.replace(announcement, SourceSupplySheet.draft(sheet));
         tally.countTargets(before, cellValues(sheetViews.read(announcement.getId())));

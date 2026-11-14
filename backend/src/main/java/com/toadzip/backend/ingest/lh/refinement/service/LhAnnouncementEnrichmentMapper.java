@@ -13,10 +13,8 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
-import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
 
 @Component
 public class LhAnnouncementEnrichmentMapper {
@@ -296,15 +294,6 @@ public class LhAnnouncementEnrichmentMapper {
             List<LhSupplyData> supplies,
             boolean verifiedEmptySupply
     ) {
-
-        /** 관리자가 저장한 LH 공급 연결을 LH 행 식별자로 붙인다. */
-        public LhAnnouncementEnrichmentData withSupplyLinks(Map<String, LhSupplyRowLinks.State> supplyLinks) {
-            return new LhAnnouncementEnrichmentData(panId, correctionReason, receptionPlace, schedules, attachments,
-                    supplies.stream().map(supply -> supply.withLinkedRow(
-                            LinkedMyHomeRow.of(supplyLinks.get(supply.sourceIdentifier())))).toList(),
-                    verifiedEmptySupply);
-        }
-
     }
 
     public record LhScheduleData(
@@ -331,31 +320,7 @@ public class LhAnnouncementEnrichmentMapper {
             Integer totalHouseholdCount,
             Integer supplyHouseholdCount,
             BigDecimal rentalDeposit,
-            BigDecimal monthlyRent,
-            LinkedMyHomeRow linkedRow
+            BigDecimal monthlyRent
     ) {
-
-        LhSupplyData(String sourceIdentifier, String complexName, String housingTypeName,
-                YearMonth expectedMoveInMonth, Integer totalHouseholdCount, Integer supplyHouseholdCount,
-                BigDecimal rentalDeposit, BigDecimal monthlyRent) {
-            this(sourceIdentifier, complexName, housingTypeName, expectedMoveInMonth, totalHouseholdCount,
-                    supplyHouseholdCount, rentalDeposit, monthlyRent, null);
-        }
-
-        public LhSupplyData withLinkedRow(LinkedMyHomeRow linkedRow) {
-            return new LhSupplyData(sourceIdentifier, complexName, housingTypeName, expectedMoveInMonth,
-                    totalHouseholdCount, supplyHouseholdCount, rentalDeposit, monthlyRent, linkedRow);
-        }
-    }
-
-    /** 저장 연결이 가리키는 마이홈 원천행이다. 원천이 저장 당시와 다르면 재확인이 필요하다. */
-    public record LinkedMyHomeRow(String sourceRowIdentifier, boolean reviewRequired) {
-
-        static LinkedMyHomeRow of(LhSupplyRowLinks.State state) {
-            if (state == null) {
-                return null;
-            }
-            return new LinkedMyHomeRow(state.myhomeSourceRowIdentifier(), !state.valid());
-        }
     }
 }

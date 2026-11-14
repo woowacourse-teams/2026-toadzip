@@ -197,7 +197,7 @@ class GhAnnouncementRefinementIntegrationTest {
         var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
         assertThat(announcement.getName()).isEqualTo(ROW.title());
         assertThat(announcement.isSourceReviewRequired()).isTrue();
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("winner_count"))
                 .containsExactly(120, 60);
     }
 
@@ -238,7 +238,7 @@ class GhAnnouncementRefinementIntegrationTest {
         var rows = supplyRows("GH:801");
         assertThat(rows).extracting(row -> row.get("source_supply_row_identifier"))
                 .containsExactly("GH:801:다산 센트럴파크6단지:33A", "GH:801:다산 센트럴파크6단지:46A");
-        assertThat(rows).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 30);
+        assertThat(rows).extracting(row -> row.get("winner_count")).containsExactly(120, 30);
         assertThat(rows).extracting(row -> row.get("announcement_complex_id")).containsOnly(jdbc.queryForObject("""
                 SELECT c.id FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
                 WHERE a.source_announcement_identifier = 'GH:801' AND c.source_complex_name = '다산 센트럴파크6단지'
@@ -346,11 +346,11 @@ class GhAnnouncementRefinementIntegrationTest {
         assertThat(rows).extracting(row -> row.get("source_supply_row_identifier"))
                 .containsExactly("GH:801:다산 센트럴파크6단지:33A", "GH:801:다산 센트럴파크6단지:36A");
         assertThat(rows).extracting(row -> row.get("source_housing_type_name")).containsExactly("33A", "36A 청년");
-        assertThat(rows).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
+        assertThat(rows).extracting(row -> row.get("winner_count")).containsExactly(120, 60);
         assertThat(rows).extracting(row -> row.get("housing_complex_id")).containsOnly(dasan);
         assertThat(rows).extracting(row -> row.get("housing_type_id")).containsOnly((Object) null);
-        // 공급표는 정제가 직접 쓴다(공급표 정본 표시가 켜져 옛 테이블 트리거가 다시 만들지 않는다). 주택형마다 '전체' 칸이 원천 세대수를 갖는다.
-        assertThat(sheet("GH:801")).containsExactly("전체:WINNER:120:true", "전체:WINNER:60:true");
+        // 공급표는 정제가 직접 쓴다. 주택형마다 '전체' 칸이 원천 세대수를 갖는다.
+        assertThat(sheet("GH:801")).containsExactly("전체:WINNER:120", "전체:WINNER:60");
         List<Long> cellIds = cellIds("GH:801");
 
         GhRefinementTestSupport.refineAll(refinement, sources);
@@ -464,7 +464,7 @@ class GhAnnouncementRefinementIntegrationTest {
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("winner_count"))
                 .containsExactly(120, 60);
         assertThat(jdbc.queryForObject("""
                 SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
@@ -495,7 +495,7 @@ class GhAnnouncementRefinementIntegrationTest {
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("total_supply_household_count"))
+        assertThat(supplyRows("GH:801")).extracting(row -> row.get("winner_count"))
                 .containsExactly(90, 60);
     }
 
@@ -506,10 +506,10 @@ class GhAnnouncementRefinementIntegrationTest {
                 """);
     }
 
-    /** 공급행 표시 순서대로 공급표 칸의 "대상:수량 종류:수:공급표 정본 표시". */
+    /** 공급행 표시 순서대로 공급표 칸의 "대상:수량 종류:수". */
     private List<String> sheet(String identifier) {
         return jdbc.queryForList("""
-                SELECT t.label || ':' || q.kind || ':' || q.household_count || ':' || a.supply_sheet_from_document
+                SELECT t.label || ':' || q.kind || ':' || q.household_count
                 FROM supply_rows r
                 JOIN announcements a ON a.id = r.announcement_id
                 JOIN supply_row_targets c ON c.supply_row_id = r.id
@@ -530,7 +530,10 @@ class GhAnnouncementRefinementIntegrationTest {
 
     private List<Map<String, Object>> supplyRows(String identifier) {
         return jdbc.queryForList("""
-                SELECT r.id, r.source_supply_row_identifier, r.source_housing_type_name, r.total_supply_household_count,
+                SELECT r.id, r.source_supply_row_identifier, r.source_housing_type_name,
+                    (SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND EXISTS (
+                        SELECT 1 FROM supply_quota_members m JOIN supply_row_targets c ON c.id = m.supply_row_target_id
+                        WHERE m.supply_quota_id = q.id AND c.supply_row_id = r.id))::int AS winner_count,
                     r.housing_complex_id, r.housing_type_id, r.announcement_complex_id, r.announcement_exclusive_area,
                     r.area_override, r.admin_modified
                 FROM supply_rows r JOIN announcements a ON a.id = r.announcement_id

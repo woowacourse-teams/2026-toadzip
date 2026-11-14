@@ -320,8 +320,6 @@ class InternalSearchRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                null,
-                10
-        ));
+                null));
     }
 }

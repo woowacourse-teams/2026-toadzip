@@ -300,7 +300,7 @@ class AdminOperationsControllerIntegrationTest {
 
     private void supply(Announcement announcement, HousingComplex complex) {
         entities.persist(SupplyRow.create(announcement, complex, null, UUID.randomUUID().toString(), 0,
-                "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY, null, null));
+                "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY, null));
     }
 
     private void execution(String status, String at) {
