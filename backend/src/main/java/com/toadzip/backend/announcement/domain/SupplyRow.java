@@ -443,6 +443,61 @@ public class SupplyRow {
     }
 
     /**
+     * 공고 공급표 쓰기(SupplySheetStore)가 처음 만드는 주택형. 원천 주택형명은 필수라 신청형 이름으로 채우고, 공급표가 정하지 않는 열은
+     * 비워 둔다.
+     */
+    public static SupplyRow createFromSheet(Announcement announcement, String sourceSupplyRowIdentifier,
+            SupplySheetDraft.HousingTypeRow values, AnnouncementComplex complex, HousingComplex housing,
+            HousingType type) {
+        SupplyRow row = new SupplyRow(announcement, housing, type, sourceSupplyRowIdentifier, values.displayOrder(),
+                values.complexName(), values.typeName(), values.supplyPnu(), values.expectedMoveInMonth(),
+                values.supplyCategory(), null, null);
+        row.applySheet(values, complex, housing, type);
+        return row;
+    }
+
+    /**
+     * 공고 공급표가 정한 주택형 값으로 맞춘다. 신청형 이름은 공고문 이름이므로 공고 표시명에 쓴다. 원천 주택형명은 정제가 소유하는 매칭
+     * 기준이라 바꾸지 않고, 공급표가 다루지 않는 열(관리자 제외·수정 표시, LH 대응, 옛 모집수)도 그대로 둔다.
+     */
+    public void applySheet(SupplySheetDraft.HousingTypeRow values, AnnouncementComplex complex, HousingComplex housing,
+            HousingType type) {
+        if (complex != null && !complex.getAnnouncement().getId().equals(announcement.getId())) {
+            throw new IllegalArgumentException("다른 공고의 공고 단지는 연결할 수 없다.");
+        }
+        if (type != null && (housing == null || !Objects.equals(idOf(type.getHousingComplex()), idOf(housing)))) {
+            throw new IllegalArgumentException("주택형은 연결한 단지의 주택형이어야 한다.");
+        }
+        announcementComplex = complex;
+        housingComplex = housing;
+        represent(type);
+        sourceComplexName = values.complexName();
+        announcementHousingTypeName = values.typeName();
+        areaOverride = values.overridesArea();
+        announcementExclusiveArea = values.exclusiveArea();
+        announcementSupplyArea = values.supplyArea();
+        expectedMoveInMonth = values.expectedMoveInMonth();
+        supplyPnu = values.supplyPnu();
+        supplyCategory = values.supplyCategory();
+        displayOrder = values.displayOrder();
+    }
+
+    /**
+     * 공급표의 같은 주택형이면 true다. 신청형 이름(공고 표시명, 없으면 원천 주택형명)과, 공고 단지가 있으면 공고 단지, 없으면 단지명으로
+     * 가린다.
+     */
+    public boolean sameSheetHousingType(SupplySheetDraft.HousingTypeRow values) {
+        String applicationTypeName = Objects.requireNonNullElse(announcementHousingTypeName, sourceHousingTypeName);
+        if (!applicationTypeName.strip().equals(values.typeName())) {
+            return false;
+        }
+        if (announcementComplex != null || values.announcementComplexId() != null) {
+            return Objects.equals(idOf(announcementComplex), values.announcementComplexId());
+        }
+        return sourceComplexName.strip().equals(values.complexName());
+    }
+
+    /**
      * LH 원천 소유 공고의 공급행을 이번 LH 묶음으로 맞춘다. 관리자가 고친 행은 값을 두고 첫 LH 줄 식별자만 옮긴다.
      * 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
      */
