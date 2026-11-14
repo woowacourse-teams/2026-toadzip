@@ -3,10 +3,12 @@ package com.toadzip.backend.ingest.gh.refinement.service;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
+import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -31,6 +33,7 @@ import tools.jackson.databind.JsonNode;
  * 공개했거나, 공고 단지를 직접 연결한 공고는 관리자가 공급행을 맡으므로 다시 쓰지 않고, 그 뒤 원천 공급이 바뀌면 공급 재확인
  * 대상으로 표시한다. 공급행은 지구의 공고 단지를 가리켜 관리자가 공고 단지를 다시 연결하면 따라간다.
  * 원천과 같으면 아무것도 바꾸지 않고, 다르면 틀을 원천에 맞춰 다시 만든다(관리자가 손대기 전이라 지울 조건·연결이 없다).
+ * 틀의 공급표(주택형마다 '전체' 칸 하나와 원천 세대수)는 공급표 쓰기({@link SupplySheetStore})로 함께 쓴다.
  */
 @Component
 @RequiredArgsConstructor
@@ -38,6 +41,7 @@ class GhSupplyRowWriter {
 
     private final SupplyRowRepository supplyRows;
     private final AnnouncementComplexRepository announcementComplexes;
+    private final SupplySheetStore sheets;
     private final EntityManager entityManager;
 
     /** 관리자가 맡은 공고의 원천 공급이 바뀌어 공급 재확인이 새로 켜졌으면 true다. */
@@ -59,13 +63,15 @@ class GhSupplyRowWriter {
         }
         supplyRows.deleteAll(stored);
         entityManager.flush();
+        List<SourceSupplySheet.Row> sheet = new ArrayList<>();
         for (Line line : planned) {
             SupplyRow row = SupplyRow.create(announcement, line.complex(), null, line.key(), line.order(),
                     line.complexName(), line.typeName(), null, null, line.category(), null, line.householdCount());
             row.fillAnnouncementComplex(line.announcementComplex());
             row.recordSourceArea(line.exclusiveArea());
-            supplyRows.save(row);
+            sheet.add(new SourceSupplySheet.Row(supplyRows.save(row), line.householdCount(), List.of()));
         }
+        sheets.replace(announcement, SourceSupplySheet.draft(sheet));
         return false;
     }
 

@@ -349,10 +349,14 @@ class GhAnnouncementRefinementIntegrationTest {
         assertThat(rows).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
         assertThat(rows).extracting(row -> row.get("housing_complex_id")).containsOnly(dasan);
         assertThat(rows).extracting(row -> row.get("housing_type_id")).containsOnly((Object) null);
+        // 공급표는 정제가 직접 쓴다(공급표 정본 표시가 켜져 옛 테이블 트리거가 다시 만들지 않는다). 주택형마다 '전체' 칸이 원천 세대수를 갖는다.
+        assertThat(sheet("GH:801")).containsExactly("전체:WINNER:120:true", "전체:WINNER:60:true");
+        List<Long> cellIds = cellIds("GH:801");
 
         GhRefinementTestSupport.refineAll(refinement, sources);
         assertThat(supplyRows("GH:801")).extracting(row -> row.get("id"))
                 .containsExactlyElementsOf(rows.stream().map(row -> row.get("id")).toList());
+        assertThat(cellIds("GH:801")).isEqualTo(cellIds);
     }
 
     @Test
@@ -500,6 +504,28 @@ class GhAnnouncementRefinementIntegrationTest {
                 UPDATE gh_announcement_source SET districts = replace(districts, '"supplyCount":"120"',
                     '"supplyCount":"90"') WHERE pbanc_no = '801'
                 """);
+    }
+
+    /** 공급행 표시 순서대로 공급표 칸의 "대상:수량 종류:수:공급표 정본 표시". */
+    private List<String> sheet(String identifier) {
+        return jdbc.queryForList("""
+                SELECT t.label || ':' || q.kind || ':' || q.household_count || ':' || a.supply_sheet_from_document
+                FROM supply_rows r
+                JOIN announcements a ON a.id = r.announcement_id
+                JOIN supply_row_targets c ON c.supply_row_id = r.id
+                JOIN announcement_supply_targets t ON t.id = c.supply_target_id
+                JOIN supply_quota_members m ON m.supply_row_target_id = c.id
+                JOIN supply_quotas q ON q.id = m.supply_quota_id
+                WHERE a.source_announcement_identifier = ? ORDER BY r.display_order, c.display_order, q.kind
+                """, String.class, identifier);
+    }
+
+    private List<Long> cellIds(String identifier) {
+        return jdbc.queryForList("""
+                SELECT c.id FROM supply_row_targets c JOIN supply_rows r ON r.id = c.supply_row_id
+                JOIN announcements a ON a.id = r.announcement_id
+                WHERE a.source_announcement_identifier = ? ORDER BY c.id
+                """, Long.class, identifier);
     }
 
     private List<Map<String, Object>> supplyRows(String identifier) {

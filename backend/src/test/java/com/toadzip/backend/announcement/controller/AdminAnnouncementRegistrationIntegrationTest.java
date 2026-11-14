@@ -111,6 +111,16 @@ class AdminAnnouncementRegistrationIntegrationTest {
         SupplyRow supplyRow = supplyRowRepository.findById(supplyRowId).orElseThrow();
         assertAnnouncement(announcement);
         assertSupplyRow(supplyRow, announcementId, housingComplex.getId());
+        // 대상 구분 없는 모집수(20)는 공급표의 '전체' 칸 하나가 갖는다. 등록이 공급표를 직접 쓴다.
+        assertEquals(java.util.List.of("전체:WINNER:20:true"), notificationJdbc.queryForList("""
+                SELECT t.label || ':' || q.kind || ':' || q.household_count || ':' || a.supply_sheet_from_document
+                FROM supply_rows r
+                JOIN announcements a ON a.id = r.announcement_id
+                JOIN supply_row_targets c ON c.supply_row_id = r.id
+                JOIN announcement_supply_targets t ON t.id = c.supply_target_id
+                JOIN supply_quota_members m ON m.supply_row_target_id = c.id
+                JOIN supply_quotas q ON q.id = m.supply_quota_id
+                WHERE r.announcement_id = ?""", String.class, announcementId));
         assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
                 Integer.class));
     }

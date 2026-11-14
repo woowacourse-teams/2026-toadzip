@@ -5,8 +5,9 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
+import com.toadzip.backend.announcement.domain.LeaseTerms;
+import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRegistrationRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRegistrationRequest.ComplexSelectionRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest;
@@ -25,7 +26,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementAttachmentReposit
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import java.time.OffsetDateTime;
@@ -49,7 +50,7 @@ public class AdminAnnouncementImportRegistrationService {
 
     private final AnnouncementRepository announcementRepository;
     private final SupplyRowRepository supplyRowRepository;
-    private final SupplyTargetRepository supplyTargetRepository;
+    private final SupplySheetStore supplySheets;
     private final AnnouncementScheduleRepository scheduleRepository;
     private final AnnouncementAttachmentRepository attachmentRepository;
     private final HousingComplexRepository housingComplexRepository;
@@ -61,7 +62,7 @@ public class AdminAnnouncementImportRegistrationService {
             AdminAnnouncementImportRepository importRepository,
             AnnouncementRepository announcementRepository,
             SupplyRowRepository supplyRowRepository,
-            SupplyTargetRepository supplyTargetRepository,
+            SupplySheetStore supplySheets,
             AnnouncementScheduleRepository scheduleRepository,
             AnnouncementAttachmentRepository attachmentRepository,
             HousingComplexRepository housingComplexRepository,
@@ -73,7 +74,7 @@ public class AdminAnnouncementImportRegistrationService {
         this.importRepository = importRepository;
         this.announcementRepository = announcementRepository;
         this.supplyRowRepository = supplyRowRepository;
-        this.supplyTargetRepository = supplyTargetRepository;
+        this.supplySheets = supplySheets;
         this.scheduleRepository = scheduleRepository;
         this.attachmentRepository = attachmentRepository;
         this.housingComplexRepository = housingComplexRepository;
@@ -93,9 +94,12 @@ public class AdminAnnouncementImportRegistrationService {
         String originalJson = importJson.serialize(request);
         ensureJsonSize(originalJson);
 
-        Announcement announcement = announcementRepository.save(createAnnouncement(request));
+        Announcement created = createAnnouncement(request);
+        // 공급표를 이 등록이 쓰므로 처음부터 공급표 정본으로 만든다. 저장 뒤에 표시하면 새 공고의 버전이 바로 올라간다.
+        created.takeSupplySheetFromDocument();
+        Announcement announcement = announcementRepository.save(created);
         List<SupplyRow> supplyRows = saveSupplyRows(request, announcement, selectedComplexes);
-        int supplyTargetCount = saveSupplyTargets(request, supplyRows);
+        int supplyTargetCount = writeSupplySheet(request, announcement, supplyRows);
         scheduleRepository.saveAll(createSchedules(request, announcement));
         attachmentRepository.saveAll(createAttachments(request, announcement));
         AdminAnnouncementImport history = saveHistory(
@@ -219,28 +223,25 @@ public class AdminAnnouncementImportRegistrationService {
         return supplyRowRepository.saveAll(rows);
     }
 
-    private int saveSupplyTargets(AdminAnnouncementImportRequest request, List<SupplyRow> supplyRows) {
-        List<SupplyTarget> targets = new ArrayList<>();
+    /** 공급행마다 JSON의 대상·모집수·금액을 공고 공급표로 쓴다. 돌려주는 수는 JSON의 대상 수다. */
+    private int writeSupplySheet(AdminAnnouncementImportRequest request, Announcement announcement,
+            List<SupplyRow> supplyRows) {
+        List<SourceSupplySheet.Row> sheet = new ArrayList<>();
+        int targetCount = 0;
         for (int rowIndex = 0; rowIndex < request.supplyRows().size(); rowIndex++) {
-            List<SupplyTargetRequest> sourceTargets = request.supplyRows().get(rowIndex).targets();
-            for (int targetIndex = 0; targetIndex < sourceTargets.size(); targetIndex++) {
-                SupplyTargetRequest target = sourceTargets.get(targetIndex);
-                targets.add(SupplyTarget.create(
-                        supplyRows.get(rowIndex),
-                        target.target(),
-                        target.supplyRank(),
-                        target.supplyHouseholdCount(),
-                        target.reserveCount(),
-                        target.rentalDeposit(),
-                        target.monthlyRent(),
-                        target.convertedDeposit(),
-                        target.applicationCondition(),
-                        targetIndex
-                ));
+            SupplyRowRequest row = request.supplyRows().get(rowIndex);
+            List<SourceSupplySheet.Target> targets = new ArrayList<>();
+            for (int targetIndex = 0; targetIndex < row.targets().size(); targetIndex++) {
+                SupplyTargetRequest target = row.targets().get(targetIndex);
+                targets.add(new SourceSupplySheet.Target(target.target(), target.applicationCondition(),
+                        target.supplyHouseholdCount(), target.reserveCount(), new LeaseTerms.Amounts(
+                                target.rentalDeposit(), target.monthlyRent(), target.convertedDeposit()), targetIndex));
             }
+            targetCount += targets.size();
+            sheet.add(new SourceSupplySheet.Row(supplyRows.get(rowIndex), row.totalSupplyHouseholdCount(), targets));
         }
-        supplyTargetRepository.saveAll(targets);
-        return targets.size();
+        supplySheets.replace(announcement, SourceSupplySheet.draft(sheet));
+        return targetCount;
     }
 
     private List<AnnouncementSchedule> createSchedules(

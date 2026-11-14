@@ -80,9 +80,11 @@ public class LhAnnouncementQualityStore {
         return jdbc.sql("""
                 SELECT COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE EXISTS (
-                           SELECT 1 FROM supply_targets target
-                           WHERE target.supply_row_id = row.id
-                             AND target.rental_deposit IS NOT NULL AND target.monthly_rent IS NOT NULL
+                           SELECT 1 FROM supply_row_targets cell
+                           JOIN lease_term_members member ON member.supply_row_target_id = cell.id
+                           JOIN lease_terms lease ON lease.id = member.lease_terms_id
+                           WHERE cell.supply_row_id = row.id
+                             AND lease.rental_deposit IS NOT NULL AND lease.monthly_rent IS NOT NULL
                        )) AS fulfilled
                 FROM supply_rows row
                 JOIN announcements announcement ON announcement.id = row.announcement_id

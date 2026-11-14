@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,7 +16,9 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.ReceptionPlaceRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest;
@@ -23,6 +26,7 @@ import com.toadzip.backend.announcement.dto.response.AdminAnnouncementCreateResp
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -49,12 +53,15 @@ class AdminAnnouncementRegistrationServiceTest {
             AdminAnnouncementSourceIdentifierGenerator.class
     );
 
+    private final SupplySheetStore supplySheets = mock(SupplySheetStore.class);
+
     private final AdminAnnouncementRegistrationService service = new AdminAnnouncementRegistrationService(
             announcementRepository,
             supplyRowRepository,
             housingComplexRepository,
             identifierGenerator,
-            mock(NotificationOutboxRepository.class)
+            mock(NotificationOutboxRepository.class),
+            supplySheets
     );
 
     @BeforeEach
@@ -79,6 +86,9 @@ class AdminAnnouncementRegistrationServiceTest {
         when(savedAnnouncement.getName()).thenReturn("2026년 행복주택 입주자 모집");
         when(supplyRowRepository.save(any())).thenReturn(savedSupplyRow);
         when(savedSupplyRow.getId()).thenReturn(31L);
+        when(savedSupplyRow.sourceSheetRow("row:31")).thenReturn(new SupplySheetDraft.HousingTypeRow("row:31", 31L, null,
+                11L, null, "원문 두꺼비 행복주택", "36A", null, null, YearMonth.of(2027, 3), "1114010100100010000",
+                SupplyCategory.NEW_SUPPLY, 0));
 
         AdminAnnouncementCreateResponse response = service.register(validRequest());
 
@@ -88,6 +98,18 @@ class AdminAnnouncementRegistrationServiceTest {
         verify(supplyRowRepository).save(supplyRowCaptor.capture());
         Announcement announcement = announcementCaptor.getValue();
         SupplyRow supplyRow = supplyRowCaptor.getValue();
+        ArgumentCaptor<SupplySheetDraft> sheetCaptor = ArgumentCaptor.forClass(SupplySheetDraft.class);
+        verify(supplySheets).replace(eq(savedAnnouncement), sheetCaptor.capture());
+        SupplySheetDraft sheet = sheetCaptor.getValue();
+        assertAll(
+                // 대상 구분이 없는 등록은 '전체' 칸 하나가 모집수 20을 갖는다.
+                () -> assertEquals(List.of(31L), sheet.housingTypes().stream().map(SupplySheetDraft.HousingTypeRow::supplyRowId).toList()),
+                () -> assertEquals(List.of("전체"), sheet.targets().stream().map(SupplySheetDraft.Target::label).toList()),
+                () -> assertEquals(1, sheet.cells().size()),
+                () -> assertEquals(List.of(SupplyQuota.Kind.WINNER + ":20"), sheet.quotas().stream()
+                        .map(quota -> quota.kind() + ":" + quota.count()).toList()),
+                () -> assertEquals(List.of(), sheet.leases())
+        );
         assertAll(
                 () -> assertEquals(21L, response.announcementId()),
                 () -> assertEquals(31L, response.supplyRowId()),
@@ -129,6 +151,7 @@ class AdminAnnouncementRegistrationServiceTest {
 
         verify(announcementRepository, never()).save(any());
         verify(supplyRowRepository, never()).save(any());
+        verify(supplySheets, never()).replace(any(), any());
     }
 
     @Test

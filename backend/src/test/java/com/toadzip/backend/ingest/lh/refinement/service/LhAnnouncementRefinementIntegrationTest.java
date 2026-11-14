@@ -27,8 +27,11 @@ import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.repository.SupplySheetViewQueryRepository;
+import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
+import com.toadzip.backend.announcement.dto.response.SupplyRowResponse;
+import com.toadzip.backend.announcement.dto.response.SupplyTargetResponse;
+import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.announcement.service.SupplyCorrectionService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -90,7 +93,8 @@ class LhAnnouncementRefinementIntegrationTest {
     @Autowired private AnnouncementRepository announcements;
     @Autowired private AnnouncementComplexRepository announcementComplexes;
     @Autowired private SupplyRowRepository supplyRows;
-    @Autowired private SupplyTargetRepository supplyTargets;
+    @Autowired private SupplySheetViewQueryRepository sheetViews;
+    @Autowired private AnnouncementQueryService publicAnnouncements;
     @Autowired private TransactionTemplate transactions;
     @Autowired private JdbcClient jdbc;
     @MockitoSpyBean private NotificationOutboxRepository outbox;
@@ -156,16 +160,15 @@ class LhAnnouncementRefinementIntegrationTest {
             assertThat(area59Row.getSupplyCategory()).isEqualTo(SupplyCategory.NEW_SUPPLY);
             // 금액을 주지 않은 줄이 있으면 공고문으로 채워야 한다.
             assertThat(area59Row.getLhMatchStatus()).isEqualTo(LhSupplyMatchStatus.VALUES_MISSING);
-            assertThat(supplyTargets.findAllBySupplyRow(area59Row)).extracting(SupplyTarget::getTarget,
-                    SupplyTarget::getSupplyHouseholdCount, SupplyTarget::getSourceSupplyTargetIdentifier)
-                    .containsExactly(tuple("청년", 10, "LH:P1:SUPPLY:0:TARGET"), tuple("고령자", 4, "LH:P1:SUPPLY:2:TARGET"));
+            // 대상마다 공급표 칸 하나가 자기 모집수와 금액을 갖는다. 금액을 주지 않은 줄은 임대조건이 없다.
+            assertThat(cells(announcement.getId(), area59Row)).containsExactly(
+                    "청년|공고문 참조|WINNER:10|30000000/200000", "고령자|공고문 참조|WINNER:4|");
             // 단지에 없는 대표 면적의 행은 주택형 없이 면적 미일치로 둔다. 다른 면적의 주택형을 고르지 않는다.
             SupplyRow unmatched = rows.stream().filter(row -> row != area59Row).findFirst().orElseThrow();
             assertThat(unmatched.getHousingType()).isNull();
             assertThat(unmatched.getHousingTypes()).isEmpty();
             assertThat(unmatched.getLhMatchStatus()).isEqualTo(LhSupplyMatchStatus.AREA_UNMATCHED);
-            assertThat(supplyTargets.findAllBySupplyRow(unmatched)).extracting(SupplyTarget::getTarget)
-                    .containsExactly("전체");
+            assertThat(cells(announcement.getId(), unmatched)).containsExactly("전체|공고문 참조|WINNER:3|20000000/100000");
             return announcement.getId();
         });
         // 공고일이 7일 안인 새 공고만 새 공고 알림을 요청한다.
@@ -182,6 +185,7 @@ class LhAnnouncementRefinementIntegrationTest {
             if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
         }
         List<Long> rowIds = supplyRowIds(id);
+        List<String> sheetIds = sheetIds(id);
 
         LhAnnouncementRefinementReport again = refinement.refineAll();
 
@@ -196,6 +200,70 @@ class LhAnnouncementRefinementIntegrationTest {
         assertThat(again.announcementComplexes().created()).isZero();
         assertThat(again.announcementComplexes().updated()).isZero();
         assertThat(supplyRowIds(id)).isEqualTo(rowIds);
+        assertThat(sheetIds(id)).isEqualTo(sheetIds);
+        // 공개 상세는 정제가 쓴 공급표의 대상별 모집수와 임대조건을 보인다.
+        jdbc.sql("UPDATE announcements SET release_status = 'PUBLISHED' WHERE id = ?").param(id).update();
+        AnnouncementDetailResponse detail = publicAnnouncements.getAnnouncement(id);
+        assertThat(detail.supplyRows()).extracting(SupplyRowResponse::totalSupplyHouseholdCount).containsExactly(14, 3);
+        // 공급표의 신청형 이름은 원천 주택형명(LH 형명)이다. 공개 표시명은 공급표로 옮기기 전처럼 연결한 단지 주택형명이고,
+        // 연결 주택형이 없는 행만 원천 주택형명이다.
+        assertThat(detail.supplyRows()).extracting(SupplyRowResponse::displayHousingTypeName)
+                .containsExactly("59A", "46A");
+        assertThat(sheetViews.read(id).housingTypes()).extracting(SupplySheetView.HousingType::name)
+                .containsExactly("59A(청년) · 59A(고령자)", "46A");
+        assertThat(detail.supplyRows().getFirst().targets()).extracting(SupplyTargetResponse::target,
+                SupplyTargetResponse::applicationCondition, SupplyTargetResponse::supplyHouseholdCount,
+                SupplyTargetResponse::deposit, SupplyTargetResponse::monthlyRent).containsExactly(
+                tuple("청년", "공고문 참조", 10, 30_000_000L, 200_000L), tuple("고령자", "공고문 참조", 4, null, null));
+        assertThat(detail.supplyRows().get(1).targets()).extracting(SupplyTargetResponse::target,
+                SupplyTargetResponse::supplyHouseholdCount, SupplyTargetResponse::deposit)
+                .containsExactly(tuple("전체", 3, 20_000_000L));
+    }
+
+    @Test
+    void 다시_정제해_LH_값이_바뀌면_공급행과_공급대상과_칸의_ID를_그대로_두고_값만_고친다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A(청년)", "59.9800", "10", "30000000", "200000"),
+                supply("동탄 행복주택 단지", "59A(고령자)", "59.9800", "4", "30000000", "200000"));
+        refinement.refineAll();
+        long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
+        List<Long> rowIds = supplyRowIds(id);
+        List<String> sheetIds = sheetIds(id);
+
+        supplies("P1", supply("동탄 행복주택 단지", "59A(청년)", "59.9800", "12", "31000000", "210000"),
+                supply("동탄 행복주택 단지", "59A(고령자)", "59.9800", "4", "30000000", "200000"));
+        LhAnnouncementRefinementReport changed = refinement.refineAll();
+
+        assertThat(changed.supplyRows().createdTargets()).isZero();
+        assertThat(changed.supplyRows().updatedTargets()).isOne();
+        assertThat(changed.supplyRows().deletedTargets()).isZero();
+        assertThat(supplyRowIds(id)).isEqualTo(rowIds);
+        assertThat(sheetIds(id)).isEqualTo(sheetIds);
+        inTransaction(() -> {
+            SupplyRow row = supplyRows.findAllByAnnouncement(announcements.findById(id).orElseThrow()).getFirst();
+            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(16);
+            assertThat(cells(id, row)).containsExactly("청년|공고문 참조|WINNER:12|31000000/210000",
+                    "고령자|공고문 참조|WINNER:4|30000000/200000");
+        });
+    }
+
+    @Test
+    void 다시_정제해_LH_형명이_바뀌면_같은_공급행의_신청형_이름도_따라간다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A(청년)", "59.9800", "10", "30000000", "200000"));
+        refinement.refineAll();
+        long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
+        List<Long> rowIds = supplyRowIds(id);
+
+        supplies("P1", supply("동탄 행복주택 단지", "59A(청년)", "59.9800", "10", "30000000", "200000"),
+                supply("동탄 행복주택 단지", "59A(고령자)", "59.9800", "4", "30000000", "200000"));
+        refinement.refineAll();
+
+        assertThat(supplyRowIds(id)).isEqualTo(rowIds);
+        assertThat(sheetViews.read(id).housingTypes()).extracting(SupplySheetView.HousingType::name)
+                .containsExactly("59A(청년) · 59A(고령자)");
     }
 
     @Test
@@ -230,8 +298,8 @@ class LhAnnouncementRefinementIntegrationTest {
             // 신청자 표기([ ]도 신청자 표기다)만 다른 줄은 같은 신청형 공급행의 대상이고, 대상 이름은 그 신청자 표기다.
             SupplyRow area59Row = rows.stream().filter(row -> row.getSourceSupplyRowIdentifier().endsWith(":59a#1"))
                     .findFirst().orElseThrow();
-            assertThat(supplyTargets.findAllBySupplyRow(area59Row)).extracting(SupplyTarget::getTarget,
-                    SupplyTarget::getSupplyHouseholdCount).containsExactly(tuple("청년", 2), tuple("주거급여수급자", 1));
+            assertThat(cells(announcement.getId(), area59Row)).containsExactly(
+                    "청년|공고문 참조|WINNER:2|30000000/200000", "주거급여수급자|공고문 참조|WINNER:1|30000000/200000");
         });
     }
 
@@ -274,9 +342,11 @@ class LhAnnouncementRefinementIntegrationTest {
             assertThat(rows).singleElement().satisfies(row -> {
                 assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("LHROW:" + complexId + ":59a#1");
                 assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(14);
-                assertThat(supplyTargets.findAllBySupplyRow(row)).extracting(SupplyTarget::getTarget)
-                        .containsExactly("청년", "고령자");
+                assertThat(cells(id, row)).containsExactly("청년|공고문 참조|WINNER:10|30000000/200000",
+                        "고령자|공고문 참조|WINNER:4|30000000/200000");
             });
+            // 옛 공급행의 칸은 남지 않는다.
+            assertThat(sheetViews.read(id).cells()).hasSize(2);
         });
         assertThat(jdbc.sql("SELECT count(*) FROM supply_targets WHERE source_supply_target_identifier LIKE 'LHROW:%'")
                 .query(Long.class).single()).isZero();
@@ -396,6 +466,11 @@ class LhAnnouncementRefinementIntegrationTest {
             supplyRows.save(corrected);
             return existing.getId();
         });
+        // 공고문이 정한 공급표('전체' 칸 하나에 모집수 7)를 LH 정제가 덮지 않는다.
+        List<String> documentSheet = computeInTransaction(() -> cells(existingId,
+                supplyRows.findAllByAnnouncement(announcements.findById(existingId).orElseThrow()).getFirst()));
+        assertThat(documentSheet).containsExactly("전체||WINNER:7|");
+        List<String> documentSheetIds = sheetIds(existingId);
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(30));
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
@@ -421,8 +496,12 @@ class LhAnnouncementRefinementIntegrationTest {
             Announcement announcement = announcements.findById(existingId).orElseThrow();
             assertThat(announcement.isSupplyRecheckRequired()).isTrue();
             assertThat(supplyRows.findAllByAnnouncement(announcement)).singleElement()
-                    .satisfies(row -> assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(7));
+                    .satisfies(row -> {
+                        assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(7);
+                        assertThat(cells(existingId, row)).isEqualTo(documentSheet);
+                    });
         });
+        assertThat(sheetIds(existingId)).isEqualTo(documentSheetIds);
     }
 
     @Test
@@ -754,6 +833,32 @@ class LhAnnouncementRefinementIntegrationTest {
             }
         }
         return missing;
+    }
+
+    /** 공급행의 공급표 칸을 표시 순서대로 "대상|신청 조건|수량 묶음|임대조건(보증금/월임대료)"으로 읽는다. */
+    private List<String> cells(long announcementId, SupplyRow row) {
+        SupplySheetView sheet = sheetViews.read(announcementId);
+        Map<String, SupplySheetView.Target> targets = new java.util.HashMap<>();
+        sheet.targets().forEach(target -> targets.put(target.key(), target));
+        return sheet.cells().stream().filter(cell -> cell.housingType().equals("row:" + row.getId())).map(cell -> {
+            SupplySheetView.Target target = targets.get(cell.target());
+            String quotas = sheet.quotas().stream().filter(quota -> quota.members().contains(cell.key()))
+                    .map(quota -> quota.kind() + ":" + quota.count()).sorted()
+                    .collect(java.util.stream.Collectors.joining(","));
+            String leases = sheet.leaseTerms().stream().filter(lease -> lease.members().contains(cell.key()))
+                    .map(lease -> lease.rentalDeposit().toPlainString() + "/" + lease.monthlyRent().toPlainString())
+                    .collect(java.util.stream.Collectors.joining(","));
+            return String.join("|", target.label(), target.applicationCondition(), quotas, leases);
+        }).toList();
+    }
+
+    /** 공고의 공급대상·칸 ID. 다시 써도 같은 대상·칸이면 ID가 그대로여야 한다. */
+    private List<String> sheetIds(long announcementId) {
+        SupplySheetView sheet = sheetViews.read(announcementId);
+        List<String> ids = new ArrayList<>();
+        sheet.targets().forEach(target -> ids.add(target.key()));
+        sheet.cells().forEach(cell -> ids.add(cell.key() + "@" + cell.housingType() + "/" + cell.target()));
+        return ids;
     }
 
     private List<Long> supplyRowIds(long announcementId) {

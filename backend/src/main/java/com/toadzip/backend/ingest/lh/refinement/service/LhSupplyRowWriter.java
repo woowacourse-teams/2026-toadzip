@@ -3,12 +3,15 @@ package com.toadzip.backend.ingest.lh.refinement.service;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.housing.domain.HousingTypeNames;
+import com.toadzip.backend.announcement.domain.LeaseTerms;
 import com.toadzip.backend.announcement.domain.LhSupplyMatchStatus;
+import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.announcement.repository.SupplySheetStore;
+import com.toadzip.backend.announcement.repository.SupplySheetViewQueryRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.HousingTypeAreas;
@@ -22,11 +25,13 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -39,24 +44,33 @@ import org.springframework.stereotype.Component;
  * 대표 주택형은 연결 단지에서 {@link HousingTypeAreas#pick}으로 고르고,
  * 정제는 주택형을 만들지 않는다(LH 면적은 함께 모집하는 면적 중 하나라 PDF 보정이 확인할 때 만든다). 공고문 소유 공고는 공급행을
  * 만들거나 지우지 않고 비어 있는 공고 단지 참조만 채운다.
+ *
+ * <p>대상·모집수·금액은 공급표 쓰기({@link SupplySheetStore})로 공고 공급표에 바로 쓴다({@link SourceSupplySheet}). 공급행의 LH 열
+ * (원천 식별자·대응 상태·모집수)은 아직 읽는 곳이 있어 공급행에 함께 적는다.
  */
 @Component
 @RequiredArgsConstructor
 class LhSupplyRowWriter {
 
     private static final String ALL = "전체";
+    /** LH 줄 대상의 신청 조건. 옛 대상 테이블의 원천 대상 신청 조건과 같은 값이다. */
+    private static final String SOURCE_CONDITION = "공고문 참조";
     private static final int MAX_TYPE_NAME = 255;
 
     private final SupplyRowRepository supplyRows;
-    private final SupplyTargetRepository supplyTargets;
     private final HousingTypeRepository housingTypes;
+    private final SupplySheetStore sheets;
+    private final SupplySheetViewQueryRepository sheetViews;
 
     /**
      * LH 원천 소유 공고의 공급행을 이번 LH 공급으로 맞추고 이 공고의 다른 공급행을 지운다. 공급행은 (공고 단지, 신청형)마다 하나이고,
      * 같은 신청형의 LH 줄(신청자 묶음)은 그 공급행의 대상이 된다. 공급행의 전용면적은 그 신청형의 첫 LH 줄 면적이다.
+     * 부르는 쪽이 공고가 LH 원천 소유인지 먼저 확인한다.
      */
     void writeLhOwned(Announcement announcement, List<SupplyLine> lines, Map<String, AnnouncementComplex> complexes,
             SupplyCategory category, Tally tally) {
+        Map<Long, String> before = cellValues(sheetViews.read(announcement.getId()));
+        List<SourceSupplySheet.Row> sheet = new ArrayList<>();
         Map<String, SupplyRow> stored = supplyRows.findAllByAnnouncement(announcement).stream()
                 .collect(Collectors.toMap(SupplyRow::getSourceSupplyRowIdentifier, row -> row));
         Map<Long, List<HousingType>> typesByComplex = new HashMap<>();
@@ -76,14 +90,13 @@ class LhSupplyRowWriter {
             SupplyRow incoming = SupplyRow.createFromLh(announcement, complex, type, key, first.data().sourceIdentifier(),
                     order++, typeName, area, first.data().expectedMoveInMonth(), category, totalCount(members), status);
             SupplyRow row = upsert(stored.remove(key), incoming, tally);
-            writeTargets(row, members, tally);
+            sheet.add(new SourceSupplySheet.Row(row, totalCount(members), targets(members)));
             tally.count(status);
         }
-        for (SupplyRow stale : stored.values()) {
-            supplyTargets.deleteAll(supplyTargets.findAllBySupplyRow(stale));
-            supplyRows.delete(stale);
-            tally.deletedRows++;
-        }
+        // 이번 LH 공급에 없는 공급행은 공급표 쓰기가 지운다(옛 대상은 외래 키로 함께 지워진다).
+        tally.deletedRows += stored.size();
+        sheets.replace(announcement, SourceSupplySheet.draft(sheet));
+        tally.countTargets(before, cellValues(sheetViews.read(announcement.getId())));
     }
 
     /** LH 줄을 공급행 키별로 모은다. LH 순서대로 처음 나온 묶음이 앞선다. 형명이 빈 줄은 줄마다 공급행을 둔다. */
@@ -167,20 +180,15 @@ class LhSupplyRowWriter {
     }
 
     /**
-     * LH 줄마다 대상 하나를 둔다. 대상 키는 LH 줄 식별자에서 만든다. 한 줄뿐인 공급행은 지금처럼 금액이 있을 때만 대상("전체")을 둔다.
+     * LH 줄마다 대상 하나를 둔다. 한 줄뿐인 공급행은 금액이 있을 때만 대상("전체")을 둔다(없으면 공급표가 '전체' 칸 하나에 모집수를 둔다).
      * 여러 줄이면 모집수를 대상별로 보이도록 금액이 없어도 둔다.
      */
-    private void writeTargets(SupplyRow row, List<SupplyLine> members, Tally tally) {
-        Map<String, SupplyTarget> stored = supplyTargets.findAllBySupplyRow(row).stream()
-                .filter(target -> target.getSourceSupplyTargetIdentifier() != null)
-                .collect(Collectors.toMap(SupplyTarget::getSourceSupplyTargetIdentifier, target -> target,
-                        (first, second) -> first));
+    private static List<SourceSupplySheet.Target> targets(List<SupplyLine> members) {
         Map<String, Long> labelCounts = members.stream().collect(Collectors.groupingBy(
                 line -> targetLabel(line, members.size()), Collectors.counting()));
-        int order = 1;
+        List<SourceSupplySheet.Target> targets = new ArrayList<>();
         for (SupplyLine line : members) {
             LhSupplyData data = line.data();
-            String identifier = LhSourceIdentifier.target(data.sourceIdentifier());
             boolean priced = data.rentalDeposit() != null && data.monthlyRent() != null;
             if (!priced && members.size() == 1) {
                 continue;
@@ -188,21 +196,28 @@ class LhSupplyRowWriter {
             // 같은 신청자 표기가 여러 줄(26A(고령자)·26B(고령자))이면 대상을 가를 수 있게 LH 형명 원문을 쓴다.
             String label = labelCounts.get(targetLabel(line, members.size())) > 1 ? line.source().getTypeName().strip()
                     : targetLabel(line, members.size());
-            SupplyTarget target = stored.remove(identifier);
-            if (target == null) {
-                supplyTargets.save(SupplyTarget.createFromSource(row, identifier, label, ALL, data.supplyHouseholdCount(),
-                        data.rentalDeposit(), data.monthlyRent(), order));
-                tally.createdTargets++;
-            } else if (target.updateFromSource(label, ALL, data.supplyHouseholdCount(), data.rentalDeposit(),
-                    data.monthlyRent(), order)) {
-                tally.updatedTargets++;
-            }
-            order++;
+            targets.add(new SourceSupplySheet.Target(label, SOURCE_CONDITION, data.supplyHouseholdCount(), null,
+                    new LeaseTerms.Amounts(data.rentalDeposit(), data.monthlyRent(), null), targets.size() + 1));
         }
-        for (SupplyTarget stale : stored.values()) {
-            supplyTargets.delete(stale);
-            tally.deletedTargets++;
+        return targets;
+    }
+
+    /** 칸 ID별 공급대상과 그 칸이 든 수량 묶음·임대조건. 정제 전후를 견줘 대상(칸) 변경 수를 센다. */
+    private static Map<Long, String> cellValues(SupplySheetView sheet) {
+        Map<String, String> targets = new HashMap<>();
+        sheet.targets().forEach(target -> targets.put(target.key(), target.label() + "\u0000" + target.applicationCondition()));
+        Map<Long, String> values = new HashMap<>();
+        for (SupplySheetView.Cell cell : sheet.cells()) {
+            List<String> parts = new ArrayList<>(List.of(cell.housingType(), targets.get(cell.target())));
+            sheet.quotas().stream().filter(quota -> quota.members().contains(cell.key()))
+                    .map(quota -> quota.kind() + ":" + quota.count() + ":" + quota.members().size()).sorted()
+                    .forEach(parts::add);
+            sheet.leaseTerms().stream().filter(lease -> lease.members().contains(cell.key()))
+                    .map(lease -> lease.rentalDeposit() + "/" + lease.monthlyRent() + "/" + lease.convertedDeposit())
+                    .forEach(parts::add);
+            values.put(cell.id(), String.join("\u0001", parts));
         }
+        return values;
     }
 
     /**
@@ -257,6 +272,15 @@ class LhSupplyRowWriter {
             deletedTargets += other.deletedTargets;
             filledComplexes += other.filledComplexes;
             other.statuses.forEach((status, count) -> statuses.merge(status, count, Integer::sum));
+        }
+
+        /** 공급표 칸 하나를 대상 하나로 센다. */
+        void countTargets(Map<Long, String> before, Map<Long, String> after) {
+            Set<Long> kept = new HashSet<>(before.keySet());
+            kept.retainAll(after.keySet());
+            createdTargets += after.size() - kept.size();
+            deletedTargets += before.size() - kept.size();
+            updatedTargets += (int) kept.stream().filter(id -> !before.get(id).equals(after.get(id))).count();
         }
 
         SupplyCounts toCounts() {

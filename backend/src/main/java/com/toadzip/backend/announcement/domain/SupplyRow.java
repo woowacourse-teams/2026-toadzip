@@ -472,14 +472,34 @@ public class SupplyRow {
         housingComplex = housing;
         represent(type);
         sourceComplexName = values.complexName();
-        announcementHousingTypeName = values.typeName();
-        areaOverride = values.overridesArea();
-        announcementExclusiveArea = values.exclusiveArea();
-        announcementSupplyArea = values.supplyArea();
+        // 원천이 주인인 공고에서 신청형 이름이 원천 주택형명 그대로면 공고 표시명을 따로 두지 않는다. 공개 화면은 전처럼 연결한 단지
+        // 주택형명을 보인다(LH 원천명 '59A(청년) · 59A(고령자)' 대신 '59A'). 공고문이 주인이면 신청형 이름이 공고 표시명이다.
+        boolean sourceName = announcement.suppliedByLh() && values.typeName().equals(sourceHousingTypeName.strip());
+        announcementHousingTypeName = sourceName ? null : values.typeName();
+        // 면적 보정이 전후 모두 없으면 원천이 적어 둔 공고 면적 칸(recordSourceArea)을 지우지 않는다.
+        if (areaOverride || values.overridesArea()) {
+            areaOverride = values.overridesArea();
+            announcementExclusiveArea = values.exclusiveArea();
+            announcementSupplyArea = values.supplyArea();
+        }
         expectedMoveInMonth = values.expectedMoveInMonth();
         supplyPnu = values.supplyPnu();
         supplyCategory = values.supplyCategory();
         displayOrder = values.displayOrder();
+    }
+
+    /**
+     * 정제·등록이 쓴 이 공급행을 지금 값 그대로 공급표 주택형으로 옮긴다({@link SourceSupplySheet}). 신청형 이름은 원천 주택형명이다.
+     * 원천 형명이 바뀌면 신청형 이름도 따라가도록 앞서 적힌 공고 표시명을 쓰지 않는다.
+     * 관리자가 고친 행만 공급표 보기와 같은 이름(공고 표시명, 없으면 원천 주택형명)을 지킨다.
+     */
+    public SupplySheetDraft.HousingTypeRow sourceSheetRow(String key) {
+        String typeName = (adminModified ? Objects.requireNonNullElse(announcementHousingTypeName, sourceHousingTypeName)
+                : sourceHousingTypeName).strip();
+        return new SupplySheetDraft.HousingTypeRow(key, id, idOf(announcementComplex), idOf(housingComplex),
+                idOf(housingType), sourceComplexName, typeName, areaOverride ? announcementExclusiveArea : null,
+                areaOverride ? announcementSupplyArea : null, expectedMoveInMonth, supplyPnu, supplyCategory,
+                displayOrder);
     }
 
     /**

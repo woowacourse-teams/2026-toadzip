@@ -225,6 +225,8 @@ public class SupplyCorrectionService {
             String actor) {
         // 옛 공급행을 지우기 전에 공고문 소유로 바꿔야 삭제 트리거가 공급표를 옛 테이블에서 다시 만들지 않는다(칸 ID가 바뀐다).
         announcement.takeSupplySheetFromDocument();
+        // 공급표를 쓰기 전에 공고문 소유로 바꾼다. 원천 소유 공고는 원천명과 같은 신청형 이름을 공고 표시명으로 적지 않기 때문이다.
+        announcement.recordAdminSupplyChange();
         announcements.flush();
         rows.deleteAll(rows.findAllByAnnouncement(announcement).stream().filter(SupplyRow::isAdminExcluded).toList());
         rows.flush();
@@ -233,7 +235,6 @@ public class SupplyCorrectionService {
         Map<String, SupplyRow> written = new LinkedHashMap<>();
         saved.housingTypes().forEach((key, rowId) -> written.put(key, rows.findById(rowId).orElseThrow()));
         adminLinks.apply(plan.links(), written, actor);
-        announcement.recordAdminSupplyChange();
         announcements.flush();
         List<Long> modified = new ArrayList<>();
         List<Long> unmodified = new ArrayList<>();
