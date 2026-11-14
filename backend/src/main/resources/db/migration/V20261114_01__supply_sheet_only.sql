@@ -2,12 +2,12 @@
 -- 공급표를 읽으므로 옛 공급행 구조를 없앤다.
 --   - 공급표 투영 트리거와 함수(V20261113_02)
 --   - 옛 대상·수 테이블: supply_targets, supply_target_count_groups, supply_row_groups
---   - 함께 모집하는 주택형(supply_row_housing_types). 지우기 전에 접힌 행을 주택형마다 한 행으로 나눈다(아래 2).
+--   - 함께 모집하는 주택형(supply_row_housing_types). 지우기 전에 접힌 행을 주택형마다 한 행으로 나눈다(아래 3).
 --   - 공급행 대응: lh_supply_row_links(LH 행 ↔ 마이홈 원천행), announcement_supply_match_decisions(마이홈 원천행 ↔ 단지·주택형)
 --   - supply_rows의 옛 모집수·대상 비교·대응 열과 공고의 공급표 정본 표시(supply_sheet_from_document)
 -- 되돌릴 수 없다. 운영 적용 전에 백업을 확인한다. 이 마이그레이션 뒤에는 이전 버전 애플리케이션이 돌 수 없다.
 
--- 1. 트리거와 함수. 아래 2에서 공급행을 넣으므로 먼저 없앤다. 남기면 트리거가 옛 테이블로 공급표를 다시 만들어 나눈 결과를 덮는다.
+-- 1. 트리거와 함수. 아래 3에서 공급행을 넣으므로 먼저 없앤다. 남기면 트리거가 옛 테이블로 공급표를 다시 만들어 나눈 결과를 덮는다.
 DROP TRIGGER IF EXISTS trg_supply_sheet_rows_insert ON supply_rows;
 DROP TRIGGER IF EXISTS trg_supply_sheet_rows_update ON supply_rows;
 DROP TRIGGER IF EXISTS trg_supply_sheet_rows_drop_cells ON supply_rows;
@@ -34,23 +34,71 @@ SELECT setval(pg_get_serial_sequence('supply_row_targets', 'id'), GREATEST(
         COALESCE(pg_sequence_last_value(pg_get_serial_sequence('supply_targets', 'id')::regclass), 0),
         1));
 
--- 2. 접힌 행 나누기. 옛 공급행 하나가 대표 주택형 밖의 주택형도 함께 가리키면(supply_row_housing_types) 그 주택형마다 공급행을
+-- 2. 관리자가 고친 LH 원천 공고를 공고문 소유로 옮긴다. 옛 구조에서는 LH 정제가 관리자가 고친 행의 모집수와 대상을 건드리지
+--    않았지만, 공급표 쓰기는 원천 소유 공고의 공급표를 LH 값으로 통째로 다시 쓴다. 관리자가 고치면 공고문 소유가 된다는 지금 규칙을
+--    옛 데이터에도 적용해, 다음 정제가 관리자 값을 덮지 않게 한다. 대상의 관리자 표시는 아래 4에서 지워지므로 그 전에 본다.
+UPDATE announcements a SET supply_owner = 'ANNOUNCEMENT_DOCUMENT'
+WHERE a.supply_owner = 'LH_SOURCE'
+  AND (EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = a.id AND (r.admin_modified OR r.admin_excluded))
+       OR EXISTS (SELECT 1 FROM supply_targets t JOIN supply_rows r ON r.id = t.supply_row_id
+                  WHERE r.announcement_id = a.id AND (t.admin_modified OR t.admin_excluded)));
+
+-- 3. 접힌 행 나누기. 옛 공급행 하나가 대표 주택형 밖의 주택형도 함께 가리키면(supply_row_housing_types) 그 주택형마다 공급행을
 --    하나씩 더 만든다. 새 행은 원래 행의 단지·공고 단지·입주 예정월·공급구분·PNU·제외·관리자 수정 표시를 그대로 갖고, 이름은 그
 --    주택형 이름이다. 원래 행도 대표 주택형 이름으로 바꿔 행마다 자기 주택형 이름을 갖는다(공고문 이름 '26A/B/C' → 26A·26B·26C).
 --    면적 보정은 원래 행에만 남긴다(대표 주택형의 면적이다).
 --    원래 행의 칸(공급대상)을 새 행에도 같은 공급대상으로 두고, 원래 칸이 든 수량 묶음과 임대조건에 새 칸도 멤버로 넣는다.
 --    그래서 원래 행의 수는 나눈 행들이 함께 쓰는 수가 된다(PDF 추출의 "49A·49B·49C 함께 모집 70"과 같은 모양). 묶음과 임대조건은
 --    새로 만들지 않으므로 공고 모집수 합계는 그대로다.
-CREATE TEMPORARY TABLE split_supply_rows ON COMMIT DROP AS
+--    공급표는 한 공고 단지(없으면 단지명)에 같은 신청형 이름의 행을 하나만 둔다. 그래서 나누거나 이름을 바꾼 결과가 이미 있는 행이나
+--    앞서 정한 결과와 이름이 겹치면 그 결과는 버린다. 버린 주택형은 이미 자기 행이 있고, 이름을 못 바꾼 원래 행은 원래 이름을 둔다.
+--    겹침은 제외 여부가 같은 행끼리만 본다. 제외한 행은 공급표 화면에 나오지 않고 관리자 적용이 지운다.
+CREATE TEMPORARY TABLE split_candidates ON COMMIT DROP AS
 SELECT r.id AS origin_id,
+       r.housing_type_id,
+       btrim(t.name) AS type_name,
+       NULL::TEXT AS source_identifier,
+       0 AS position
+FROM supply_rows r
+JOIN housing_types t ON t.id = r.housing_type_id
+WHERE EXISTS (SELECT 1 FROM supply_row_housing_types h
+              WHERE h.supply_row_id = r.id AND h.housing_type_id IS DISTINCT FROM r.housing_type_id)
+UNION ALL
+SELECT r.id,
        h.housing_type_id,
-       t.name AS type_name,
-       'SHEET:split:' || r.id || ':' || h.housing_type_id AS source_identifier,
-       ROW_NUMBER() OVER (PARTITION BY r.id ORDER BY t.name, t.id) AS position
+       btrim(t.name),
+       'SHEET:split:' || r.id || ':' || h.housing_type_id,
+       ROW_NUMBER() OVER (PARTITION BY r.id ORDER BY t.name, t.id)
 FROM supply_row_housing_types h
 JOIN supply_rows r ON r.id = h.supply_row_id
 JOIN housing_types t ON t.id = h.housing_type_id
 WHERE h.housing_type_id IS DISTINCT FROM r.housing_type_id;
+
+-- 이름 순위: 그대로 두는 행이 먼저, 원래 행의 새 이름, 나눈 행 순서다. 순위 1인 결과만 쓴다.
+CREATE TEMPORARY TABLE split_accepted ON COMMIT DROP AS
+SELECT origin_id, housing_type_id, type_name, source_identifier, position
+FROM (
+    SELECT named.*, ROW_NUMBER() OVER (
+               PARTITION BY announcement_id, place, type_name, admin_excluded
+               ORDER BY priority, origin_id, position) AS name_rank
+    FROM (
+        SELECT r.announcement_id, COALESCE('ac:' || r.announcement_complex_id, 'name:' || btrim(r.source_complex_name)) AS place,
+               r.admin_excluded, c.origin_id, c.housing_type_id, c.type_name, c.source_identifier, c.position,
+               CASE WHEN c.source_identifier IS NULL THEN 1 ELSE 2 END AS priority
+        FROM split_candidates c JOIN supply_rows r ON r.id = c.origin_id
+        UNION ALL
+        SELECT r.announcement_id, COALESCE('ac:' || r.announcement_complex_id, 'name:' || btrim(r.source_complex_name)),
+               r.admin_excluded, r.id, r.housing_type_id,
+               btrim(COALESCE(r.announcement_housing_type_name, r.source_housing_type_name)), NULL, 0, 0
+        FROM supply_rows r
+        WHERE r.id NOT IN (SELECT origin_id FROM split_candidates WHERE source_identifier IS NULL)
+    ) named
+) ranked
+WHERE priority > 0 AND name_rank = 1;
+
+CREATE TEMPORARY TABLE split_supply_rows ON COMMIT DROP AS
+SELECT origin_id, housing_type_id, type_name, source_identifier, position
+FROM split_accepted WHERE source_identifier IS NOT NULL;
 
 INSERT INTO supply_rows (announcement_id, housing_complex_id, housing_type_id, announcement_complex_id,
                          source_supply_row_identifier, display_order, source_complex_name, source_housing_type_name,
@@ -63,10 +111,9 @@ SELECT r.announcement_id, r.housing_complex_id, s.housing_type_id, r.announcemen
 FROM split_supply_rows s
 JOIN supply_rows r ON r.id = s.origin_id;
 
-UPDATE supply_rows r SET announcement_housing_type_name = t.name
-FROM housing_types t
-WHERE t.id = r.housing_type_id
-  AND r.id IN (SELECT origin_id FROM split_supply_rows);
+UPDATE supply_rows r SET announcement_housing_type_name = renamed.type_name
+FROM split_accepted renamed
+WHERE renamed.origin_id = r.id AND renamed.source_identifier IS NULL;
 
 -- 나눈 행은 원래 행 바로 뒤에 오게 그 공고의 표시 순서를 다시 매긴다.
 UPDATE supply_rows r SET display_order = ordered.display_order
@@ -105,7 +152,7 @@ FROM lease_term_members m
 JOIN split_supply_cells s ON s.origin_cell_id = m.supply_row_target_id
 JOIN supply_row_targets created ON created.supply_row_id = s.split_row_id AND created.supply_target_id = s.supply_target_id;
 
--- 3. 옛 테이블
+-- 4. 옛 테이블
 DROP TABLE supply_row_housing_types;
 DROP TABLE lh_supply_row_links;
 DROP TABLE announcement_supply_match_decisions;
@@ -114,7 +161,7 @@ DROP TABLE supply_target_count_groups;
 ALTER TABLE supply_rows DROP COLUMN supply_group_id;
 DROP TABLE supply_row_groups;
 
--- 4. 옛 열. 공급행의 모집수(공급표의 수량 묶음이 갖는다)와 LH 모집수 소유 표시, 대상 비교(확인한 대상 지문·대상 수 비교 범위),
+-- 5. 옛 열. 공급행의 모집수(공급표의 수량 묶음이 갖는다)와 LH 모집수 소유 표시, 대상 비교(확인한 대상 지문·대상 수 비교 범위),
 --    마이홈 원천행 대응, 읽지 않던 옛 LH 분리 원천. 공급행의 LH 열 중 첫 LH 줄 식별자(lh_source_supply_row_identifier, 공고 단지
 --    연결 이행이 읽는다)와 LH 대표 면적·대응 상태(공고 단지 연결과 단지 통합이 쓴다)는 남긴다.
 ALTER TABLE supply_rows

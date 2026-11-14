@@ -116,6 +116,82 @@ class SupplySheetOnlyMigrationTest {
         }
     }
 
+    @Test
+    void 나눈_이름이_이미_있는_행과_겹치면_나누지_않고_관리자가_고친_LH_원천_공고는_공고문_소유로_옮긴다() throws Exception {
+        String database = "supply_sheet_only_" + UUID.randomUUID().toString().replace("-", "");
+        try (Connection admin = connect("postgres"); Statement statement = admin.createStatement()) {
+            statement.execute("CREATE DATABASE " + database);
+            try {
+                migration(database).target("20261113.02").load().migrate();
+                try (Connection connection = connect(database); Statement seed = connection.createStatement()) {
+                    seedOverlaps(seed);
+                }
+                migration(database).load().migrate();
+
+                try (Connection connection = connect(database); Statement query = connection.createStatement()) {
+                    // 공고 3: 행 301(59A + 59A1)과 행 302(59A1 + 59A)는 서로의 주택형을 가리킨다. 나누면 59A·59A1이 두 번씩
+                    // 생기므로 나누지 않고 원래 행 이름만 대표 주택형으로 맞춘다. 행 304(26A + 26B)의 26B는 행 303이 이미 갖는다.
+                    assertThat(rows(query, """
+                            SELECT announcement_id || ' ' || id || ' '
+                                || COALESCE(announcement_housing_type_name, source_housing_type_name)
+                            FROM supply_rows WHERE announcement_id = 3 ORDER BY id
+                            """)).containsExactly("3 301 59A", "3 302 59A1", "3 303 26B", "3 304 26A");
+                    assertThat(rows(query, "SELECT id || ' ' || supply_owner FROM announcements ORDER BY id"))
+                            .containsExactly("3 ANNOUNCEMENT_DOCUMENT", "4 ANNOUNCEMENT_DOCUMENT", "5 LH_SOURCE");
+                }
+            } finally {
+                statement.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
+            }
+        }
+    }
+
+    /**
+     * 이름이 겹치는 접힌 행과 LH 원천 공고 셋. 공고 3은 관리자가 고친 행이, 공고 4는 관리자가 고친 대상만 있고, 공고 5는 관리자
+     * 손을 타지 않았다.
+     */
+    private static void seedOverlaps(Statement seed) throws SQLException {
+        seed.execute("""
+                INSERT INTO housing_complexes (id, name, source_complex_identifier, city_county_district_code, latitude,
+                    legal_dong_code, longitude, province_code, road_address, provider, supply_type)
+                VALUES (1, '단지', 'manual:overlap-test', '11140', 37.5, '1114010100', 127, '11', '주소', 'LH',
+                    'HAPPY_HOUSING')
+                """);
+        seed.execute("""
+                INSERT INTO housing_types (id, housing_complex_id, name, exclusive_area)
+                VALUES (21, 1, '59A', 59.0), (22, 1, '59A1', 59.1), (23, 1, '26A', 26.0), (24, 1, '26B', 26.1)
+                """);
+        seed.execute("""
+                INSERT INTO announcements (id, name, original_url, posted_date, provider, source_announcement_identifier,
+                    status, view_count, release_status, supply_owner)
+                VALUES (3, '공고 3', 'https://example.com/3', DATE '2026-11-01', 'LH', 'overlap-3', 'ORIGINAL', 0,
+                        'UNCONFIRMED', 'LH_SOURCE'),
+                    (4, '공고 4', 'https://example.com/4', DATE '2026-11-01', 'LH', 'overlap-4', 'ORIGINAL', 0,
+                        'UNCONFIRMED', 'LH_SOURCE'),
+                    (5, '공고 5', 'https://example.com/5', DATE '2026-11-01', 'LH', 'overlap-5', 'ORIGINAL', 0,
+                        'UNCONFIRMED', 'LH_SOURCE')
+                """);
+        seed.execute("""
+                INSERT INTO supply_rows (id, announcement_id, housing_complex_id, housing_type_id,
+                    source_supply_row_identifier, display_order, source_complex_name, source_housing_type_name,
+                    supply_category, total_supply_household_count, admin_modified)
+                VALUES (301, 3, 1, 21, 'row-301', 0, '단지', '59A/59A1', 'NEW_SUPPLY', 10, true),
+                    (302, 3, 1, 22, 'row-302', 1, '단지', '59A1', 'NEW_SUPPLY', 10, false),
+                    (303, 3, 1, 24, 'row-303', 2, '단지', '26B', 'NEW_SUPPLY', 10, false),
+                    (304, 3, 1, 23, 'row-304', 3, '단지', '26A·26B', 'NEW_SUPPLY', 10, false),
+                    (401, 4, 1, 21, 'row-401', 0, '단지', '59A', 'NEW_SUPPLY', 10, false),
+                    (501, 5, 1, 21, 'row-501', 0, '단지', '59A', 'NEW_SUPPLY', 10, false)
+                """);
+        seed.execute("""
+                INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
+                VALUES (301, 21), (301, 22), (302, 22), (302, 21), (303, 24), (304, 23), (304, 24), (401, 21), (501, 21)
+                ON CONFLICT DO NOTHING
+                """);
+        seed.execute("""
+                INSERT INTO supply_targets (supply_row_id, target, supply_household_count, display_order, admin_modified)
+                VALUES (401, '청년', 10, 0, true), (501, '청년', 10, 0, false)
+                """);
+    }
+
     /**
      * 옛 구조의 공고 둘. 공고 1의 행 101은 대표 주택형 26A(11)와 함께 26B(12)·26C(13)를 가리키고, 대상 수와 함께 모집하는 수
      * 묶음(supply_target_count_groups)과 임대조건을 갖는다. 행 102와 공고 2의 행은 접히지 않았다.

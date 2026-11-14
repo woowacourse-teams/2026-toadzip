@@ -67,6 +67,8 @@ class GhSupplyRowWriter {
             fillAreas(stored, planned);
             return false;
         }
+        // 공급행을 지우면 칸이 cascade로 지워져 묶음·임대조건 멤버가 빠진다. 같은 트랜잭션에서 아래 replace가 공고의 묶음·임대조건을
+        // 다시 쓰므로 멤버 없는 묶음이 남지 않는다. 이 둘 사이에 커밋 경계를 두지 않는다.
         supplyRows.deleteAll(stored);
         entityManager.flush();
         List<SourceSupplySheet.Row> rows = new ArrayList<>();

@@ -76,6 +76,20 @@ describe('공고 공급표 검토', () => {
     expect(assembledSheet(chosen, workspace).quotas.map(quota => [quota.count, quota.members])).toEqual([[180, ['new:c0', 'new:c1']]])
   })
 
+  it('지금 공급대상과 소득 유무 표기만 다른 PDF 대상은 그 대상과 짝지어 대상·칸 ID를 지키고 지금 표기를 저장한다', () => {
+    const { review, workspace } = scenario('gwangju', undefined, extracted => {
+      const sheet = savedSheet(extracted, { id: 9, name: '광주' })
+      return { ...sheet, targets: sheet.targets.map(target => target.label === '청년 소득(×)' ? { ...target, label: '청년(소득 없음)' } : target) }
+    })
+    const current = workspace.supply.sheet, target = current.targets.find(item => item.label === '청년(소득 없음)')!
+    const cells = current.cells.filter(cell => cell.target === target.key).map(cell => [cell.key, cell.id])
+    expect(cells.length).toBeGreaterThan(1)
+    const sheet = assembledSheet(review, workspace)
+    expect(sheet.targets.find(item => item.key === target.key)).toMatchObject({ id: target.id, label: '청년(소득 없음)' })
+    expect(sheet.targets.filter(item => item.label === '청년 소득(×)')).toEqual([])
+    expect(sheet.cells.filter(cell => cell.target === target.key && cell.id !== null).map(cell => [cell.key, cell.id])).toEqual(cells)
+  })
+
   it('공급대상 이름을 읽지 못하면 그 대상을 쓰는 첫 칸으로 보내 저장을 막고, 이름을 넣으면 풀린다', () => {
     const extraction = structuredClone(fixtures.hansville.extraction)
     extraction.data.supplySheet.targets[0].label = ''
