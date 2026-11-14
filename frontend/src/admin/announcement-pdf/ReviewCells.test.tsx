@@ -2,9 +2,16 @@ import { useState } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { ReviewCells } from './ReviewCells'
-import { daegu, scenario } from './fixtures/workspace'
+import { daegu, extractionOf, savedSheet, scenario, sheetResponse } from './fixtures/workspace'
 import { createReview, type Cell } from './review'
 
+/** 목록 모집수와 달라 워커가 미확인으로 남긴 대구 051.9800A 모집수 칸 */
+function unresolvedCount() {
+  const { workspace, housing } = daegu()
+  const response = sheetResponse('대구테크노폴리스4', [{ name: '051.9800A', area: 51.98, count: 200 }])
+  ;(response.data.supplySheet.unresolvedFields as { path: string; reason: string }[]).push({ path: 'quotas[0].count', reason: '목록 모집수 240과 다름' })
+  return createReview(extractionOf(response), workspace, housing).rows[0].cells.find(item => item.field === 'count')!
+}
 function renderCell(initial: Cell, needs?: Map<string, string>) {
   const changed = vi.fn()
   function Test() {
@@ -15,14 +22,19 @@ function renderCell(initial: Cell, needs?: Map<string, string>) {
   return changed
 }
 it('기본은 값을 비교하고 직접 수정을 선택할 때만 입력칸을 연다', () => {
-  const cell = scenario('gongju').review.rows[0].cells.find(item => item.field === 'sourceHousingTypeName')!
+  // 지금 주택형 표기 '26형'을 공고문 표기 '26'으로 고치는 칸
+  const cell = scenario('gongju', undefined, extracted => {
+    const sheet = savedSheet(extracted, { id: 2467, name: '공주옥룡1' })
+    sheet.housingTypes[0] = { ...sheet.housingTypes[0], name: '26형' }
+    return sheet
+  }).review.rows[0].cells.find(item => item.field === 'name')!
   const changed = renderCell(cell)
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'PDF 추출값 사용' })).toHaveAttribute('aria-pressed', 'true')
   fireEvent.click(screen.getByRole('button', { name: '기존 값 사용' }))
   expect(changed.mock.lastCall?.[0]).toMatchObject({ selected: false, mode: 'keep' })
   fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
-  const field = screen.getByRole('textbox', { name: '공급정보 이 공고의 주택형 표기 수정' })
+  const field = screen.getByRole('textbox', { name: '공급정보 주택형 수정' })
   fireEvent.change(field, { target: { value: '26 관리자 보정' } })
   fireEvent.click(screen.getByRole('button', { name: 'PDF 추출값 사용' }))
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
@@ -43,17 +55,11 @@ it('PDF에서 미확인한 면적도 관리자가 입력하고 잘못된 값은 
   fireEvent.change(field, { target: { value: '39.84' } })
   expect(changed.mock.lastCall?.[0]).toMatchObject({ selected: true, value: 39.84, mode: 'manual', extracted: { value: null } })
 })
-it('저장된 공통 모집 묶음이 관리하는 모집수에는 불필요한 입력칸이나 값 선택을 만들지 않는다', () => {
-  const { review, workspace, housing } = scenario('gongju')
-  workspace.supply.rows[0].groupId = 3
-  // 이 PDF 행에 합쳐지지 않는 다른 면적 행이 같은 묶음에 남아 있어 묶음 모집수를 그대로 둔다.
-  workspace.supply.rows.push({ ...workspace.supply.rows[0], id: 777, key: 'row:777', complexName: '다른 공고 단지', typeName: '84', exclusiveArea: 84.99, housingTypeId: null, groupId: 3 })
-  const cell = createReview(review.extraction, workspace, housing).rows[0].cells.find(item => item.field === 'totalSupplyHouseholdCount')!
+it('다른 주택형과 함께 모집하는 수라 주택형만의 모집수가 없는 칸에는 입력칸이나 값 선택을 만들지 않고 까닭을 보인다', () => {
+  const cell = scenario('hansville').review.rows[0].cells.find(item => item.field === 'count')!
   renderCell(cell)
-  // 지금 값과 같아 접힌 칸을 펼친다.
   fireEvent.click(screen.getByRole('button', { name: '같음·해당 없음 1개 보기' }))
-  expect(screen.getByText('공통 모집수는 묶음에 한 번만 기록합니다.')).toBeVisible()
-  expect(screen.queryByRole('group')).not.toBeInTheDocument()
+  expect(screen.getByText(/다른 주택형과 함께 모집하는 수라/)).toBeVisible()
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 })
 
@@ -70,18 +76,18 @@ it('현재 연결 주택타입이 비어 있으면 기존 값 선택을 저장�
   expect(screen.queryByText('추가 안 함')).not.toBeInTheDocument()
 })
 
-it('저장 위치를 다른 단지 행으로 옮겨 그 단지에 없는 주택형이 남으면 번호 대신 이름과 다른 단지 표시를 보인다', () => {
+it('연결 주택타입이 정한 단지에 없으면 번호 대신 이름과 다른 단지 표시를 보인다', () => {
   const { review, housing } = daegu()
   const base = review.rows[0].cells.find(item => item.field === 'housingTypeId')!
   const type = { ...base, value: 501, state: 'new' as const, extracted: { ...base.extracted, value: 501, state: 'new' as const }, before: null, mode: 'extracted' as const, selected: true }
-  render(<ReviewCells cells={[type]} scope="공급행 1" housingTypes={[]} otherHousingTypes={Object.values(housing).flat()} onChange={() => {}} onEvidence={() => {}} />)
+  render(<ReviewCells cells={[type]} scope="주택형 1" housingTypes={[]} otherHousingTypes={Object.values(housing).flat()} onChange={() => {}} onEvidence={() => {}} />)
   expect(type.extracted.value).toBe(501)
   expect(screen.getAllByText('51A · 전용 51.98㎡ · 공급 72.1㎡ · 468세대 · 다른 단지').length).toBeGreaterThan(0)
   expect(screen.queryByText('#501')).not.toBeInTheDocument()
 })
 
 it('근거 없는 추출값은 고를 수 없는 이유를 칸 옆에 두고, 추출값을 채운 직접 입력으로 바꾼 뒤 모드를 바꿔도 추출 원본과 직접 입력을 지킨다', () => {
-  const counted = daegu({ unresolvedCount: true }).review.rows[0].cells.find(item => item.field === 'totalSupplyHouseholdCount')!
+  const counted = unresolvedCount()
   const cell: Cell = { ...counted, before: 240, evidence: null, state: 'unresolved', note: '목록 모집수 240과 다름', extracted: { ...counted.extracted, state: 'unresolved' }, mode: 'keep', selected: false }
   const changed = renderCell(cell)
   expect(screen.getByRole('button', { name: 'PDF 추출값 사용' })).toBeDisabled()
@@ -97,7 +103,7 @@ it('근거 없는 추출값은 고를 수 없는 이유를 칸 옆에 두고, �
 })
 
 it('목록 모집수와 다르다는 참고는 막지 않고 근거가 있는 PDF 추출값을 고를 수 있으며 참고를 칸 옆에 보인다', () => {
-  const cell = daegu({ unresolvedCount: true }).review.rows[0].cells.find(item => item.field === 'totalSupplyHouseholdCount')!
+  const cell = unresolvedCount()
   const changed = renderCell(cell)
   expect(screen.getByText('참고: 목록 모집수 240과 다름')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'PDF 추출값 사용' }))

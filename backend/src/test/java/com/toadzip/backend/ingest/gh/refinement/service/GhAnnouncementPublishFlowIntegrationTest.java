@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -143,21 +144,23 @@ class GhAnnouncementPublishFlowIntegrationTest {
     }
 
     @Test
-    void GH_공급행_틀은_작업실에_GH_원천_행_키를_함께_내보낸다() throws Exception {
+    void GH_공고_작업실은_수집한_단지별_주택형_줄을_검산_참고로_내보낸다() throws Exception {
         collect(ROW);
         owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         long id = announcementId();
 
         var workspace = data("/api/admin/announcements/" + id + "/supply-corrections");
 
-        var keys = new ArrayList<String>();
-        workspace.path("rows").forEach(row -> keys.add(row.path("key").asText()));
-        var sources = new ArrayList<List<String>>();
-        workspace.path("rowSources").forEach(source -> sources.add(List.of(source.path("rowKey").asText(),
-                source.path("category").asText(), source.path("sourceKey").asText())));
-        assertThat(sources).containsExactly(
-                List.of(keys.get(0), "GH_ANNOUNCEMENT", "GH:801:다산 센트럴파크6단지:33A"),
-                List.of(keys.get(1), "GH_ANNOUNCEMENT", "GH:801:다산 센트럴파크6단지:36A"));
+        assertThat(workspace.path("sheet").path("housingTypes")).hasSize(2);
+        var references = new ArrayList<List<String>>();
+        workspace.path("sourceReference").forEach(reference -> references.add(List.of(
+                reference.path("complexLabel").asText(), reference.path("typeName").asText(),
+                reference.path("exclusiveArea").asText(), reference.path("householdCount").asText())));
+        assertThat(references).hasSize(2);
+        assertThat(references.get(0)).containsExactly("다산 센트럴파크6단지", references.get(0).get(1), "33.71", "120");
+        assertThat(references.get(0).get(1)).contains("33A");
+        assertThat(references.get(1)).containsExactly("다산 센트럴파크6단지", references.get(1).get(1), "36.8", "60");
+        assertThat(references.get(1).get(1)).contains("36A");
     }
 
     private long complex(String name) {
@@ -223,7 +226,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
         correction.put("reason", "공식 공고문에서 확인");
         correction.put("sourceUrl", "https://example.com/notice");
         correction.putNull("sourcePage");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
+        correction.set("sheet", SupplySheetInputs.json(state.path("supply").path("sheet")));
         return request;
     }
 

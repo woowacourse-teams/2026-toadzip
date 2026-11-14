@@ -6,8 +6,6 @@ import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
-import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
-import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.service.AdminAnnouncementManagementService;
 import com.toadzip.backend.global.response.ApiResponse;
@@ -83,22 +81,4 @@ public class AdminAnnouncementManagementController {
             @RequestParam(defaultValue = "0") @Min(0) int page) {
         return new ApiResponse<>(service.history(id, page));
     }
-
-    @PutMapping("/{id}/supply-targets/{targetId}")
-    public ApiResponse<AdminAnnouncementDetail> updateTarget(@PathVariable long id, @PathVariable long targetId,
-            @Valid @RequestBody AdminSupplyTargetUpdateRequest request, Principal principal) {
-        try (var lease = ownership.acquire()) {
-            return new ApiResponse<>(service.updateTarget(id, targetId, request, principal.getName()));
-        }
-    }
-
-    @PutMapping("/{id}/supply-rows/{rowId}")
-    public ApiResponse<AdminAnnouncementDetail> updateRow(@PathVariable long id, @PathVariable long rowId,
-            @Valid @RequestBody AdminSupplyRowUpdateRequest request,
-            Principal principal) {
-        try (var lease = ownership.acquire()) {
-            return new ApiResponse<>(service.updateRow(id, rowId, request, principal.getName()));
-        }
-    }
-
 }

@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementDetail } from './ManagementDetail'
 import type { ManagementDetailData } from './managementContract'
+import { sampleSheet } from '../supply/fixtures/sheet'
 
 const api = vi.hoisted(() => ({ getManagementDetail: vi.fn(), getManagementHistory: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...api }))
@@ -10,7 +11,7 @@ vi.mock('../supply/SupplyCorrectionWorkbench', () => ({ SupplyCorrectionWorkbenc
 vi.mock('../quality/QualityComparisonPanel', () => ({ QualityComparisonPanel: () => <section aria-label="공고 원천 비교 내용">수집값 확인</section> }))
 const detail: ManagementDetailData = { summary: { id: 7, name: '검토 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING',
   deleted: false, modified: false, reviewRequired: false, updatedAt: null }, sourceIdentifier: 'source', data: { version: 1, name: '검토 단지' },
-  housingTypes: [], announcements: [], supplyRows: [], scheduleReviewed: false, schedules: [] }
+  housingTypes: [], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, scheduleReviewed: false, schedules: [] }
 beforeEach(() => {
   vi.resetAllMocks()
   api.getManagementDetail.mockResolvedValue(detail)
@@ -71,9 +72,8 @@ it('폐기한 JSON 갱신 주소는 공고 기본정보로 이동한다', async 
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('provider=LH')
 })
 
-it('함께 모집하는 공급행이 있어도 지원 종료한 원천별 공급행 보정 없이 공급정보 편집표만 연다', async () => {
-  const announcement = { ...detail, summary: { ...detail.summary, name: '검토 공고' },
-    supplyRows: [{ id: 1, sharedRecruitment: { id: 3, householdCount: 10 } }] } as unknown as ManagementDetailData
+it('여러 주택형이 함께 쓰는 수가 있어도 공급정보 편집표만 연다', async () => {
+  const announcement: ManagementDetailData = { ...detail, summary: { ...detail.summary, name: '검토 공고' }, supplySheet: sampleSheet() }
   api.getManagementDetail.mockResolvedValue(announcement)
   show('/admin/announcements/7?section=relations')
   expect(await screen.findByRole('region', { name: '공급정보 편집표' })).toBeVisible()

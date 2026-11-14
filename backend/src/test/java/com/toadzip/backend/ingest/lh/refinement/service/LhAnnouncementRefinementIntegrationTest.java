@@ -22,6 +22,8 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyOwner;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
+import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
@@ -168,17 +170,14 @@ class LhAnnouncementRefinementIntegrationTest {
         });
         // 공고일이 7일 안인 새 공고만 새 공고 알림을 요청한다.
         verify(outbox).appendNewAnnouncement(any(Announcement.class));
-        // LH 행 수(3)와 공급행 수(2)가 달라도 모든 LH 행이 같은 신청형 공급행에 붙어 '붙지 않은 LH 행'이 없다.
+        // LH 행 수(3)와 주택형 수(2)가 달라도 작업실은 원천 행을 저장하지 않고 검산용 참고로 모두 보인다.
         boolean comparisonTables = ensureComparisonTables();
         try {
             var workspace = supplyCorrections.workspace(id);
-            assertThat(workspace.unattachedLhSupplyRows()).isEmpty();
-            assertThat(workspace.lhSupplyRows()).extracting(SupplyCorrection.LhSupplyRow::rowIdentifier,
-                    SupplyCorrection.LhSupplyRow::typeName).containsExactly(tuple("LH:P1:SUPPLY:0", "59A(청년)"),
-                    tuple("LH:P1:SUPPLY:1", "46A"), tuple("LH:P1:SUPPLY:2", "59A(고령자)"));
-            String area59Key = workspace.lhSupplyRows().getFirst().attachedRowKey();
-            assertThat(workspace.lhSupplyRows().getLast().attachedRowKey()).isEqualTo(area59Key);
-            assertThat(workspace.rowSources()).filteredOn(source -> source.rowKey().equals(area59Key)).hasSize(2);
+            assertThat(workspace.sheet().housingTypes()).hasSize(2);
+            assertThat(workspace.sourceReference()).extracting(SupplyCorrection.SourceReference::typeName,
+                    SupplyCorrection.SourceReference::householdCount)
+                    .containsExactly(tuple("59A(청년)", 10), tuple("46A", 3), tuple("59A(고령자)", 4));
         } finally {
             if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
         }
@@ -510,7 +509,7 @@ class LhAnnouncementRefinementIntegrationTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void 정제_뒤_늘어난_다른_면적의_LH_공급_원천_행만_붙지_않은_LH_행으로_알리고_공고문_소유_공고는_알리지_않는다() throws Exception {
+    void 정제_뒤_늘어난_LH_공급_원천_행은_작업실_참고에만_보이고_저장을_막지_않는다() throws Exception {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
@@ -518,9 +517,10 @@ class LhAnnouncementRefinementIntegrationTest {
         boolean comparisonTables = ensureComparisonTables();
         try {
             long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
-            assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
-            // 공급행의 원천 단지명이 공고 단지 이름이다. 화면은 이 주소로 PDF 단지를 공고 단지에 대응한다.
-            assertThat(supplyCorrections.workspace(id).announcementComplexes()).singleElement().satisfies(view -> {
+            var before = supplyCorrections.workspace(id);
+            assertThat(before.sourceReference()).extracting(SupplyCorrection.SourceReference::typeName).containsExactly("59A");
+            // 주택형의 원천 단지명이 공고 단지 이름이다. 화면은 이 주소로 PDF 단지를 공고 단지에 대응한다.
+            assertThat(before.announcementComplexes()).singleElement().satisfies(view -> {
                 assertThat(view.name()).isEqualTo("동탄 행복주택 단지");
                 assertThat(view.roadAddress()).isEqualTo(ADDRESS);
             });
@@ -529,21 +529,19 @@ class LhAnnouncementRefinementIntegrationTest {
                     supply("동탄 행복주택 단지", "84A", "84.9600", "2", "40000000", "300000"));
 
             var workspace = supplyCorrections.workspace(id);
-            assertThat(workspace.unattachedLhSupplyRows()).singleElement().satisfies(row -> {
-                assertThat(row.rowIdentifier()).isEqualTo(LhSourceIdentifier.supply("P1", 1));
-                assertThat(row.typeName()).isEqualTo("84A");
-            });
-            // 붙지 않은 LH 행은 정보일 뿐이다. 새 공급행을 추가하는 미리보기는 그 LH 행을 경고하지 않는다.
-            var first = workspace.rows().getFirst();
-            var added = new SupplyCorrection.Row(null, "new-84", first.housingComplexId(), first.housingComplexName(),
-                    null, null, null, null, false, false, 9, first.complexName(), "84A", null, null, first.category(), 2,
-                    false, null, null, List.of(), false, null);
+            assertThat(workspace.sourceReference()).extracting(SupplyCorrection.SourceReference::typeName,
+                    SupplyCorrection.SourceReference::exclusiveArea, SupplyCorrection.SourceReference::householdCount)
+                    .containsExactly(tuple("59A", new BigDecimal("59.98"), 10), tuple("84A", new BigDecimal("84.96"), 2));
+            // 원천 참고 행도 토큰에 들어가 원천이 바뀌기 전에 본 작업실로는 저장하지 못한다.
+            assertThat(workspace.snapshotToken()).isNotEqualTo(before.snapshotToken());
+            // 원천 참고 행은 정보일 뿐이다. 새 주택형을 추가하는 미리보기는 원천 행을 경고하지 않는다.
+            var first = workspace.sheet().housingTypes().getFirst();
+            var added = SupplySheetInputs.newHousingType("new:84", first.announcementComplexId(), first.complexName(),
+                    null, "84A", null, 9);
             var request = new SupplyCorrection.Request(UUID.randomUUID(), workspace.snapshotToken(), "공고문 확인",
-                    "https://example.com/notice", null, List.of(first, added));
+                    "https://example.com/notice", null, SupplySheetInputs.plus(SupplySheetInputs.of(workspace.sheet()), added));
             var preview = supplyCorrections.preview(id, request);
             assertThat(preview.warnings()).noneMatch(warning -> warning.contains("LH"));
-            jdbc.sql("UPDATE announcements SET supply_owner = 'ANNOUNCEMENT_DOCUMENT' WHERE id = :id").param("id", id).update();
-            assertThat(supplyCorrections.workspace(id).unattachedLhSupplyRows()).isEmpty();
         } finally {
             if (comparisonTables) { jdbc.sql("DROP TABLE admin_comparison_checks, admin_comparison_sources").update(); }
         }
@@ -581,7 +579,7 @@ class LhAnnouncementRefinementIntegrationTest {
             var confirmed = supplyCorrections.linkAnnouncementComplex(id, view.id(),
                     new SupplyCorrection.ComplexLinkRequest(before.snapshotToken(), complex.getId()), "operator");
             assertThat(confirmed.announcementComplexes().getFirst().linkMethod()).isEqualTo("ADMIN");
-            assertThat(confirmed.rows()).extracting(SupplyCorrection.Row::housingTypeId).contains(area59.getId());
+            assertThat(confirmed.sheet().housingTypes()).extracting(SupplySheetView.HousingType::housingTypeId).contains(area59.getId());
             // 공급행이 그대로여도 연결이 바뀌었으므로 확인 전에 받은 토큰으로는 더 바꾸지 못한다.
             assertThatThrownBy(() -> supplyCorrections.linkAnnouncementComplex(id, view.id(),
                     new SupplyCorrection.ComplexLinkRequest(before.snapshotToken(), other.getId()), "operator")).isInstanceOf(AdminDataStaleException.class);
@@ -601,7 +599,8 @@ class LhAnnouncementRefinementIntegrationTest {
                 assertThat(changed.housingComplexId()).isEqualTo(other.getId());
                 assertThat(changed.housingComplexName()).isEqualTo("동탄 행복주택 2단지");
             });
-            assertThat(after.rows()).extracting(SupplyCorrection.Row::housingComplexId, SupplyCorrection.Row::housingTypeId)
+            assertThat(after.sheet().housingTypes()).extracting(SupplySheetView.HousingType::housingComplexId,
+                    SupplySheetView.HousingType::housingTypeId)
                     .containsExactlyInAnyOrder(tuple(other.getId(), other59.getId()), tuple(other.getId(), other84.getId()));
             // 확인 한 번, 변경 한 번. 변경 이력에는 옮긴 공급행의 이전·이후 단지도 남는다.
             var history = jdbc.sql("SELECT before_value, after_value FROM admin_data_changes WHERE action = 'LINK_BY_ADMIN' AND actor = 'operator' "
@@ -612,7 +611,7 @@ class LhAnnouncementRefinementIntegrationTest {
             // 연결만 바꿨으므로 공급정보는 계속 LH 원천 소유이고, 다시 정제해도 관리자 연결과 옮긴 공급행이 유지된다.
             assertThat(announcements.findById(id).orElseThrow().suppliedByLh()).isTrue();
             refinement.refineAll();
-            assertThat(supplyCorrections.workspace(id).rows()).extracting(SupplyCorrection.Row::housingComplexId)
+            assertThat(supplyCorrections.workspace(id).sheet().housingTypes()).extracting(SupplySheetView.HousingType::housingComplexId)
                     .containsOnly(other.getId());
 
             long foreign = announcementComplexes.findAll().stream().filter(item -> !item.getAnnouncement().getId().equals(id))

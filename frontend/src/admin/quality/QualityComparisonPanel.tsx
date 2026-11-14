@@ -76,7 +76,7 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
   }
   // 공고 보정은 전용 편집 화면에서 처리하고, 이력에서는 수집값과 확인 기록만 다룬다.
   const readOnly = resource === 'announcements'
-  const editSearch = new URLSearchParams(params); editSearch.delete('comparison'); editSearch.set('section', /^(row|target):/.test(selection) ? 'relations' : 'info')
+  const editSearch = new URLSearchParams(params); editSearch.delete('comparison'); editSearch.set('section', /^cell:/.test(selection) ? 'relations' : 'info')
   const fields = target?.fields.map(field => ({ field, status: qualityComparisonStatus(field, snapshot?.sources ?? [], valueAt(target.current, field.name)) })) ?? []
   // 원천에 비교할 값이 하나도 없는 항목은 표 아래 한 묶음으로 접어, 비교할 수 있는 항목을 먼저 읽게 한다.
   const visibleFields = fields.filter(item => filter === 'all' ? item.status !== 'unavailable' : item.status === filter)
@@ -97,7 +97,7 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
     <header className={styles.toolbar}>{resource === 'complexes' && <h2>주택형 원천 비교·수정</h2>}
     <label>비교 대상<select value={selection} disabled={busy || loading} onChange={event => { if (!dirty || window.confirm('작성한 내용을 버리고 대상을 바꿀까요?')) { setSelection(event.target.value); setResults(null) } }}>{choices.map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
     <button disabled={busy || loading} onClick={() => { if (!dirty || window.confirm('미저장 입력을 버리고 다시 조회할까요?')) setAttempt(value => value + 1) }}>비교 다시 조회</button></header>
-    {readOnly ? <p className={styles.hint}>값 수정은 <Link to={`?${editSearch}`}>{/^(row|target):/.test(selection) ? '공급정보·단지 연결' : '기본정보 수정'}</Link> 또는 PDF로 보정에서 합니다.</p> : null}
+    {readOnly ? <p className={styles.hint}>값 수정은 <Link to={`?${editSearch}`}>{/^cell:/.test(selection) ? '공급정보·단지 연결' : '기본정보 수정'}</Link> 또는 PDF로 보정에서 합니다.</p> : null}
     {loading ? <p role="status">DB 원천을 불러오는 중…</p> : null}{error ? <p role="alert" className="registration-error">{error}</p> : null}{notice ? <p role="status" className="registration-success">{notice}</p> : null}
     {snapshot && target ? <fieldset disabled={busy || conflict || detail.summary.deleted} className="admin-verification-group">
       <details className={styles.connections}><summary>원천 검색·연결 · {snapshot.sources.length}개</summary>

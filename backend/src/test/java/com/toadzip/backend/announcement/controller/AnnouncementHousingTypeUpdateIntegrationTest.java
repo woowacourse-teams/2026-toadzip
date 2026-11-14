@@ -21,6 +21,7 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 
 /** PDF 보정 저장이 공고문의 주택형 이름·공급면적·세대수를 공급행이 고른 주택형에 반영하는지 확인한다. */
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -135,7 +137,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 같은_주택형을_고른_행들의_기본_임대조건이_다르면_지금_값을_유지한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36A", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+                "36B", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -212,7 +214,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 새로_만드는_주택형에는_공고_세대수를_넣고_보호하지_않는다() throws Exception {
         var request = request();
-        var input = (ObjectNode) request.path("correction").path("rows").get(0);
+        var input = firstType(request);
         input.putNull("housingTypeId");
         input.putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.9"))
                 .put("supplyArea", new BigDecimal("80.2"));
@@ -233,7 +235,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 한_주택형에_서로_다른_공고_값이_오면_그_필드만_지금_값을_유지한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36A", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+                "36B", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -255,7 +257,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 같은_주택형을_고른_행들이_함께_비운_값은_지금_값을_유지하고_나머지는_반영한다() throws Exception {
         var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36A", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
+                "36B", null, null, SupplyCategory.NEW_SUPPLY, null, 5);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -351,7 +353,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void 공급면적_없이_만드는_새_주택형에_세대수만_넣는다() throws Exception {
         var request = request();
-        var input = (ObjectNode) request.path("correction").path("rows").get(0);
+        var input = firstType(request);
         input.putNull("housingTypeId");
         input.putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.9"));
         value(request, input.path("key").asText(), null, null, 44);
@@ -381,7 +383,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     @Test
     void PNU_없는_공급행을_빈_칸으로_보내도_바뀐_공급행으로_보지_않는다() throws Exception {
         var request = request();
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("pnu", "");
+        firstType(request).put("supplyPnu", "");
         request.withArray("fields").add("name");
 
         var preview = preview(request);
@@ -391,14 +393,17 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
-    void 제외한_공급행에는_공고_값을_반영하지_않는다() throws Exception {
+    void 공급표에서_뺀_주택형에는_공고_값을_반영하지_않는다() throws Exception {
         var request = request();
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("excluded", true);
+        for (var name : java.util.List.of("housingTypes", "targets", "cells", "quotas", "leaseTerms")) {
+            sheet(request).withArray(name).removeAll();
+        }
         value(request, "row:" + row.getId(), "36A", null, 120);
 
         mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(request.toString()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("주택형이 없거나 중복")));
     }
 
     @Test
@@ -408,7 +413,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         trashed.moveToTrash();
         entities.flush();
         var request = request();
-        var input = (ObjectNode) request.path("correction").path("rows").get(0);
+        var input = firstType(request);
         input.putNull("housingTypeId");
         input.putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.90"));
 
@@ -426,17 +431,15 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
-    void 공급행이_함께_모집하는_주택형마다_공고_값을_따로_반영한다() throws Exception {
+    void 공급표의_주택형마다_공고_값을_따로_반영하고_새로_만드는_주택형에도_반영한다() throws Exception {
         var joint = HousingType.createFromMyHome(complex, "source-46", "46", new BigDecimal("46.5"), null);
         entities.persist(joint); entities.flush();
         var request = request();
-        var links = ((ObjectNode) request.path("correction").path("rows").get(0)).putArray("linkedHousingTypes");
-        links.addObject().put("housingTypeId", joint.getId());
-        links.addObject().putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.9"));
-        String key = "row:" + row.getId();
-        value(request, key, "36A", null, 120);
-        value(request, key, "46A", null, 30).put("linkedHousingTypeId", joint.getId());
-        value(request, key, "59A", null, 44).put("linkedNewHousingTypeArea", new BigDecimal("59.90"));
+        addType(request, "new:46", "46A", 1).put("housingTypeId", joint.getId());
+        addType(request, "new:59", "59A", 2).putObject("newHousingType").put("name", "59").put("exclusiveArea", new BigDecimal("59.9"));
+        value(request, "row:" + row.getId(), "36A", null, 120);
+        value(request, "new:46", "46A", null, 30);
+        value(request, "new:59", "59A", null, 44);
 
         var preview = preview(request);
         assertThat(preview.path("housingTypes")).hasSize(3);
@@ -447,28 +450,18 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
                 .containsExactly("36A", 120);
         assertThat(entities.find(HousingType.class, joint.getId())).extracting(HousingType::getName, HousingType::getTotalHouseholdCount)
                 .containsExactly("46A", 30);
-        var created = entities.find(SupplyRow.class, row.getId()).getHousingTypes().stream()
-                .filter(linked -> linked.getExclusiveArea().compareTo(new BigDecimal("59.9")) == 0).findFirst().orElseThrow();
-        assertThat(created).extracting(HousingType::getName, HousingType::getTotalHouseholdCount).containsExactly("59A", 44);
+        assertThat(typesNamed("59A")).extracting(HousingType::getExclusiveArea, HousingType::getTotalHouseholdCount)
+                .containsExactly(tuple(new BigDecimal("59.9000"), 44));
     }
 
     @Test
-    void 같은_면적의_새_주택형_여럿에는_이름으로_공고_값을_따로_반영하고_이름이_없으면_거절한다() throws Exception {
+    void 같은_면적의_새_주택형_여럿에는_주택형마다_공고_값을_따로_반영한다() throws Exception {
         var request = request();
-        String key = "row:" + row.getId();
-        var links = ((ObjectNode) request.path("correction").path("rows").get(0)).putArray("linkedHousingTypes");
-        links.addObject().putObject("newHousingType").put("name", "59A1").put("exclusiveArea", new BigDecimal("59.9"));
-        links.addObject().putObject("newHousingType").put("name", "59C").put("exclusiveArea", new BigDecimal("59.9"));
-        value(request, key, null, "81.1", 10).put("linkedNewHousingTypeArea", new BigDecimal("59.9"));
+        addType(request, "new:a", "59A1", 1).putObject("newHousingType").put("name", "59A1").put("exclusiveArea", new BigDecimal("59.9"));
+        addType(request, "new:c", "59C", 2).putObject("newHousingType").put("name", "59C").put("exclusiveArea", new BigDecimal("59.9"));
+        value(request, "new:a", null, "81.1", 10);
+        value(request, "new:c", null, "82.2", 20);
 
-        mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(request.toString()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("linkedNewHousingTypeName")));
-
-        request.withArray("housingTypeValues").removeAll();
-        value(request, key, null, "81.1", 10).put("linkedNewHousingTypeArea", new BigDecimal("59.9")).put("linkedNewHousingTypeName", "59A1");
-        value(request, key, null, "82.2", 20).put("linkedNewHousingTypeArea", new BigDecimal("59.9")).put("linkedNewHousingTypeName", "59C");
         var preview = preview(request);
         apply(request, preview).andExpect(status().isOk());
         entities.flush(); entities.clear();
@@ -479,15 +472,13 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
     }
 
     @Test
-    void 공급행이_함께_모집하지_않는_주택형이나_같은_주택형에_두_번_보낸_공고_값은_거절한다() throws Exception {
-        var joint = HousingType.createFromMyHome(complex, "source-46", "46", new BigDecimal("46.5"), null);
-        entities.persist(joint); entities.flush();
+    void 공급표에_없는_주택형이나_같은_주택형에_두_번_보낸_공고_값은_거절한다() throws Exception {
         var request = request();
-        value(request, "row:" + row.getId(), "46A", null, 30).put("linkedHousingTypeId", joint.getId());
+        value(request, "new:missing", "46A", null, 30);
         mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(request.toString()))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("함께 모집하지 않습니다")));
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("주택형이 없거나 중복")));
 
         var duplicate = request();
         value(duplicate, "row:" + row.getId(), "36A", null, 120);
@@ -498,21 +489,27 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("중복")));
     }
 
-    @Test
-    void 함께_모집하는_주택형을_생략한_공급행은_바뀐_공급행으로_보지_않고_연결을_유지한다() throws Exception {
-        var joint = HousingType.createFromMyHome(complex, "source-46", "46", new BigDecimal("46.5"), null);
-        entities.persist(joint); entities.flush();
-        jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
-        entities.clear();
-        var request = request();
-        ((ObjectNode) request.path("correction").path("rows").get(0)).remove("linkedHousingTypes");
-        request.withArray("fields").add("name");
+    private ObjectNode sheet(ObjectNode request) {
+        return (ObjectNode) request.path("correction").path("sheet");
+    }
 
-        var preview = preview(request);
-        assertThat(preview.path("supply").isNull()).isTrue();
-        apply(request, preview).andExpect(status().isOk());
-        assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
-                row.getId())).containsExactlyInAnyOrder(type.getId(), joint.getId());
+    private ObjectNode firstType(ObjectNode request) {
+        return (ObjectNode) sheet(request).path("housingTypes").get(0);
+    }
+
+    /** 첫 주택형과 같은 단지에 새 주택형 줄을 더한다. */
+    private ObjectNode addType(ObjectNode request, String key, String name, int displayOrder) {
+        var first = firstType(request);
+        var added = sheet(request).withArray("housingTypes").addObject().put("key", key).put("complexName",
+                first.path("complexName").asText()).put("housingComplexId", complex.getId()).put("name", name)
+                .put("category", "NEW_SUPPLY").put("displayOrder", displayOrder);
+        added.putNull("id");
+        return added;
+    }
+
+    private List<HousingType> typesNamed(String name) {
+        return entities.createQuery("SELECT t FROM HousingType t WHERE t.housingComplex.id = :complex AND t.name = :name",
+                HousingType.class).setParameter("complex", complex.getId()).setParameter("name", name).getResultList();
     }
 
     private String root() {
@@ -536,7 +533,7 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         correction.put("reason", "공식 공고문에서 확인");
         correction.put("sourceUrl", "https://example.com/notice");
         correction.putNull("sourcePage");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
+        correction.set("sheet", SupplySheetInputs.json(state.path("supply").path("sheet")));
         request.putArray("housingTypeValues");
         return request;
     }

@@ -42,7 +42,9 @@ export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:Mana
       .catch(() => { if (!controller.signal.aborted) { setEvents(null); setEventsError('수집·PDF 일정을 불러오지 못했습니다.') } })
     return () => controller.abort()
   }, [id, value.data.version])
-  const drafts = events ? confirmedSchedulesFromEvents(events, value.supplyRows) : []
+  // 공급표 주택형의 공고 단지명·연결 단지로 일정의 단지를 맞춘다.
+  const supplyComplexes = value.supplySheet.housingTypes.map(type => ({ housingComplexId: type.housingComplexId, housingComplexName: type.housingComplexName, sourceComplexName: type.complexName }))
+  const drafts = events ? confirmedSchedulesFromEvents(events, supplyComplexes) : []
   const originalUrl = typeof value.data.originalUrl === 'string' && /^https?:\/\/\S+$/.test(value.data.originalUrl) ? value.data.originalUrl : ''
   // 확정한 일정이 없으면 수집·PDF 접수 일정을 공고문 URL을 근거로 바로 저장한다. 고칠 일이 있으면 저장 뒤 직접 입력에서 고친다.
   function confirmDrafts() {
@@ -52,7 +54,7 @@ export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:Mana
       .then(() => getManagementDetail('announcements', id)).then(onSaved)
       .catch(cause => setError(cause instanceof Error ? cause.message : '접수 일정을 확정하지 못했습니다.')).finally(() => setBusy(false))
   }
-  const complexes = Array.from(new Map(value.supplyRows.filter(r => r.housingComplexId !== null).map(r => [r.housingComplexId,r])).values())
+  const complexes = Array.from(new Map(supplyComplexes.filter(r => r.housingComplexId !== null).map(r => [r.housingComplexId,r])).values())
   function startEditing(fromEvents?: ManagementValues[]) {
     const next = fromEvents?.length ? fromEvents.map(row => ({ ...row, sourceUrl: value.data.originalUrl, sourcePage: null })) : value.schedules.length ? value.schedules : [{
       housingComplexId: null, supplyRank: null, state: 'CONFIRMED', condition: null,

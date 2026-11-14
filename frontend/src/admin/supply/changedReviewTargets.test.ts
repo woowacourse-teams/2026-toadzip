@@ -1,18 +1,20 @@
 import { expect, it } from 'vitest'
-import { blankRow, blankTarget, type CorrectionRow } from './supplyCorrectionApi'
+import { sampleSheet } from './fixtures/sheet'
 import { changedReviewTargets } from './changedReviewTargets'
+import { addCell, setLeaseAmount, setMembersCount, updateHousingType } from './sheetEdits'
 
-const target = { ...blankTarget(0), id: 2, key: 'target:2', target: '일반' }
-const row: CorrectionRow = { ...blankRow(0), id: 1, key: 'row:1', typeName: '26', targets: [target] }
-const other: CorrectionRow = { ...blankRow(1), id: 3, key: 'row:3', typeName: '36', targets: [] }
-
-it('적용 전후 작업실에서 바뀐 행과 조건만 표시 순서대로 고른다', () => {
-  const after = [{ ...row, targets: [{ ...target, rent: '200000' }] }, { ...other, typeName: '36A' }]
-  expect(changedReviewTargets([row, other], after)).toEqual(['target:2', 'row:3'])
+it('적용 전후 공급표에서 바뀐 주택형과 칸만 표시 순서대로 고른다', () => {
+  const before = sampleSheet()
+  // 46A·59B가 함께 쓰는 임대조건은 46A 두 칸에 걸쳐 있어 두 칸 모두 바뀐다. 59B는 주택형 표기만 바뀐다.
+  const after = updateHousingType(setLeaseAmount(before, 'cell:1', 'monthlyRent', '60000'), 'row:2', { name: '59B(신혼)' })
+  expect(changedReviewTargets(before, after)).toEqual(['cell:1', 'cell:2', 'row:2'])
+  expect(changedReviewTargets(before, setMembersCount(before, ['cell:3'], 'RESERVE', 2))).toEqual(['cell:3'])
 })
 
-it('새로 생긴 행은 행과 하위 조건을 모두 고르고, 바뀌지 않으면 빈 목록이다', () => {
-  const added: CorrectionRow = { ...blankRow(2), id: 5, key: 'row:5', targets: [{ ...blankTarget(0), id: 6, key: 'target:6' }] }
-  expect(changedReviewTargets([row], [row, added])).toEqual(['row:5', 'target:6'])
-  expect(changedReviewTargets([row, other], [row, other])).toEqual([])
+it('새 칸은 칸 키로 고르고, 보호 표시만 바뀌었거나 바뀐 것이 없으면 빈 목록이다', () => {
+  const before = sampleSheet()
+  const added = addCell(before, 'row:2')
+  expect(changedReviewTargets(before, added)).toEqual([added.cells.at(-1)!.key])
+  expect(changedReviewTargets(before, updateHousingType(before, 'row:1', { adminModified: true }))).toEqual([])
+  expect(changedReviewTargets(before, sampleSheet())).toEqual([])
 })

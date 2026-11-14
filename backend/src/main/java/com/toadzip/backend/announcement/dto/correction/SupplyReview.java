@@ -16,8 +16,9 @@ public final class SupplyReview {
     private SupplyReview() { }
     public record SourceScope(@NotNull IngestSourceCategory category, @NotBlank String sourceKey,
             @NotEmpty @Size(max = 100) List<@NotBlank String> fields) { }
+    /** target은 공고 주택형 "row:{id}"나 칸 "cell:{id}"다. sources는 원천 근거이고 비워 보내도 된다. */
     public record Request(@NotBlank String snapshotToken,
-            @NotBlank @Pattern(regexp = "(?:row|target):[1-9][0-9]*") String target,
+            @NotBlank @Pattern(regexp = "(?:row|cell):[1-9][0-9]{0,17}") String target,
             @NotEmpty @Size(max = 30) List<@NotBlank String> fields,
             @NotBlank @Pattern(regexp = "VERIFIED|ON_HOLD") String outcome,
             @NotBlank @Size(max = 2000) String note,

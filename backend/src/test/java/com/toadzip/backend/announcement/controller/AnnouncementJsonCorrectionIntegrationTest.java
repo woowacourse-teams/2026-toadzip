@@ -16,6 +16,7 @@ import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -28,8 +29,6 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -70,30 +69,31 @@ class AnnouncementJsonCorrectionIntegrationTest {
         long id = announcement.getId();
         String identifier = announcement.getSourceAnnouncementIdentifier();
         var request = request(id);
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("householdCount", 3);
-        var row = (ObjectNode) request.path("correction").path("rows").get(0);
-        row.put("areaOverride", true).put("exclusiveArea", 36.5).put("supplyArea", 49.8);
+        ((ObjectNode) sheet(request).get("quotas").get(0)).put("count", 3);
+        ((ObjectNode) sheet(request).get("housingTypes").get(0)).put("exclusiveArea", 36.5).put("supplyArea", 49.8);
         var preview = preview(id, request);
         assertThat(announcement.getName()).isNotEqualTo("JSON으로 확인한 공고");
-        assertThat(jdbc.queryForObject("SELECT total_supply_household_count FROM supply_rows WHERE announcement_id=?",
-                Integer.class, id)).isEqualTo(10);
+        assertThat(winnerCounts(id)).containsExactly(10);
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.detail.data.name").value("JSON으로 확인한 공고"));
         entities.clear();
         var stored = entities.find(Announcement.class, id);
         assertThat(stored.getSourceAnnouncementIdentifier()).isEqualTo(identifier);
         assertThat(stored.getOriginalUrl()).isEqualTo(announcement.getOriginalUrl());
-        assertThat(jdbc.queryForObject("SELECT total_supply_household_count FROM supply_rows WHERE announcement_id=?",
-                Integer.class, id)).isEqualTo(3);
+        assertThat(winnerCounts(id)).containsExactly(3);
         assertThat(jdbc.queryForObject("SELECT announcement_exclusive_area FROM supply_rows WHERE announcement_id=?",
                 BigDecimal.class, id)).isEqualByComparingTo("36.5");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcements", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
-        // 공급행·기본정보 변경을 함께 저장해도 이력은 한 건이고, 작업 번호는 그 이력에 연결된다.
+        // 공급표·기본정보 변경을 함께 저장해도 이력은 한 건이고, 작업 번호는 그 이력에 연결된다.
         assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id=?", String.class, id))
                 .containsExactly("CORRECT_FROM_PDF");
         assertThat(jdbc.queryForObject("SELECT change_id FROM admin_supply_corrections WHERE announcement_id=?", Long.class, id))
                 .isEqualTo(jdbc.queryForObject("SELECT id FROM admin_data_changes WHERE resource_id=?", Long.class, id));
+        var history = json.readTree(jdbc.queryForObject("SELECT after_value FROM admin_data_changes WHERE resource_id=?",
+                String.class, id));
+        assertThat(history.path("sheet").path("quotas").get(0).path("count").asInt()).isEqualTo(3);
+        assertThat(history.has("rows")).isFalse();
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isConflict());
     }
 
@@ -115,7 +115,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
                     row[1], owner, row[2]);
         }
         var request = request(id);
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("householdCount", 3);
+        ((ObjectNode) sheet(request).get("quotas").get(0)).put("count", 3);
         apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
         entities.flush();
 
@@ -136,30 +136,6 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 UNION ALL
                 SELECT status FROM lh_announcement_enrichment_failures WHERE source_announcement_identifier = 'other'
                 """, String.class)).containsOnly("PENDING").hasSize(2);
-    }
-
-    @Test
-    void 함께_모집하는_주택형을_순서만_바꿔_보내면_공급행을_바꾼_요청으로_보지_않는다() throws Exception {
-        var fixtures = new NotificationFixtures(entities, jdbc);
-        var announcement = fixtures.announcement();
-        var complex = fixtures.complex("11140", "1114010100");
-        var representative = type(complex, "26A", "26.4673");
-        var row = SupplyRow.create(announcement, complex, representative, UUID.randomUUID().toString(), 0, complex.getName(),
-                "26A/B/C", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10);
-        entities.persist(row); entities.flush();
-        for (var joint : new HousingType[] {type(complex, "26B", "26.7000"), type(complex, "26C", "26.9000")}) {
-            jdbc.update("INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id) VALUES (?, ?)", row.getId(), joint.getId());
-        }
-        entities.clear();
-        long id = announcement.getId();
-        var request = request(id);
-        var links = (ArrayNode) request.path("correction").path("rows").get(0).path("linkedHousingTypes");
-        assertThat(links).hasSize(2);
-        var reversed = json.createArrayNode().add(links.get(1)).add(links.get(0));
-        ((ObjectNode) request.path("correction").path("rows").get(0)).set("linkedHousingTypes", reversed);
-
-        var supply = preview(id, request).path("supply");
-        assertThat(supply.isNull() || supply.isMissingNode()).isTrue();
     }
 
     @Test
@@ -186,72 +162,91 @@ class AnnouncementJsonCorrectionIntegrationTest {
     }
 
     @Test
-    void 공급행을_순서만_바꿔_보내도_공급정보_변경_없음으로_보고_다른_항목은_저장한다() throws Exception {
+    void 공급표_항목을_순서만_바꿔_보내도_공급정보_변경_없음으로_보고_다른_항목은_저장한다() throws Exception {
         var fixtures = new NotificationFixtures(entities, jdbc);
         var announcement = fixtures.announcement();
         var complex = fixtures.complex("11140", "1114010100");
+        int order = 0;
         for (var name : new String[] {"26A", "36A"}) {
             entities.persist(SupplyRow.create(announcement, complex, type(complex, name, name.substring(0, 2) + ".5000"),
-                    UUID.randomUUID().toString(), 0, complex.getName(), name, "1114010100100010000", null,
+                    UUID.randomUUID().toString(), order++, complex.getName(), name, "1114010100100010000", null,
                     SupplyCategory.NEW_SUPPLY, null, 10));
         }
         entities.flush(); entities.clear();
         long id = announcement.getId();
         var request = request(id);
-        var rows = (ArrayNode) request.path("correction").path("rows");
-        assertThat(rows).hasSize(2);
-        ((ObjectNode) request.path("correction")).set("rows", json.createArrayNode().add(rows.get(1)).add(rows.get(0)));
+        for (var name : List.of("housingTypes", "cells", "quotas")) {
+            var items = (ArrayNode) sheet(request).get(name);
+            assertThat(items).hasSize(2);
+            sheet(request).set(name, json.createArrayNode().add(items.get(1)).add(items.get(0)));
+        }
 
         var preview = preview(id, request);
         assertThat(preview.path("supply").isNull() || preview.path("supply").isMissingNode()).isTrue();
         assertThat(preview.path("unchanged").asBoolean()).isFalse();
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.detail.data.name").value("JSON으로 확인한 공고"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_supply_corrections WHERE announcement_id = ?", Long.class, id))
+                .isZero();
     }
 
     @Test
-    void 함께_모집하는_주택형_연결만_더해도_변경_없음으로_넘기지_않고_연결을_저장한다() throws Exception {
-        var fixtures = new NotificationFixtures(entities, jdbc);
-        var announcement = fixtures.announcement();
-        var complex = fixtures.complex("11140", "1114010100");
-        var representative = type(complex, "46A", "45.7900");
-        var joint = type(complex, "46B", "46.2200");
-        var row = SupplyRow.create(announcement, complex, representative, UUID.randomUUID().toString(), 0, complex.getName(),
-                "46", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 70);
-        entities.persist(row); entities.flush(); entities.clear();
-        long id = announcement.getId();
+    void PDF_보정은_관리자가_고친_값과_PDF_값이_같을_때만_관리자_수정_표시를_남긴다() throws Exception {
+        long id = linkedRow();
+        // 공급정보 편집표에서 모집수와 월 임대료를 고치면 둘 다 관리자 수정이다.
+        var workbench = workbenchRequest(id);
+        ((ObjectNode) workbench.get("sheet").get("quotas").get(0)).put("count", 9);
+        ((ObjectNode) workbench.get("sheet").get("leaseTerms").get(0)).put("monthlyRent", "0");
+        var workbenchPreview = json.readTree(mvc.perform(post(workbenchRoot(id) + "/preview")
+                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                        .content(workbench.toString())).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString()).get("data");
+        var body = json.createObjectNode().set("correction", workbench);
+        body.put("confirmationToken", workbenchPreview.get("confirmationToken").asText());
+        mvc.perform(post(workbenchRoot(id)).with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(body.toString())).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        var edited = data("/api/admin/announcements/" + id + "/json-corrections").path("supply").path("sheet");
+        assertThat(edited.at("/quotas/0/adminModified").asBoolean()).isTrue();
+        assertThat(edited.at("/leaseTerms/0/adminModified").asBoolean()).isTrue();
+
+        // PDF가 같은 모집수(9)를 주면 표시를 남기고, 다른 월 임대료를 주면 PDF 값으로 덮고 표시를 지운다.
         var request = request(id);
-        ((ArrayNode) request.path("fields")).removeAll();
-        ((ObjectNode) request.path("correction").path("rows").get(0)).putArray("linkedHousingTypes").addObject()
-                .put("housingTypeId", joint.getId());
+        ((ObjectNode) sheet(request).get("leaseTerms").get(0)).put("monthlyRent", "150000");
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush(); entities.clear();
 
-        var preview = preview(id, request);
-        assertThat(preview.path("unchanged").asBoolean()).isFalse();
-        assertThat(preview.path("supply").isObject()).isTrue();
-        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
-
-        assertThat(jdbc.queryForList("SELECT housing_type_id FROM supply_row_housing_types WHERE supply_row_id = ?", Long.class,
-                row.getId())).contains(joint.getId());
+        var after = data("/api/admin/announcements/" + id + "/json-corrections").path("supply").path("sheet");
+        assertThat(after.at("/quotas/0/count").asInt()).isEqualTo(9);
+        assertThat(after.at("/quotas/0/adminModified").asBoolean()).isTrue();
+        assertThat(after.at("/leaseTerms/0/monthlyRent").asText()).isEqualTo("150000");
+        assertThat(after.at("/leaseTerms/0/adminModified").asBoolean()).isFalse();
+        assertThat(after.at("/housingTypes/0/adminModified").asBoolean()).isFalse();
+        // 저장된 개체에 맞춘 주택형·공급대상·칸은 ID가 그대로다.
+        for (var name : List.of("housingTypes", "targets", "cells")) {
+            assertThat(keys(after.get(name))).isEqualTo(keys(edited.get(name)));
+        }
     }
 
     @Test
     void 대상끼리_함께_쓰는_예비자_수를_묶음_하나로_저장하고_작업_화면과_공개_상세에_함께_보인다() throws Exception {
         long id = incomeSplitRow();
         var request = request(id);
-        var targets = (ArrayNode) request.path("correction").path("rows").get(0).path("targets");
-        for (var target : targets) { ((ObjectNode) target).putObject("reserveCountGroup").put("key", "pdf:0").put("count", 20); }
+        shared(request, "RESERVE", 20);
 
         var preview = preview(id, request);
         assertThat(preview.path("unchanged").asBoolean()).isFalse();
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush(); entities.clear();
 
-        assertThat(jdbc.queryForList("SELECT kind || ':' || household_count FROM supply_target_count_groups", String.class))
-                .containsExactly("RESERVE:20");
-        assertThat(jdbc.queryForObject("SELECT count(DISTINCT reserve_count_group_id) FROM supply_targets WHERE reserve_count IS NULL",
-                Long.class)).isEqualTo(1);
-        var stored = data("/api/admin/announcements/" + id + "/json-corrections").path("supply").path("rows").get(0).path("targets");
-        assertThat(List.of(stored.get(0).path("reserveCountGroup").path("count").asInt(),
-                stored.get(1).path("reserveCountGroup").path("count").asInt())).containsExactly(20, 20);
+        assertThat(sheet(id)).contains("Q:RESERVE:20:청년(소득 없음),청년(소득 있음)");
+        var stored = data("/api/admin/announcements/" + id + "/json-corrections").path("supply").path("sheet");
+        var cells = keys(stored.get("cells"));
+        assertThat(stored.get("quotas")).filteredOn(quota -> quota.get("kind").asText().equals("RESERVE"))
+                .singleElement().satisfies(quota -> {
+                    assertThat(quota.get("count").asInt()).isEqualTo(20);
+                    assertThat(keys(quota.get("members"), null)).isEqualTo(cells);
+                });
         mvc.perform(get("/api/v1/announcements/{announcementId}", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").doesNotExist())
@@ -260,27 +255,21 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[1].sharedWaitlistCount.targets[1]").value("청년(소득 있음)"))
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount").doesNotExist());
 
-        // PDF 화면처럼 같은 묶음을 새 key(pdf:0)로 다시 보내도 묶음은 바뀌지 않았다. 묶음 id도 그대로다.
-        long groupId = jdbc.queryForObject("SELECT id FROM supply_target_count_groups", Long.class);
+        // 보기 그대로 다시 보내면(묶음 key 없이) 바뀐 것이 없어 공급표를 다시 쓰지 않는다. 묶음 id도 그대로다.
+        long quotaId = jdbc.queryForObject("SELECT id FROM supply_quotas WHERE kind = 'RESERVE'", Long.class);
         var again = request(id);
         ((ArrayNode) again.path("fields")).removeAll();
-        for (var target : (ArrayNode) again.path("correction").path("rows").get(0).path("targets")) {
-            ((ObjectNode) target).putObject("reserveCountGroup").put("key", "pdf:0").put("count", 20);
-        }
         var same = preview(id, again);
         assertThat(same.path("unchanged").asBoolean()).isTrue();
         apply(id, again, same.path("confirmationToken").asText()).andExpect(status().isOk());
-        assertThat(jdbc.queryForList("SELECT id FROM supply_target_count_groups", Long.class)).containsExactly(groupId);
-        // 묶음을 풀고 대상마다 수를 주면 옛 묶음을 지운다.
+        assertThat(jdbc.queryForList("SELECT id FROM supply_quotas WHERE kind = 'RESERVE'", Long.class)).containsExactly(quotaId);
+        // 묶음을 풀고 칸마다 수를 주면 칸마다 묶음이 하나씩 남는다.
         var split = request(id);
         ((ArrayNode) split.path("fields")).removeAll();
-        for (var target : (ArrayNode) split.path("correction").path("rows").get(0).path("targets")) {
-            ((ObjectNode) target).putNull("reserveCountGroup").put("reserveCount", 10);
-        }
+        each(split, "RESERVE", 10);
         apply(id, split, preview(id, split).path("confirmationToken").asText()).andExpect(status().isOk());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_target_count_groups", Long.class)).isZero();
-        assertThat(jdbc.queryForList("SELECT reserve_count FROM supply_targets ORDER BY display_order", Integer.class))
-                .containsExactly(10, 10);
+        assertThat(sheet(id)).contains("Q:RESERVE:10:청년(소득 없음)", "Q:RESERVE:10:청년(소득 있음)")
+                .doesNotContain("Q:RESERVE:20:청년(소득 없음),청년(소득 있음)");
     }
 
     @Test
@@ -288,8 +277,9 @@ class AnnouncementJsonCorrectionIntegrationTest {
         long id = incomeSplitRow();
         long other = incomeSplitRow();
         var request = request(id);
-        reserve(request, 10);
+        each(request, "RESERVE", 10);
         apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush();
         assertThat(jdbc.queryForObject("SELECT supply_sheet_from_document FROM announcements WHERE id = ?", Boolean.class, id))
                 .isTrue();
         var sheet = sheet(id);
@@ -317,17 +307,18 @@ class AnnouncementJsonCorrectionIntegrationTest {
     void PDF_보정을_다시_적용해도_표기와_신청_조건이_같은_공급대상은_ID가_그대로다() throws Exception {
         long id = incomeSplitRow();
         var first = request(id);
-        reserve(first, 10);
+        each(first, "RESERVE", 10);
         apply(id, first, preview(id, first).path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush();
         var ids = targetIds(id);
         assertThat(ids).hasSize(2);
 
         var second = request(id);
         ((ArrayNode) second.path("fields")).removeAll();
-        reserve(second, 7);
-        var renamed = (ObjectNode) second.path("correction").path("rows").get(0).path("targets").get(1);
-        renamed.put("target", "신혼부부");
+        each(second, "RESERVE", 7);
+        ((ObjectNode) sheet(second).get("targets").get(1)).put("label", "신혼부부");
         apply(id, second, preview(id, second).path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush();
 
         var after = targetIds(id);
         assertThat(after).containsEntry("청년(소득 없음)", ids.get("청년(소득 없음)"))
@@ -339,10 +330,96 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[1].waitlistCount").value(7));
     }
 
-    private void reserve(ObjectNode request, int count) {
-        for (var target : (ArrayNode) request.path("correction").path("rows").get(0).path("targets")) {
-            ((ObjectNode) target).putNull("reserveCountGroup").put("reserveCount", count);
+    @Test
+    void 모집수와_예비자_수를_함께_쓰는_대상에서_예비자_묶음만_풀면_모집수_묶음은_그대로_남는다() throws Exception {
+        long id = incomeSplitRow();
+        var request = request(id);
+        shared(request, "WINNER", 10);
+        shared(request, "RESERVE", 20);
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+
+        var split = request(id);
+        ((ArrayNode) split.path("fields")).removeAll();
+        each(split, "RESERVE", 10);
+        apply(id, split, preview(id, split).path("confirmationToken").asText()).andExpect(status().isOk());
+
+        // 수량 묶음은 ID 없이 종류와 멤버 칸으로 같다고 본다(계약). 모집수 묶음은 두 칸이 함께 쓰는 10 그대로다.
+        assertThat(sheet(id)).filteredOn(line -> line.startsWith("Q:")).containsExactlyInAnyOrder(
+                "Q:WINNER:10:청년(소득 없음),청년(소득 있음)", "Q:RESERVE:10:청년(소득 없음)", "Q:RESERVE:10:청년(소득 있음)");
+        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
+                .andExpect(status().isOk())
+                // 행의 모든 대상이 함께 쓰는 모집수는 행 모집수로 보인다.
+                .andExpect(jsonPath("$.data.supplyRows[0].totalSupplyHouseholdCount").value(10))
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount").doesNotExist())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedWaitlistCount").doesNotExist())
+                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").value(10));
+    }
+
+    @Test
+    void 공고문_JSON에_공급행이_없어도_PDF_보정은_공급표로_저장한다() throws Exception {
+        var announcement = fixture();
+        long id = announcement.getId();
+        var request = request(id);
+        ((ObjectNode) request.get("document")).putArray("supplyRows");
+        ((ObjectNode) sheet(request).get("quotas").get(0)).put("count", 4);
+
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+
+        assertThat(winnerCounts(id)).containsExactly(4);
+    }
+
+    @Test
+    void 옛_공급행_모양으로_보낸_PDF_보정은_거절한다() throws Exception {
+        var announcement = fixture();
+        long id = announcement.getId();
+        var request = request(id);
+        ((ObjectNode) request.get("correction")).putArray("rows");
+
+        mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
+                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                        .content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("rows")));
+    }
+
+    /** 칸마다 kind 수를 따로 둔다. 그 kind의 옛 묶음은 뺀다. */
+    private static void each(ObjectNode request, String kind, int count) {
+        var quotas = withoutKind(request, kind);
+        sheet(request).get("cells").forEach(cell -> quotas.addObject().put("kind", kind).put("count", count)
+                .putArray("members").add(cell.get("key").asText()));
+    }
+
+    /** 모든 칸이 kind 수 하나를 함께 쓴다. 그 kind의 옛 묶음은 뺀다. */
+    private static void shared(ObjectNode request, String kind, int count) {
+        var members = withoutKind(request, kind).addObject().put("kind", kind).put("count", count).putArray("members");
+        sheet(request).get("cells").forEach(cell -> members.add(cell.get("key").asText()));
+    }
+
+    private static ArrayNode withoutKind(ObjectNode request, String kind) {
+        var quotas = sheet(request).withArray("quotas");
+        for (int index = quotas.size() - 1; index >= 0; index--) {
+            if (quotas.get(index).get("kind").asText().equals(kind)) { quotas.remove(index); }
         }
+        return quotas;
+    }
+
+    private static ObjectNode sheet(ObjectNode request) {
+        return (ObjectNode) request.path("correction").get("sheet");
+    }
+
+    private static List<String> keys(JsonNode items) {
+        return keys(items, "key");
+    }
+
+    private static List<String> keys(JsonNode items, String field) {
+        var result = new java.util.ArrayList<String>();
+        items.forEach(item -> result.add(field == null ? item.asText() : item.get(field).asText()));
+        return result;
+    }
+
+    private List<Integer> winnerCounts(long id) {
+        return jdbc.queryForList("SELECT household_count FROM supply_quotas WHERE announcement_id = ? AND kind = 'WINNER'",
+                Integer.class, id);
     }
 
     private java.util.Map<String, Long> targetIds(long id) {
@@ -376,88 +453,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 ORDER BY 1""", String.class, id, id, id, id);
     }
 
-    @ParameterizedTest
-    @CsvSource(value = {
-            "one | 공통 예비자 수는 공급대상 둘 이상이 함께 써야 합니다.",
-            "own | 공통 예비자 수를 쓰는 대상에는 그 대상만의 예비자 수를 넣을 수 없습니다.",
-            "count | 같은 공통 예비자 수를 쓰는 대상끼리 수가 다릅니다.",
-            "excluded | 제외한 공급대상은 공통 예비자 수에 넣을 수 없습니다.",
-    }, delimiter = '|')
-    void 공통_모집수는_한_대상만_쓰거나_대상만의_수가_있거나_수가_다르면_거절한다(String broken, String message) throws Exception {
-        long id = incomeSplitRow();
-        var request = request(id);
-        var targets = (ArrayNode) request.path("correction").path("rows").get(0).path("targets");
-        ((ObjectNode) targets.get(0)).putObject("reserveCountGroup").put("key", "pdf:0").put("count", 20);
-        int otherCount = 20;
-        if (broken.equals("count")) { otherCount = 30; }
-        if (!broken.equals("one")) {
-            ((ObjectNode) targets.get(1)).putObject("reserveCountGroup").put("key", "pdf:0").put("count", otherCount);
-        }
-        if (broken.equals("own")) { ((ObjectNode) targets.get(1)).put("reserveCount", 5); }
-        if (broken.equals("excluded")) { ((ObjectNode) targets.get(0)).put("excluded", true); }
-
-        mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
-                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
-                        .content(request.toString()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(message)));
-    }
-
-    @Test
-    void 대상끼리_함께_쓰는_모집수는_묶음마다_한_번만_더해_행_모집수와_대조한다() throws Exception {
-        long id = incomeSplitRow();
-        var request = request(id);
-        var row = (ObjectNode) request.path("correction").path("rows").get(0);
-        row.put("householdCount", 39).put("targetCountsComparable", true);
-        for (var target : (ArrayNode) row.path("targets")) {
-            ((ObjectNode) target).putObject("householdCountGroup").put("key", "pdf:0").put("count", 39);
-        }
-
-        // 두 대상이 39를 함께 쓰면 합계는 78이 아니라 39이고, 대상 칸이 비어도 미확정 모집수가 아니다.
-        var preview = preview(id, request);
-        assertThat(preview.path("supply").path("warnings").toString()).doesNotContain("미확정 모집수");
-
-        var extra = ((ArrayNode) row.path("targets")).addObject();
-        extra.put("key", "new:elder").put("excluded", false).put("protectedValues", false).put("displayOrder", 2)
-                .put("target", "고령자").put("householdCount", 1);
-        mvc.perform(post("/api/admin/announcements/" + id + "/json-corrections/preview")
-                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
-                        .content(request.toString()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("대상별 모집수 합계가 행 모집수를 초과합니다")));
-    }
-
-    @Test
-    void 모집수와_예비자_수를_함께_쓰는_대상에서_예비자_묶음만_풀면_모집수_묶음은_그대로_남는다() throws Exception {
-        long id = incomeSplitRow();
-        var request = request(id);
-        for (var target : (ArrayNode) request.path("correction").path("rows").get(0).path("targets")) {
-            ((ObjectNode) target).putObject("householdCountGroup").put("key", "pdf:0").put("count", 10);
-            ((ObjectNode) target).putObject("reserveCountGroup").put("key", "pdf:1").put("count", 20);
-        }
-        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
-        long supplyGroup = jdbc.queryForObject("SELECT id FROM supply_target_count_groups WHERE kind = 'SUPPLY'", Long.class);
-
-        var split = request(id);
-        ((ArrayNode) split.path("fields")).removeAll();
-        for (var target : (ArrayNode) split.path("correction").path("rows").get(0).path("targets")) {
-            ((ObjectNode) target).putNull("reserveCountGroup").put("reserveCount", 10);
-        }
-        apply(id, split, preview(id, split).path("confirmationToken").asText()).andExpect(status().isOk());
-
-        assertThat(jdbc.queryForList("SELECT id FROM supply_target_count_groups", Long.class)).containsExactly(supplyGroup);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_targets WHERE supply_count_group_id = ?", Long.class,
-                supplyGroup)).isEqualTo(2);
-        mvc.perform(get("/api/v1/announcements/{announcementId}", id))
-                .andExpect(status().isOk())
-                // 행의 모든 대상이 함께 쓰는 모집수는 행 모집수로 보인다.
-                .andExpect(jsonPath("$.data.supplyRows[0].totalSupplyHouseholdCount").value(10))
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedSupplyHouseholdCount").doesNotExist())
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].sharedWaitlistCount").doesNotExist())
-                .andExpect(jsonPath("$.data.supplyRows[0].targets[0].waitlistCount").value(10));
-    }
-
-    /** 공고문이 소득 유무로 나눈 청년 두 대상이 예비자 수를 함께 쓰는 공급행(공고 기본정보는 그대로 둔다). */
+    /** 공고문이 소득 유무로 나눈 청년 두 대상이 임대조건을 함께 쓰는 공급행(공고 기본정보는 그대로 둔다). */
     private long incomeSplitRow() {
         var fixtures = new NotificationFixtures(entities, jdbc);
         var announcement = fixtures.announcement();
@@ -470,6 +466,20 @@ class AnnouncementJsonCorrectionIntegrationTest {
             entities.persist(SupplyTarget.create(row, target, null, null, null, new BigDecimal("13780000"),
                     new BigDecimal("166640"), null, null, order++));
         }
+        entities.flush(); entities.clear();
+        return announcement.getId();
+    }
+
+    /** 단지 주택형에 연결된 공급행 하나와 일반 공급대상 하나(모집 10, 임대조건 1억/20만). */
+    private long linkedRow() {
+        var fixtures = new NotificationFixtures(entities, jdbc);
+        var announcement = fixtures.announcement();
+        var complex = fixtures.complex("11140", "1114010100");
+        var row = SupplyRow.create(announcement, complex, type(complex, "26", "26.4673"), UUID.randomUUID().toString(), 0,
+                complex.getName(), "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10);
+        entities.persist(row);
+        entities.persist(SupplyTarget.create(row, "일반", null, 10, null, new BigDecimal("100000000"),
+                new BigDecimal("200000"), null, "공고문 확인", 0));
         entities.flush(); entities.clear();
         return announcement.getId();
     }
@@ -534,7 +544,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
     void 미리보기_뒤_첨부가_바뀌면_기본정보와_공급정보도_저장하지_않는다() throws Exception {
         var announcement = fixture();
         var request = request(announcement.getId());
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("householdCount", 3);
+        ((ObjectNode) sheet(request).get("quotas").get(0)).put("count", 3);
         var preview = preview(announcement.getId(), request);
         entities.persist(AnnouncementAttachment.create(announcement,
                 "늦게 수집한 자료.pdf", AttachmentType.REFERENCE,
@@ -543,8 +553,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
         apply(announcement.getId(), request, preview.path("confirmationToken").asText())
                 .andExpect(status().isConflict());
         assertThat(announcement.getName()).isNotEqualTo("JSON으로 확인한 공고");
-        assertThat(jdbc.queryForObject("SELECT total_supply_household_count FROM supply_rows WHERE announcement_id=?",
-                Integer.class, announcement.getId())).isEqualTo(10);
+        assertThat(winnerCounts(announcement.getId())).containsExactly(10);
     }
 
     @Test
@@ -638,9 +647,23 @@ class AnnouncementJsonCorrectionIntegrationTest {
         correction.put("reason", "공식 공고문에서 확인");
         correction.put("sourceUrl", "https://example.com/notice");
         correction.putNull("sourcePage");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
+        correction.set("sheet", SupplySheetInputs.json(state.path("supply").path("sheet")));
         return request;
     }
+
+    /** 공급정보 편집표(/supply-corrections)에 저장된 공급표를 그대로 보내는 요청. */
+    private ObjectNode workbenchRequest(long id) throws Exception {
+        var workspace = data(workbenchRoot(id));
+        var request = json.createObjectNode();
+        request.put("operationId", UUID.randomUUID().toString());
+        request.put("snapshotToken", workspace.get("snapshotToken").asText());
+        request.put("reason", "공식 공고문과 대조함");
+        request.put("sourceUrl", "https://example.com/notice.pdf"); request.putNull("sourcePage");
+        request.set("sheet", SupplySheetInputs.json(workspace.get("sheet")));
+        return request;
+    }
+
+    private String workbenchRoot(long id) { return "/api/admin/announcements/" + id + "/supply-corrections"; }
 
     private JsonNode data(String path) throws Exception {
         return json.readTree(mvc.perform(get(path).with(user("admin").roles("ADMIN")))

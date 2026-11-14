@@ -3,12 +3,14 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementDetail } from './ManagementDetail'
 import { ManagementError } from './api'
-import { applySupply, loadSupplyWorkspace, previewSupply, blankRow } from '../supply/supplyCorrectionApi'
+import { applySupply, loadSupplyWorkspace, previewSupply, type SupplyWorkspace } from '../supply/supplyCorrectionApi'
+import { housingType } from '../supply/fixtures/sheet'
 import type { ManagementDetailData } from './managementContract'
 
 const mocks = vi.hoisted(() => ({ getManagementDetail: vi.fn(), requestManagementApi: vi.fn(), getManagementHistory: vi.fn(), loadHousingTypeImpact: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
 vi.mock('../supply/SupplyReviewPanel', () => ({ SupplyReviewPanel: () => null }))
+vi.mock('../announcement-pdf/PdfCorrectionPage', () => ({ PdfCorrectionWorkspace: () => null }))
 vi.mock('../supply/supplyCorrectionApi', async original => ({ ...await original<typeof import('../supply/supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn() }))
 vi.mock('./housingTypeImpactApi', () => ({ loadHousingTypeImpact: mocks.loadHousingTypeImpact }))
 const summary = { id: 7, name: '두꺼비 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
@@ -17,19 +19,19 @@ const announcement: ManagementDetailData = {
   data: { version: 4, name: '두꺼비 입주 공고', rentalType: 'HAPPY_HOUSING', agencyCode: 'LH', recruitmentType: 'NEW',
     originalUrl: 'https://example.com/notice', postedDate: '2026-10-01', applicationStartDate: '2026-10-10',
     applicationEndDate: '2026-10-20', winnerAnnouncementDate: '2026-11-01' },
-  housingTypes: [], announcements: [], supplyRows: [], schedules: [], scheduleReviewed: false,
+  housingTypes: [], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, schedules: [], scheduleReviewed: false,
 }
 const complex: ManagementDetailData = {
   summary, sourceIdentifier: 'C-7', data: { version: 2, name: summary.name },
   housingTypes: [{ id: 9, name: '46A', exclusiveArea: 46.8, householdCount: null }],
-  announcements: [announcement.summary], supplyRows: [], schedules: [], scheduleReviewed: false,
+  announcements: [announcement.summary], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, schedules: [], scheduleReviewed: false,
 }
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.getManagementDetail.mockImplementation((resource: string) => Promise.resolve(resource === 'complexes' ? complex : announcement))
   mocks.getManagementHistory.mockResolvedValue([])
   mocks.loadHousingTypeImpact.mockResolvedValue({ token: 'impact', rows: [] })
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ snapshotToken: 'before', version: 4, rows: [], sources: [] })
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ snapshotToken: 'before', version: 4, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] })
 })
 async function openRelations() {
   render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes>
@@ -111,11 +113,12 @@ it('휴지통 단지의 주택형은 편집할 수 없다', async () => {
 })
 
 it('연결 공고의 일괄 보정 중 탐색을 막고 적용 후 단지의 연결 목록을 갱신한다', async () => {
-  const row = { ...blankRow(0), id: 45, key: 'row:45', housingComplexId: 7, housingComplexName: summary.name,
-    housingTypeId: 9, complexName: summary.name, typeName: '46A', pnu: '1114010100100010000' }
-  const workspace = { snapshotToken: 'before', version: 4, rows: [row], sources: [] }
+  const type = housingType({ key: 'row:45', name: '46A', complexName: summary.name, housingComplexId: 7, housingComplexName: summary.name, housingTypeId: 9, supplyPnu: '1114010100100010000' })
+  const sheet = { housingTypes: [type], targets: [], cells: [], quotas: [], leaseTerms: [] }
+  const unlinked = { ...sheet, housingTypes: [{ ...type, housingComplexId: null, housingComplexName: null, housingTypeId: null }] }
+  const workspace: SupplyWorkspace = { ...({ snapshotToken: 'before', version: 4, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] }), sheet }
   vi.mocked(loadSupplyWorkspace).mockResolvedValue(workspace)
-  vi.mocked(previewSupply).mockResolvedValue({ confirmationToken: 'preview', before: [row], after: [{ ...row, housingComplexId: null, housingTypeId: null }], warnings: [] })
+  vi.mocked(previewSupply).mockResolvedValue({ confirmationToken: 'preview', before: sheet, after: unlinked, warnings: [] })
   let complete!: (value: Awaited<ReturnType<typeof applySupply>>) => void
   vi.mocked(applySupply).mockReturnValue(new Promise(resolve => { complete = resolve }))
   await openRelations()
@@ -128,9 +131,9 @@ it('연결 공고의 일괄 보정 중 탐색을 막고 적용 후 단지의 연
   fireEvent.click(within(editor).getByRole('button', { name: '공급정보 저장' }))
   await waitFor(() => expect(screen.getByRole('button', { name: '주택형·연결 공고' })).toBeDisabled())
   expect(screen.getByRole('button', { name: '두꺼비 입주 공고 수정' })).toBeDisabled()
-  expect(applySupply).toHaveBeenCalledWith('21', expect.objectContaining({ rows: [expect.objectContaining({ housingComplexId: null, housingTypeId: null })] }), 'preview')
+  expect(applySupply).toHaveBeenCalledWith('21', expect.objectContaining({ sheet: expect.objectContaining({ housingTypes: [expect.objectContaining({ housingComplexId: null, housingTypeId: null })] }) }), 'preview')
   mocks.getManagementDetail.mockImplementation((resource: string) => Promise.resolve(resource === 'complexes' ? { ...complex, announcements: [] } : announcement))
-  complete({ changeId: 1, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', version: 5, rows: [{ ...row, housingComplexId: null, housingTypeId: null }] } })
+  complete({ changeId: 1, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', version: 5, sheet: unlinked } })
   expect(await screen.findByText('표시할 공고가 없습니다.')).toBeVisible()
 })
 
@@ -151,7 +154,7 @@ it('주택형을 확인 창 없이 휴지통으로 옮기고 같은 줄에서 �
   confirm.mockRestore()
 })
 
-it('공급행이 연결된 주택형 삭제 거절 사유를 표시한다', async () => {
+it('공급정보가 연결된 주택형 삭제 거절 사유를 표시한다', async () => {
   mocks.requestManagementApi.mockRejectedValue(new ManagementError('이 주택형에 연결된 공급정보가 있습니다.', 409))
   await openRelations()
   fireEvent.click(screen.getByRole('button', { name: '46A 삭제' }))

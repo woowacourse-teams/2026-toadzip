@@ -3,7 +3,9 @@ package com.toadzip.backend.announcement.service;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.SourceSupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.ingest.enrichment.service.LhSupplyRowLinks;
@@ -17,9 +19,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * PDF 추출 작업에 담을 입력 스냅숏을 만든다. 원천 행은 공급 보정 작업실과 같은 원천에서 같은 행 식별자로 담아, 워커가 돌려준 원천 행을
- * 화면이 작업실 행과 식별자로 맞춘다. LH 공고는 작업실의 lhSupplyRows와 같은 LH 공급 원천(LhCurrentSupplies),
- * GH 공고는 작업실의 rowSources(GH_ANNOUNCEMENT)와 같은 제외하지 않은 GH 공급행 틀이다. 그 밖의 공고는 공급 원천이 없다.
+ * PDF 추출 작업에 담을 입력 스냅숏(원천 공급 행)을 만든다. LH 공고는 공급 작업실의 원천 참고 행과 같은 LH 공급 원천(LhCurrentSupplies),
+ * GH 공고는 제외하지 않은 GH 공급행 틀이다. GH 틀 행의 공급 수는 그 주택형의 모집수(공급표 WINNER 수)다. 그 밖의 공고는 공급 원천이 없다.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,6 +28,7 @@ class PdfExtractionInputs {
     private final AnnouncementRepository announcements;
     private final SupplyRowRepository supplyRows;
     private final LhCurrentSupplies lhSupplies;
+    private final SupplySheets sheets;
 
     /** 공급행의 공고를 지연 로딩하므로(ghFrameRow) 한 트랜잭션에서 읽는다. */
     @Transactional(readOnly = true)
@@ -37,10 +39,11 @@ class PdfExtractionInputs {
     private List<SourceSupplyRow> sourceRows(Announcement announcement) {
         String panId = announcement.getLhPanId();
         if (panId != null && !panId.isBlank()) { return lhRows(panId); }
-        return supplyRows.findAllByAnnouncement(announcement).stream()
+        var frames = supplyRows.findAllByAnnouncement(announcement).stream()
                 .filter(row -> row.ghFrameRow() && !row.isAdminExcluded())
-                .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
-                .map(PdfExtractionInputs::ghRow).toList();
+                .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId)).toList();
+        var sheet = sheets.read(List.of(announcement.getId()), frames.stream().map(SupplyRow::getId).toList());
+        return frames.stream().map(row -> ghRow(row, sheet)).toList();
     }
 
     private List<SourceSupplyRow> lhRows(String panId) {
@@ -50,10 +53,10 @@ class PdfExtractionInputs {
                 supply.getTotalUnitCount())).toList();
     }
 
-    private static SourceSupplyRow ghRow(SupplyRow row) {
+    private static SourceSupplyRow ghRow(SupplyRow row, SupplySheet sheet) {
         return new SourceSupplyRow("GH", row.getDisplayOrder(), row.getSourceSupplyRowIdentifier(),
                 row.getSourceComplexName(), row.getSourceHousingTypeName(), area(row.getAnnouncementExclusiveArea()), "",
-                Objects.toString(row.getTotalSupplyHouseholdCount(), ""), "");
+                Objects.toString(sheet.rowCount(row.getId(), SupplyQuota.Kind.WINNER), ""), "");
     }
 
     private static String area(BigDecimal value) {

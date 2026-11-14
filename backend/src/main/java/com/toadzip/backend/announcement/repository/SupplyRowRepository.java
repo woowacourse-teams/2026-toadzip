@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -46,4 +47,12 @@ public interface SupplyRowRepository extends JpaRepository<SupplyRow, Long> {
     List<SupplyRow> findAllByAnnouncementIdIn(
             @Param("announcementIds") Collection<Long> announcementIds
     );
+
+    /**
+     * 관리자 보정이 정한 주택형 수정 표시를 그대로 쓴다. 공급표 쓰기(SupplySheetStore)는 이 표시를 바꾸지 않으므로 보정이 따로 쓴다.
+     * 영속성 컨텍스트의 공급행은 낡으므로 부르는 쪽이 다시 읽는다(refresh).
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE SupplyRow supplyRow SET supplyRow.adminModified = :modified WHERE supplyRow.id IN :ids")
+    int markAdminModified(@Param("ids") Collection<Long> ids, @Param("modified") boolean modified);
 }

@@ -2,11 +2,6 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -28,21 +23,13 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projecti
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.jdbc.Sql;
-import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -58,8 +45,6 @@ class AnnouncementSupplyMatchingIntegrationTest {
     @Autowired private SupplyRowRepository supplies;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private JdbcClient jdbc;
-    @Autowired private MockMvc mvc;
-    @Autowired private JsonMapper json;
     @Autowired private SupplyCorrectionSources correctionSources;
     private HousingComplex complex;
     private HousingType type;
@@ -115,90 +100,6 @@ class AnnouncementSupplyMatchingIntegrationTest {
                         .orElseThrow().getId());
         assertThat(candidateService.complexes("한스빌")).extracting(value -> value.id()).doesNotContain(main.getId());
         assertThatThrownBy(() -> candidateService.complexes("한스빌", "12a")).hasMessageContaining("PNU");
-    }
-
-    @Test
-    @org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
-    @org.springframework.test.context.jdbc.Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
-    void PDF_보정으로_연결한_공급행은_대표_주택형과_저장한_매칭을_함께_남긴다() throws Exception {
-        registerFromSources();
-        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
-
-        correctFromPdf(announcementId, type);
-        // PDF 보정이 정한 대표 주택형이 함께 모집하는 주택형에도 들어간다.
-        assertThat(jdbc.sql("SELECT housing_type_id FROM supply_row_housing_types").query(Long.class).list())
-                .containsExactly(type.getId());
-        assertLinksFollowRepresentative();
-        assertThat(jdbc.sql("SELECT housing_type_id, reason FROM announcement_supply_match_decisions")
-                .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getString(2))).list())
-                .containsExactly(List.of(type.getId(), "공고문 PDF 4쪽에서 주택형 확인"));
-        assertThat(supplies.findAll()).singleElement()
-                .satisfies(row -> assertThat(row.getHousingType().getId()).isEqualTo(type.getId()));
-    }
-
-    /** PDF 보정이 쓴 공급행은 함께 모집하는 주택형이 대표 주택형 하나뿐이다. */
-    private void assertLinksFollowRepresentative() {
-        assertThat(jdbc.sql("""
-                SELECT count(*) FROM supply_rows row
-                FULL JOIN supply_row_housing_types link ON link.supply_row_id = row.id
-                WHERE link.housing_type_id IS DISTINCT FROM row.housing_type_id
-                """).query(Long.class).single()).isZero();
-    }
-
-    @Test
-    @Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
-    @Sql(statements = "DROP TABLE admin_comparison_checks, admin_comparison_sources",
-            executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
-    void PDF_보정에서_주택형_연결을_지우면_저장한_매칭도_해제한다() throws Exception {
-        registerFromSources();
-        long announcementId = announcements.findBySourceAnnouncementIdentifier(TARGET).orElseThrow().getId();
-        correctFromPdf(announcementId, type);
-        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
-                .isOne();
-
-        correctFromPdf(announcementId, null);
-
-        assertThat(jdbc.sql("SELECT count(*) FROM announcement_supply_match_decisions").query(Long.class).single())
-                .isZero();
-    }
-
-    /** 관리자 화면의 PDF 보정과 같은 경로로 공급행의 주택형 연결만 바꾼다. */
-    private void correctFromPdf(long announcementId, HousingType housingType) throws Exception {
-        var state = json.readTree(mvc.perform(get("/api/admin/announcements/" + announcementId + "/json-corrections")
-                .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString()).get("data");
-        var request = json.createObjectNode();
-        request.put("snapshotToken", state.path("snapshotToken").asText());
-        request.set("document", json.readTree(new ClassPathResource("announcement/import-v1-valid.json").getInputStream()));
-        request.putArray("fields");
-        request.putArray("schedules");
-        request.putArray("attachments");
-        var correction = request.putObject("correction");
-        correction.put("operationId", UUID.randomUUID().toString());
-        correction.put("snapshotToken", state.path("supply").path("snapshotToken").asText());
-        correction.put("reason", "공고문 PDF 4쪽에서 주택형 확인");
-        correction.put("sourceUrl", "https://example.com/official.pdf");
-        correction.putNull("sourcePage");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
-        var row = ((ObjectNode) correction.get("rows").get(0)).put("housingComplexId", complex.getId());
-        if (housingType == null) {
-            row.putNull("housingTypeId");
-        }
-        else {
-            row.put("housingTypeId", housingType.getId());
-        }
-        var preview = json.readTree(mvc.perform(post("/api/admin/announcements/" + announcementId
-                        + "/json-corrections/preview").with(user("admin").roles("ADMIN")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        var body = json.createObjectNode();
-        body.set("request", request);
-        body.put("confirmationToken", preview.path("confirmationToken").asText());
-        mvc.perform(post("/api/admin/announcements/" + announcementId + "/json-corrections")
-                        .with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
-                .andExpect(status().isOk());
     }
 
     /** 지원을 종료한 마이홈 공고 정제가 남긴 공고처럼, 지금 원천의 해석 결과대로 공고와 공급행을 등록한다. */

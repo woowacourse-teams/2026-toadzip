@@ -1,5 +1,6 @@
 import { applicationStatuses, attentionReasons } from './listFilterLabels'
 import { isVerificationStatus, type VerificationStatus } from './complexVerificationContract'
+import { parseSupplySheet, type SupplySheet } from '../supply/supplySheet'
 
 export type ManagementResource = 'complexes' | 'announcements'
 
@@ -66,19 +67,6 @@ export type ManagementHousingType = {
   deleted?: boolean
 }
 
-export type ManagementSupplyRow = {
-  sharedRecruitment?: { id: number; householdCount: number | null } | null
-  id: number
-  housingComplexId: number | null
-  housingComplexName: string | null
-  housingTypeId: number | null
-  modified: boolean
-  // 정제가 소유하는 원천 표기다. 관리자는 data의 공고 표시명만 수정한다.
-  sourceComplexName: string
-  sourceHousingTypeName: string
-  data: ManagementValues
-}
-
 export type ManagementDetailData = {
   attachments?: { attachmentId: number; fileName: string; fileType: string; fileUrl: string }[]
   summary: ManagementSummary
@@ -86,8 +74,8 @@ export type ManagementDetailData = {
   data: ManagementValues
   housingTypes: ManagementHousingType[]
   announcements: ManagementSummary[]
-  supplyRows: ManagementSupplyRow[]
-  supplyTargets?: { id: number; supplyRowId: number; data: ManagementValues }[]
+  /** 공고의 공급표. 단지 상세에는 없어 빈 공급표다. */
+  supplySheet: SupplySheet
   scheduleReviewed: boolean
   schedules: ManagementValues[]
 }
@@ -107,14 +95,6 @@ export type ManagementChange = {
   occurredAt: string
   beforeValue: string
   afterValue: string
-}
-
-function parseSharedRecruitment(value: unknown): { id: number; householdCount: number | null } {
-  if (!isRecord(value) || typeof value.id !== 'number' || !Number.isSafeInteger(value.id) || value.id <= 0
-    || !isNullableNumber(value.householdCount) || (value.householdCount != null && (!Number.isSafeInteger(value.householdCount) || value.householdCount < 0))) {
-    throw new Error('공통 모집수 응답이 올바르지 않습니다.')
-  }
-  return { id: value.id, householdCount: value.householdCount }
 }
 
 export function parseManagementPage(value: unknown): ManagementPage {
@@ -153,24 +133,8 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     }
   }
 
-  const supplyRows: ManagementSupplyRow[] = []
-  if (Array.isArray(value.supplyRows)) {
-    for (const item of value.supplyRows) {
-      if (!isRecord(item) || typeof item.id !== 'number' || !isManagementValues(item.data)
-        || typeof item.modified !== 'boolean' || !isNullableNumber(item.housingComplexId)
-        || !isNullableNumber(item.housingTypeId)
-        || (item.housingComplexName !== null && typeof item.housingComplexName !== 'string')
-        || typeof item.sourceComplexName !== 'string' || typeof item.sourceHousingTypeName !== 'string') {
-        throw new Error('공급정보 응답이 올바르지 않습니다.')
-      }
-      supplyRows.push({
-        ...(item.sharedRecruitment != null ? { sharedRecruitment: parseSharedRecruitment(item.sharedRecruitment) } : {}),
-        id: item.id, data: item.data, modified: item.modified, housingComplexId: item.housingComplexId,
-        housingTypeId: item.housingTypeId, housingComplexName: item.housingComplexName,
-        sourceComplexName: item.sourceComplexName, sourceHousingTypeName: item.sourceHousingTypeName,
-      })
-    }
-  }
+  const supplySheet = value.supplySheet === undefined || value.supplySheet === null
+    ? { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] } : parseSupplySheet(value.supplySheet)
 
   const announcements = value.announcements === undefined ? [] : value.announcements
   if (!Array.isArray(announcements) || !announcements.every(isManagementSummary)) {
@@ -179,11 +143,6 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
   const schedules = value.schedules === undefined ? [] : value.schedules
   if (!Array.isArray(schedules) || !schedules.every(isManagementValues)) {
     throw new Error('접수 일정 응답이 올바르지 않습니다.')
-  }
-  const supplyTargets = value.supplyTargets === undefined ? [] : value.supplyTargets
-  if (!Array.isArray(supplyTargets) || !supplyTargets.every(item => isRecord(item)
-    && Number.isSafeInteger(item.id) && Number.isSafeInteger(item.supplyRowId) && isManagementValues(item.data))) {
-    throw new Error('공급대상 응답이 올바르지 않습니다.')
   }
   const attachments = value.attachments === undefined ? [] : value.attachments
   if (!Array.isArray(attachments) || !attachments.every(item => isRecord(item)
@@ -198,12 +157,9 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     sourceIdentifier: value.sourceIdentifier,
     housingTypes,
     announcements,
-    supplyRows,
+    supplySheet,
     ...(value.attachments === undefined ? {} : { attachments: attachments.map(item => ({ attachmentId: Number(item.attachmentId), fileName: String(item.fileName),
       fileType: String(item.fileType), fileUrl: String(item.fileUrl) })) }),
-    ...(value.supplyTargets === undefined ? {} : {
-      supplyTargets: supplyTargets.map(item => ({ id: Number(item.id), supplyRowId: Number(item.supplyRowId), data: item.data as ManagementValues })),
-    }),
     scheduleReviewed: value.scheduleReviewed === true,
     schedules,
   }

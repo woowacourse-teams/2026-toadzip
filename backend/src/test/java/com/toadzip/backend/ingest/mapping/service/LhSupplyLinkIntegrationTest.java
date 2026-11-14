@@ -109,7 +109,8 @@ class LhSupplyLinkIntegrationTest {
 
         mvc.perform(get(correctionPath(id)).with(user("operator").roles("ADMIN")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.unattachedLhSupplyRows").isEmpty());
+                .andExpect(jsonPath("$.data.sheet.housingTypes").isArray())
+                .andExpect(jsonPath("$.data.sourceReference").isEmpty());
     }
 
     @Test
