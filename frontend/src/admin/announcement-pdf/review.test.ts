@@ -101,7 +101,7 @@ describe('공고 공급표 검토', () => {
     const everyone = lh.workspace.supply.sheet.targets.find(target => target.label === '전체')!
     const cells = lh.workspace.supply.sheet.cells.filter(cell => cell.target === everyone.key).map(cell => [cell.key, cell.id])
     const sheet = assembledSheet(lh.review, lh.workspace)
-    expect(sheet.targets.filter(target => target.label === '전체').map(target => [target.key, target.id])).toEqual([[everyone.key, everyone.id]])
+    expect(sheet.targets.filter(target => target.label === '전체').map(target => [target.key, target.id, target.applicationCondition])).toEqual([[everyone.key, everyone.id, '공고문 참조']])
     expect(sheet.cells.filter(cell => cell.target === everyone.key).map(cell => [cell.key, cell.id])).toEqual(cells)
 
     const fresh = scenario('hansville', extraction, extracted => {
@@ -110,6 +110,36 @@ describe('공고 공급표 검토', () => {
         quotas: [], leaseTerms: [] }
     })
     expect(assembledSheet(fresh.review, fresh.workspace).targets.map(target => [target.id, target.label, target.applicationCondition])).toEqual([[1, '일반', ''], [null, '전체', '']])
+  })
+
+  it('지금 공급표에 조건이 다른 전체 대상이 둘이면 워커가 더한 전체는 조건 없는 전체와 짝짓고, 화면이 보인 기존 칸과 저장한 칸이 같다', () => {
+    const extraction = structuredClone(fixtures.hansville.extraction) as typeof fixtures.hansville.extraction & { data: { supplySheet: { targets: unknown[]; cells: unknown[] } } }
+    extraction.data.supplySheet.targets.push({ key: 't1', label: '전체', applicationCondition: null })
+    extraction.data.supplySheet.cells.push({ housingType: 'h0', target: 't1' }, { housingType: 'h1', target: 't1' })
+    // LH 정제는 금액 있는 단일 줄을 '전체|공고문 참조'로, 금액 없는 줄을 조건 없는 '전체'로 쓴다. 26A는 앞의 것, 26B는 뒤의 것이다.
+    const { review, workspace } = scenario('hansville', extraction, extracted => {
+      const sheet = hansvilleLinked(extracted)
+      return { ...sheet, targets: [...sheet.targets, { key: 'target:9', id: 9, label: '전체', applicationCondition: '공고문 참조', displayOrder: 2 }],
+        cells: sheet.cells.map(cell => cell.key === 'cell:3' ? { ...cell, target: 'target:9' } : cell) }
+    })
+    const shown = review.rows.flatMap(row => row.targets.filter(target => review.extraction.sheet.cells[target.cell].target === 1).map(target => target.existing))
+    expect(shown).toEqual([null, 'cell:4'])
+    const sheet = assembledSheet(review, workspace), everyone = sheet.targets.filter(target => target.label === '전체')
+    expect(everyone.map(target => [target.key, target.id, target.applicationCondition])).toEqual([['target:2', 2, '']])
+    expect(sheet.cells.filter(cell => cell.target === 'target:2').map(cell => cell.id === null ? null : cell.key)).toEqual(shown)
+  })
+
+  it('워커가 더한 전체는 다른 PDF 대상과 같은 지금 전체와 짝짓지 않아 신청 조건이 다른 두 대상이 합쳐지지 않는다', () => {
+    const extraction = structuredClone(fixtures.hansville.extraction) as typeof fixtures.hansville.extraction & { data: { supplySheet: { targets: unknown[]; cells: unknown[] } } }
+    extraction.data.supplySheet.targets.push({ key: 't1', label: '전체', applicationCondition: null }, { key: 't2', label: '전체', applicationCondition: '무주택세대구성원' })
+    extraction.data.supplySheet.cells.push({ housingType: 'h0', target: 't1' }, { housingType: 'h1', target: 't1' }, { housingType: 'h0', target: 't2' })
+    const { review, workspace } = scenario('hansville', extraction, extracted => {
+      const sheet = hansvilleLinked(extracted), kept = sheet.targets.filter(target => target.applicationCondition !== '').map(target => target.key).concat('target:1')
+      return { ...sheet, targets: sheet.targets.filter(target => kept.includes(target.key)), cells: sheet.cells.filter(cell => kept.includes(cell.target)), quotas: [], leaseTerms: [] }
+    })
+    expect(workspace.supply.sheet.targets.map(target => [target.label, target.applicationCondition])).toEqual([['일반', ''], ['전체', '무주택세대구성원']])
+    expect(assembledSheet(review, workspace).targets.map(target => [target.id, target.label, target.applicationCondition]))
+      .toEqual([[1, '일반', ''], [null, '전체', ''], [3, '전체', '무주택세대구성원']])
   })
 
   it('공급대상 이름을 읽지 못하면 그 대상을 쓰는 첫 칸으로 보내 저장을 막고, 이름을 넣으면 풀린다', () => {

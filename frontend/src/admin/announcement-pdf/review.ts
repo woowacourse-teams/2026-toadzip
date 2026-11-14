@@ -203,17 +203,20 @@ function sameTarget(left: Pick<SheetTarget, 'label' | 'applicationCondition'>, r
 const EVERYONE = '전체'
 /** 워커가 대상 구분 없는 칸을 묶으려고 더한 '전체' 대상. 공고문에서 읽은 대상이 아니라 근거와 신청 조건이 없다. */
 const addedEveryone = (target: Pick<SheetTarget, 'label' | 'applicationCondition'>) => canonicalTarget(target.label) === EVERYONE && !target.applicationCondition.trim()
+type TargetName = Pick<SheetTarget, 'label' | 'applicationCondition'>
 /**
- * 지금 공급표에서 이 PDF 대상과 짝지을 대상. 같은 대상이 먼저다. 없으면 워커가 더한 '전체'는 신청 조건과 상관없이 지금 '전체'와 짝짓는다.
- * LH 원천은 같은 '전체' 대상을 신청 조건 '공고문 참조'로 둔다.
+ * 지금 공급표에서 이 PDF 대상과 짝지을 대상. 같은 대상이 먼저다. 없으면 워커가 더한 '전체'는 신청 조건과 상관없이 지금 '전체'와 짝짓되,
+ * 다른 PDF 대상과 같은 지금 대상은 그 대상의 짝이라 고르지 않는다. LH 원천은 같은 '전체' 대상을 신청 조건 '공고문 참조'로 둔다.
+ * 대상 이름 검토와 칸 짝짓기가 이 하나로 짝을 정해야 화면이 보인 기존 칸과 저장된 칸이 같다.
  */
-function pairedTarget<T extends Pick<SheetTarget, 'label' | 'applicationCondition'>>(saved: T[], target: Pick<SheetTarget, 'label' | 'applicationCondition'>) {
-  return saved.find(item => sameTarget(item, target)) ?? (addedEveryone(target) ? saved.find(item => canonicalTarget(item.label) === EVERYONE) : undefined)
+function pairedTarget<T extends TargetName>(saved: T[], target: TargetName, pdfTargets: TargetName[]) {
+  return saved.find(item => sameTarget(item, target))
+    ?? (addedEveryone(target) ? saved.find(item => canonicalTarget(item.label) === EVERYONE && !pdfTargets.some(other => sameTarget(item, other))) : undefined)
 }
 /** 지금 공급표의 이 주택형 칸 중 공급대상이 짝인 칸 */
-function sameTargetCell(sheet: SupplySheet, housingTypeKey: string, target: Pick<SheetTarget, 'label' | 'applicationCondition'>) {
-  const cells = cellsOf(sheet, housingTypeKey), paired = pairedTarget(sheet.targets.filter(item => cells.some(cell => cell.target === item.key)), target)
-  return paired ? cells.find(cell => cell.target === paired.key)! : null
+function sameTargetCell(sheet: SupplySheet, housingTypeKey: string, target: TargetName, pdfTargets: TargetName[]) {
+  const paired = pairedTarget(sheet.targets, target, pdfTargets)
+  return paired ? cellsOf(sheet, housingTypeKey).find(cell => cell.target === paired.key) ?? null : null
 }
 /** 단지 묶음 키. 공급 표에 단지 이름이 없는 주택형은 이름 없는 묶음('')이다. */
 export const complexKey = (name: string | null | undefined) => name?.trim() ?? ''
@@ -294,7 +297,7 @@ function rowReview(extraction: Extraction, index: number, workspace: JsonWorkspa
       : protect(cell, cell.field === 'count' ? Boolean(existingWhole?.adminModified) : Boolean(existing?.adminModified)))
   const targets = cellsOf(pdf, typeKey).map((pdfCell): TargetReview => {
     const n = pdfIndex(pdfCell.key), target = extraction.sheet.targets[extraction.sheet.cells[n].target]
-    const match = existing ? sameTargetCell(sheet, existing.key, target) : null
+    const match = existing ? sameTargetCell(sheet, existing.key, target, extraction.sheet.targets) : null
     const lease = leaseOf(pdf, pdfCell.key), savedLease = match ? leaseOf(sheet, match.key) : null
     const own: JsonObject = { winner: ownCount(pdf, pdfCell.key, 'WINNER'), reserve: ownCount(pdf, pdfCell.key, 'RESERVE'),
       rentalDeposit: lease?.rentalDeposit ?? null, monthlyRent: lease?.monthlyRent ?? null, convertedDeposit: lease?.convertedDeposit ?? null }
@@ -322,7 +325,7 @@ function rowReview(extraction: Extraction, index: number, workspace: JsonWorkspa
 function labelReviews(extraction: Extraction, workspace: JsonWorkspace): TargetLabelReview[] {
   return extraction.sheet.targets.map((target, at) => {
     const label = target.label ? canonicalTarget(target.label) : '', value = { label, applicationCondition: target.applicationCondition }
-    const existing = pairedTarget(workspace.supply.sheet.targets, value)
+    const existing = pairedTarget(workspace.supply.sheet.targets, value, extraction.sheet.targets)
     const values = cells(extraction, `targets[${at}]`, targetFields, value, existing ? { label: existing.label, applicationCondition: existing.applicationCondition } : {})
     return { target: at, cells: values.map(cell => cell.field === 'applicationCondition' && !target.applicationCondition ? notApplicable(cell, noConditionNote)
       : cell.field === 'label' && addedEveryone(value) && cell.state === 'confirm' ? { ...cell, state: 'new', selected: true, mode: 'extracted', note: addedEveryoneNote } : cell) }
