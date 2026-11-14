@@ -78,27 +78,25 @@
 공고의 단지·주택형 매칭 오류는 오류 상세에서 단지 후보 검색이나 PDF 보정으로 확인한다.
 
 API 기준 경로는 `/api/admin/ingest/announcement-supply-matches`다.
-`POST /{identifier}/refine`·`/rerun`·`/release`·`/exclusion`·`/split`은 없앴다.
-GET 조회는 그대로 둔다. 관리자 화면은 PDF 보정·공급정보 편집표의 주택형 후보 조회에 `GET /complexes/{complexId}/housing-types`만 쓴다.
+`POST /{identifier}/refine`·`/rerun`·`/release`·`/exclusion`·`/split`과 공급행 대응 조회 `GET /{identifier}`는 없앴다.
+남은 조회는 단지 후보 `GET /complexes`와 주택형 후보 `GET /complexes/{complexId}/housing-types`다.
+관리자 화면은 PDF 보정·공급정보 편집표의 주택형 후보 조회에 `GET /complexes/{complexId}/housing-types`만 쓴다.
 
 ## LH 공급 원본 연결
 
 지원을 종료했다. 실패 검토의 `LH 행 연결` 버튼과 `/admin/failures/lh-links/{identifier}` 화면은 없앴다.
-`POST /api/admin/ingest/announcement-supply-matches/{identifier}/lh-links`와 `/lh-links/release`는 없앴고 GET은 그대로 둔다.
-LH 공급 행을 공급행으로 만드는 규칙은 [LH 공고 연결](../../features/ingest/lh-linking.md)을 따른다.
+`/api/admin/ingest/announcement-supply-matches/{identifier}/lh-links`(GET·POST)와 `/lh-links/release`는 없앴다.
+LH 공급 원본을 공고 공급표로 쓰는 규칙은 [LH 공고 연결](../../features/ingest/lh-linking.md)을 따른다.
 
-PDF 보정과 공급정보 편집표는 LH 원천 소유 공고에 아직 공급행이 되지 않은 LH 공급 원본 행(`unattachedLhSupplyRows`)이 있으면
-새 공급행 추가를 막고, 공고 정제를 다시 실행하거나 기존 공급정보 행을 고르게 한다. LH 펼침 행이 있는 단지에 예전에 직접 추가한 행은 `LH 원본과 중복 가능`으로 표시하며 자동으로 지우지 않는다.
-같은 주택형이면 공급정보 편집표의 `펼친 행으로 합치기`로 임대조건·표기를 옮긴 뒤 직접 추가한 행을 지운다.
+LH 공급 원본 행은 공급표를 정하지 않는다. 공급정보 편집표는 원천 행을 `LH·GH 원천 참고`로만 보이고, 주택형 추가를 막지 않는다.
 
 ## 한 원천에서 복수 공급행 보정
 
 원천 한 행을 여러 공급행으로 나누는 `이 원천을 여러 공급행으로 나누기`와 공고 상세의 `원천별 공급행 보정`은 지원을 종료했다.
 `POST /api/admin/ingest/announcement-supply-matches/{identifier}/split`은 없앴다.
 
-- 공개·관리자 공급행 응답의 선택적 `sharedRecruitment`는 `{id, householdCount}`다.
-  같은 그룹 ID의 수량은 공고·단지 합계에서 한 번만 더한다. 개별 행은 미확정으로 표시한다.
-- 관리자 화면에서는 기존 공통 모집 묶음의 단지·공통 모집수를 바꿀 수 없다. PDF 보정은 공고문 기준으로 새 묶음만 만들 수 있다.
+- 공개 공급행 응답의 선택적 `sharedRecruitment`는 `{id, householdCount}`다. `id`는 여러 주택형이 함께 쓰는 모집수 묶음(`supply_quotas`)의 ID다.
+  같은 `id`의 수량은 공고·단지 합계에서 한 번만 더한다. 개별 행은 세대수 미확정으로 표시한다.
 
 공식 공고를 근거로 공통 단지·주택형 정보도 관리자 검토 후 수정할 수 있다.
 해당 공고의 A/B 명칭·모집조건과 여러 공고가 공유하는 공통 이름·면적을 구분한다.
@@ -106,6 +104,13 @@ PDF 보정과 공급정보 편집표는 LH 원천 소유 공고에 아직 공급
 추후 PDF 매칭도 확인된 값·적용 범위·근거를 이 경로에 전달하며 자동으로 공통정보 전체를 덮지 않는다.
 
 ## 배포
+
+- `V20261114_01__supply_sheet_only.sql`은 공고 공급정보를 공고 공급표 하나로 남기고 옛 구조를 지운다.
+  공급표 투영 트리거·함수, `supply_targets`·`supply_target_count_groups`·`supply_row_groups`·`supply_row_housing_types`·
+  `lh_supply_row_links`·`announcement_supply_match_decisions`, 공급행의 옛 모집수·대상 비교·대응 열을 지운다.
+  지우기 전에 여러 주택형을 함께 가리키던 공급행은 주택형마다 한 행으로 나누고, 원래 행의 칸·수량 묶음·임대조건을 함께 쓰게 한다.
+  되돌릴 수 없으므로 적용 전에 DB 백업을 확인하고, 적용 뒤에는 구버전 서버로 되돌리지 않는다.
+  아래 옛 마이그레이션 항목의 테이블은 이 마이그레이션 뒤에는 없다.
 
 - `V20261019_04__supply_row_groups.sql`은 원천별 공통 모집수·보정 근거와 공급행의 그룹 참조를 추가한다.
   기존 공급행은 그룹 없이 유지한다. 그룹에 속한 행에 개별 모집수를 중복 저장하는 것은 DB 제약으로 거절한다.

@@ -57,9 +57,7 @@ LH 공급·상세는 [LhAnnouncementExternalCollectionService](../../../backend/
 
 공고 정제는 [LH 공고 정제](lh-linking.md#lh-공고-정제-announcement-refinement)를 따른다. 마이홈 공고 정제·LH 보강·단건 등록과 그 보정은 지원을 종료해 코드를 걷어냈다. 지난 실행 이력과 실패 조회는 남긴다.
 
-PDF 보정은 마이홈 원천행이 기록된 기존 공급행을 다루려고 마이홈 원천 해석(`MyHomeAnnouncementSourceMapper` → `MyHomeAnnouncementSupplyRowResolver`)을 그대로 읽는다.
-관리자가 원천 공급행마다 저장한 매칭의 지문 기반 유효성 판정·확정·해제·단지 통합 때의 이동은 `SavedSupplyMatches`만 안다.
-LH 공급 연결의 판정·지문 규칙(`LhSupplyRowLinks`)과 저장소는 enrichment에 둔다. 마이홈 원천 해석과 PDF 보정이 이 규칙을 쓰고, `LhSupplyLinkService`는 연결 상태와 매칭 진단(`LhSupplyMatchDiagnostics`)을 조회만 한다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, LH 공고 정제가 고치거나 지울 수 있는 일정·첨부(관리자가 고치지 않은 LH 값)는 `LhOwnedValues`가 판정한다.
+LH·GH 정제와 관리자 보정은 모두 공고 공급표 쓰기(`SupplySheetStore`)로 공급정보를 쓴다. 원천 공급 행은 `SourceSupplySheet`가 공급표 초안으로 바꾼다. LH 원천 식별자 형식은 `LhSourceIdentifier`만 알고, LH 공고 정제가 고치거나 지울 수 있는 일정·첨부(관리자가 고치지 않은 LH 값)는 `LhOwnedValues`가 판정한다.
 
 기관별 SH·GH 버튼은 목록 한 페이지를 수집할 때마다 그 글을 바로 미확정 공고로 정제하는 `수집·정제` 한 단계를 실행한다. 호출 제한이나 실패로 멈춰도 처리한 페이지는 정제돼 있고, 해당 기관 수집을 다시 실행하면 남은 글을 이어서 받는다. 정제 결과는 단계별 실행 보고서에서 확인하며 공개는 PDF 보정에서 별도로 요청한다.
 
