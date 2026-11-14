@@ -133,7 +133,7 @@ function extraction(value: unknown): Extraction | string {
     const name = text(item.sourceComplexName)
     return name ? [{ name, address: text(item.address), totalHouseholdCount: count(item.totalHouseholdCount), parkingCount: count(item.parkingCount) }] : []
   }) : []
-  // 공급행 경로(supplyRows[…])는 워커가 공급표 경로로 옮겨 supplySheet 안에 다시 적었다. 겉의 공급행 경로는 가리킬 값이 없어 읽지 않는다.
+  // 공급행 경로(supplyRows[…])는 워커가 공급표 경로로 옮겨 supplySheet 안에 다시 적었다. 지금 워커는 겉에 남기지 않지만, 앞서 저장된 결과의 겉 공급행 경로는 가리킬 값이 없어 읽지 않는다.
   const outside = <T extends { path: string }>(items: T[]) => items.filter(item => !/^supplyRows(?:$|[.[])/.test(item.path))
   const evidence = [...outside((value.evidence as Record<string, unknown>[]).map(evidenceItem)), ...(sheetSource.evidence as Record<string, unknown>[] ?? []).map(evidenceItem)]
   return {

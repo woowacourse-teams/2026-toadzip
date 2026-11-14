@@ -200,3 +200,22 @@ def test_joined_row_subtype_paths_point_at_each_housing_type():
     assert [item["name"] for item in result["housingTypes"]] == ["49A", "49B", "84"]
     assert [item["path"] for item in result["unresolvedFields"]] == [
         "housingTypes[1].exclusiveArea", "housingTypes[2].houseTypes[0].exclusiveArea"]
+
+
+def test_result_keeps_only_the_supply_sheet_and_items_outside_supply_rows():
+    tree = {"data": {"supplyRows": [row("26A", 30, target("청년", 10))],
+                     "unresolvedFields": [{"path": "supplyRows[0].totalSupplyHouseholdCount", "reason": "a"},
+                                          {"path": "complexes[0].address", "reason": "b"}]},
+            "sharedCounts": [], "notApplicable": [{"path": "supplyRows[0].targets[0].reserveCount", "reason": "c"},
+                                                  {"path": "announcement.applicationEndDate", "reason": "d"}],
+            "evidence": [{"path": "supplyRows[0]", "page": 1, "quote": "26A 30"},
+                         {"path": "sharedCounts[0]", "page": 1, "quote": "공통"},
+                         {"path": "complexes[0]", "page": 1, "quote": "Test"}]}
+
+    supply_sheet.attach(tree, [])
+
+    assert "supplyRows" not in tree["data"] and "sharedCounts" not in tree
+    assert [item["path"] for item in tree["data"]["unresolvedFields"]] == ["complexes[0].address"]
+    assert [item["path"] for item in tree["notApplicable"]] == ["announcement.applicationEndDate"]
+    assert [item["path"] for item in tree["evidence"]] == ["complexes[0]"]
+    assert [item["path"] for item in tree["data"]["supplySheet"]["evidence"]] == ["housingTypes[0]", "quotas[1]"]

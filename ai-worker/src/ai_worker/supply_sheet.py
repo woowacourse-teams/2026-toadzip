@@ -1,4 +1,5 @@
-"""검산을 마친 공급행 결과(supplyRows·sharedCounts)를 공고 공급표 모양(data.supplySheet)으로 옮긴다.
+"""검산을 마친 공급행 결과(supplyRows·sharedCounts)를 공고 공급표 모양(data.supplySheet)으로 옮기고, 공급행 결과는 출력에서 뺀다.
+공급행은 모델 답과 검산이 쓰는 안쪽 모양이고, 워커가 내보내는 공급정보는 공급표뿐이다.
 
 공급표는 공고문 표의 칸이 가리키는 단위를 그대로 둔다: 주택형(housingTypes), 공급대상(targets), 주택형×공급대상 칸(cells),
 수량 칸 하나가 묶음 하나인 수량 묶음(quotas: WINNER·RESERVE), 금액 칸 한 세트인 임대조건(leaseTerms). 병합된 수량 칸은 멤버가
@@ -18,15 +19,29 @@ _AMOUNT_FIELDS = ("rentalDeposit", "monthlyRent", "convertedDeposit")
 _KINDS = {"supplyHouseholdCount": "WINNER", "reserveCount": "RESERVE", "totalSupplyHouseholdCount": "WINNER"}
 _CELL_COUNT = {"WINNER": "winner", "RESERVE": "reserve"}
 _ROW_PATH = re.compile(r"supplyRows\[(\d+|\*)\](.*)")
+_OLD_SUPPLY_PATH = re.compile(r"(?:supplyRows|sharedCounts)(?:$|[.\[])")
 _TARGET_PATH = re.compile(r"\.targets\[(\d+|\*)\](.*)")
 _SUBTYPE_PATH = re.compile(r"\.subtypes(?:\[(\d+|\*)\])?(.*)")
 
 
 def attach(tree: dict, joined_rows: list[int]) -> None:
-    """최종 결과 tree의 공급행 결과로 data.supplySheet를 만든다. joined_rows는 assemble이 공급 tree에 남긴 묶은 공급행 번호다
-    (supply_assembly.JOINED_ROWS). 묶은 공급행은 주택형마다 나눈다."""
+    """최종 결과 tree의 공급행 결과를 data.supplySheet로 바꾼다. joined_rows는 assemble이 공급 tree에 남긴 묶은 공급행 번호다
+    (supply_assembly.JOINED_ROWS). 묶은 공급행은 주택형마다 나눈다.
+
+    공급행 결과(data.supplyRows, sharedCounts)와 그것을 가리키던 미확인·해당 없음·근거 항목은 결과에서 뺀다. 공급정보의 출력은
+    공급표 하나이고, 공급행 경로의 미확인·근거는 공급표 경로로 옮겨 supplySheet 안에 다시 적었다."""
     data = tree["data"]
     data["supplySheet"] = _Sheet(checks.objects(data.get("supplyRows")), set(joined_rows)).build(tree)
+    data.pop("supplyRows", None)
+    tree.pop("sharedCounts", None)
+    for holder, key in ((data, "unresolvedFields"), (tree, "notApplicable"), (tree, "evidence")):
+        if isinstance(holder.get(key), list):
+            holder[key] = [item for item in holder[key] if not _supply_row_path(item)]
+
+
+def _supply_row_path(item: object) -> bool:
+    path = item.get("path") if isinstance(item, dict) else None
+    return isinstance(path, str) and _OLD_SUPPLY_PATH.match(path) is not None
 
 
 class _Sheet:

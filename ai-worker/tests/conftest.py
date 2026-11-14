@@ -1,5 +1,6 @@
 """실제 Postgres 17에 Spring Flyway의 ai_jobs 마이그레이션을 그대로 적용하고, 워커는 제한 역할로 접속한다."""
 
+import copy
 import json
 import re
 from pathlib import Path
@@ -9,7 +10,7 @@ import pymupdf
 import pytest
 from testcontainers.community.postgres import PostgresContainer
 
-from ai_worker import checks, jev
+from ai_worker import checks, jev, supply_sheet
 from ai_worker.openai import Reply
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -299,3 +300,18 @@ def two_quantity_tables_pdf(title="Sample Notice"):
         ["Beta", "36A", "고령자", "3", "36.92", "18.06"],
     ])
     return document.tobytes()
+
+
+@pytest.fixture
+def supply_stage(monkeypatch):
+    """공급표로 바꾸기 직전의 결과 tree. 워커 출력에는 공급표만 나가므로, 공급행 검산 규칙(원천 행 번호, 확인되지 않은 수 비우기,
+    병합 수)은 이 안쪽 모양에서 확인하고 공급표로 옮기는 규칙은 test_supply_sheet가 확인한다."""
+    seen = {}
+    attach = supply_sheet.attach
+
+    def capture(tree, joined_rows):
+        seen.clear()
+        seen.update(copy.deepcopy(tree))
+        attach(tree, joined_rows)
+    monkeypatch.setattr(supply_sheet, "attach", capture)
+    return seen
