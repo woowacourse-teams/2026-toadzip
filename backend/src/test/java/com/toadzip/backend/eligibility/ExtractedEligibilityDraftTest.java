@@ -450,9 +450,9 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
-    void 가구원_수_가산이_없는_공고의_가구원_수_맞벌이_비율은_모든_가구원_수에_같은_만큼_더한다() {
-        // 기준표에 2인 가산이 없는데 "맞벌이 2인 가구 130퍼센트"만 적혔으면 기본 100%에서 30%p를 더한다. 가구원 수별로 나눠 판정하지
-        // 않고 다른 가구원 수에도 같은 30%p를 더한다(넓게 충족으로 보는 쪽). 2인 상한은 5,866,270원의 130%인 7,626,151원이다.
+    void 가구원_수_가산이_없는_공고의_2인_맞벌이_비율은_기본_비율에서_센_만큼_더한_상한으로_판정한다() {
+        // 기준표에 2인 가산이 없는데 "맞벌이 2인 가구 130퍼센트"만 적혔으면 기본 100%에서 30%p를 더한다.
+        // 2인 상한은 5,866,270원의 130%인 7,626,151원이다.
         EligibilityContent content = draft(evidence(), dualIncome(Map.of(), "맞벌이 2인 가구의 경우 130퍼센트 이하"));
         EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
                 HOUSEHOLD_MONTHLY_INCOME, 7_626_151L);
