@@ -57,7 +57,11 @@ class AgencySupplyLinesMigrationTest {
                             "4|GH|GH:9:다산:A1|0|401|다산|36A 청년|-|60|36.8000|-/-|RESUPPLY",
                             "4|GH|GH:9:다산:A1#2|1|401|다산|36A 신혼|-|-|-|-/-|RESUPPLY",
                             "11|GH|GH:11:다산:B1|0|1101|다산|46A|-|3|-|-/-|NEW_SUPPLY",
-                            "12|GH|GH:12:다산:B1|0|1201|다산|46A|-|3|-|-/-|NEW_SUPPLY");
+                            "12|GH|GH:12:다산:B1|0|1201|다산|46A|-|3|-|-/-|NEW_SUPPLY",
+                            "14|GH|GH:14:다산:B1|0|1401|다산|46A|-|3|-|-/-|NEW_SUPPLY");
+                    // 원천 공급면적 없이 주택타입만 이은 옛 행은 그 주택타입의 공급면적을 준비 줄로 옮긴다.
+                    assertThat(rows(query, "SELECT COALESCE(supply_area::text, '-') FROM agency_supply_lines"
+                            + " WHERE source_line_key = 'MIGRATED:121'")).containsExactly("60.5000");
 
                     assertThat(rows(query, """
                             SELECT id || ' ' || CASE WHEN supply_confirmed_at IS NULL THEN '준비'
@@ -65,7 +69,8 @@ class AgencySupplyLinesMigrationTest {
                                 ELSE '확정' END
                             FROM announcements ORDER BY id
                             """)).containsExactly("1 준비", "2 확정", "3 확정(관리자 시각)", "4 준비", "5 확정",
-                            "6 준비", "7 확정", "8 확정", "9 확정", "10 확정", "11 확정", "12 확정", "13 확정(관리자 시각)");
+                            "6 준비", "7 확정", "8 확정", "9 확정", "10 확정", "11 확정", "12 확정", "13 확정(관리자 시각)",
+                            "14 확정(관리자 시각)");
                     // 옮긴 공고(1·4)의 정본 행·대상·묶음·임대조건이 지워지고 나머지는 그대로다.
                     assertThat(rows(query, "SELECT announcement_id || ' ' || id FROM supply_rows ORDER BY id"))
                             .containsExactly("2 21", "3 31", "5 51", "7 71", "8 81", "9 91", "10 95", "11 1110",
@@ -219,6 +224,22 @@ class AgencySupplyLinesMigrationTest {
                     status, view_count, release_status, supply_owner, lh_pan_id, admin_updated_at)
                 VALUES (13, '공고 13', 'https://example.com/13', DATE '2026-11-01', 'LH', 'lh-13', 'ORIGINAL', 0,
                         'UNCONFIRMED', 'ANNOUNCEMENT_DOCUMENT', 'P13', TIMESTAMPTZ '2026-11-10 00:00:00+00')
+                """);
+        // 관리자가 맡은 뒤 공급행을 모두 지운 GH 공고. 준비 줄은 만들지만 확정해 그 줄이 화면에 되살아나지 않는다.
+        seed.execute("""
+                INSERT INTO announcements (id, name, original_url, posted_date, provider, source_announcement_identifier,
+                    status, view_count, release_status, supply_owner, lh_pan_id, admin_updated_at)
+                VALUES (14, '공고 14', 'https://example.com/14', DATE '2026-11-01', 'GH', 'GH:14', 'ORIGINAL', 0,
+                        'UNCONFIRMED', 'ANNOUNCEMENT_DOCUMENT', NULL, TIMESTAMPTZ '2026-11-10 00:00:00+00')
+                """);
+        seed.execute("INSERT INTO announcement_complexes (id, announcement_id, source_complex_name) VALUES (1401, 14, '다산')");
+        seed.execute("""
+                INSERT INTO gh_announcement_source (source_key, pbanc_no, board, kind_code, title, supply_type, region,
+                    posted_date, original_url, list_url, districts, collected_at)
+                VALUES ('GH:14', '14', 'RENTAL_HOUSE', '01', '다산 입주자 모집', '행복주택', '남양주', DATE '2026-11-01',
+                    'https://example.com/gh14', 'https://example.com/gh-list',
+                    '[{"name":"다산","housingTypes":[{"name":"46A","houseTypeCode":"B1","supplyCount":"3"}]}]',
+                    CURRENT_TIMESTAMP)
                 """);
     }
 
