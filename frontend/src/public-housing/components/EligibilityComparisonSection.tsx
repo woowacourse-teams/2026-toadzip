@@ -14,7 +14,6 @@ import {
   missingNote,
   sortChecks,
   sortTypes,
-  typeChipRows,
   typeStatusText,
   verdictCopy,
 } from '../presentation/comparisonPresentation'
@@ -70,7 +69,7 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
 
   let body: React.ReactNode = null
   if (mode === 'guest') {
-    body = <Invite detail={detail} labels={[]} />
+    body = <Invite detail={detail} />
   } else if (mode === 'error') {
     body = <RequestError title="내 조건을 불러오지 못했어요" onRetry={conditions.retryProfile ?? retry} />
   } else if (status === 'error') {
@@ -88,7 +87,7 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
     return <section className={styles.section} aria-labelledby={headingId}>
       {head(<Button size="sm" variant="secondary" onClick={() => conditions.openInput({ mode: 'full', step: 1, origin: 'detail' }, { announcementId: detail.announcementId })}>내 조건 수정</Button>,
         `공고 기준일 ${formatDots(view.referenceDate)}${saved ? ` · ${saved} 저장한 내 조건 기준` : ''}`)}
-      {!compared && <Invite detail={detail} labels={view.types.map((type) => type.label)} />}
+      {!compared && <Invite detail={detail} />}
       <Comparison key={detail.announcementId} announcementId={detail.announcementId} types={view.types} revision={loadedRevision}
         onOpenEvidence={onOpenEvidence} />
       {view.scopeNote && <p className={styles.note}>{view.scopeNote}</p>}
@@ -98,19 +97,13 @@ export function EligibilityComparisonSection({ detail, onOpenEvidence }: { reado
   return <section className={styles.section} aria-labelledby={headingId}>{head()}{body}</section>
 }
 
-function Invite({ detail, labels }: { readonly detail: EligibilitySectionDetail; readonly labels: readonly string[] }) {
+function Invite({ detail }: { readonly detail: EligibilitySectionDetail }) {
   const { memberDraft, mode, openInput, restartInput } = useConditions()
   const draft = mode === 'member' ? memberDraft : null
   const done = draft !== null && draft.step > 3
-  const [top, bottom] = typeChipRows(labels)
-  const chip = (label: string) => <span key={label} className={styles.chip} role="listitem">{label}<i aria-label="미확인">?</i></span>
   return <div className={styles.invite}>
     <p className={styles.inviteTitle}>{done ? '입력 완료! 결과만 남았어요' : draft ? '작성하던 내 조건이 있어요' : '이 공고, 나도 신청할 수 있을까?'}</p>
     <p className={styles.inviteSub}>{done ? '저장한 정보로 신청자격을 확인해 드려요' : draft ? `${draft.step}단계까지 입력했어요` : '모집 선택지별 신청자격을 확인해 드려요'}</p>
-    {labels.length > 0 && <div className={styles.chips} role="list" aria-label="이 공고의 신청 유형">
-      <div className={styles.chipRow}>{top.map(chip)}</div>
-      {bottom.length > 0 && <div className={styles.chipRow}>{bottom.map(chip)}</div>}
-    </div>}
     <Button size="lg" className={styles.wide} onClick={() => openInput({ mode: 'full', step: 1, origin: 'detail' }, { announcementId: detail.announcementId, resume: true })}>
       {done ? '저장하고 결과 보기' : draft ? '이어서 입력하기' : '지금 확인해 보기'}
     </Button>
@@ -172,7 +165,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><StatusMark status={markOfType(type.status)} size={15} className={styles.mark} />{type.label}{type.units && <small>{type.units}</small>}</span>
+        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{type.label}{type.units && <small>{type.units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
@@ -222,11 +215,10 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
   const { openInput } = useConditions()
   const copy = verdictCopy(type)
   const checks = sortChecks(type.checks)
-  const editableFailures = (items: readonly CheckView[]): CheckView[] => items.flatMap((check) => check.children?.length ? editableFailures(check.children) : check.status === 'NOT_SATISFIED' && check.fields.length > 0 ? [check] : [])
-  const firstUnmet = editableFailures(checks)[0]
+  const firstUnmet = checks.find((check) => check.status === 'NOT_SATISFIED' && check.fields.length > 0)
   return <>
     <div className={styles.verdict} data-status={type.status}>
-      <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={26} className={styles.mark} /></span>
+      <span className={styles.verdictIcon}><StatusMark status={markOfType(type.status)} size={30} className={styles.mark} /></span>
       <div>
         <strong>{copy.title}</strong>
         <p>{copy.message}</p>
@@ -265,25 +257,24 @@ function CheckRow({ announcementId, check, type, just, onOpenEvidence }: { reado
   const { openInput } = useConditions()
   const note = missingNote(check, type.status)
   const field = check.fields[0]
+  // 묶음 조건은 여러 항목을 함께 열므로 항목 이름 대신 줄 이름으로 부른다.
+  const name = field && check.fields.length === 1 ? FIELD_COPY[field].label : check.label
   const side = check.status === 'NOT_SATISFIED' && field
-    ? <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 수정, 지금 값 ${check.mine ?? ''}`}
-      onClick={() => openFix(openInput, check.fields, announcementId)}>{check.mine}<PencilIcon size={14} /></button>
+    ? <button type="button" className={styles.editChip} aria-label={`${name} 수정${check.mine ? `, 지금 값 ${check.mine}` : ''}`}
+      onClick={() => openFix(openInput, check.fields, announcementId)}>{check.mine ?? '수정하기'}<PencilIcon size={14} /></button>
     : check.status === 'INPUT_NEEDED' && field
-    ? <button type="button" className={styles.editChip} aria-label={`${FIELD_COPY[field].label} 입력하기`}
+    ? <button type="button" className={styles.editChip} aria-label={`${name} 입력하기`}
       onClick={() => openInput({ mode: 'partial', fields: check.fields, origin: 'detail' }, { announcementId })}>입력하기<PlusIcon size={14} /></button>
     : check.status === 'SATISFIED' && check.mine ? <b className={styles.mine}>{check.mine}</b>
     : null
   return <li className={styles.check} data-status={check.status} data-just={just || undefined}>
     <span className={styles.rowMark} data-status={check.status}>
-      <StatusMark status={markOfCheck(check.status)} size={18} bold label={CHECK_STATUS_LABEL[check.status]} className={styles.mark} />
+      <StatusMark status={markOfCheck(check.status)} size={22} bold label={CHECK_STATUS_LABEL[check.status]} className={styles.mark} />
     </span>
     <div className={styles.main}>
       <div className={styles.top}><strong>{check.label}</strong>{just && <span className={styles.justTag}>방금 확인했어요</span>}</div>
       <p className={styles.criterion}>기준 {check.criterion}{check.basis ? ` (${check.basis})` : ''}</p>
-      {note && <p className={note.quiet ? `${styles.missing} ${styles.quiet}` : styles.missing}>{note.text}</p>}
-      {Boolean(check.children?.length) && <ul className={styles.checks} aria-label={`${check.label} 세부 조건`}>
-        {check.children?.map((child) => <CheckRow key={child.id} announcementId={announcementId} check={child} type={type} just={false} onOpenEvidence={onOpenEvidence} />)}
-      </ul>}
+      {note && <p className={styles.missing}>{note}</p>}
     </div>
     <div className={styles.side}>
       {side}

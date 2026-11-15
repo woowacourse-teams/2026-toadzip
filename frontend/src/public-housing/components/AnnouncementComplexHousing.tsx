@@ -317,7 +317,7 @@ function chosenTargets(row: HousingAnnouncementDetailSupplyRow, chosen: string |
 
 function visibleTargets(row: HousingAnnouncementDetailSupplyRow) {
   return row.targets.filter((target) => (
-    [target.target, target.priority, target.applicationCondition].some(hasText)
+    [target.target, target.priority].some(hasText)
     || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(isFiniteNumber)
     || target.sharedSupplyHouseholdCount != null || target.sharedWaitlistCount != null
   ))
@@ -327,7 +327,6 @@ function TargetMeta({ target }: { target: AnnouncementSupplyTarget }) {
   const parts = [
     labeledCount('공급', target.supplyHouseholdCount, target.sharedSupplyHouseholdCount, '세대', target.target),
     labeledCount('예비자', target.waitlistCount, target.sharedWaitlistCount, '명', target.target),
-    hasText(target.applicationCondition) ? target.applicationCondition : null,
   ].filter((part) => part !== null)
   return parts.length > 0 ? <p className={styles.targetMeta}>{parts.join(' · ')}</p> : null
 }

@@ -117,7 +117,16 @@ public final class ExtractedEligibilityDraft {
             Long housingTypeId,
             String rentalType,
             List<String> regionCodes,
-            List<Target> targets) {}
+            List<Target> targets,
+            Integer supplyHouseholdCount) {
+
+        /** 공급행 세대수를 모르는 경우. 공고 공급표의 행은 대상 칸을 늘 가져 대상별 수로 모집 여부를 본다. */
+        public Unit(String key, String complexLabel, String typeLabel, BigDecimal exclusiveArea, Long housingComplexId,
+                Long housingTypeId, String rentalType, List<String> regionCodes, List<Target> targets) {
+            this(key, complexLabel, typeLabel, exclusiveArea, housingComplexId, housingTypeId, rentalType, regionCodes,
+                    targets, null);
+        }
+    }
 
     /** 공급행의 공급대상 하나. (표기, 신청 조건)이 공고 안의 대상 자연 키({@link AnnouncementSupplyTarget#key})다. */
     public record Target(String label, String applicationCondition, Integer supplyHouseholdCount) {
@@ -360,10 +369,15 @@ public final class ExtractedEligibilityDraft {
             if (matched.isEmpty() && !open) {
                 continue;
             }
-            boolean recruiting = matched.stream().anyMatch(target -> target.supplyHouseholdCount() != null
-                    && target.supplyHouseholdCount() > 0);
-            boolean unknown = matched.isEmpty()
-                    || matched.stream().anyMatch(target -> target.supplyHouseholdCount() == null);
+            // 대상을 나누지 않은 공급행은 공급행 세대수가 있으면 이번 공고에서 모집하는 주택형이다.
+            boolean undivided = unit.targets().isEmpty();
+            boolean recruiting = undivided
+                    ? unit.supplyHouseholdCount() != null && unit.supplyHouseholdCount() > 0
+                    : matched.stream().anyMatch(target -> target.supplyHouseholdCount() != null
+                            && target.supplyHouseholdCount() > 0);
+            boolean unknown = undivided
+                    ? unit.supplyHouseholdCount() == null
+                    : matched.isEmpty() || matched.stream().anyMatch(target -> target.supplyHouseholdCount() == null);
             if (!recruiting && !unknown) {
                 continue;
             }

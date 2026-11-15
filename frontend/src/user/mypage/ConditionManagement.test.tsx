@@ -22,7 +22,7 @@ function context(extra: Partial<ConditionsContextValue> = {}): ConditionsContext
   }
 }
 
-const renderManagement = (value: ConditionsContextValue) => render(<ConditionsContext value={value}><ConditionManagement /></ConditionsContext>)
+const renderManagement = (value: ConditionsContextValue) => render(<ConditionsContext value={value}><ConditionManagement onBrowseAnnouncements={() => {}} /></ConditionsContext>)
 
 describe('ConditionManagement', () => {
   it('lists every applicable item in order and offers an input button for each missing item', () => {

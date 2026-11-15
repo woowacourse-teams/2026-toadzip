@@ -22,15 +22,18 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
     accountId.current = null
     setUser(null); setItems([]); setPending(new Set()); setOptimistic(new Map()); setError(''); setMode('guest')
   }, [])
-  const reload = useCallback(() => {
+  // 창 포커스로 다시 확인할 때는 같은 계정이면 화면을 비우지 않고 조용히 갱신한다.
+  const load = useCallback((quiet: boolean) => {
     const version = ++generation.current
     controller.current?.abort()
     const request = new AbortController(); controller.current = request
-    accountId.current = null
-    inFlight.current.clear(); setPending(new Set()); setOptimistic(new Map()); setItems([]); setUser(null); setMode('loading'); setListStatus('loading'); setError('')
+    const keptAccountId = quiet ? accountId.current : null
+    inFlight.current.clear(); setPending(new Set()); setOptimistic(new Map()); setError('')
+    if (keptAccountId === null) { accountId.current = null; setItems([]); setUser(null); setMode('loading'); setListStatus('loading') }
     void loadUser().then(async (account) => {
       if (version !== generation.current) return
       if (!account) { reset(); return }
+      if (account.id !== keptAccountId) { setItems([]); setListStatus('loading') }
       accountId.current = account.id
       setUser(account); setMode('member')
       const saved = await repository.list(request.signal)
@@ -43,6 +46,8 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
       if (accountId.current === null) setMode('error')
     })
   }, [loadUser, repository, reset])
+  const reload = useCallback(() => load(false), [load])
+  const revalidate = useCallback(() => load(true), [load])
   useEffect(() => {
     const currentGeneration = generation
     const currentController = controller
@@ -50,9 +55,9 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
     reload()
     window.addEventListener('toadzip:logout', reset)
     window.addEventListener('toadzip:session-ended', reset)
-    window.addEventListener('focus', reload)
-    return () => { currentGeneration.current++; currentAccountId.current = null; currentController.current?.abort(); window.removeEventListener('toadzip:logout', reset); window.removeEventListener('toadzip:session-ended', reset); window.removeEventListener('focus', reload) }
-  }, [reload, reset])
+    window.addEventListener('focus', revalidate)
+    return () => { currentGeneration.current++; currentAccountId.current = null; currentController.current?.abort(); window.removeEventListener('toadzip:logout', reset); window.removeEventListener('toadzip:session-ended', reset); window.removeEventListener('focus', revalidate) }
+  }, [reload, reset, revalidate])
   async function toggle(type: BookmarkType, id: string) {
     const key = bookmarkKey(type, id)
     if (mode !== 'member' || listStatus !== 'ready' || inFlight.current.has(key)) return
@@ -88,7 +93,7 @@ export function BookmarkProvider({ children, repository = bookmarkRepository, lo
         inFlight.current.delete(key); setPending(new Set(inFlight.current))
         setOptimistic(current => { const next = new Map(current); next.delete(key); return next })
       }
-      else if (mutationAccountId !== null && accountId.current === mutationAccountId) reload()
+      else if (mutationAccountId !== null && accountId.current === mutationAccountId) revalidate()
     }
   }
   return <BookmarkContext.Provider value={{ mode, listStatus, user, items: items.filter(item => optimistic.get(bookmarkKey(item.type, item.targetId)) !== false), optimistic, pending, error, reload, toggle }}>{children}</BookmarkContext.Provider>

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { ConditionField, FamilyGate } from './ConditionFields'
-import { LATER, emptyDraft, setAnswer, setFamilyDetails, type ConditionDraft } from './conditionDraft'
+import { LATER, NOT_APPLICABLE, emptyDraft, setAnswer, setFamilyDetails, type ConditionDraft } from './conditionDraft'
 import type { ProfileField } from './conditionsModel'
 
 let latest: ConditionDraft = emptyDraft()
@@ -53,6 +53,19 @@ describe('ConditionField', () => {
     render(<Harness field="HOUSEHOLD_MONTHLY_INCOME" initial={initial} />)
     fireEvent.click(screen.getByRole('checkbox', { name: '본인 소득과 같아요' }))
     expect(latest.answers.HOUSEHOLD_MONTHLY_INCOME).toBe(2_300_000)
+  })
+
+  it.each([[NOT_APPLICABLE, '계약 종료일이 없어요'], [LATER, '나중에 입력할게요']] as const)('reopens a saved %s date answer with an empty locked field', (answer, label) => {
+    render(<Harness field="CURRENT_LEASE_END_DATE" initial={setAnswer(emptyDraft(), 'CURRENT_LEASE_END_DATE', answer)} />)
+    const input = screen.getByRole('textbox', { name: '현재 사는 집의 계약은 언제 끝나나요?' })
+    expect(input).toHaveValue('')
+    expect(input).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: label })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('reopens a saved date answer with the date shown', () => {
+    render(<Harness field="CURRENT_LEASE_END_DATE" initial={setAnswer(emptyDraft(), 'CURRENT_LEASE_END_DATE', '2027-05-01')} />)
+    expect(screen.getByRole('textbox', { name: '현재 사는 집의 계약은 언제 끝나나요?' })).toHaveValue('2027.05.01')
   })
 
   it('hides the later option in partial mode', () => {
