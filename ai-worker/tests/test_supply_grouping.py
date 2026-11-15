@@ -156,6 +156,29 @@ def test_rent_rows_that_match_no_supply_row_and_tableless_next_page_are_warned()
     assert readable(result.sheet)["leaseTerms"] == [(40000000, 150000, ["26B/청년"])]
 
 
+def test_rent_row_whose_merged_housing_type_cell_also_holds_another_types_house_types_applies_to_that_type():
+    # 울산다운2: 공급표는 55와 55(주거약자용)을 나누지만 임대조건표는 공급형 55 칸 아래 55A·55B·55AS를 함께 두고 금액 칸도 병합한다.
+    # 55(주거약자용)의 주택타입(55AS)이 그 임대조건 행에 들어 있으므로 같은 조건이다. 주택타입이 없는 형(59)은 잇지 않는다.
+    header = [["공급형", "주택형", "공급대상", "당첨자", "주거전용", "주거공용"]]
+    quantity = table(4, [
+        ["55", "55A", "신혼부부", "103", "55.93", "24.1"],
+        [None, "55B", None, None, "55.97", "24.2"],
+        ["55 (주거약자용)", "55AS", None, "19", "55.93", "24.1"],
+        ["59", "59A", None, "7", "59.91", "25.1"],
+    ], header=header)
+    rent = table(5, [
+        ["55", "55A", "신혼부부", None, "66,000", "302,500"],
+        [None, "55B", None, None, None, None],
+        [None, "55AS", None, None, None, None],
+    ], header=[["공급형", "주택형", "공급대상", None, "임대보증금(천원)", "월임대료(원)"]])
+
+    result = read(quantity, rent)
+
+    assert readable(result.sheet)["leaseTerms"] == [(66000000, 302500, ["55/신혼부부"]),
+                                                    (66000000, 302500, ["55 (주거약자용)/신혼부부"])]
+    assert {"cells[2].rentalDeposit", "cells[2].monthlyRent"} <= result.unresolved()
+
+
 def test_conflicting_rent_rows_for_one_target_stay_unresolved():
     quantity = table(4, [["Alpha", "26B", "청년", "5", "26.73", "13.07"]])
     rent = table(8, [

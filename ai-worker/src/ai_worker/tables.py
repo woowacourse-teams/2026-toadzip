@@ -6,7 +6,7 @@
 import logging
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 import pymupdf
@@ -87,6 +87,8 @@ class SupplyTable:
     continues_subtypes: bool = False
     # 머리글에서 열 역할을 찾았다. 아니면 columns는 앞 공급표에서 물려받은 것이다.
     header_found: bool = True
+    # 표 바로 위에 적은 금액 단위((단위: 천원)). 머리글에 단위가 없는 금액 열의 단위다.
+    money_unit: str | None = None
 
     @classmethod
     def of(cls, page: int, number: int, cells: list[list[str | None]], inherited_columns: dict[str, int] | None,
@@ -100,6 +102,16 @@ class SupplyTable:
                          subtypes.get(index - 1, ()))
                 for index, row in enumerate(cells, 1)]
         return cls(page, number, cells, columns, ambiguous, rows, _starts_with_house_types(cells, columns), bool(own_columns))
+
+    def with_money_unit(self, unit: str | None) -> "SupplyTable":
+        """표 위에 적은 금액 단위를 머리글에 단위가 없는 금액 칸의 단위로 둔다(울산다운2 임대조건 (단위: 천원))."""
+        if unit is None:
+            return self
+        for row in self.rows:
+            for name in _MONEY_FIELDS:
+                if name in row.values:
+                    row.values.setdefault(f"{name}Unit", unit)
+        return replace(self, money_unit=unit)
 
     def last_housing_type_row_id(self) -> str | None:
         """신청형(주택형) 칸이 시작하는 마지막 행. 다음 표로 이어질 수 있는 신청형이다."""

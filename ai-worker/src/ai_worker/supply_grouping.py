@@ -281,8 +281,22 @@ def _rental_applies(rental: _SourceRow, quantity: _SourceRow, quantities: list[_
 
 
 def _same_type(rental: _SourceRow, quantity: _SourceRow) -> bool:
-    return (_compact(quantity.housing_type) in _names(rental.housing_type, _HOUSING_TOKEN)
-            and _compact(quantity.target) in _names(rental.target, _TARGET_TOKEN))
+    """주택형·대상이 같은 행이다. 임대조건표가 공급표와 달리 주택형 칸을 병합해 다른 주택형의 주택타입까지 한 행에 묶었으면
+    (울산다운2: 공급표는 55·55(주거약자용)으로 나누고 임대조건표는 55 칸 아래 55A·55B·55C·55AS를 함께 둠) 그 주택형의
+    주택타입이 모두 그 임대조건 행에 들어 있을 때도 같은 행이다."""
+    if _compact(quantity.target) not in _names(rental.target, _TARGET_TOKEN):
+        return False
+    if _compact(quantity.housing_type) in _names(rental.housing_type, _HOUSING_TOKEN):
+        return True
+    own = _house_types(quantity)
+    return bool(own) and own <= _house_types(rental)
+
+
+def _house_types(row: _SourceRow) -> set[str]:
+    """행과 그 이어짐 줄의 주택타입 칸."""
+    ids = {row.row_id, *row.continuation_ids}
+    return {_compact(item.values["houseType"]) for item in row.table.rows
+            if item.id in ids and _present(item.values.get("houseType"))}
 
 
 def _names(cell: str, token: re.Pattern) -> set[str]:
@@ -298,7 +312,7 @@ def _read_rows(tables: list[SupplyTable]) -> list[_SourceRow]:
         columns = table.columns
         start = _data_start(table.cells, columns)
         if start > 0 or layout is None:
-            layout = _table_layout(table.cells[:start], columns, max(map(len, table.cells), default=0))
+            layout = _table_layout(table.cells[:start], columns, max(map(len, table.cells), default=0), table.money_unit)
         for index in range(start, len(table.cells)):
             cells = table.cells[index]
             value = {name: cells[column] if column < len(cells) else None for name, column in columns.items()}
@@ -391,13 +405,15 @@ def _data_start(cells: list[list[str | None]], columns: dict[str, int]) -> int:
     return len(cells)
 
 
-def _table_layout(header_rows: list[list[str | None]], columns: dict[str, int], column_count: int) -> _Layout:
+def _table_layout(header_rows: list[list[str | None]], columns: dict[str, int], column_count: int,
+                  money_unit: str | None = None) -> _Layout:
+    """머리글의 금액 단위가 먼저고, 없으면 표 위에 적은 단위(money_unit)다."""
     headers = table_column_headers(header_rows, column_count)
     named = {name: headers[column] for name, column in columns.items() if column < len(headers)}
     units = {}
     for name in _RENT_FIELDS:
         unit = _UNIT.search(named.get(name, ""))
-        units[name] = unit.group() if unit else None
+        units[name] = unit.group() if unit else money_unit
     return _Layout(named, units)
 
 
