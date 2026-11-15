@@ -24,6 +24,7 @@ import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.domain.AgencySupplyLine;
+import com.toadzip.backend.announcement.domain.AnnouncementHousingComplex;
 import com.toadzip.backend.announcement.repository.AgencySupplyLineRepository;
 import com.toadzip.backend.announcement.service.AnnouncementSupplies;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
@@ -258,6 +259,24 @@ class LhAnnouncementRefinementIntegrationTest {
         jdbc.sql("DELETE FROM lh_announcement_supply_rows WHERE type_name = '59A(고령자)'").update();
         assertThat(refinement.refineAll().supplyLines()).isEqualTo(new LhAnnouncementRefinementReport.SupplyCounts(0, 0, 1));
         assertThat(lineIds(id)).containsExactly(first);
+    }
+
+    @Test
+    void 확정_전_공고는_LH가_공급_줄을_뺀_단지와_더는_잇지_않는다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
+        refinement.refineAll();
+        long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
+        assertThat(linkedComplexIds(id)).containsExactly(complex.getId());
+
+        // LH가 정정으로 이 단지의 공급을 빼고 다른 단지 공급만 남긴다. 승인된 감소를 원천 줄을 지워 흉내 낸다.
+        jdbc.sql("DELETE FROM lh_announcement_supply_rows WHERE complex_label = '동탄 행복주택 단지'").update();
+        supplies("P1", supply("다른 단지", "59A", "59.9800", "7", "30000000", "200000"));
+        refinement.refineAll();
+
+        assertThat(staged(id)).singleElement().asString().startsWith("다른 단지|59A");
+        assertThat(linkedComplexIds(id)).isEmpty();
     }
 
     @Test
@@ -740,6 +759,11 @@ class LhAnnouncementRefinementIntegrationTest {
 
     private List<AgencySupplyLine> lines(long announcementId) {
         return lines.findAllByAnnouncementIdIn(List.of(announcementId));
+    }
+
+    private List<Long> linkedComplexIds(long announcementId) {
+        return jdbc.sql("SELECT links.housing_complex_id FROM (" + AnnouncementHousingComplex.LINKS
+                + ") links WHERE links.announcement_id = :id").param("id", announcementId).query(Long.class).list();
     }
 
     private List<Long> lineIds(long announcementId) {
