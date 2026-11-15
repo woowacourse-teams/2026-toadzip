@@ -5,7 +5,7 @@
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ai_worker import checks, pages, tables
 from ai_worker.checks import deduplicate
@@ -18,51 +18,86 @@ from ai_worker.source_check import (
 _ROW_FIELDS = ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
 
 
+@dataclass(eq=False)
+class DraftCell:
+    """칸 초안 하나: 공급표의 주택형 하나 × 공급대상 하나(대상 구분이 없는 표는 대상 없이 주택형 하나)와 그 칸에만 적힌 값.
+    모델 답(supply_answer)과 코드가 표에서 읽은 행(supply_grouping)이 같은 초안을 만들고, 조립이 원문 칸과 대조한다.
+    values는 주택형 값(모집수 totalSupplyHouseholdCount·면적·건설호수·입주 연월)과 칸 값(대상 모집수 supplyHouseholdCount·
+    예비자 수 reserveCount·금액·신청 조건)이다. row_ids는 그 값들이 적힌 원문 표 행, unresolved는 읽었지만 하나로 정하지 못한
+    값의 (필드, 사유)다. targeted는 대상 칸인지다(표기를 읽지 못해 target이 비어도 대상 칸이다)."""
+
+    row_ids: list[str]
+    complex_name: object
+    housing_type: object
+    target: object = None
+    targeted: bool = False
+    values: dict = field(default_factory=dict)
+    house_types: list[dict] = field(default_factory=list)
+    unresolved: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass(eq=False)
+class SharedCount:
+    """여러 칸이 함께 쓰는 수량 칸 하나(병합 칸). field가 totalSupplyHouseholdCount면 cells의 주택형들이 모집수를 함께 쓴다
+    (주택형마다 칸 하나를 가리킨다). row_ids는 그 수가 적힌 원문 행이다."""
+
+    field: str
+    count: object
+    cells: list[DraftCell]
+    row_ids: list[str]
+
+
+@dataclass(frozen=True)
+class Draft:
+    cells: list[DraftCell]
+    shared: list[SharedCount]
+
+
 # 여러 주택형 행을 모집 칸 하나 때문에 한 공급행으로 묶은(공통 형명 49, 주택형마다 subtypes) 공급행 번호를 공급 tree에 남기는 키.
 # 공급표(supply_sheet)는 그 공급행을 주택형마다 나눈다. merge가 결과 tree를 새로 만들며 버리므로 결과 계약에 남지 않는다.
 JOINED_ROWS = "_joinedSupplyRows"
 
 
-def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tuple[dict, list[str]]:
-    """짧은 공급행 응답을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다.
+def assemble(draft: Draft, selected: pages.PromptPages, source_names=()) -> tuple[dict, list[str]]:
+    """칸 초안을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다.
     source_names는 LH 공급행의 단지명이다. 표 위 블록 제목과 단지명을 대조할 때 후보로 쓴다(Headings)."""
     groups: list[dict] = []
     group_indexes: dict[tuple, int] = {}
     unresolved: list[dict] = []
-    compact_paths: dict[int, tuple[int, int | None]] = {}
-    items = checks.objects(compact.get("data", {}).get("rows"))
+    compact_paths: dict[DraftCell, tuple[int, int | None]] = {}
+    items = draft.cells
     per_house_type_tables = _per_house_type_tables(items, selected)
     headings = Headings(selected.supply_row_headings, tuple(
-        name for name in (*(item.get("complexName") for item in items), *source_names) if isinstance(name, str)))
+        name for name in (*(item.complex_name for item in items), *source_names) if isinstance(name, str)))
 
     for item_index, item in enumerate(items):
         unresolved_start = len(unresolved)
-        row_ids = _row_ids(item)
+        row_ids = list(dict.fromkeys(item.row_ids))
         complex_name = None
-        if headings.confirms(item.get("complexName"), row_ids, selected.supply_row_values):
-            complex_name = _normalize_source_display(item["complexName"], "complexName")
+        if headings.confirms(item.complex_name, row_ids, selected.supply_row_values):
+            complex_name = _normalize_source_display(item.complex_name, "complexName")
         if complex_name is None:
-            complex_name = _compact_source_text(item.get("complexName"), "complexName", row_ids, selected,
+            complex_name = _compact_source_text(item.complex_name, "complexName", row_ids, selected,
                                                 "supplyRows[__item__].complexReference.sourceComplexName", unresolved,
                                                 missing_value="")
         unit = _house_type_unit(row_ids, selected, per_house_type_tables)
         if unit is None:
-            housing_type = _compact_source_text(item.get("housingType"), "housingType", row_ids, selected,
+            housing_type = _compact_source_text(item.housing_type, "housingType", row_ids, selected,
                                                 "supplyRows[__item__].sourceHousingTypeName", unresolved,
                                                 missing_value=None)
         else:
-            housing_type = unit.label(item.get("housingType"), "supplyRows[__item__].sourceHousingTypeName", unresolved)
+            housing_type = unit.label(item.housing_type, "supplyRows[__item__].sourceHousingTypeName", unresolved)
         # 대상 열이 없는 표에서 모델이 target을 빠뜨려도 대상 값(예비자 수·보증금)이 있으면 대상 하나다. 버리면 그 값이 사라진다.
-        has_target = "target" in item or any(item.get(field) is not None
-                                             for field in (*_TARGET_VALUE_FIELDS, "applicationCondition"))
-        target = _compact_source_text(item.get("target"), "target", row_ids, selected,
+        has_target = item.targeted or any(item.values.get(name) is not None
+                                          for name in (*_TARGET_VALUE_FIELDS, "applicationCondition"))
+        target = _compact_source_text(item.target, "target", row_ids, selected,
                                       "supplyRows[__item__].targets[__target__].target", unresolved,
                                       missing_value="", required=has_target) if has_target else None
 
         # 공급행은 단지·주택형 하나다. 원문에서 확인하지 못한 이름도 같은 원문 칸이나 같은 표기면 한 행으로 모은다.
         # 행마다 따로 두면 같은 표 행이 대상 수만큼 공급행으로 중복된다(사천벌리1에서 LH 행마다 같은 행이 나온 경우).
-        group_complex = _group_name(complex_name, item.get("complexName"), "complexName", row_ids, selected) or ""
-        group_type = _group_name(housing_type, item.get("housingType"), "housingType", row_ids, selected)
+        group_complex = _group_name(complex_name, item.complex_name, "complexName", row_ids, selected) or ""
+        group_type = _group_name(housing_type, item.housing_type, "housingType", row_ids, selected)
         if group_type:
             key = ("valid", complex_key(group_complex), complex_key(group_type))
         else:
@@ -75,7 +110,6 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
                 "complexName": complex_name,
                 "housingType": housing_type,
                 "rowIds": set(),
-                "items": [],
                 "rowValues": {},
                 "subtypes": [],
                 "tableSubtypes": [],
@@ -87,10 +121,9 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
             finding["path"] = finding["path"].replace("[__item__]", f"[{group_index}]")
             finding["path"] = finding["path"].replace("[__target__]", f"[{target_index}]")
         group["rowIds"].update(row_ids)
-        group["items"].append(item)
         table_subtypes = _table_subtypes(row_ids, housing_type, selected)
         group["tableSubtypes"].extend(table_subtypes)
-        for subtype in [] if table_subtypes else checks.objects(item.get("subtypes")):
+        for subtype in [] if table_subtypes else checks.objects(item.house_types):
             subtype_name = _compact_string(subtype.get("name"))
             if not subtype_name:
                 continue
@@ -138,32 +171,27 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
                 group["subtypes"].remove(previous)
                 unresolved.append({"path": f"supplyRows[{group_index}].subtypes",
                                    "reason": f"세부 주택형 {subtype_name} 값이 서로 달라 미확인으로 남김"})
-        for field in ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea",
-                      "constructedHouseholdCount", "expectedMoveInMonth"):
-            if item.get(field) is None:
+        for name in ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea",
+                     "constructedHouseholdCount", "expectedMoveInMonth"):
+            if item.values.get(name) is None:
                 continue
-            value = item[field]
-            if field not in group["rowValues"]:
-                group["rowValues"][field] = value
-            elif group["rowValues"][field] != value:
-                group["rowValues"][field] = None
-                unresolved.append({"path": f"supplyRows[{group_index}].{field}",
+            value = item.values[name]
+            if name not in group["rowValues"]:
+                group["rowValues"][name] = value
+            elif group["rowValues"][name] != value:
+                group["rowValues"][name] = None
+                unresolved.append({"path": f"supplyRows[{group_index}].{name}",
                                    "reason": "같은 주택형 행에서 서로 다른 값이 나와 미확인으로 남김"})
 
-        # 코드가 표에서 읽을 때 하나로 정하지 못한 값은 그 경로의 미확인으로 남긴다.
-        findings = [finding for finding in checks.objects(item.get("unresolved"))
-                    if isinstance(finding.get("field"), str) and isinstance(finding.get("reason"), str)]
+        # 읽었지만 하나로 정하지 못한 값은 그 경로의 미확인으로 남긴다.
+        findings = [{"field": name, "reason": reason} for name, reason in item.unresolved]
         unresolved.extend({"path": f"supplyRows[{group_index}].{finding['field']}", "reason": finding["reason"]}
                           for finding in findings if finding["field"] in _ROW_FIELDS)
         if has_target:
             target_values = {
                 "target": target,
-                "supplyHouseholdCount": _compact_number(item.get("supplyHouseholdCount"), "supplyHouseholdCount"),
-                "reserveCount": _compact_number(item.get("reserveCount"), "reserveCount"),
-                "rentalDeposit": _compact_number(item.get("rentalDeposit"), "rentalDeposit"),
-                "monthlyRent": _compact_number(item.get("monthlyRent"), "monthlyRent"),
-                "convertedDeposit": _compact_number(item.get("convertedDeposit"), "convertedDeposit"),
-                "applicationCondition": _compact_string(item.get("applicationCondition")),
+                **{name: _compact_number(item.values.get(name), name) for name in _TARGET_VALUE_FIELDS},
+                "applicationCondition": _compact_string(item.values.get("applicationCondition")),
                 "rowIds": set(row_ids),
             }
             # reserveCount는 이번 공고의 예비자 모집수라는 제품 계약의 핵심 값이다.
@@ -174,7 +202,7 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
                                "reason": finding["reason"]} for finding in findings if finding["field"] in target_values)
             # 모델이 같은 표 행을 두 번 쓰면 값이 모두 같은 대상이 겹친다. 하나로 두고 원문 행만 합친다.
             # 원문에서 확인하지 못해 비운 대상명은 모델이 쓴 이름(가군·나군)이 다르면 다른 대상이다.
-            identity = (_compact_string(item.get("target")),
+            identity = (_compact_string(item.target),
                         tuple(sorted((key, str(value)) for key, value in target_values.items() if key != "rowIds")))
             identities = group.setdefault("targetIdentities", [])
             same = identities.index(identity) if identity in identities else None
@@ -185,13 +213,13 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
                 group["targets"][same]["rowIds"].update(target_values["rowIds"])
                 unresolved[unresolved_start:] = [finding for finding in unresolved[unresolved_start:]
                                                   if f".targets[{target_index}]" not in finding["path"]]
-                compact_paths[item_index] = (group_index, same)
+                compact_paths[item] = (group_index, same)
                 continue
             group["targets"].append(target_values)
             identities.append(identity)
-            compact_paths[item_index] = (group_index, target_index)
+            compact_paths[item] = (group_index, target_index)
         else:
-            compact_paths[item_index] = (group_index, None)
+            compact_paths[item] = (group_index, None)
 
     merged = _merge_groups_sharing_counts(groups, selected, compact_paths, unresolved)
     for group_index, group in enumerate(groups):
@@ -258,23 +286,17 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
         unresolved[:] = [item for item in unresolved if not (
             item.get("path") in paths and item.get("reason") == "이번 공고의 예비자 모집수를 표에서 확인하지 못함")]
 
-    for shared in checks.objects(compact.get("sharedCounts")):
-        field = shared.get("field")
-        count = _compact_number(shared.get("count"), field) if isinstance(field, str) else None
-        row_indexes = shared.get("rowIndexes")
-        row_ids = list(dict.fromkeys(value for value in shared.get("rowIds", []) if isinstance(value, str))) \
-            if isinstance(shared.get("rowIds"), list) else []
+    for shared in draft.shared:
+        field = shared.field
+        count = _compact_number(shared.count, field)
+        row_ids = list(dict.fromkeys(shared.row_ids))
         paths = []
-        if field in ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount") and isinstance(row_indexes, list):
-            for row_index in row_indexes:
-                mapped = compact_paths.get(row_index) if isinstance(row_index, int) and not isinstance(row_index, bool) else None
-                if mapped is None:
-                    continue
-                supply_index, target_index = mapped
-                if field == "totalSupplyHouseholdCount":
-                    paths.append(f"supplyRows[{supply_index}].{field}")
-                elif field != "totalSupplyHouseholdCount" and target_index is not None:
-                    paths.append(f"supplyRows[{supply_index}].targets[{target_index}].{field}")
+        for cell in shared.cells:
+            supply_index, target_index = compact_paths[cell]
+            if field == "totalSupplyHouseholdCount":
+                paths.append(f"supplyRows[{supply_index}].{field}")
+            elif target_index is not None:
+                paths.append(f"supplyRows[{supply_index}].targets[{target_index}].{field}")
         paths = list(dict.fromkeys(paths))
         if len(paths) < 2 and all(_path_group(path) in merged for path in paths):
             continue  # 한 공급행으로 묶은 주택형들의 공통 수량이다. 묶은 공급행의 수량은 원문 칸에서 읽는다.
@@ -342,11 +364,6 @@ def assemble(compact: dict, selected: pages.PromptPages, source_names=()) -> tup
     for index, row in enumerate(supply_rows):
         _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
     return tree, warnings
-
-
-def _row_ids(item: dict) -> list[str]:
-    values = item.get("rowIds")
-    return list(dict.fromkeys(value for value in values if isinstance(value, str))) if isinstance(values, list) else []
 
 
 @dataclass(frozen=True)
@@ -418,11 +435,11 @@ def _house_type_unit(row_ids: list[str], selected: pages.PromptPages,
     return _HouseTypeUnit(rows, single and (rows[0].splits_block or rows[0].table in per_house_type_tables))
 
 
-def _per_house_type_tables(items: list[dict], selected: pages.PromptPages) -> set[str]:
+def _per_house_type_tables(items: list[DraftCell], selected: pages.PromptPages) -> set[str]:
     """주택타입 행 하나만 분명히 가리키는 공급행이 있는 표. 그 표의 공급행은 주택타입마다 뽑은 것이다."""
     tables_ = set()
     for item in items:
-        unit = _house_type_unit(_row_ids(item), selected, set())
+        unit = _house_type_unit(list(dict.fromkeys(item.row_ids)), selected, set())
         if unit is not None and unit.per_house_type:
             tables_.add(unit.rows[0].table)
     return tables_
@@ -641,7 +658,7 @@ def _column_span(table: "tables.SupplyTable", index: int, column: int) -> tuple[
 
 
 def _merge_groups_sharing_counts(groups: list[dict], selected: pages.PromptPages,
-                                 compact_paths: dict[int, tuple[int, int | None]], unresolved: list[dict]) -> set[int]:
+                                 compact_paths: dict[DraftCell, tuple[int, int | None]], unresolved: list[dict]) -> set[int]:
     """여러 주택형 행이 병합된 모집수 칸 하나를 함께 쓰면(탑석 센트럴 자이 49A·49B·49C의 모집 70) 공고가 그 주택형들을 한 모집 단위로
     묶은 것이다. 공고 공급행은 하나로 묶고(이름은 공통 형명 49), 주택형마다의 면적은 세부 타입(subtypes)으로 둔다(사용자 결정:
     공고에서는 묶고 단지 주택타입은 뗀다). 공통 모집수가 공급행을 넘나들면 저장할 곳이 없어 모집수가 빠지기 때문이다.
@@ -777,7 +794,6 @@ def _joined_group(parts: list[dict], selected: pages.PromptPages) -> dict:
         "complexName": parts[0]["complexName"],
         "housingType": housing_type,
         "rowIds": set().union(*(part["rowIds"] for part in parts)),
-        "items": [item for part in parts for item in part["items"]],
         "rowValues": shared,
         "subtypes": [{"name": part["housingType"],
                       **{field: _part_value(part, field, selected)

@@ -7,31 +7,32 @@
 """
 
 from ai_worker import checks
+from ai_worker.supply_assembly import Draft, DraftCell, SharedCount
 
 _TYPE_FIELDS = ("exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount", "expectedMoveInMonth")
 _AMOUNT_FIELDS = ("rentalDeposit", "monthlyRent", "convertedDeposit")
 _CELL_FIELDS = {"WINNER": "supplyHouseholdCount", "RESERVE": "reserveCount"}
 
 
-def rows(answer: dict) -> tuple[dict, list[str]]:
-    """공급표 모양 답을 {"data": {"rows": [...]}, "sharedCounts": [...]}로 옮기고, 옮기지 못한 칸의 경고를 함께 돌려준다."""
-    return _Rows(answer.get("data") or {}).build()
+def draft(answer: dict) -> tuple[Draft, list[str]]:
+    """공급표 모양 답을 칸 초안으로 옮기고, 옮기지 못한 칸의 경고를 함께 돌려준다."""
+    return _Draft(answer.get("data") or {}).build()
 
 
-class _Rows:
+class _Draft:
     def __init__(self, data: dict):
         self.types = [value for value in checks.objects(data.get("housingTypes")) if _key(value)]
         self.targets = {_key(value): value for value in checks.objects(data.get("targets")) if _key(value)}
         self.quotas = checks.objects(data.get("quotas"))
         self.leases = checks.objects(data.get("leaseTerms"))
         self.type_keys = {_key(value) for value in self.types}
-        self.items: list[dict] = []
+        self.items: list[DraftCell] = []
         self.cell_at: dict[tuple[str, str | None], int] = {}
         self.warnings: list[str] = [
             f"공급 단계 응답 housingTypes[{at}]에 key가 없어 그 주택형을 뺐습니다."
             for at, value in enumerate(checks.objects(data.get("housingTypes"))) if not _key(value)]
 
-    def build(self) -> tuple[dict, list[str]]:
+    def build(self) -> tuple[Draft, list[str]]:
         members = [self._members(at, "quotas", quota) for at, quota in enumerate(self.quotas)]
         lease_members = [self._members(at, "leaseTerms", lease) for at, lease in enumerate(self.leases)]
         self._cells([cell for cells in (*members, *lease_members) for cell in cells if cell[1] is not None])
@@ -44,7 +45,7 @@ class _Rows:
         shared = []
         for at, quota, cells, whole in _summed(self.quotas, members, by_type):
             shared += self._quota(at, quota, cells, whole)
-        return {"data": {"rows": self.items}, "sharedCounts": shared}, self.warnings
+        return Draft(self.items, shared), self.warnings
 
     # ---------- 칸 ----------
 
@@ -83,17 +84,15 @@ class _Rows:
                 self.cell_at[(key, target)] = len(self.items)
                 self.items.append(self._item(housing_type, target))
 
-    def _item(self, housing_type: dict, target: str | None) -> dict:
-        item = {"rowIds": _row_ids(housing_type), "complexName": housing_type.get("complexName"),
-                "housingType": housing_type.get("name")}
-        item.update({field: housing_type[field] for field in _TYPE_FIELDS if housing_type.get(field) is not None})
-        if checks.objects(housing_type.get("houseTypes")):
-            item["subtypes"] = checks.objects(housing_type["houseTypes"])
+    def _item(self, housing_type: dict, target: str | None) -> DraftCell:
+        item = DraftCell(_row_ids(housing_type), housing_type.get("complexName"), housing_type.get("name"),
+                         house_types=checks.objects(housing_type.get("houseTypes")))
+        item.values.update({field: housing_type[field] for field in _TYPE_FIELDS if housing_type.get(field) is not None})
         if target is not None:
             value = self.targets[target]
-            item["target"] = value.get("label")
+            item.target, item.targeted = value.get("label"), True
             if value.get("applicationCondition") is not None:
-                item["applicationCondition"] = value["applicationCondition"]
+                item.values["applicationCondition"] = value["applicationCondition"]
         return item
 
     def _type_cells(self, key: str) -> set[tuple[str, str | None]]:
@@ -102,13 +101,12 @@ class _Rows:
     def _set(self, cell: tuple[str, str | None], field: str, value: object, row_ids: list[str]) -> None:
         """칸 행 하나에 값을 싣는다. 두 수량·임대조건이 같은 칸에 다른 값을 주면 그 값은 미확인이다."""
         item = self.items[self.cell_at[cell]]
-        item["rowIds"] = list(dict.fromkeys([*item["rowIds"], *row_ids]))
-        if field in item and item[field] != value:
-            item[field] = None
-            item.setdefault("unresolved", []).append(
-                {"field": field, "reason": "공급 단계 응답이 같은 칸에 서로 다른 값을 줘 미확인으로 남김"})
-        elif field not in item:
-            item[field] = value
+        item.row_ids = list(dict.fromkeys([*item.row_ids, *row_ids]))
+        if field in item.values and item.values[field] != value:
+            item.values[field] = None
+            item.unresolved.append((field, "공급 단계 응답이 같은 칸에 서로 다른 값을 줘 미확인으로 남김"))
+        elif field not in item.values:
+            item.values[field] = value
 
     # ---------- 임대조건·수량 ----------
 
@@ -119,7 +117,7 @@ class _Rows:
                 if lease.get(field) is not None:
                     self._set(cell, field, lease[field], _row_ids(lease))
 
-    def _quota(self, at: int, quota: dict, cells: list[tuple[str, str | None]], by_type: bool) -> list[dict]:
+    def _quota(self, at: int, quota: dict, cells: list[tuple[str, str | None]], by_type: bool) -> list[SharedCount]:
         kind, count, row_ids = quota.get("kind"), quota.get("count"), _row_ids(quota)
         if not isinstance(kind, str) or kind not in _CELL_FIELDS or not cells:
             self.warnings.append(f"공급 단계 응답 quotas[{at}]의 종류(kind)나 멤버를 읽지 못해 그 수량을 뺐습니다.")
@@ -139,16 +137,15 @@ class _Rows:
             return []
         if kind == "WINNER" and whole_types:
             # 여러 주택형이 함께 쓰는 모집 칸(49A·49B·49C 103)이다. 주택형마다 칸 행 하나만 가리켜도 그 주택형 모집수를 가리킨다.
-            indexes = [self.cell_at[min(self._type_cells(key), key=self.cell_at.get)] for key in types]
-            return [{"rowIndexes": indexes, "field": "totalSupplyHouseholdCount", "count": count, "rowIds": row_ids}]
+            firsts = [self.items[self.cell_at[min(self._type_cells(key), key=self.cell_at.get)]] for key in types]
+            return [SharedCount("totalSupplyHouseholdCount", count, firsts, row_ids)]
         if len(types) == 1:
             # 한 주택형 안에서 대상 여럿이 함께 쓰는 수량 칸(16A 청년 소득 구간 둘의 우선공급 19)의 행은 그 대상들의 행이기도 하다.
             # 그 행에만 대상 이름(청년)이 적혀 있어 원문 대조가 이 행으로 대상 이름을 확인한다.
             for cell in cells:
                 item = self.items[self.cell_at[cell]]
-                item["rowIds"] = list(dict.fromkeys([*item["rowIds"], *row_ids]))
-        return [{"rowIndexes": [self.cell_at[cell] for cell in cells], "field": _CELL_FIELDS[kind], "count": count,
-                 "rowIds": row_ids}]
+                item.row_ids = list(dict.fromkeys([*item.row_ids, *row_ids]))
+        return [SharedCount(_CELL_FIELDS[kind], count, [self.items[self.cell_at[cell]] for cell in cells], row_ids)]
 
 
 def _summed(quotas: list[dict], members: list[list], by_type: list[bool]) -> list[tuple[int, dict, list, bool]]:

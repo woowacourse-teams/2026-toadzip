@@ -52,7 +52,7 @@ class CodeSupply:
         """기다릴 모델 호출이 없다."""
 
     def read(self) -> Supply:
-        tree, source_warnings = assemble(self._grouped.compact, self._selected, self._source_names)
+        tree, source_warnings = assemble(self._grouped.draft, self._selected, self._source_names)
         return Supply(tree, [*self._grouped.warnings, *source_warnings], [], "code")
 
 
@@ -72,14 +72,14 @@ class ModelSupply:
     def read(self) -> Supply:
         reply = self._future.result()
         # 모델은 공고문 표의 칸 단위(공급표 모양)로 답한다. 조립·검산은 코드 경로와 같은 짧은 공급행 목록을 읽는다.
-        compact, warnings = supply_answer.rows(checks.first_json_object(reply.content, {"housingTypes": list}))
+        draft, warnings = supply_answer.draft(checks.first_json_object(reply.content, {"housingTypes": list}))
         selected = self._selected
         # 코드가 공급표를 읽으면 공급 단계 호출이 없어 이 두 안내는 사실이 아니므로 모델 경로에만 둔다.
         if selected.table_structure_fallback:
             warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
         if selected.ambiguous_supply_tables:
             warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
-        tree, source_warnings = assemble(compact, selected, self._source_names)
+        tree, source_warnings = assemble(draft, selected, self._source_names)
         return Supply(tree, [*warnings, *source_warnings], [reply.usage], "model")
 
 

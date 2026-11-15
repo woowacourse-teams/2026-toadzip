@@ -11,6 +11,7 @@ supply_assembly.assemble이 같은 검산을 거쳐 관리자 계약으로 조�
 import re
 from dataclasses import dataclass, field
 
+from ai_worker.supply_assembly import Draft, DraftCell, SharedCount
 from ai_worker.tables import SupplyTable, increase_limit, source_row_id, table_column_headers
 
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
@@ -64,7 +65,7 @@ class _SourceRow:
 
 @dataclass(frozen=True)
 class Grouped:
-    compact: dict
+    draft: Draft
     row_values: dict[str, dict[str, str]]
     warnings: list[str]
     # 머리글이 있는 수량표마다 (표, 머리글 줄 수, 수량 필드 → 열). 열의 뜻은 호출하는 쪽(supply_sources)이 Jev로 확인한다.
@@ -116,26 +117,21 @@ def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
             parts = [(quantity.name, matches[0] if len(matches) == 1 else None)]
         indexes = []
         for name, rental in parts:
-            item = {"rowIds": _source_ids(quantity), "complexName": quantity.complex_name,
-                    "housingType": quantity.housing_type, "target": name, "unresolved": []}
+            item = DraftCell(_source_ids(quantity), quantity.complex_name, quantity.housing_type, name, True)
             _fill(item, quantity, (*_AREA_FIELDS, "constructedHouseholdCount", *_RENT_FIELDS), row_values)
             if rental is not None:
-                item["rowIds"] = _unique([*item["rowIds"], *_source_ids(rental)])
+                item.row_ids = _unique([*item.row_ids, *_source_ids(rental)])
                 _fill(item, rental, _RENT_FIELDS, row_values)
             elif len(matches) > 1:
-                item["unresolved"] += [{"field": field_name, "reason": "같은 대상의 임대조건이 여러 줄이라 하나로 정하지 못함"}
-                                       for field_name in _RENT_FIELDS[:2]]
+                item.unresolved += [(field_name, "같은 대상의 임대조건이 여러 줄이라 하나로 정하지 못함")
+                                    for field_name in _RENT_FIELDS[:2]]
             elif rentals:
-                item["unresolved"] += [{"field": field_name, "reason": "임대조건표에서 이 대상의 행을 찾지 못함"}
-                                       for field_name in _RENT_FIELDS[:2]]
+                item.unresolved += [(field_name, "임대조건표에서 이 대상의 행을 찾지 못함") for field_name in _RENT_FIELDS[:2]]
             indexes.append(len(rows))
             rows.append(item)
         item_indexes[id(quantity)] = indexes
 
     shared_counts = _assign_counts(quantities, rows, item_indexes)
-    for item in rows:
-        if not item["unresolved"]:
-            del item["unresolved"]
 
     quantity_pages = {table.page for table in quantity_tables}
     supply_pages = {table.page for table in tables}
@@ -157,7 +153,7 @@ def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
         if start > 0:  # 머리글 없는 이어짐 표는 앞 표와 같은 열이라 다시 묻지 않는다.
             count_columns.append((table, start, {name: table.columns[name] for name in _COUNT_FIELDS
                                                  if name in table.columns}))
-    return Grouped({"data": {"rows": rows}, "sharedCounts": shared_counts}, row_values, warnings, count_columns)
+    return Grouped(Draft(rows, shared_counts), row_values, warnings, count_columns)
 
 
 def type_cells(tables: list[SupplyTable]) -> dict[str, dict[str, str]]:
@@ -180,7 +176,8 @@ def type_cells(tables: list[SupplyTable]) -> dict[str, dict[str, str]]:
     return found
 
 
-def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes: dict[int, list[int]]) -> list[dict]:
+def _assign_counts(quantities: list[_SourceRow], rows: list[DraftCell],
+                   item_indexes: dict[int, list[int]]) -> list[SharedCount]:
     """병합된 수량 칸은 덮은 대상들의 공통 수량으로 남기고 대상별로 복제하지 않는다."""
     shared_counts = []
     for field_name in _COUNT_FIELDS:
@@ -197,30 +194,27 @@ def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes:
             if field_name in origin.conflicts or count is None:
                 reason = "이어지는 줄에 다른 값이 있어 하나로 정하지 못함" if field_name in origin.conflicts else _NOT_A_NUMBER
                 for index in indexes:
-                    rows[index]["unresolved"].append({"field": field_name, "reason": reason})
+                    rows[index].unresolved.append((field_name, reason))
                 continue
             if field_name == "supplyHouseholdCount":
                 count = _with_reserves(count, origin, members, quantities)
                 if count is None:
                     for index in indexes:
-                        rows[index]["unresolved"].append(
-                            {"field": field_name, "reason": "당첨자 칸과 예비자 칸이 덮는 행이 달라 모집수를 정하지 못함"})
+                        rows[index].unresolved.append((field_name, "당첨자 칸과 예비자 칸이 덮는 행이 달라 모집수를 정하지 못함"))
                     continue
             if field_name == "totalSupplyHouseholdCount":
                 # 공급행 전체 모집수는 한 칸이 그 주택형의 모든 대상을 덮을 때만이다. 대상마다 따로 적힌 수는 합계가 아니다.
                 keys = {_supply_key(member) for member in members}
                 covered = [quantity for quantity in quantities if _supply_key(quantity) in keys]
                 if len(keys) == 1 and len(covered) == len(members):
-                    rows[indexes[0]][field_name] = count
+                    rows[indexes[0]].values[field_name] = count
                 else:
                     for index in indexes:
-                        rows[index]["unresolved"].append(
-                            {"field": field_name, "reason": "모집수가 대상별로 나뉘어 공급행 전체 모집수로 정하지 못함"})
+                        rows[index].unresolved.append((field_name, "모집수가 대상별로 나뉘어 공급행 전체 모집수로 정하지 못함"))
             elif len(indexes) == 1:
-                rows[indexes[0]][field_name] = count
+                rows[indexes[0]].values[field_name] = count
             else:
-                shared_counts.append({"rowIndexes": indexes, "field": field_name, "count": count,
-                                      "rowIds": [origin.row_id]})
+                shared_counts.append(SharedCount(field_name, count, [rows[index] for index in indexes], [origin.row_id]))
     return shared_counts
 
 
@@ -243,7 +237,7 @@ def _with_reserves(winners: int, origin: _SourceRow, members: list[_SourceRow],
     return winners + reserve
 
 
-def _fill(item: dict, row: _SourceRow, names: tuple[str, ...], row_values: dict[str, dict[str, str]]) -> None:
+def _fill(item: DraftCell, row: _SourceRow, names: tuple[str, ...], row_values: dict[str, dict[str, str]]) -> None:
     for name in names:
         if name not in row.table.columns:
             continue
@@ -260,9 +254,9 @@ def _fill(item: dict, row: _SourceRow, names: tuple[str, ...], row_values: dict[
             reason = "금액 단위를 표에서 확인하지 못함"
         value = None if reason else _number(cell, name, unit)
         if value is None:
-            item["unresolved"].append({"field": name, "reason": reason or _NOT_A_NUMBER})
+            item.unresolved.append((name, reason or _NOT_A_NUMBER))
             continue
-        item[name] = value
+        item.values[name] = value
         if name in _RENT_FIELDS:
             # 머리글 없는 이어짐 표는 행 값에 단위가 없어 검산이 원 단위로 볼 수 있다.
             row_values.setdefault(row.row_id, {})[f"{name}Unit"] = unit
