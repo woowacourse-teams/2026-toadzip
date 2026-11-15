@@ -1039,6 +1039,20 @@ def test_reserve_count_read_for_a_joined_quota_is_not_left_as_unconfirmed():
     assert result.sheet["unresolvedFields"] == []
 
 
+def test_an_unconfirmed_value_of_each_joined_type_moves_once_to_the_joined_target():
+    # 묶기 전 주택형마다 단 '원문에 없는 대상명' 미확인은 묶은 단위의 대상 하나로 한 번만 옮겨지고, 묶음 수량은 그대로다.
+    table = [["단지명", "주택형", "공급대상", "당첨자 수", "예비자"], ["Test", "49A", "청년", "5", "56"],
+             [None, "49B", "청년", "4", None], [None, "49C", "청년", "3", None]]
+    result = supplied(table_pages(table, page=2), *(
+        {"rowIds": [f"P2:T1:R{number}"], "complexName": "Test", "housingType": label, "target": "신혼부부"}
+        for number, label in ((2, "49A"), (3, "49B"), (4, "49C"))))
+
+    joined = ["49A/", "49B/", "49C/"]
+    assert readable(result.sheet)["quotas"] == [("WINNER", 68, joined), ("RESERVE", 56, joined)]
+    assert result.sheet["unresolvedFields"] == [
+        {"path": "targets[0].label", "reason": "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"}]
+
+
 def test_a_sheet_answer_with_split_columns_and_income_tiers_reaches_one_shared_quota():
     # 공급 단계 모델의 공급표 모양 답(우선·일반 열마다 수량 칸, 청년 소득 구간 둘)을 그대로 통과시킨다.
     targets = [{"key": "t1", "label": "대학생"}, {"key": "t2", "label": "청년", "applicationCondition": "소득(×)"},
@@ -1086,15 +1100,20 @@ def test_units_with_the_same_name_are_told_apart_in_warnings_by_their_first_sour
     # 41번 공고 모양: 원문에서 단지명을 확인하지 못한 두 단지의 26.37은 이름이 같아 같은 경고 문구가 두 번 나왔다.
     selected = table_pages([["단지명", "주택형", "공급대상", "모집호수"], ["", "26.37", "청년", "3"],
                             ["", "26.37", "고령자", "4"]], page=2)
-    supply = model_stage(selected, sheet_answer({"data": {"rows": [
-        {"rowIds": ["P2:T1:R2"], "complexName": "가단지", "housingType": "26.37", "target": "청년", "recruitmentCount": 3},
-        {"rowIds": ["P2:T1:R3"], "complexName": "나단지", "housingType": "26.37", "target": "고령자", "recruitmentCount": 4},
-    ]}}))
-    supply.tree["data"]["announcement"] = {}
 
-    warnings = checks.review(supply.tree, supply.sheet, [1, 2], ["", ""], [], 0)
+    def area_only_warnings(second_rows):
+        supply = model_stage(selected, sheet_answer({"data": {"rows": [
+            {"rowIds": ["P2:T1:R2"], "complexName": "가단지", "housingType": "26.37", "target": "청년",
+             "recruitmentCount": 3},
+            {"rowIds": second_rows, "complexName": "나단지", "housingType": "26.37", "target": "고령자",
+             "recruitmentCount": 4},
+        ]}}))
+        supply.tree["data"]["announcement"] = {}
+        warnings = checks.review(supply.tree, supply.sheet, [1, 2], ["", ""], [], 0)
+        return [warning for warning in warnings if "면적 숫자만" in warning]
 
-    assert [warning for warning in warnings if "면적 숫자만" in warning] == [
-        "26.37(원본 2쪽 표 1의 2행) 주택형 이름: 면적 숫자만 있음(26.37)",
-        "26.37(원본 2쪽 표 1의 3행) 주택형 이름: 면적 숫자만 있음(26.37)",
-    ]
+    expected = ["26.37(원본 2쪽 표 1의 2행) 주택형 이름: 면적 숫자만 있음(26.37)",
+                "26.37(원본 2쪽 표 1의 3행) 주택형 이름: 면적 숫자만 있음(26.37)"]
+    assert area_only_warnings(["P2:T1:R3"]) == expected
+    # 두 단위가 함께 가진 첫 행(면적을 물려준 위 행 등)은 그 단위만의 행이 있으면 자리로 쓰지 않는다.
+    assert area_only_warnings(["P2:T1:R2", "P2:T1:R3"]) == expected

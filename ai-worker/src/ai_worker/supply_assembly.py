@@ -268,7 +268,8 @@ class _Assembly:
         모집 단위로 묶은 것이다. 그 주택형들은 주택형 여럿(parts)인 모집 단위 하나이고 이름은 공통 형명(49)이다(사용자 결정:
         공고에서는 묶고 단지 주택타입은 뗀다). 공통 모집수가 단위를 넘나들면 실을 곳이 없어 모집수가 빠지기 때문이다.
         같은 단지, 대상 하나씩, 같은 대상 이름·임대조건이고 세부 타입이 없는 주택형만 묶는다. 주택형마다 단 미확인은 묶은
-        단위와 그 대상으로 옮긴다."""
+        단위와 그 대상으로 옮긴다. 이 시점에 조각 단위·대상을 가리키는 표는 findings·unit_of·entry_of뿐이다(confirmed·cites는
+        묶은 뒤에 채운다). 묶기 전에 채우는 표를 늘리면 여기서도 옮겨야 한다."""
         units = self.units
         parent = list(range(len(units)))
 
@@ -792,7 +793,8 @@ class _Assembly:
         self._drop(entry, "label")
 
     def _tell_apart_same_names(self) -> None:
-        """이름이 같은 단위(단지명을 확인하지 못한 두 단지의 26.37)는 경고에서 가릴 수 있게 첫 원문 행의 자리를 이름에 붙인다."""
+        """이름이 같은 단위(단지명을 확인하지 못한 두 단지의 26.37)는 경고에서 가릴 수 있게 첫 원문 행의 자리를 이름에 붙인다.
+        면적을 물려준 위 행처럼 다른 단위도 가진 행은 그 단위만의 행이 있으면 쓰지 않는다."""
         same_names: dict[str, list[Unit]] = {}
         for unit in self.units:
             same_names.setdefault(unit.label(), []).append(unit)
@@ -800,7 +802,9 @@ class _Assembly:
             if len(units) < 2:
                 continue
             for unit in units:
-                places = sorted(tuple(int(number) for number in match.groups()) for row_id in self.rows[unit]
+                others = set().union(*(self.rows[other] for other in units if other is not unit))
+                row_ids = (self.rows[unit] - others) or self.rows[unit]
+                places = sorted(tuple(int(number) for number in match.groups()) for row_id in row_ids
                                 if (match := re.fullmatch(r"P(\d+):T(\d+):R(\d+)", row_id)))
                 if places:
                     page, table, row = places[0]

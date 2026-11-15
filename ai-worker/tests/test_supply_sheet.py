@@ -98,7 +98,7 @@ def test_joined_type_values_point_at_each_housing_type():
          for number, label, area in ((3, "49A", {}), (4, "49B", {"exclusiveArea": 49.0}), (5, "49C", {}))], []))
 
     assert [item["name"] for item in result.sheet["housingTypes"]] == ["49A", "49B", "49C"]
-    assert "housingTypes[1].exclusiveArea" in result.unresolved()
+    assert result.unresolved() == {"housingTypes[1].exclusiveArea"}
 
 
 def rows(values: dict[str, dict]) -> pages.PromptPages:
