@@ -597,6 +597,38 @@ def test_announcement_wide_application_condition_reaches_each_target_with_its_ev
     assert "applicationConditions" not in tree["data"]
 
 
+def test_eligibility_route_carries_the_keys_of_every_supply_target_with_the_same_label(monkeypatch):
+    """신청자격 경로는 표기가 같은 공급표 대상의 키를 신청 조건이 달라도 모두 싣고, 맞는 대상이 없으면 키를 싣지 않는다(계약 README)."""
+    from test_tables import SACHEON_RENT_CELLS, SACHEON_SUPPLY_CELLS
+    cells = {1: SACHEON_SUPPLY_CELLS, 2: SACHEON_RENT_CELLS}
+    monkeypatch.setattr(tables, "detected_tables", lambda page: (
+        [tables.DetectedTable(cells[page.number], tuple(page.rect))] if page.number in cells else [], False))
+    supply = {"data": {
+        "housingTypes": [{"key": "h1", "rowIds": ["P2:T1:R4"], "name": "26", "targets": ["t1", "t2", "t3"]}],
+        "targets": [{"key": "t1", "label": "가군", "applicationCondition": "수급자"},
+                    {"key": "t2", "label": "가군", "applicationCondition": "차상위"},
+                    {"key": "t3", "label": "나군"}],
+        "quotas": [{"kind": "RESERVE", "count": 110, "members": [["h1"]], "rowIds": ["P2:T1:R4"]}],
+        "leaseTerms": [
+            {"members": [["h1", "t1"], ["h1", "t2"]], "rentalDeposit": 2520000, "monthlyRent": 50160, "rowIds": ["P3:T1:R4"]},
+            {"members": [["h1", "t3"]], "rentalDeposit": 7648000, "monthlyRent": 115940, "rowIds": ["P3:T1:R4"]}]}}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
+    eligibility = {
+        "requirements": [{"id": "r1", "kind": "OTHER", "text": "영구임대주택 예비입주자 모집", "page": 1}],
+        "routes": [{"name": "가군", "supplyTarget": "가군", "requires": ["r1"], "summary": "가군 자격"},
+                   {"name": "다군", "supplyTarget": "다군", "requires": ["r1"], "summary": "다군 자격"}]}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(supply, notice, eligibility)).extract(
+        job(text_pdf(COVER, SUPPLY, RENT), {}))
+
+    data = json.loads(result["json"])["data"]
+    keys = {item["key"]: item["label"] for item in data["supplySheet"]["targets"]}
+    linked = [(item["supplyTarget"], [keys[key] for key in item["supplyTargetKeys"]]) for item in data["eligibility"]["targets"]]
+    assert linked == [("가군", ["가군", "가군"]), ("다군", [])]
+    assert len(set(data["eligibility"]["targets"][0]["supplyTargetKeys"])) == 2
+
+
 def test_gh_frame_rows_keep_the_code_path_and_link_the_grouped_row_by_district_and_type():
     model = FakeModel()
     job_input = {"sourceSupplyRows": [
