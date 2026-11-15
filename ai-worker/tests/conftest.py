@@ -179,6 +179,8 @@ class FakeModel:
             tree = stage_output(checks.first_json_object(self.content), stage, prompt)
         if stage == "supply" and "rows" not in tree.get("data", {}):
             tree = compact_stage_output(tree, prompt)
+        if stage == "supply":
+            tree = sheet_answer(tree)
         return Reply(json.dumps(tree, ensure_ascii=False) + "\n뒤에 붙은 글", USAGE)
 
 
@@ -249,6 +251,84 @@ def compact_stage_output(tree, prompt):
                             if field in target and target[field] is not None})
             rows.append(compact)
     return {"data": {"rows": rows}}
+
+
+def sheet_answer(compact):
+    """공급행 목록 모양으로 적어 둔 공급 단계 응답을 모델이 실제로 내는 공급표 모양 답으로 바꾼다. 이미 공급표 모양이면 그대로 둔다.
+    행(단지·주택형·대상) 하나의 수·금액은 그 칸 하나만 멤버인 수량·임대조건이고, 공통 수량은 그 행들의 칸이 멤버인 수량 하나다.
+    주택형의 근거 행은 그 주택형 행들이 함께 가리키는 행이고, 대상마다 더 가리킨 행은 그 대상의 수·금액 근거 행이다.
+    기존 테스트 입력을 옛 공급행 목록 모양 그대로 두고 쓰려는 호환 도구다. 새 테스트는 공급표 모양 답을 직접 적는다."""
+    data = compact.get("data", {})
+    if "rows" not in data:
+        return compact
+    items = checks.objects(data["rows"])
+    types, targets, target_at, label_of, cells = [], [], {}, {}, []
+    for item in items:
+        # 같은 단지·주택형 표기라도 가리킨 원문 행이 겹치지 않으면 다른 표 행(다른 블록)이라 다른 주택형이다.
+        row_ids = set(item.get("rowIds") or [])
+        at = next((index for index, value in enumerate(types)
+                   if (value["complexName"], value["name"]) == (item.get("complexName"), item.get("housingType"))
+                   and (row_ids & set(value["_rowIds"]) or not row_ids)), None)
+        if at is None:
+            at = len(types)
+            value = {"key": f"h{len(types) + 1}", "complexName": item.get("complexName"), "name": item.get("housingType"),
+                     "rowIds": list(item.get("rowIds") or []), "targets": []}
+            value.update({field: item[field] for field in (
+                "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount", "expectedMoveInMonth")
+                if item.get(field) is not None})
+            if item.get("subtypes"):
+                value["houseTypes"] = item["subtypes"]
+            value["_rowIds"] = list(row_ids)
+            types.append(value)
+        housing_type = types[at]
+        housing_type["rowIds"] = [row_id for row_id in housing_type["rowIds"] if row_id in (item.get("rowIds") or [])]
+        target = None
+        if "target" in item:
+            # 한 주택형에 같은 대상 표기가 또 나오면(청년 소득(×)·소득(○) 금액 구간) 다른 대상이다.
+            label = (item.get("target"), item.get("applicationCondition"))
+            repeat = sum(1 for other in housing_type["targets"] if label_of[other] == label)
+            target_key = (*label, repeat)
+            if target_key not in target_at:
+                target_at[target_key] = len(targets)
+                value = {"key": f"t{len(targets) + 1}", "label": item.get("target")}
+                if item.get("applicationCondition") is not None:
+                    value["applicationCondition"] = item["applicationCondition"]
+                targets.append(value)
+                label_of[value["key"]] = label
+            target = targets[target_at[target_key]]["key"]
+            if target not in housing_type["targets"]:
+                housing_type["targets"].append(target)
+        cells.append((housing_type["key"], target))
+    quotas, leases = [], []
+    for item, cell in zip(items, cells):
+        row_ids = list(item.get("rowIds") or [])
+        type_cells = [[*other] for other in dict.fromkeys(cells) if other[0] == cell[0] and other[1]]
+        total = item.get("totalSupplyHouseholdCount")
+        if total is not None and not any(quota["members"] == [[cell[0]]] for quota in quotas):
+            if len(type_cells) != 1 or item.get("supplyHouseholdCount") is None:
+                quotas.append({"kind": "WINNER", "count": total, "members": [[cell[0]]], "rowIds": row_ids})
+        if cell[1] is None:
+            if item.get("reserveCount") is not None:
+                quotas.append({"kind": "RESERVE", "count": item["reserveCount"], "members": [[cell[0]]], "rowIds": row_ids})
+            continue
+        for field, kind in (("supplyHouseholdCount", "WINNER"), ("reserveCount", "RESERVE")):
+            if item.get(field) is not None:
+                quotas.append({"kind": kind, "count": item[field], "members": [[*cell]], "rowIds": row_ids})
+        amounts = {field: item[field] for field in ("rentalDeposit", "monthlyRent", "convertedDeposit")
+                   if item.get(field) is not None}
+        if amounts:
+            leases.append({"members": [[*cell]], **amounts, "rowIds": row_ids})
+    for shared in checks.objects(compact.get("sharedCounts")):
+        indexes = [index for index in shared.get("rowIndexes", []) if 0 <= index < len(cells)]
+        if shared.get("field") == "totalSupplyHouseholdCount":
+            members = [[owner] for owner in dict.fromkeys(cells[index][0] for index in indexes)]
+        else:
+            members = [[*cells[index]] for index in indexes]
+        kind = "RESERVE" if shared.get("field") == "reserveCount" else "WINNER"
+        quotas.append({"kind": kind, "count": shared.get("count"), "members": members, "rowIds": shared.get("rowIds", [])})
+    for value in types:
+        del value["_rowIds"]
+    return {"data": {"housingTypes": types, "targets": targets, "quotas": quotas, "leaseTerms": leases}}
 
 
 class FakeJudge:

@@ -110,140 +110,6 @@
             ]
           }
         },
-        "supplyRows": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "complexReference": {
-                "type": "object",
-                "properties": {
-                  "sourceComplexName": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "sourceComplexName"
-                ]
-              },
-              "sourceHousingTypeName": {
-                "type": "string",
-                "nullable": true
-              },
-              "expectedMoveInMonth": {
-                "type": "string",
-                "nullable": true
-              },
-              "totalSupplyHouseholdCount": {
-                "type": "integer",
-                "nullable": true
-              },
-              "exclusiveArea": {
-                "type": "number",
-                "nullable": true
-              },
-              "commonArea": {
-                "type": "number",
-                "nullable": true
-              },
-              "supplyArea": {
-                "type": "number",
-                "nullable": true
-              },
-              "constructedHouseholdCount": {
-                "type": "integer",
-                "nullable": true
-              },
-              "subtypes": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "exclusiveArea": {
-                      "type": "number",
-                      "nullable": true
-                    },
-                    "commonArea": {
-                      "type": "number",
-                      "nullable": true
-                    },
-                    "constructedHouseholdCount": {
-                      "type": "integer",
-                      "nullable": true
-                    }
-                  },
-                  "required": [
-                    "name",
-                    "exclusiveArea",
-                    "commonArea",
-                    "constructedHouseholdCount"
-                  ]
-                }
-              },
-              "targets": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "target": {
-                      "type": "string"
-                    },
-                    "supplyHouseholdCount": {
-                      "type": "integer",
-                      "nullable": true,
-                      "description": "이번 공고의 대상별 모집수. 입주자(당첨자)와 예비자 수를 따로 적은 표는 그 합"
-                    },
-                    "reserveCount": {
-                      "type": "integer",
-                      "nullable": true,
-                      "description": "이번 공고에서 새로 모집하는 예비자 수. 기존 대기자 수는 제외"
-                    },
-                    "rentalDeposit": {
-                      "type": "integer",
-                      "nullable": true
-                    },
-                    "monthlyRent": {
-                      "type": "integer",
-                      "nullable": true
-                    },
-                    "convertedDeposit": {
-                      "type": "integer",
-                      "nullable": true
-                    },
-                    "applicationCondition": {
-                      "type": "string",
-                      "nullable": true
-                    }
-                  },
-                  "required": [
-                    "target",
-                    "supplyHouseholdCount",
-                    "reserveCount",
-                    "rentalDeposit",
-                    "monthlyRent",
-                    "convertedDeposit",
-                    "applicationCondition"
-                  ]
-                }
-              }
-            },
-            "required": [
-              "complexReference",
-              "sourceHousingTypeName",
-              "expectedMoveInMonth",
-              "totalSupplyHouseholdCount",
-              "exclusiveArea",
-              "commonArea",
-              "supplyArea",
-              "constructedHouseholdCount",
-              "subtypes",
-              "targets"
-            ]
-          }
-        },
         "schedules": {
           "type": "array",
           "items": {
@@ -301,40 +167,9 @@
         "announcement",
         "receptionPlaces",
         "complexes",
-        "supplyRows",
         "schedules",
         "unresolvedFields"
       ]
-    },
-    "sharedCounts": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "paths": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "같이 쓰는 totalSupplyHouseholdCount 경로 또는 여러 대상의 같은 supplyHouseholdCount/reserveCount 경로"
-          },
-          "count": {
-            "type": "integer"
-          },
-          "page": {
-            "type": "integer"
-          },
-          "quote": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "paths",
-          "count",
-          "page",
-          "quote"
-        ]
-      }
     },
     "notApplicable": {
       "type": "array",
@@ -379,7 +214,6 @@
   },
   "required": [
     "data",
-    "sharedCounts",
     "notApplicable",
     "evidence"
   ]

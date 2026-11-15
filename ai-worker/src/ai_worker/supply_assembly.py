@@ -1,4 +1,4 @@
-"""짧은 공급행 목록(모델 공급 단계 응답이나 코드가 표에서 묶은 행)을 관리자 계약의 공급행·단지로 조립한다.
+"""짧은 공급행 목록(모델 공급 단계 답을 supply_answer가 옮긴 행이나 코드가 표에서 묶은 행)을 관리자 계약의 공급행·단지로 조립한다.
 
 같은 단지·주택형 행은 한 공급행의 대상으로 모으고, 값마다 그 칸이 있는 원문 표 행을 근거로 둔다.
 문자열·수치는 source_check로 같은 의미의 원문 칸과 대조해 확인되지 않으면 미확인으로 남긴다.
@@ -531,14 +531,20 @@ def _target_counts(group: dict, groups: list[dict], count_rows: list[str], selec
     공급행 모집수는 모든 칸의 합이다. 대상과 수량 행을 하나씩 맞추지 못하거나, 다른 공급행 행이 섞이거나, 읽지 못한 칸이 있으면 정하지 않는다.
     모집호수(계) 열이나 우선·일반 공급 열이 있는 표만 본다. 당첨자·예비자로 나눈 표는 예비자 수를 대상별로 정해야 해 다루지 않는다."""
     targets = group["targets"]
-    owners: dict[str, int] = {}
+    # 같은 이름의 대상 여럿(청년 소득(×)·소득(○) 금액 구간)은 공급표의 대상 행 하나를 함께 쓴다. 그 행의 수는 그 대상들의 공통 수량이다.
+    owners: dict[str, set[int]] = {}
     for target_index, target in enumerate(targets):
         name = normalize_source_text(target["target"] or "")
         own = [row_id for row_id in count_rows if row_id in target["rowIds"] and name
                and normalize_source_text(selected.supply_row_values[row_id].get("target", "")) == name]
-        if len(own) != 1 or own[0] in owners:
+        if len(own) != 1:
             return
-        owners[own[0]] = target_index
+        owners.setdefault(own[0], set()).add(target_index)
+    for owned in owners.values():
+        # 한 행을 함께 쓰는 대상들은 신청 조건(구간)으로만 갈린다. 조건이 없거나 같으면 어느 대상의 수인지 정할 수 없다.
+        conditions = [targets[target_index].get("applicationCondition") for target_index in owned]
+        if len(owned) > 1 and (None in conditions or len(set(conditions)) != len(conditions)):
+            return
     table = _table_of(count_rows[0], selected)
     if set(owners) != set(count_rows) or table is None or any(_table_of(row_id, selected) is not table for row_id in count_rows) \
             or any(set(count_rows) & other["rowIds"] for other in groups if other is not group):
@@ -552,17 +558,17 @@ def _target_counts(group: dict, groups: list[dict], count_rows: list[str], selec
     ids = [row.id for row in table.rows]
     own_counts = dict.fromkeys(range(len(targets)), 0)
     spans: dict[tuple[str, int], tuple[int, set[int], list[str]]] = {}
-    for row_id, target_index in owners.items():
+    for row_id, owned in owners.items():
         at = ids.index(row_id)
         for field in fields:
             column = table.columns[field]
             start, end = _column_span(table, at, column)
             value = count_or_dash(table.cells[start][column] if column < len(table.cells[start]) else None)
-            members = {owners.get(ids[position]) for position in range(start, end + 1)}
+            members = set().union(*(owners.get(ids[position], {None}) for position in range(start, end + 1)))
             if value is None or None in members:
                 return
-            if start == end:
-                own_counts[target_index] += value
+            if start == end and len(owned) == 1:
+                own_counts[next(iter(owned))] += value
             else:
                 spans[(field, start)] = (value, members, ids[start:end + 1])
     components = [{target} for target in range(len(targets))]
@@ -578,7 +584,7 @@ def _target_counts(group: dict, groups: list[dict], count_rows: list[str], selec
                 targets[target_index]["supplyHouseholdCount"] = count
             _confirm(group, f".targets[{target_index}]", supplyHouseholdCount=count)
             continue
-        rows = sorted({row_id for row_id, target in owners.items() if target in component}
+        rows = sorted({row_id for row_id, owned in owners.items() if owned & component}
                       | {row_id for _, span_rows in shared for row_id in span_rows}, key=ids.index)
         group.setdefault("codeShared", []).append(
             {"field": "supplyHouseholdCount", "count": count, "targets": sorted(component), "rowIds": rows})

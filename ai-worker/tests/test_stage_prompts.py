@@ -19,6 +19,9 @@ def test_stage_prompts_include_projected_schema_and_separate_inputs():
     assert "[공급 표에서 읽은 단지명 후보]\n- Complex 1" in notice
     assert "[추출 단계: 공고 본문]" in notice and "table rows" not in notice
     assert '"rowIds"' in supply and '"supplyRows"' not in supply and '"sourceRows"' not in supply
+    # 공급 단계는 공고문 표의 칸 단위(공급표 모양)로 답한다. 공통 수량을 행 번호로 따로 적지 않는다.
+    assert all(f'"{name}"' in supply for name in ("housingTypes", "targets", "quotas", "leaseTerms"))
+    assert "rowIndexes" not in supply and "subtypes" not in supply
     assert '"supplyRows"' not in notice
     # 신청자격은 따로 부르는 신청자격 단계만 받는다. 본문·공급 단계에는 그 필드가 없다.
     eligibility = stage_prompts.eligibility_prompt(EligibilityPages([7, 9], ["자격 글", "소득표 글"], ["「가」군", "「나」군"], True))

@@ -14,7 +14,7 @@ from ai_worker import openai
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 from ai_worker.openai import Reply
-from conftest import (COVER, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EMPTY_ELIGIBILITY_DATA, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
+from conftest import (COVER, sheet_answer, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EMPTY_ELIGIBILITY_DATA, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
                       FakeJudge, FakeModel, contract_example,
                       grid_page, text_pdf, two_quantity_tables_pdf)
 
@@ -194,7 +194,7 @@ def test_a_housing_type_the_model_left_out_is_warned_before_saving():
 
 
 def test_shared_count_for_several_types_stays_one_row_without_warning(supply_stage):
-    # 공급 표가 두 주택형을 모집수 하나로만 안내하면 한 공급행에 subtypes로 두고 수를 나누거나 복제하지 않는다.
+    # 공급 표의 한 행이 두 주택타입을 모집수 하나로만 안내하면 주택형 하나에 주택타입(houseTypes)으로 두고 수를 나누거나 복제하지 않는다.
     subtypes = [{"name": "051.9800A", "exclusiveArea": 51.98, "commonArea": None, "constructedHouseholdCount": 468},
                 {"name": "059.9100A", "exclusiveArea": 59.91, "commonArea": None, "constructedHouseholdCount": 183}]
     extraction = dict(EXTRACTION, data=dict(EXTRACTION["data"], supplyRows=[split_row("051.9800A/059.9100A", 240, None, subtypes=subtypes)]),
@@ -553,12 +553,14 @@ def test_targets_named_by_applicant_group_headers_of_the_rent_table_keep_their_n
     cells = {1: SACHEON_SUPPLY_CELLS, 2: SACHEON_RENT_CELLS}
     monkeypatch.setattr(tables, "detected_tables", lambda page: (
         [tables.DetectedTable(cells[page.number], tuple(page.rect))] if page.number in cells else [], False))
-    supply = {"data": {"rows": [
-        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "가군", "reserveCount": 110,
-         "rentalDeposit": 2520000, "monthlyRent": 50160},
-        {"rowIds": ["P2:T1:R4", "P3:T1:R4"], "housingType": "26", "target": "나군", "reserveCount": 110,
-         "rentalDeposit": 7648000, "monthlyRent": 115940},
-    ]}, "sharedCounts": [{"rowIndexes": [0, 1], "field": "reserveCount", "count": 110, "rowIds": ["P2:T1:R4"]}]}
+    # 모델은 예비 칸 하나를 가군·나군이 함께 쓰는 수량 하나로, 금액 칸은 대상마다 임대조건 하나로 답한다.
+    supply = {"data": {
+        "housingTypes": [{"key": "h1", "rowIds": ["P2:T1:R4"], "name": "26", "targets": ["t1", "t2"]}],
+        "targets": [{"key": "t1", "label": "가군"}, {"key": "t2", "label": "나군"}],
+        "quotas": [{"kind": "RESERVE", "count": 110, "members": [["h1"]], "rowIds": ["P2:T1:R4"]}],
+        "leaseTerms": [
+            {"members": [["h1", "t1"]], "rentalDeposit": 2520000, "monthlyRent": 50160, "rowIds": ["P3:T1:R4"]},
+            {"members": [["h1", "t2"]], "rentalDeposit": 7648000, "monthlyRent": 115940, "rowIds": ["P3:T1:R4"]}]}}
     notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
               "notApplicable": [], "evidence": []}
 
@@ -802,7 +804,8 @@ class StageReplyModel:
             "eligibility" if ELIGIBILITY_STAGE in prompt else "notice")
         if stage == "eligibility":
             self.eligibility_prompts.append(prompt)
-        return Reply(json.dumps(self.replies[stage], ensure_ascii=False), USAGE)
+        reply = sheet_answer(self.replies[stage]) if stage == "supply" else self.replies[stage]
+        return Reply(json.dumps(reply, ensure_ascii=False), USAGE)
 
 
 # 공급행 근거 행 ID가 입력 표에 없고(공급행 0), 다른 공급행은 표와 다른 모집수(99)를 냈으며,
@@ -1193,9 +1196,14 @@ def merged_count_pdf():
 
 
 def test_rows_joined_by_a_merged_count_are_split_into_housing_types_in_the_supply_sheet():
-    # 공급행 결과는 세 주택형을 공급행 하나(49)로 묶지만, 공급표는 주택형마다 하나이고 모집 70은 셋이 함께 쓰는 묶음 하나다.
-    supply = {"data": {"rows": [{"rowIds": [f"P1:T1:R{number}"], "complexName": "Test", "housingType": label,
-                                 "target": "일반"} for number, label in ((2, "49A"), (3, "49B"), (4, "49C"))]}}
+    # 모델은 세 주택형이 함께 쓰는 모집 칸 70을 멤버 셋인 수량 하나로 답한다. 안쪽 공급행 결과는 세 주택형을 공급행 하나(49)로
+    # 묶지만, 공급표는 주택형마다 하나이고 모집 70은 셋이 함께 쓰는 묶음 하나다.
+    supply = {"data": {
+        "housingTypes": [{"key": f"h{number}", "rowIds": [f"P1:T1:R{number}"], "complexName": "Test", "name": label,
+                          "targets": ["t1"]} for number, label in ((2, "49A"), (3, "49B"), (4, "49C"))],
+        "targets": [{"key": "t1", "label": "일반"}],
+        "quotas": [{"kind": "WINNER", "count": 70, "members": [["h2"], ["h3"], ["h4"]], "rowIds": ["P1:T1:R2"]}],
+        "leaseTerms": []}}
 
     result = AnnouncementPdfExtractor(StageReplyModel(supply, NOTICE_REPLY, ELIGIBILITY_REPLY), FakeJudge()).extract(
         job(merged_count_pdf()))

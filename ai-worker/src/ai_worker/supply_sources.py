@@ -11,7 +11,7 @@ from concurrent.futures import Executor
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from ai_worker import checks, jev, pages, stage_prompts, supply_grouping
+from ai_worker import checks, jev, pages, stage_prompts, supply_answer, supply_grouping
 from ai_worker.openai import Reply
 from ai_worker.source_frame import SourceSupplyRow
 from ai_worker.supply_assembly import assemble
@@ -71,10 +71,10 @@ class ModelSupply:
 
     def read(self) -> Supply:
         reply = self._future.result()
-        compact = checks.first_json_object(reply.content, {"rows": list})
+        # 모델은 공고문 표의 칸 단위(공급표 모양)로 답한다. 조립·검산은 코드 경로와 같은 짧은 공급행 목록을 읽는다.
+        compact, warnings = supply_answer.rows(checks.first_json_object(reply.content, {"housingTypes": list}))
         selected = self._selected
         # 코드가 공급표를 읽으면 공급 단계 호출이 없어 이 두 안내는 사실이 아니므로 모델 경로에만 둔다.
-        warnings = []
         if selected.table_structure_fallback:
             warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
         if selected.ambiguous_supply_tables:

@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from ai_worker import checks, pages, supply_assembly, tables
+from ai_worker import checks, pages, supply_answer, supply_assembly, tables
 
 
 def test_compact_supply_rows_are_assembled_from_cell_values_into_manager_contract():
@@ -993,6 +993,22 @@ def test_recruitment_count_is_priority_plus_general_and_a_general_cell_shared_by
     assert not any("HouseholdCount" in finding["path"] for finding in tree["data"]["unresolvedFields"])
 
 
+def test_targets_split_by_income_tier_share_their_one_count_row_as_one_shared_count():
+    # 임대조건표만 청년을 소득(×)·소득(○) 금액 구간으로 나눈다. 공급표의 청년 행(우선 23)은 두 구간 대상이 함께 쓴다.
+    selected = table_pages(PRIORITY_GENERAL_TABLE, page=3)
+    items = [{"rowIds": [f"P3:T1:R{number}"], "complexName": "석남", "housingType": "21A", "target": target, **condition}
+             for number, target, condition in ((3, "대학생", {}), (4, "청년", {"applicationCondition": "소득(×)"}),
+                                               (4, "청년", {"applicationCondition": "소득(○)"}), (5, "주거급여 수급자", {}))]
+
+    tree, _ = supply_assembly.assemble({"data": {"rows": items}}, selected)
+
+    [row] = [row for row in tree["data"]["supplyRows"] if row["sourceHousingTypeName"] == "21A"]
+    assert (row["totalSupplyHouseholdCount"], [target["supplyHouseholdCount"] for target in row["targets"]]) == (
+        62, [None, None, None, 6])
+    assert [(item["paths"], item["count"]) for item in tree["sharedCounts"]] == [(
+        [f"supplyRows[0].targets[{index}].supplyHouseholdCount" for index in range(3)], 56)]
+
+
 def test_priority_and_general_columns_are_not_read_from_amount_or_reserve_headers():
     # 우선·일반 공급 아래 예비자·보증금 열은 모집수 칸이 아니다. 둘 다 있을 때만 모집수 칸으로 본다.
     for header in (["일반 공급 예비자", "우선 공급 예비자"], ["우선 공급 보증금", "일반 공급 보증금"], ["우선 공급", "비고"]):
@@ -1070,3 +1086,57 @@ def test_reserve_count_read_for_a_joined_row_is_not_left_as_unconfirmed():
 
     assert [counts(row) for row in tree["data"]["supplyRows"]] == [(68, 68, 56)]
     assert tree["data"]["unresolvedFields"] == []
+
+
+def test_a_sheet_answer_with_split_columns_and_income_tiers_reaches_the_shared_count_through_assembly():
+    # 공급 단계 모델의 공급표 모양 답(우선·일반 열마다 수량 칸, 청년 소득 구간 둘)을 어댑터와 조립에 그대로 통과시킨다.
+    targets = [{"key": "t1", "label": "대학생"}, {"key": "t2", "label": "청년", "applicationCondition": "소득(×)"},
+               {"key": "t3", "label": "청년", "applicationCondition": "소득(○)"}, {"key": "t4", "label": "주거급여 수급자"}]
+    answer = {"data": {"housingTypes": [{"key": "h1", "complexName": "석남", "name": "21A", "rowIds": ["P3:T1:R3"],
+                                         "targets": ["t1", "t2", "t3", "t4"]}], "targets": targets, "quotas": [
+        {"kind": "WINNER", "count": 5, "members": [["h1", "t1"]], "rowIds": ["P3:T1:R3"]},
+        {"kind": "WINNER", "count": 28, "members": [["h1", "t1"], ["h1", "t2"], ["h1", "t3"]], "rowIds": ["P3:T1:R3"]},
+        {"kind": "WINNER", "count": 23, "members": [["h1", "t2"], ["h1", "t3"]], "rowIds": ["P3:T1:R4"]},
+        {"kind": "WINNER", "count": 3, "members": [["h1", "t4"]], "rowIds": ["P3:T1:R5"]},
+        {"kind": "WINNER", "count": 3, "members": [["h1", "t4"]], "rowIds": ["P3:T1:R5"]}], "leaseTerms": []}}
+    compact, warnings = supply_answer.rows(answer)
+
+    tree, _ = supply_assembly.assemble(compact, table_pages(PRIORITY_GENERAL_TABLE, page=3))
+
+    [row] = tree["data"]["supplyRows"]
+    # 청년 이름은 청년 행(R4)에서 확인되어 남고, 5 + 23 + 28 = 56은 대학생·청년 구간 둘의 공통 모집수, 주거급여는 3 + 3이다.
+    assert [target["target"] for target in row["targets"]] == ["대학생", "청년", "청년", "주거급여 수급자"]
+    assert (row["totalSupplyHouseholdCount"], [target["supplyHouseholdCount"] for target in row["targets"]]) == (
+        62, [None, None, None, 6])
+    assert [(item["paths"], item["count"]) for item in tree["sharedCounts"]] == [(
+        [f"supplyRows[0].targets[{index}].supplyHouseholdCount" for index in range(3)], 56)]
+    assert warnings == []
+
+
+def test_a_reserve_only_sheet_answer_takes_the_reserve_count_as_the_recruitment_count():
+    # 예비입주자 모집 공고(15번 모양): 모델은 예비자 수만 답하고, 조립이 '금회 모집 예비자'를 모집수로도 읽는다.
+    answer = {"data": {"housingTypes": [{"key": "h1", "complexName": "충북혁신", "name": "26", "rowIds": ["P3:T1:R2"],
+                                         "targets": ["t1"]}], "targets": [{"key": "t1", "label": "청년"}],
+                       "quotas": [{"kind": "RESERVE", "count": 110, "members": [["h1", "t1"]], "rowIds": ["P3:T1:R2"]}]}}
+    compact, _ = supply_answer.rows(answer)
+
+    tree, _ = supply_assembly.assemble(compact, table_pages(
+        [["단지명", "주택형", "공급대상", "금회 모집 예비자"], ["충북혁신", "26", "청년", "110"]], page=3))
+
+    [row] = tree["data"]["supplyRows"]
+    [target] = row["targets"]
+    assert (row["totalSupplyHouseholdCount"], target["supplyHouseholdCount"], target["reserveCount"]) == (110, 110, 110)
+
+
+def test_same_name_targets_without_different_conditions_do_not_share_a_count_row():
+    # 금액 구간이 아닌 같은 이름 대상 둘(조건이 같거나 없음)은 어느 대상의 수인지 정할 수 없어 대상별 수를 정하지 않는다.
+    items = [{"rowIds": [f"P3:T1:R{number}"], "complexName": "석남", "housingType": "21A", "target": target, **extra}
+             for number, target, extra in ((3, "대학생", {}), (4, "청년", {"monthlyRent": 1}), (4, "청년", {"monthlyRent": 2}),
+                                          (5, "주거급여 수급자", {}))]
+
+    tree, _ = supply_assembly.assemble({"data": {"rows": items}}, table_pages(PRIORITY_GENERAL_TABLE, page=3))
+
+    row = tree["data"]["supplyRows"][0]
+    assert (row["totalSupplyHouseholdCount"], [target["supplyHouseholdCount"] for target in row["targets"]]) == (
+        None, [None, None, None, None])
+    assert tree["sharedCounts"] == []
