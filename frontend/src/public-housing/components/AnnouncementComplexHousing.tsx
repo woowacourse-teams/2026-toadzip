@@ -22,6 +22,8 @@ interface AnnouncementComplexHousingProps {
   readonly onToggleAreaUnit: () => void
   readonly groups: readonly HousingAnnouncementSupplyComplexGroup[]
   readonly supplyHouseholdCount: number | null
+  /** false면 공고문으로 확인하기 전 기관이 보낸 공급정보라 안내를 붙인다. */
+  readonly supplyConfirmed?: boolean
   readonly onOpenComplex?: (complexId: string) => void
   readonly onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }
@@ -32,6 +34,7 @@ export function AnnouncementComplexHousing({
   onToggleAreaUnit,
   groups,
   supplyHouseholdCount,
+  supplyConfirmed = true,
   onOpenComplex,
   onOpenFloorPlan,
 }: AnnouncementComplexHousingProps) {
@@ -49,6 +52,12 @@ export function AnnouncementComplexHousing({
       actions={groups.length > 0 ? <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} /> : undefined}
       aside={`${groups.length.toLocaleString('ko-KR')}개 단지 · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
+      {!supplyConfirmed && groups.length > 0 && (
+        <p className={styles.unconfirmed}>
+          <strong>공고문 확인 전 정보</strong>
+          <span>공고문으로 확인하기 전 기관이 제공한 정보라 공고문과 다를 수 있어요. 신청 전에 공고문을 꼭 확인해 주세요.</span>
+        </p>
+      )}
       {groups.length === 0 && <p className={styles.empty}>단지 정보: {MISSING_DATA_LABEL}</p>}
       {targetNames.length > 1 && (
         <TargetChips names={targetNames} chosen={chosen} onChoose={setTarget} />

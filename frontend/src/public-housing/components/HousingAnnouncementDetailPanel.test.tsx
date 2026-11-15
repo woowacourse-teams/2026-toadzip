@@ -184,6 +184,27 @@ describe('HousingAnnouncementDetailPanel', () => {
       .toHaveAttribute('src', 'https://example.com/botdeul.jpg')
   })
 
+  it('공고문으로 확인하기 전 공급정보는 단지·주택형 위에 알리고 공급 세대에도 표시한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyConfirmed: false })} onClose={vi.fn()} />)
+    expect(screen.getByText('공고문 확인 전 정보')).toBeVisible()
+    expect(screen.getByText(/공고문과 다를 수 있어요\. 신청 전에 공고문을 꼭 확인해 주세요\./)).toBeVisible()
+    const core = screen.getByRole('heading', { name: '공고 핵심 정보' }).closest('section')!
+    expect(within(core).getByText('공급 세대').parentElement).toHaveTextContent('20세대 · 공고문 확인 전')
+  })
+
+  it.each([true, undefined])('공고문으로 확인한 공급정보(%s)에는 확인 전 표시를 하지 않는다', (supplyConfirmed) => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyConfirmed })} onClose={vi.fn()} />)
+    expect(screen.queryByText('공고문 확인 전 정보')).not.toBeInTheDocument()
+    const core = screen.getByRole('heading', { name: '공고 핵심 정보' }).closest('section')!
+    expect(within(core).getByText('공급 세대').parentElement).not.toHaveTextContent('공고문 확인 전')
+  })
+
+  it('확인 전이라도 공급 세대수를 모르면 세대수 옆에 덧붙이지 않는다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyConfirmed: false, supplyHouseholdCount: null })} onClose={vi.fn()} />)
+    const core = screen.getByRole('heading', { name: '공고 핵심 정보' }).closest('section')!
+    expect(within(core).getByText('공급 세대').parentElement).not.toHaveTextContent('공고문 확인 전')
+  })
+
   it('신청 대상을 핵심 정보의 한 행으로 표시하고 공백 대상은 제외한다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ targets: [' 청년 ', '', '  ', '신혼부부'] })} onClose={vi.fn()} />)
     const core = screen.getByRole('heading', { name: '공고 핵심 정보' }).closest('section')!

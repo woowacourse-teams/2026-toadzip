@@ -3,7 +3,7 @@ import { daegu, savedSheet, scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction, type Extraction } from './extraction'
 import { assembledSheet, assembleReview, chooseCellValue, complexKey, createReview, decideComplex, editCell, foreignCharacters, needsComplex, pendingChanges, pendingItems, pendingJumpTarget, rebaseReview,
-  otherComplexes, remapSchedule, removedHousingTypes, ReviewError, serverFieldError, shownDateTime, validCellValue, type Review } from './review'
+  otherComplexes, remapSchedule, removedHousingTypes, ReviewError, serverFieldError, shownDateTime, targetName, validCellValue, type Review } from './review'
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
 /** 이 공고문을 이미 반영해 단지에 연결된 지금 공급표 */
@@ -140,6 +140,29 @@ describe('공고 공급표 검토', () => {
     expect(workspace.supply.sheet.targets.map(target => [target.label, target.applicationCondition])).toEqual([['일반', ''], ['전체', '무주택세대구성원']])
     expect(assembledSheet(review, workspace).targets.map(target => [target.id, target.label, target.applicationCondition]))
       .toEqual([[1, '일반', ''], [null, '전체', ''], [3, '전체', '무주택세대구성원']])
+  })
+
+  it('공급표가 아직 없는 공고에서도 워커가 둔 전체 대상은 신청 조건이 있거나 함께 묶인 대상 이름이 미확인이어도 이름 없음이 아닌 전체로 보이고 저장된다', () => {
+    const empty = () => ({ housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] })
+    const withEveryone = (everyone: { applicationCondition: string | null }, unresolved: { path: string; reason: string }[] = []) => {
+      const extraction = structuredClone(fixtures.hansville.extraction) as typeof fixtures.hansville.extraction & { data: { supplySheet: { targets: unknown[]; cells: unknown[] } } }
+      extraction.data.supplySheet.targets.push({ key: 't1', label: '전체', ...everyone })
+      extraction.data.supplySheet.cells.push({ housingType: 'h0', target: 't1' }, { housingType: 'h1', target: 't1' })
+      const sheet = extraction.data.supplySheet as { unresolvedFields?: unknown[] }
+      sheet.unresolvedFields = [...sheet.unresolvedFields ?? [], ...unresolved]
+      // 이 응답의 '일반'은 이름 근거가 없어 확인이 필요하다. 이 시험과 상관없게 이름을 골라 두고 단지도 정한다.
+      const { review: read, workspace, housing } = scenario('hansville', extraction, empty)
+      const review = choose(read, '익산한스빌', 3055, housing[3055])
+      review.labels[0].cells = review.labels[0].cells.map(cell => cell.field === 'label' ? editCell(cell, '일반') : cell)
+      return { review, workspace }
+    }
+    // 다른 행의 대상 이름 미확인이 같은 '전체' 대상 하나로 모인 경우와, 대상 열 없는 행의 신청 조건이 남은 경우다.
+    for (const { review, workspace } of [withEveryone({ applicationCondition: null }, [{ path: 'targets[1].label', reason: '대상 이름을 읽지 못했습니다.' }]),
+      withEveryone({ applicationCondition: '무주택세대구성원' })]) {
+      const everyone = review.rows.flatMap(row => row.targets.filter(target => review.extraction.sheet.cells[target.cell].target === 1))
+      expect(everyone.map(target => targetName(review, target.cell))).toEqual(['전체', '전체'])
+      expect(assembledSheet(review, workspace).targets.map(target => target.label)).toEqual(['일반', '전체'])
+    }
   })
 
   it('공급대상 이름을 읽지 못하면 그 대상을 쓰는 첫 칸으로 보내 저장을 막고, 이름을 넣으면 풀린다', () => {

@@ -45,7 +45,7 @@ export function savedSheet(extraction: Extraction, complex: { id: number; name: 
 
 export function workspaceOf(sheet: SupplySheet, { id = 29, events = [] as JsonWorkspace['events'] } = {}): JsonWorkspace {
   return { snapshotToken: 'current', events,
-    supply: { snapshotToken: 'supply', version: 1, sheet, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] },
+    supply: { snapshotToken: 'supply', stagingToken: null, supplyConfirmed: true, version: 1, sheet, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] },
     detail: { summary: { id, name: '기존 공고', subtitle: '', provider: 'LH', rental: 'NATIONAL_RENTAL', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
       data: { name: '기존 공고', rentalType: 'NATIONAL_RENTAL', recruitmentType: 'RESERVE', agencyCode: 'LH', originalUrl: 'https://example.com/notice' },
       sourceIdentifier: 'current-source', housingTypes: [], supplySheet: sheet, announcements: [], schedules: [], scheduleReviewed: false } }

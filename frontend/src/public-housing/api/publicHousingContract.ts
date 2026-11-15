@@ -231,6 +231,9 @@ function decodeAnnouncementDetail(
       recordField(detail, 'competition', path),
       `${path}.competition`,
     ),
+    ...(detail.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(detail.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 
@@ -1041,6 +1044,9 @@ function decodeAnnouncementListItem(
       recordField(item, 'thumbnailImageUrl', path),
       `${path}.thumbnailImageUrl`,
     ),
+    ...(item.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(item.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 

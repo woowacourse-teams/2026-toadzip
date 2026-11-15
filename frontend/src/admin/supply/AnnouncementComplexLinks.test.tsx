@@ -16,7 +16,7 @@ const type = housingType({ key: 'row:1', name: '46A', announcementComplexId: 239
   housingComplexName: '전주효자 휴먼시아6단지', housingTypeId: 8, exclusiveArea: 46.98, category: 'RESUPPLY' })
 const auto: AnnouncementComplex = { id: 239, name: '효자5국민임대 B2블록', roadAddress: '전북특별자치도 전주시 완산구 호암로 88', housingComplexId: 7,
   housingComplexName: '전주효자 휴먼시아6단지', linkMethod: 'AUTO', rowCount: 1 }
-const workspace: SupplyWorkspace = { snapshotToken: 'before', version: 1, sheet: { housingTypes: [type], targets: [], cells: [], quotas: [], leaseTerms: [] },
+const workspace: SupplyWorkspace = { snapshotToken: 'before', stagingToken: null, supplyConfirmed: true, version: 1, sheet: { housingTypes: [type], targets: [], cells: [], quotas: [], leaseTerms: [] },
   announcementComplexes: [auto, { ...auto, id: 238, name: '효자5국민임대 B1블록', linkMethod: 'ADMIN' }], applicationTypeNames: [], sourceReference: [], warnings: [] }
 const moved: SupplyWorkspace = { ...workspace, snapshotToken: 'after',
   sheet: { ...workspace.sheet, housingTypes: [{ ...type, housingComplexId: 9, housingComplexName: '전주효자 휴먼시아5단지' }] },

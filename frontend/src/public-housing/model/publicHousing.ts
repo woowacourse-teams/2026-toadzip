@@ -266,6 +266,8 @@ export interface RawAnnouncementListItem {
   readonly actualCompetitionRate: number | null
   readonly predictedCompetitionRate: number | null
   readonly thumbnailImageUrl: string | null
+  /** false면 단지 수·공급 세대수는 공고문으로 확인하기 전 기관이 보낸 정보다. 이 필드가 없던 이전 API 응답을 위해 생략할 수 있다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface RawAnnouncementPage {
@@ -295,6 +297,8 @@ export interface AnnouncementListItem {
   readonly actualCompetitionRate: number | null
   readonly predictedCompetitionRate: number | null
   readonly thumbnailImageUrl: string | null
+  /** false면 단지 수·공급 세대수는 공고문으로 확인하기 전 기관이 보낸 정보다. 값이 없는 이전 응답은 확인한 정보로 본다. */
+  readonly supplyConfirmed: boolean
   readonly raw: RawAnnouncementListItem
 }
 
@@ -442,6 +446,8 @@ export interface RawAnnouncementDetail {
   readonly attachments: readonly RawAnnouncementAttachment[]
   readonly supplyRows: readonly RawAnnouncementSupplyRow[]
   readonly competition: RawAnnouncementCompetition | null
+  /** false면 공급정보(단지·주택형·대상·세대수)는 공고문으로 확인하기 전 기관이 보낸 정보다. 이전 API 응답에는 없다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export type AnnouncementReceptionPlace = RawAnnouncementReceptionPlace
@@ -538,6 +544,8 @@ export interface AnnouncementDetail {
   readonly attachments: readonly AnnouncementAttachment[]
   readonly supplyRows: readonly AnnouncementSupplyRow[]
   readonly competition: AnnouncementCompetition | null
+  /** false면 공급정보는 공고문으로 확인하기 전 기관이 보낸 정보다. 값이 없는 이전 응답은 확인한 정보로 본다. */
+  readonly supplyConfirmed: boolean
   /** 없으면 어느 탭에도 없는 것으로 본다. */
   readonly listPhase?: AnnouncementListPhase
   readonly raw: RawAnnouncementDetail

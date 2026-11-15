@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { rememberApply } from './supplyApplyRecovery'
 import { ManagementError } from '../management/api'
 import { SupplyCorrectionWorkbench } from './SupplyCorrectionWorkbench'
-import { applySupply, loadSupplyWorkspace, previewSupply, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { applySupply, loadSupplyWorkspace, previewSupply, startSupplyFromAgency, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import { sampleSheet } from './fixtures/sheet'
 import { addHousingType, removeHousingType, updateHousingType } from './sheetEdits'
 import { toSheetInput, type SupplySheet } from './supplySheet'
@@ -15,9 +15,9 @@ vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: ({ evidence, pending 
 const pdf = vi.hoisted(() => ({ sheet: null as SupplySheet | null }))
 vi.mock('../announcement-pdf/PdfCorrectionPage', () => ({ PdfCorrectionWorkspace: ({ supplyDraft }: { supplyDraft: (sheet: SupplySheet) => void }) =>
   <button type="button" onClick={() => supplyDraft(pdf.sheet!)}>모의 PDF 공급표 넘기기</button> }))
-vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn() }))
+vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn(), startSupplyFromAgency: vi.fn() }))
 
-const workspace: SupplyWorkspace = { snapshotToken: 'before', version: 1, sheet: sampleSheet(), announcementComplexes: [], applicationTypeNames: [],
+const workspace: SupplyWorkspace = { snapshotToken: 'before', stagingToken: null, supplyConfirmed: true, version: 1, sheet: sampleSheet(), announcementComplexes: [], applicationTypeNames: [],
   sourceReference: [{ complexLabel: '두꺼비', typeName: '46', exclusiveArea: 46.5, householdCount: 10 }], warnings: [] }
 const renamed = updateHousingType(sampleSheet(), 'row:1', { name: '46A(신혼)' })
 const preview: SupplyPreview = { confirmationToken: 'confirmed', before: sampleSheet(), after: renamed, warnings: ['연결 상태 확인 필요'] }
@@ -196,4 +196,62 @@ it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단�
   const table = screen.getByRole('table', { name: '공급정보 표' })
   expect(within(table).getAllByRole('rowheader').map(cell => cell.textContent)).toEqual(['두꺼비 단지', '두꺼비 단지'])
   expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 두꺼비 국민임대')
+})
+
+/** 공고문으로 확인한 공급표가 아직 없는 공고. 표는 비어 있고 기관이 보낸 공급정보로 시작할 수 있다. */
+const agencyOnly: SupplyWorkspace = { ...workspace, snapshotToken: 'agency', stagingToken: 'staging', supplyConfirmed: false, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] } }
+const started: SupplyWorkspace = { ...workspace, snapshotToken: 'started', version: 2 }
+
+it('공급표가 확정된 공고에는 확인 전 안내를 보이지 않고, 기관 공급정보가 없는 확인 전 공고에는 안내만 보인다', async () => {
+  await setup(false)
+  expect(screen.queryByRole('region', { name: '공고문 확인 전 공급정보' })).not.toBeInTheDocument()
+  cleanup()
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...agencyOnly, stagingToken: null })
+  await setup(false)
+  const notice = await screen.findByRole('region', { name: '공고문 확인 전 공급정보' })
+  expect(notice).toHaveTextContent('아직 공고문으로 확인한 공급표가 없습니다.')
+  expect(screen.queryByRole('button', { name: '기관 제공 정보로 공급표 시작' })).not.toBeInTheDocument()
+})
+
+it('확인 전 공고는 확인을 받은 뒤 작업실 두 토큰으로 기관 공급정보에서 공급표를 시작하고, 돌려받은 공급표를 보인다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(agencyOnly))
+  vi.mocked(startSupplyFromAgency).mockResolvedValue(structuredClone(started))
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  const changed = await setup(false)
+  expect(screen.getByRole('region', { name: '공고문 확인 전 공급정보' })).toHaveTextContent('기관(LH·GH)이 보낸 공급정보를 ‘공고문 확인 전 정보’로 보여 줍니다')
+  fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  expect(startSupplyFromAgency).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  await screen.findByText('기관 제공 정보로 공급표를 만들었습니다. 공고문과 다른 값이 있으면 아래 표에서 고치세요.')
+  expect(confirm).toHaveBeenCalledTimes(2)
+  expect(startSupplyFromAgency).toHaveBeenCalledExactlyOnceWith('21', { snapshotToken: 'agency', stagingToken: 'staging' })
+  expect(changed).toHaveBeenCalledOnce()
+  expect(within(screen.getByRole('table', { name: '공급정보 표' })).getAllByRole('rowheader')).toHaveLength(2)
+  expect(screen.queryByRole('region', { name: '공고문 확인 전 공급정보' })).not.toBeInTheDocument()
+})
+
+it('시작이 거절되면 운영자 문구로 알리고, 충돌(409)이면 최신 작업실을 다시 불러온다', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(agencyOnly))
+  vi.mocked(startSupplyFromAgency).mockRejectedValueOnce(new ManagementError('공급정보가 바뀌었습니다. 최신 값을 다시 불러온 뒤 시작하세요.', 409, {}, 'ADMIN_DATA_STALE'))
+    .mockRejectedValueOnce(new ManagementError('이미 공고 공급표가 있습니다. 공급정보 보정으로 고치세요.', 409, {}, 'ADMIN_DATA_CONFLICT'))
+    .mockRejectedValueOnce(new ManagementError('준비 데이터가 없는 공고입니다. 공급정보를 직접 입력하세요.', 400))
+  await setup(false)
+  const start = () => fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(agencyOnly), snapshotToken: 'agency-2', stagingToken: 'staging-2' })
+  start()
+  expect(await screen.findByRole('alert')).toHaveTextContent('보는 사이 공급정보가 바뀌었습니다. 최신 공급정보를 불러왔으니 확인한 뒤 다시 시작하세요.')
+  expect(loadSupplyWorkspace).toHaveBeenCalledTimes(2)
+  await waitFor(() => expect(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' })).toBeEnabled())
+  start()
+  await waitFor(() => expect(startSupplyFromAgency).toHaveBeenLastCalledWith('21', { snapshotToken: 'agency-2', stagingToken: 'staging-2' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('이미 공급표가 있는 공고입니다. 최신 공급정보를 불러왔으니 아래 표에서 고치세요.')
+  expect(loadSupplyWorkspace).toHaveBeenCalledTimes(3)
+
+  await waitFor(() => expect(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' })).toBeEnabled())
+  start()
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('기관이 보낸 공급정보가 없어 시작할 수 없습니다. PDF로 채우거나 직접 추가하세요.'))
+  expect(loadSupplyWorkspace).toHaveBeenCalledTimes(3)
+  expect(screen.queryByText(/준비 데이터/)).not.toBeInTheDocument()
 })

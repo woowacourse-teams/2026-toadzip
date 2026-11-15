@@ -6,7 +6,7 @@ import { sampleSheet } from './fixtures/sheet'
 import { loadSupplyReviews, saveSupplyReview } from './supplyReviewApi'
 vi.mock('./supplyReviewApi', async original => ({ ...await original<typeof import('./supplyReviewApi')>(), loadSupplyReviews: vi.fn(), saveSupplyReview: vi.fn() }))
 const overview = { values: { 'row:1': { householdCount: 10, name: '46A' } }, records: [] }
-const workspace: SupplyWorkspace = { snapshotToken: 'snapshot', version: 1, sheet: sampleSheet(), announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] }
+const workspace: SupplyWorkspace = { snapshotToken: 'snapshot', stagingToken: null, supplyConfirmed: true, version: 1, sheet: sampleSheet(), announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] }
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(loadSupplyReviews).mockResolvedValue(overview); vi.mocked(saveSupplyReview).mockResolvedValue(overview) })
 async function open(disabled = false) {
   render(<SupplyReviewPanel id="21" workspace={workspace} sourceUrl="https://example.com/notice.pdf" disabled={disabled} onBusyChange={vi.fn()} />)

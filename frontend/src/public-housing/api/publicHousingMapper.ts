@@ -86,6 +86,7 @@ export function toAnnouncementDetail(
     attachments: raw.attachments.map(toAnnouncementAttachment),
     supplyRows: raw.supplyRows.map(toAnnouncementSupplyRow),
     competition: raw.competition,
+    supplyConfirmed: raw.supplyConfirmed ?? true,
     listPhase: raw.listPhase ?? 'NONE',
     raw,
   }
@@ -164,6 +165,7 @@ function toAnnouncementListItem(
     actualCompetitionRate: raw.actualCompetitionRate,
     predictedCompetitionRate: raw.predictedCompetitionRate,
     thumbnailImageUrl: raw.thumbnailImageUrl,
+    supplyConfirmed: raw.supplyConfirmed ?? true,
     raw,
   }
 }

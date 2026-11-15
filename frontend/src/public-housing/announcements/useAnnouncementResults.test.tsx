@@ -416,7 +416,7 @@ function announcementListItem(announcementId: string): AnnouncementListItem {
     title: `공고 ${announcementId}`,
     viewCount: 0,
   }
-  return { ...raw, announcementId, raw }
+  return { ...raw, announcementId, supplyConfirmed: true, raw }
 }
 
 function deferred<T>() {

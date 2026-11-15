@@ -36,6 +36,7 @@ describe('toHousingAnnouncementCardData', () => {
       regionNames: ['서울특별시 중구'],
       rentalTypeLabel: '행복주택',
       supplyHouseholdCount: 0,
+      supplyConfirmed: true,
       title: '행복주택 모집 공고',
       viewCount: 0,
     })
@@ -90,6 +91,7 @@ function announcement(
     supplyComplexCount: 1,
     supplyHouseholdCount: 0,
     thumbnailImageUrl: null,
+    supplyConfirmed: true,
     title: '행복주택 모집 공고',
     viewCount: 0,
     ...changes,

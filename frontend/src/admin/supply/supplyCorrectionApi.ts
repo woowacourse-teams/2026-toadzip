@@ -10,8 +10,12 @@ export type ComplexLinkMethod = 'AUTO' | 'ADMIN' | 'MIGRATED'
 export type AnnouncementComplex = { id: number; name: string; roadAddress: string | null; housingComplexId: number | null; housingComplexName: string | null; linkMethod: ComplexLinkMethod | null; rowCount: number }
 /** LH·GH 원천 공급 행. 저장하지 않으며 공급표 수량을 검산할 때만 참고한다. */
 export type SourceReference = { complexLabel: string; typeName: string; exclusiveArea: number | string | null; householdCount: number | null }
-export type SupplyWorkspace = { snapshotToken: string; version: number; sheet: SupplySheet; announcementComplexes: AnnouncementComplex[]
-  applicationTypeNames: string[]; sourceReference: SourceReference[]; warnings: string[] }
+/**
+ * 공급 보정 작업실. supplyConfirmed가 false면 공고문으로 확인한 공고 공급표가 아직 없어 sheet가 비어 있고, 사용자 화면은 기관이 보낸 공급정보를 보인다.
+ * stagingToken은 그 기관 공급정보로 공고 공급표를 시작할 때 보내는 값이며 확정한 공고는 null이다. 두 필드가 없는 이전 응답은 확정한 공고로 읽는다.
+ */
+export type SupplyWorkspace = { snapshotToken: string; stagingToken: string | null; version: number; sheet: SupplySheet; announcementComplexes: AnnouncementComplex[]
+  applicationTypeNames: string[]; sourceReference: SourceReference[]; warnings: string[]; supplyConfirmed: boolean }
 /** 공급정보 편집표와 PDF 보정이 함께 보내는 요청. 공급표에서 빠진 개체는 서버가 지운다. */
 export type SupplyCorrectionInput = { operationId: string; snapshotToken: string; reason: string; sourceUrl: string; sourcePage: string | null; sheet: SupplySheetInput }
 /** after는 서버가 저장할 공급표다. 새 개체의 `new:*` 키는 그대로 남는다. */
@@ -36,10 +40,12 @@ function reference(value: unknown): SourceReference {
 }
 export function parseSupplyWorkspace(value: unknown): SupplyWorkspace {
   if (!isRecord(value) || typeof value.snapshotToken !== 'string' || !count(value.version) || !Array.isArray(value.announcementComplexes)
-    || !texts(value.applicationTypeNames) || !Array.isArray(value.sourceReference) || !texts(value.warnings)) invalid()
-  return { snapshotToken: value.snapshotToken, version: value.version, sheet: parseSupplySheet(value.sheet),
+    || !texts(value.applicationTypeNames) || !Array.isArray(value.sourceReference) || !texts(value.warnings)
+    || !(value.stagingToken === undefined || nullableText(value.stagingToken))
+    || !(value.supplyConfirmed === undefined || typeof value.supplyConfirmed === 'boolean')) invalid()
+  return { snapshotToken: value.snapshotToken, stagingToken: (value.stagingToken as string | null | undefined) ?? null, version: value.version, sheet: parseSupplySheet(value.sheet),
     announcementComplexes: value.announcementComplexes.map(complex), applicationTypeNames: value.applicationTypeNames,
-    sourceReference: value.sourceReference.map(reference), warnings: value.warnings }
+    sourceReference: value.sourceReference.map(reference), warnings: value.warnings, supplyConfirmed: value.supplyConfirmed ?? true }
 }
 const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}/supply-corrections`
 export async function loadSupplyWorkspace(id: string, signal?: AbortSignal): Promise<SupplyWorkspace> {
@@ -48,6 +54,13 @@ export async function loadSupplyWorkspace(id: string, signal?: AbortSignal): Pro
 /** 공고 단지 하나를 관리자가 정한 단지에 연결한다. 화면이 본 뒤 공급정보가 바뀌었으면 409(ADMIN_DATA_STALE)다. */
 export async function linkAnnouncementComplex(id: string, announcementComplexId: number, input: { snapshotToken: string; housingComplexId: number }): Promise<SupplyWorkspace> {
   return parseSupplyWorkspace(await requestManagementApi(`${path(id)}/announcement-complexes/${announcementComplexId}/link`, 'POST', input))
+}
+/**
+ * 공고 공급표가 아직 없는 공고에서 기관이 보낸 공급정보를 그대로 공고 공급표로 만든다. 이미 공급표가 있으면 409(ADMIN_DATA_CONFLICT),
+ * 화면이 본 뒤 공급정보가 바뀌었으면 409(ADMIN_DATA_STALE), 기관 공급정보가 없으면 400이다.
+ */
+export async function startSupplyFromAgency(id: string, input: { snapshotToken: string; stagingToken: string }): Promise<SupplyWorkspace> {
+  return parseSupplyWorkspace(await requestManagementApi(`${path(id)}/start-from-staging`, 'POST', input))
 }
 export async function previewSupply(id: string, input: SupplyCorrectionInput): Promise<SupplyPreview> {
   return parseSupplyPreview(await requestManagementApi(`${path(id)}/preview`, 'POST', input))

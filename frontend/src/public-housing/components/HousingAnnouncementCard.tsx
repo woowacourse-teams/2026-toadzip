@@ -21,6 +21,8 @@ export interface HousingAnnouncementCardData {
   readonly winnerAnnouncementAt?: string | null
   readonly viewCount: number | null
   readonly supplyHouseholdCount: number | null
+  /** false면 공급 세대수는 공고문으로 확인하기 전 기관이 보낸 값이다. 없으면 확인한 값으로 본다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface HousingAnnouncementCardProps {
@@ -235,7 +237,9 @@ function AnnouncementFooter({
           {' '}
           <i aria-hidden="true">·</i>
           {' '}
-          <span>{supply}</span>
+          <span>{supply}{announcement.supplyConfirmed === false && supply !== MISSING_DATA_LABEL && (
+            <small className={styles.unconfirmed}> · 공고문 확인 전</small>
+          )}</span>
         </>}
       </p>
       {viewCount !== null && <p className={styles.viewCount}>{viewCount}</p>}

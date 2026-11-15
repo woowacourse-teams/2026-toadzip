@@ -47,8 +47,10 @@ export type ManagementAnnouncementSummary = {
   publicationType?: string
   /** LH_SOURCE·ADMIN_ENTRY·GH_SOURCE·SH_SOURCE·MYHOME_LEGACY. 이전 서버 응답에는 없다. */
   origin?: string
-  /** LH_SOURCE·ANNOUNCEMENT_DOCUMENT. 이전 서버 응답에는 없다. */
+  /** LH_SOURCE·ANNOUNCEMENT_DOCUMENT. 이전 서버 응답에는 없다. 지금 서버는 supplyConfirmed에서 만든다. */
   supplyOwner?: string
+  /** 공고문으로 확인한 공고 공급표가 있는지. false면 공급정보는 기관이 보낸 확인 전 정보다. 이전 서버 응답에는 없다. */
+  supplyConfirmed?: boolean
   /** UNCONFIRMED·PUBLISHED. 미확정 공고는 사용자에게 보이지 않는다. 이전 서버 응답에는 없다. */
   applicationStatus?: string | null
   attentionReasons?: string[] | null
@@ -223,6 +225,7 @@ function isManagementAnnouncementSummary(value: unknown): value is ManagementAnn
     && (value.publicationType === undefined || typeof value.publicationType === 'string')
     && (value.origin === undefined || typeof value.origin === 'string')
     && (value.supplyOwner === undefined || typeof value.supplyOwner === 'string')
+    && (value.supplyConfirmed === undefined || typeof value.supplyConfirmed === 'boolean')
     && (value.releaseStatus === undefined || typeof value.releaseStatus === 'string')
     && (value.applicationStatus == null || typeof value.applicationStatus === 'string' && Object.hasOwn(applicationStatuses, value.applicationStatus))
     && (value.attentionReasons == null || Array.isArray(value.attentionReasons) && value.attentionReasons.every(reason => typeof reason === 'string' && reason !== 'ANY' && Object.hasOwn(attentionReasons, reason)))

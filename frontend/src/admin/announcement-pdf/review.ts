@@ -322,7 +322,9 @@ function rowReview(extraction: Extraction, index: number, workspace: JsonWorkspa
 }
 /**
  * 공급대상 이름·신청 조건. 지금 공급표에 짝인 대상이 있으면 그 값과 비교한다. 이름을 읽지 못한 대상은 이름을 넣어야 저장된다.
- * 워커가 더한 '전체'는 공고문 근거가 없어도 그 이름을 쓴다.
+ * 워커가 둔 '전체'는 원문 칸에 없는 이름이라 근거가 없어도 그 이름을 쓴다. 대상 열 없는 행의 신청 조건이 남았거나, 다른 행의 대상 이름
+ * 미확인이 같은 '전체' 대상으로 모였어도 이름은 '전체'다. 지금 공급표가 비어 있으면(공고 공급표를 아직 만들지 않은 공고) 고르지 않은 이름은
+ * 비어 저장을 막으므로 고른 채로 두고, 근거가 없다는 확인 표시만 남긴다.
  */
 function labelReviews(extraction: Extraction, workspace: JsonWorkspace): TargetLabelReview[] {
   return extraction.sheet.targets.map((target, at) => {
@@ -330,7 +332,8 @@ function labelReviews(extraction: Extraction, workspace: JsonWorkspace): TargetL
     const existing = pairedTarget(workspace.supply.sheet.targets, value, extraction.sheet.targets)
     const values = cells(extraction, `targets[${at}]`, targetFields, value, existing ? { label: existing.label, applicationCondition: existing.applicationCondition } : {})
     return { target: at, cells: values.map(cell => cell.field === 'applicationCondition' && !target.applicationCondition ? notApplicable(cell, noConditionNote)
-      : cell.field === 'label' && addedEveryone(value) && cell.state === 'confirm' ? { ...cell, state: 'new', selected: true, mode: 'extracted', note: addedEveryoneNote } : cell) }
+      : cell.field === 'label' && label === EVERYONE && !cell.evidence && ['confirm', 'unresolved'].includes(cell.state)
+        ? { ...cell, state: 'new', selected: true, mode: 'extracted', note: addedEveryoneNote, extracted: { ...cell.extracted, state: 'confirm', note: addedEveryoneNote } } : cell) }
   })
 }
 /** 함께 쓰는 수의 이름. 다른 주택형과 함께 쓰면 주택형 이름을("49A·49B·49C 일반 함께 모집"), 한 주택형 안이면 대상 이름을 잇는다("49A 일반·신혼부부 함께 예비"). */

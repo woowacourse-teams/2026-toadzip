@@ -4347,6 +4347,7 @@ function announcementDetail(): AnnouncementDetail {
     applicationStatus: 'APPLYING',
     attachments: [],
     competition: null,
+    supplyConfirmed: true,
     correctionOrCancellationReason: null,
     dDay: 2,
     documentLinkUrl: 'https://example.com/announcements/201',
@@ -4422,7 +4423,7 @@ function announcementListItem(): AnnouncementListItem {
     title: '성남 청년 행복주택 입주자 모집 공고',
     viewCount: 614,
   }
-  return { ...raw, announcementId: '201', raw }
+  return { ...raw, announcementId: '201', supplyConfirmed: true, raw }
 }
 
 function complexDetail(): ComplexDetail {
@@ -4894,7 +4895,7 @@ function complexBatch(start: number, size: number, nextCursor: string | null, to
 function announcementBatch(start: number, size: number, nextCursor: string | null, totalCount: number): AnnouncementPage {
   const items = Array.from({ length: size }, (_, index) => {
     const raw = { ...announcementListItem().raw, announcementId: start + index, title: `자동 조회 공고 ${start + index}` }
-    return { ...raw, announcementId: String(raw.announcementId), raw }
+    return { ...raw, announcementId: String(raw.announcementId), supplyConfirmed: true, raw }
   })
   const raw = { items: items.map((item) => item.raw), hasNext: nextCursor !== null, nextCursor, totalCount }
   return { ...raw, items, raw }

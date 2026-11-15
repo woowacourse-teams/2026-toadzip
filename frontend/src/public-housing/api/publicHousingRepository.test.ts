@@ -7,7 +7,7 @@ import {
   decodeComplexPageEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
-import { toAnnouncementPage } from './publicHousingMapper.ts'
+import { toAnnouncementDetail, toAnnouncementPage } from './publicHousingMapper.ts'
 import {
   createHttpPublicHousingRepository,
   PublicHousingHttpError,
@@ -1012,6 +1012,24 @@ describe('공공주택 응답 계약', () => {
       .items[0]?.winnerAnnouncementAt).toBeNull()
     expect(() => decodeAnnouncementPageEnvelope({ data: { ...page,
       items: [{ ...ANNOUNCEMENT_ITEM, winnerAnnouncementAt: '2027.02.24' }] } })).toThrow(PublicHousingContractError)
+  })
+
+  it('공고문 확인 여부를 목록·상세에서 읽고 이전 API처럼 없으면 확인된 것으로 둔다', () => {
+    const page = { nextCursor: null, hasNext: false }
+    const item = (changes: object) => toAnnouncementPage(decodeAnnouncementPageEnvelope({ data: { ...page,
+      items: [{ ...ANNOUNCEMENT_ITEM, ...changes }] } })).items[0]?.supplyConfirmed
+    expect(item({ supplyConfirmed: false })).toBe(false)
+    expect(item({ supplyConfirmed: true })).toBe(true)
+    expect(item({})).toBe(true)
+    expect(() => item({ supplyConfirmed: 'false' })).toThrow(PublicHousingContractError)
+
+    const detail = (changes: object) => toAnnouncementDetail(decodeAnnouncementDetailEnvelope({
+      data: { ...ANNOUNCEMENT_DETAIL, ...changes } })).supplyConfirmed
+    expect(detail({ supplyConfirmed: false })).toBe(false)
+    expect(detail({})).toBe(true)
+    expect(() => detail({ supplyConfirmed: null })).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({ path: '$.data.supplyConfirmed' }),
+    )
   })
 
   it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {

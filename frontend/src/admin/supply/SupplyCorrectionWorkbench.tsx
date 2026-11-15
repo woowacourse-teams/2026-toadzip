@@ -8,7 +8,7 @@ import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
 import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
-import { applySupply, loadSupplyWorkspace, previewSupply, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { applySupply, loadSupplyWorkspace, previewSupply, startSupplyFromAgency, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
 import { cellsOf, housingTypeCount, leaseOf, ownCount, sharedQuotas, toSheetInput, type SheetHousingType, type SupplySheet } from './supplySheet'
 import { addHousingType, cellValues, emptySheet, moveHousingType, removeHousingType, wholeTypeQuota } from './sheetEdits'
 import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
@@ -26,6 +26,14 @@ function gaps(sheet: SupplySheet, type: SheetHousingType) {
     // 주택형 모집수는 그 안 묶음의 합이라 대상별 모집 수와 함께 있으면 두 번 센다.
     wholeTypeQuota(sheet, type.key) && cells.length > 1 && cells.some(cell => ownCount(sheet, cell.key, 'WINNER') !== null) && '모집수 중복 확인',
   ].filter((gap): gap is string => Boolean(gap))
+}
+/** '기관 제공 정보로 공급표 시작'이 거절된 까닭. 서버 문구에는 내부 용어가 섞여 있어 운영자 문구로 바꾼다. */
+function startRejection(cause: unknown) {
+  if (!(cause instanceof ManagementError)) return '기관 제공 정보로 공급표를 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'
+  if (cause.code === 'ADMIN_DATA_CONFLICT') return '이미 공급표가 있는 공고입니다. 최신 공급정보를 불러왔으니 아래 표에서 고치세요.'
+  if (cause.code === 'ADMIN_DATA_STALE') return '보는 사이 공급정보가 바뀌었습니다. 최신 공급정보를 불러왔으니 확인한 뒤 다시 시작하세요.'
+  if (cause.status === 400) return '기관이 보낸 공급정보가 없어 시작할 수 없습니다. PDF로 채우거나 직접 추가하세요.'
+  return cause.message
 }
 function blocker(sheet: SupplySheet) {
   if (sheet.housingTypes.some(type => !type.name.trim()) || sheet.targets.some(target => !target.label.trim())) return '이름이 빈 주택형이나 공급대상이 있습니다. 표기를 먼저 채우세요.'
@@ -110,6 +118,25 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     }
     finally { setBusy(false) }
   }
+  /** 공고문 PDF가 없는 공고에서 기관이 보낸 공급정보를 그대로 공급표로 만들고 확정한다. 거절되면 최신 작업실을 다시 불러온다. */
+  async function startFromAgency() {
+    if (!workspace?.stagingToken || busy || uncertain || sheetDirty) return
+    if (!window.confirm('기관이 보낸 공급정보로 공급표를 만들고 확정할까요? 확정하면 사용자 화면의 ‘공고문 확인 전 정보’ 표시가 사라집니다.')) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const next = await startSupplyFromAgency(id, { snapshotToken: workspace.snapshotToken, stagingToken: workspace.stagingToken })
+      setWorkspace(next); setSheet(next.sheet); setPreview(null); setExpanded(null); onChanged()
+      setNotice('기관 제공 정보로 공급표를 만들었습니다. 공고문과 다른 값이 있으면 아래 표에서 고치세요.')
+    } catch (cause) {
+      const message = startRejection(cause)
+      if (cause instanceof ManagementError && cause.status === 409) {
+        try { const latest = await loadSupplyWorkspace(id); setWorkspace(latest); setSheet(latest.sheet); setPreview(null); onChanged() }
+        catch { setError(`${message} 최신 공급정보를 불러오지 못했으니 다시 불러오세요.`); return }
+      }
+      setError(message)
+    }
+    finally { setBusy(false) }
+  }
   async function refreshKeepingDraft() {
     if (!workspace) return
     setBusy(true); setError('')
@@ -148,6 +175,14 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
       <button type="button" disabled={busy || uncertain} onClick={addType}>직접 추가</button>
     </div></div>
     {notice && <p role="status">{notice}</p>}
+    {!workspace.supplyConfirmed && <section className={styles.unconfirmed} aria-label="공고문 확인 전 공급정보">
+      <p><strong>아직 공고문으로 확인한 공급표가 없습니다.</strong> 사용자 화면에는 기관(LH·GH)이 보낸 공급정보를 ‘공고문 확인 전 정보’로 보여 줍니다. PDF로 채우거나 직접 추가해 저장하면 공급표가 확정됩니다.</p>
+      {workspace.stagingToken && <>
+        <p className={styles.hint}>공고문 PDF가 없으면 기관이 보낸 공급정보를 그대로 공급표로 시작할 수 있습니다.</p>
+        <div className={styles.actions}><button type="button" disabled={busy || uncertain || sheetDirty} onClick={() => void startFromAgency()}>기관 제공 정보로 공급표 시작</button></div>
+        {sheetDirty && <p className={styles.hint}>편집 중인 공급정보를 저장하거나 취소한 뒤 시작할 수 있습니다.</p>}
+      </>}
+    </section>}
     {workspace.warnings.length > 0 && <ul aria-label="공급정보 확인 안내">{workspace.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
     <AnnouncementComplexLinks id={id} workspace={workspace} disabled={sheetDirty || busy || uncertain} onBusyChange={setBusy}
       onLinked={(next, message) => { setWorkspace(next); setSheet(next.sheet); setPreview(null); setNotice(message); onChanged() }} />

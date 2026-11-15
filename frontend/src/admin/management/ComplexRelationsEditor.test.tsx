@@ -31,7 +31,7 @@ beforeEach(() => {
   mocks.getManagementDetail.mockImplementation((resource: string) => Promise.resolve(resource === 'complexes' ? complex : announcement))
   mocks.getManagementHistory.mockResolvedValue([])
   mocks.loadHousingTypeImpact.mockResolvedValue({ token: 'impact', rows: [] })
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ snapshotToken: 'before', version: 4, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] })
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ snapshotToken: 'before', stagingToken: null, supplyConfirmed: true, version: 4, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] })
 })
 async function openRelations() {
   render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes>
@@ -116,7 +116,7 @@ it('연결 공고의 일괄 보정 중 탐색을 막고 적용 후 단지의 연
   const type = housingType({ key: 'row:45', name: '46A', complexName: summary.name, housingComplexId: 7, housingComplexName: summary.name, housingTypeId: 9, supplyPnu: '1114010100100010000' })
   const sheet = { housingTypes: [type], targets: [], cells: [], quotas: [], leaseTerms: [] }
   const unlinked = { ...sheet, housingTypes: [{ ...type, housingComplexId: null, housingComplexName: null, housingTypeId: null }] }
-  const workspace: SupplyWorkspace = { ...({ snapshotToken: 'before', version: 4, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] }), sheet }
+  const workspace: SupplyWorkspace = { ...({ snapshotToken: 'before', stagingToken: null, supplyConfirmed: true, version: 4, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] }), sheet }
   vi.mocked(loadSupplyWorkspace).mockResolvedValue(workspace)
   vi.mocked(previewSupply).mockResolvedValue({ confirmationToken: 'preview', before: sheet, after: unlinked, warnings: [] })
   let complete!: (value: Awaited<ReturnType<typeof applySupply>>) => void

@@ -49,6 +49,7 @@ export function toHousingAnnouncementDetailData(
     supplyComplexCount: detail.supplyComplexCount,
     supplyHouseholdCount: detail.supplyHouseholdCount,
     supplyRows: detail.supplyRows.map(toSupplyRow),
+    supplyConfirmed: detail.supplyConfirmed,
     targets: detail.targets,
     title: detail.title,
     viewCount: detail.viewCount,
