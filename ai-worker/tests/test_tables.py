@@ -34,6 +34,30 @@ def test_winner_column_is_read_beside_reserve_winner_column():
     assert values["supplyHouseholdCount"] == "12"
     assert values["reserveCount"] == "6"
 
+
+def test_reserve_column_is_not_the_target_column_naming_prospective_newlyweds():
+    # 울산다운2 A-9블록 공급·임대조건표. 공급대상 칸의 '예비신혼부부'가 예비자 열 머리글로 읽혀 예비자 수가 빠지거나 공급대상 열에 붙었다.
+    supply = [
+        ["공급형", "주택 형", "공급대상", "금회 공급호수", None, "세대당 계약면적(㎡)", None],
+        [None, None, None, None, None, "주거 전용", "주거 공용"],
+        [None, None, None, "당첨자 (122)", "예비자 (110)", None, None],
+        ["55", "55A", "신혼부부 예비신혼부부 한부모가족", "103", "100", "55.93", "24.1361"],
+    ]
+    rent = [
+        ["공급형", "주택형", "공급대상", "임대조건", None, None, None],
+        [None, None, None, "임대보증금", None, None, "월임대료 (원)"],
+        [None, None, None, "계", "계약금(5%)", "잔금(95%)", None],
+        ["55", "55A", "신혼부부 예비신혼부부 한부모가족", "66,000", "3,300", "62,700", "302,500"],
+    ]
+
+    supply_columns = tables.SupplyTable.of(2, 1, supply, None, False).columns
+    rent_columns = tables.SupplyTable.of(2, 2, rent, None, False).columns
+
+    assert supply_columns["supplyHouseholdCount"] == 3
+    assert supply_columns["reserveCount"] == 4
+    assert supply_columns["target"] == 2
+    assert "reserveCount" not in rent_columns
+
 def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
     rows = [
         ["공급형", "공급대상", "임대조건", None, None, None, "임대보증금 최소화", "", "임대보증금 최대화", ""],

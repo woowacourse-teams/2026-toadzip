@@ -132,7 +132,8 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         "houseType": lambda header: bool(re.search(r"주택타입", header)),
         # 영구임대 임대조건표는 대상 열을 '적용구분'(「가」군·「나」군)으로 둔다.
         "target": lambda header: bool(re.search(r"공급대상|공급계층|청약대상|적용\s*구분", header)),
-        "reserveCount": lambda header: bool(re.search(r"예비(?:입주자)?", header))
+        # 공급대상 칸의 '예비신혼부부'는 예비자 수가 아니다(울산다운2 A-9블록: 데이터 행도 머리글 후보로 읽힌다).
+        "reserveCount": lambda header: bool(re.search(r"예비(?!신혼|부부)(?:입주자)?", header))
             and not re.search(r"잔여|기존|현재|대기", header),
         # 모집호수를 입주자·예비자로 나눈 표의 입주자 열도 당첨자 수다(예비입주자는 아니다). 모집수는 둘의 합이다(source_check).
         # 예비당첨자 열은 예비자 수다(경주·영천 국민임대: 당첨자·예비당첨자 열이 나란히 있다).
