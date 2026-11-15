@@ -119,6 +119,9 @@ class AdminOperationsControllerIntegrationTest {
         announcement("확정 전 준비 줄 없음");
         var emptied = announcement("확정 후 모두 제외");
         supply(emptied, complex("LH"));
+        // 확정한 공고는 준비 줄이 남아 있어도 정본만 본다.
+        entities.persist(AgencySupplyLine.create(emptied, AgencyCode.LH, new AgencySupplyLine.Values("LH:2", 0, null,
+                "단지", "36A", null, null, null, 4, null, null, null, SupplyCategory.NEW_SUPPLY)));
         entities.flush();
         jdbc.sql("UPDATE supply_rows SET admin_excluded = true WHERE announcement_id = :id")
                 .param("id", emptied.getId()).update();
