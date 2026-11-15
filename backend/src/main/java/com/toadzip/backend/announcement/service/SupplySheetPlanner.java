@@ -3,7 +3,9 @@ package com.toadzip.backend.announcement.service;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
+import com.toadzip.backend.announcement.domain.AnnouncementNameClassification;
 import com.toadzip.backend.announcement.domain.AnnouncementSupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetInput;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
@@ -176,22 +178,22 @@ class SupplySheetPlanner {
         }
         var ownComplexes = announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement).stream()
                 .collect(Collectors.toMap(AnnouncementComplex::getId, Function.identity()));
+        // 공급 구분을 비워 보내면(PDF 보정의 새 주택형 등) LH 정제와 같은 공고명 규칙으로 정한다.
+        var defaultCategory = AnnouncementNameClassification.supplyCategory(announcement.getName());
         Map<String, SupplySheetView.HousingType> result = new LinkedHashMap<>();
         for (var type : input) {
             Long id = ids.get(type.key());
             var stored = id == null ? null : beforeById.get(id);
-            result.put(type.key(), housingType(type, id, stored, ownComplexes, protection));
+            result.put(type.key(), housingType(type, id, stored, ownComplexes, protection, defaultCategory));
         }
         return result;
     }
 
     private SupplySheetView.HousingType housingType(SupplySheetInput.HousingType type, Long id,
             SupplySheetView.HousingType stored, Map<Long, AnnouncementComplex> ownComplexes,
-            SupplySheetProtection protection) {
+            SupplySheetProtection protection, SupplyCategory defaultCategory) {
         String name = type.name().strip();
-        if (type.category() == null) {
-            throw new IllegalArgumentException(name + ": 공급 구분을 정해 주세요.");
-        }
+        var category = type.category() != null ? type.category() : defaultCategory;
         Long announcementComplexId = type.announcementComplexId();
         if (announcementComplexId != null && !ownComplexes.containsKey(announcementComplexId)) {
             throw new IllegalArgumentException(name + ": 이 공고의 공고 단지가 아닙니다.");
@@ -221,7 +223,7 @@ class SupplySheetPlanner {
         BigDecimal exclusiveArea = SupplySheetViewQueryRepository.area(type.exclusiveArea());
         BigDecimal supplyArea = SupplySheetViewQueryRepository.area(type.supplyArea());
         String key = id != null ? "row:" + id : type.key();
-        var requested = view(key, id, announcementComplexId, type, complex, typeId, created, exclusiveArea, supplyArea, false);
+        var requested = view(key, id, announcementComplexId, type, category, complex, typeId, created, exclusiveArea, supplyArea, false);
         // 단지만 정하고 주택형을 비운 새·고친 주택형은 면적으로 주택형을 정한다. 주택형이 있던 것을 비우면 관리자가 연결을 끊은 것이다.
         if (complex != null && typeId == null && created == null && exclusiveArea != null && exclusiveArea.signum() > 0
                 && (stored == null || stored.housingTypeId() == null && !sameValues(stored, requested))) {
@@ -231,20 +233,21 @@ class SupplySheetPlanner {
             } else {
                 created = new SupplySheetInput.NewHousingType(newTypeName(name), exclusiveArea, supplyArea);
             }
-            requested = view(key, id, announcementComplexId, type, complex, typeId, created, exclusiveArea, supplyArea, false);
+            requested = view(key, id, announcementComplexId, type, category, complex, typeId, created, exclusiveArea, supplyArea, false);
         }
         boolean modified = protection.adminModified(stored != null, stored != null && stored.adminModified(),
                 sameValues(stored, requested));
-        return view(key, id, announcementComplexId, type, complex, typeId, created, exclusiveArea, supplyArea, modified);
+        return view(key, id, announcementComplexId, type, category, complex, typeId, created, exclusiveArea, supplyArea, modified);
     }
 
     private static SupplySheetView.HousingType view(String key, Long id, Long announcementComplexId,
-            SupplySheetInput.HousingType type, HousingComplex complex, Long typeId, SupplySheetInput.NewHousingType created,
+            SupplySheetInput.HousingType type, SupplyCategory category, HousingComplex complex, Long typeId,
+            SupplySheetInput.NewHousingType created,
             BigDecimal exclusiveArea, BigDecimal supplyArea, boolean modified) {
         return new SupplySheetView.HousingType(key, id, announcementComplexId, type.complexName().strip(),
                 complex == null ? null : complex.getId(), complex == null ? null : complex.getName(), typeId, created,
                 type.name().strip(), exclusiveArea, supplyArea, type.expectedMoveInMonth(), blankToNull(type.supplyPnu()),
-                type.category(), type.displayOrder(), modified);
+                category, type.displayOrder(), modified);
     }
 
     /** 공급표 쓰기의 자연 키와 같다: 신청형 이름과, 공고 단지가 한쪽이라도 있으면 공고 단지, 없으면 단지명. */

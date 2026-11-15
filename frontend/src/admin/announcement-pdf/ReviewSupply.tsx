@@ -2,8 +2,8 @@ import { useState, type ReactNode } from 'react'
 import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
-import { cellMatches, complexFor, complexKey, expectedHousingType, editCell, housingTypePrice, labelOf, linkName, linkedHousingType, linkedHousingTypeId, pendingItems, pendingTarget,
-  otherComplexes, removedHousingTypes, sharedOf, sharedRow, shown, shownMoney, showsComplexDecisions, targetName, type Cell, type ComplexReview, type Review, type ReviewFilter, type RowReview } from './review'
+import { cellMatches, complexFor, expectedHousingType, editCell, housingTypePrice, labelOf, linkName, linkedHousingType, linkedHousingTypeId, pendingItems, pendingTarget,
+  otherComplexes, removedHousingTypes, sharedOf, sharedRow, shown, shownMoney, showsComplexDecisions, targetName, type Cell, type Review, type ReviewFilter, type RowReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { type ComplexLabels, type HousingCandidates } from './matching'
 import { SupplyRowList } from './SupplyRowList'
@@ -86,7 +86,8 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
         <p className={styles.hint}>{row.existing ? '지금 공급정보의 같은 주택형을 PDF 값으로 고칩니다.' : '지금 공급정보에 없는 주택형이라 새로 더합니다.'}</p>
         {complex.housingComplexId === null
           ? <p className={styles.hint}>이 주택형의 단지를 아직 정하지 않았습니다. {onJump && <Button data-design-system className={styles.quietButton} onClick={() => onJump('complex')}>단지 정하기로 이동</Button>}</p>
-          : <ComplexFacts review={review} index={index} complex={complex} onChange={onChange} />}
+          // 공급 구분은 서버가 공고명으로 정하고(지금 주택형은 그 값을 지킴), 소재지 PNU는 묻지 않는다.
+          : <p>저장할 단지: {complex.housingComplexName ?? `단지 #${complex.housingComplexId}`}</p>}
       </div>
       <div className={styles.rowPart}><h4>값 비교</h4>
         {source.constructedHouseholdCount != null && <p className={styles.hint}>{`PDF 건설호수 ${String(source.constructedHouseholdCount)}세대`}</p>}
@@ -104,19 +105,6 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
       {savesHousingTypes && <HousingTypePrice review={review} index={index} update={next => update(index, next)} />}
     </section>
   }
-}
-
-/** 고른 단지와, 새로 연결하는 주택형이 저장할 소재지 PNU·공급 구분. 지금 공급표의 단지 연결 주택형은 그 값을 그대로 쓴다. */
-function ComplexFacts({ review, index, complex, onChange }: { review: Review; index: number; complex: ComplexReview; onChange: (review: Review) => void }) {
-  const key = complexKey(review.extraction.sheet.housingTypes[index].complexName), editable = review.rows[index].existing?.housingComplexId == null
-  const change = (patch: Partial<ComplexReview>) => onChange({ ...review, complexes: { ...review.complexes, [key]: { ...review.complexes[key], ...patch } } })
-  return <>
-    <p>저장할 단지: {complex.housingComplexName ?? `단지 #${complex.housingComplexId}`}</p>
-    {editable && <>
-      <label>주택형 {index + 1} 소재지 PNU<input value={complex.supplyPnu ?? ''} onChange={event => change({ supplyPnu: event.target.value || null })} /></label>
-      <label>주택형 {index + 1} 공급 구분<select value={complex.category ?? 'RESUPPLY'} onChange={event => change({ category: event.target.value as ComplexReview['category'] })}><option value="NEW_SUPPLY">신규 공급</option><option value="RESUPPLY">재공급</option></select></label>
-    </>}
-  </>
 }
 
 const countText = (cell: Cell | undefined) => cell?.state === 'notApplicable' && cell.value === null ? '함께' : shown(cell?.value)

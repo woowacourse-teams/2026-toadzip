@@ -256,6 +256,24 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 공급_구분을_비워_보낸_새_주택형은_공고명으로_공급_구분을_정한다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        jdbc.update("UPDATE announcements SET name = '다산 행복주택 예비입주자 모집' WHERE id = ?", id);
+        entities.clear();
+        var request = request(id);
+        // PDF 보정이 단지에 새로 더하는 주택형: 공급 구분·소재지 PNU를 관리자에게 묻지 않고 비워 보낸다.
+        sheet(request).withArray("housingTypes").addObject().put("key", "new:26b").put("complexName",
+                type(request, 0).get("complexName").asText()).put("name", "26B").putNull("category")
+                .put("displayOrder", 1);
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("SELECT housing_type_name || ':' || supply_category FROM supply_rows"
+                + " WHERE announcement_id = ? ORDER BY display_order", String.class, id))
+                .containsExactly("26:NEW_SUPPLY", "26B:RESUPPLY");
+    }
+
+    @Test
     void 같은_작업_재전송은_새_주택형과_이력을_중복생성하지_않는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         var request = request(id);
