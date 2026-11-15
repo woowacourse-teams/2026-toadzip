@@ -98,6 +98,22 @@ class FlywayMigrationTests(unittest.TestCase):
         self.write(EXISTING, "SELECT 2;\n")
         self.check("Modified existing migration: " + EXISTING)
 
+    def test_modified_repeatable_migration_passes(self):
+        repeatable = MIGRATION + "R__query_lookup_indexes.sql"
+        self.write(repeatable)
+        self.commit()
+        base = self.git("rev-parse", "HEAD")
+        self.write(repeatable, "SELECT 2;\n")
+        self.check(base=base)
+
+    def test_deleted_repeatable_migration_is_rejected(self):
+        repeatable = MIGRATION + "R__query_lookup_indexes.sql"
+        self.write(repeatable)
+        self.commit()
+        base = self.git("rev-parse", "HEAD")
+        (self.repository / repeatable).unlink()
+        self.check("Deleted or renamed existing migration: " + repeatable, base=base)
+
     def test_deleted_existing_migration_is_rejected(self):
         (self.repository / EXISTING).unlink()
         self.check("Deleted or renamed existing migration: " + EXISTING)

@@ -24,5 +24,7 @@ frontend:
   - 'frontend/**'
   # Frontend tests compare bundled region coordinates with this server-side source.
   - 'backend/src/main/resources/map-clustering/representative-points.csv'
+  # Frontend tests compare supply target group constants with the worker contract.
+  - 'ai-worker/contract/announcement-pdf-extraction/supply-target-groups.json'
   - '!frontend/docs/**'
   - '!frontend/*.md'

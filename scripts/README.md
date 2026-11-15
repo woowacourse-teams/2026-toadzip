@@ -6,7 +6,7 @@
 
 | 스크립트 | 용도·조건 |
 | --- | --- |
-| [`check-flyway-migrations.py`](check-flyway-migrations.py) | Git에 커밋된 Flyway SQL의 버전 중복, develop보다 낮거나 같은 신규 버전, 기존 SQL의 수정·삭제·이름 변경을 검사합니다. |
+| [`check-flyway-migrations.py`](check-flyway-migrations.py) | Git에 커밋된 Flyway SQL의 버전 중복, develop보다 낮거나 같은 신규 버전, 기존 SQL의 수정·삭제·이름 변경을 검사합니다(반복 마이그레이션 `R__`은 수정을 허용하고 삭제·이름 변경만 막습니다). |
 | [`test-https.py`](test-https.py) | 임시 인증서로 로컬 HTTPS·Nginx 갱신 hook을 검증합니다. `--config-only`는 Compose 설정과 hook 검사만 수행합니다. |
 | [`prepare-bluegreen.py`](prepare-bluegreen.py) | 런타임 설정과 정적 파일 디렉터리를 준비합니다. 기본 실행은 기존 연결 색상과 파일을 보존합니다. |
 | [`release-bluegreen.py`](release-bluegreen.py) | CI 커밋·서버 준비·AI 워커 설정을 확인하고 세 이미지를 빌드한 뒤 공통 잠금 안에서 백엔드·프론트·AI 워커를 순차 배포합니다. [CI 운영 절차](../docs/operations/deployment.md)를 따릅니다. |

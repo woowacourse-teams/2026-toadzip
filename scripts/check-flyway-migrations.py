@@ -11,6 +11,8 @@ LOCATIONS = (
     "backend/src/main/resources/db/privacy",
 )
 VERSIONED_NAME = re.compile(r"([VB])([0-9]+(?:[._][0-9]+)*)__.+\.sql")
+# Flyway reruns a repeatable migration when its content changes, so only its deletion or rename breaks history.
+REPEATABLE_NAME = re.compile(r"R__.+\.sql")
 
 
 def migration_files(revision):
@@ -41,7 +43,7 @@ def check_migrations(base, current):
     for path, content in sorted(base.items()):
         if path not in current:
             errors.append(f"Deleted or renamed existing migration: {path}")
-        elif current[path] != content:
+        elif current[path] != content and not REPEATABLE_NAME.fullmatch(PurePosixPath(path).name):
             errors.append(f"Modified existing migration: {path}")
 
     for location in LOCATIONS:
