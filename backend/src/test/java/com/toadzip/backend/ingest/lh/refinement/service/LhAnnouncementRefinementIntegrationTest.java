@@ -280,6 +280,22 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 준비_줄_없는_확정_전_공고는_원천에_남은_단지와만_잇는다() {
+        publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        refinement.refineAll();
+        long id = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst().getId();
+        assertThat(staged(id)).isEmpty();
+        assertThat(linkedComplexIds(id)).containsExactly(complex.getId());
+
+        // LH가 상세에서 이 단지를 빼고 다른 단지만 남긴다. 빠진 공고 단지는 원천에 없는 단지가 되어 더는 잇지 않는다.
+        details("P1", "다른 단지", "경기도 다른시 다른로 1");
+        refinement.refineAll();
+
+        assertThat(linkedComplexIds(id)).doesNotContain(complex.getId());
+    }
+
+    @Test
     void 같은_전용면적이어도_신청형이_다르면_공급행을_따로_두고_같은_주택형을_가리킨다() {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);
