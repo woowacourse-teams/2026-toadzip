@@ -416,15 +416,19 @@ def _finished(supply) -> Supplied:
     return Supplied(tree, supply.warnings)
 
 
+def model_stage(selected, answer, source_names=()) -> supply_sources.Supply:
+    """공급 단계 모델이 answer(공급표 모양 답)로 답했을 때의 공급 단계 결과(공급표 모델을 내보내기 전)."""
+    lh_rows = [SourceSupplyRow("LH", None, name, "", "", "", "") for name in source_names]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return supply_sources.ModelSupply(_AnswerModel(answer), lh_rows, selected, time.monotonic() + 60, pool).read()
+
+
 def model_supply(selected, answer=None, *, rows=(), shared=(), source_names=()) -> Supplied:
     """공급 단계 모델이 answer(공급표 모양 답)로 답했을 때의 공급 단계 결과. rows·shared는 옛 짧은 공급행 목록 모양으로 적은
     테스트 입력이고 sheet_answer가 공급표 모양 답으로 바꾼다. source_names는 LH 공급행의 단지명이다."""
     if answer is None:
         answer = sheet_answer({"data": {"rows": list(rows)}, "sharedCounts": list(shared)})
-    lh_rows = [SourceSupplyRow("LH", None, name, "", "", "", "") for name in source_names]
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        supply = supply_sources.ModelSupply(_AnswerModel(answer), lh_rows, selected, time.monotonic() + 60, pool)
-        return _finished(supply.read())
+    return _finished(model_stage(selected, answer, source_names))
 
 
 def code_supply(selected, source_names=()) -> Supplied | None:

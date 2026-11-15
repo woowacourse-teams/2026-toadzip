@@ -1,7 +1,10 @@
 """공급표의 수량·임대조건·대상을 어떻게 나누고 묶는지(서버 투영과 같은 규칙). 공급 단계 모델의 답과 쪽 표에서 확인한다."""
 
-from ai_worker import pages
-from conftest import model_supply, readable
+from ai_worker import checks, merge, pages
+from ai_worker.eligibility import Extracted
+from ai_worker.source_frame import SourceFrame, SourceSupplyRow
+from ai_worker.supply_sheet import Entry, Finding, SupplySheet, Unit
+from conftest import model_stage, model_supply, readable
 from test_supply_assembly import SHARED_COUNT_TABLE, table_pages
 
 
@@ -141,3 +144,67 @@ def test_result_keeps_only_the_supply_sheet_and_paths_outside_it():
     assert readable(result.sheet)["quotas"] == []
     assert "cells[0].winner" in result.unresolved()
     assert {item["path"] for item in result.sheet["evidence"]} >= {"housingTypes[0]", "cells[0]"}
+
+
+def test_types_sharing_one_count_stay_one_unit_through_merge_review_and_gh_linking():
+    # 경계: 모집 칸을 함께 쓰는 49A·49B·49C는 조립부터 내보낼 때까지 모집 단위 하나다. 합친 단지명, LH 검산(주택형마다 면적),
+    # GH 틀(49형 한 줄) 잇기가 그 단위 위에서 일어나고, 내보낼 때 주택형마다 나뉜 자리에 같은 값이 실린다.
+    table = [[*row, header] for row, header in zip(SHARED_COUNT_TABLE, ("임대보증금(원)", None, "1,000", None, None))]
+    selected = table_pages(table, page=2)
+    supply = model_stage(selected, answer(
+        [housing_type(f"h{number}", label, [f"P2:T1:R{number}"], complexName="탑석 센트럴 자이")
+         for number, label in ((3, "49A"), (4, "49B"), (5, "49C"))], [],
+        leases=[{"members": [["h3"], ["h4"], ["h5"]], "rentalDeposit": 1000, "monthlyRent": 50,
+                 "rowIds": ["P2:T1:R3"]}]))
+    notice = {"data": {"announcement": {"name": "공고", "postedDate": "2026-10-01"}, "receptionPlaces": [],
+                       "schedules": [], "unresolvedFields": [], "complexes": [{"sourceComplexName": "탑석센트럴자이"}]},
+              "notApplicable": [], "evidence": []}
+    tree, _ = merge.merge(supply.tree, supply.sheet, notice, Extracted(
+        {"common": {}, "exclusions": [], "targets": [{"target": "전체", "supplyTarget": "전체"}]}))
+    lh_rows = [SourceSupplyRow("LH", None, "탑석센트럴자이", "49A", "49.9285", "", "30"),
+               SourceSupplyRow("LH", None, "탑석센트럴자이", "49B", "49.9091", "", "30")]
+    frame = SourceFrame.read({"sourceSupplyRows": [
+        {"source": "GH", "rowIdentifier": "GH:845:탑석센트럴자이:49형", "complexLabel": "탑석센트럴자이", "typeName": "49형",
+         "exclusiveArea": "", "supplyArea": "", "suppliedUnitCount": ""}]})
+
+    page_text = "\n".join(selected.supply_row_text.values())
+    warnings = checks.review(tree, supply.sheet, [1, 2], ["", page_text], lh_rows, 0)
+    warnings += frame.link(supply.sheet)
+    sheet = supply.sheet.emit(tree["data"]["eligibility"])
+
+    assert warnings == [
+        "탑석 센트럴 자이 49 모집수: 같은 전용면적(49.93, 49.91, 49.94) LH API 공급행 2줄의 모집수 합계 60와 다름(70)"]
+    assert [(item["complexName"], item["name"], item["sourceRow"]) for item in sheet["housingTypes"]] == [
+        ("탑석 센트럴 자이", name, "GH:845:탑석센트럴자이:49형") for name in ("49A", "49B", "49C")]
+    every = ["49A/전체", "49B/전체", "49C/전체"]
+    assert readable(sheet) == {"cells": every, "quotas": [("WINNER", 70, every), ("RESERVE", 56, every)],
+                               "leaseTerms": [(1000, None, every)]}
+    assert tree["data"]["eligibility"]["targets"][0]["supplyTargetKeys"] == ["t0"]
+    # 원문에 없는 월임대료는 세 주택형이 함께 쓰는 임대조건 하나를 가리킨다. 근거는 주택형·칸마다 하나, 수량·임대조건은 하나씩이다.
+    assert sheet["unresolvedFields"] == [
+        {"path": "leaseTerms[0].monthlyRent", "reason": "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"}]
+    assert [(item["path"], item["page"]) for item in sheet["evidence"]] == [
+        (path, 2) for path in ("housingTypes[0]", "housingTypes[1]", "housingTypes[2]", "cells[0]", "cells[1]", "cells[2]",
+                               "quotas[0]", "quotas[1]", "leaseTerms[0]")]
+
+
+def test_same_target_twice_in_one_unit_is_one_cell_with_summed_counts_and_the_first_amounts():
+    # 같은 행에 같은 공급대상이 두 번 나오면(같은 표기·신청 조건) 칸은 하나다. 수량은 더하고 임대조건은 그 칸을 만든 첫 대상의
+    # 금액 하나다(서버 투영과 같다). 둘째 대상의 금액 미확인은 임대조건이 아니라 그 칸 자리를 가리킨다.
+    first = Entry("청년", {"supplyHouseholdCount": 3, "reserveCount": 1, "rentalDeposit": 100})
+    second = Entry("청년", {"supplyHouseholdCount": 2, "rentalDeposit": 200})
+    other = Entry("청년", {"supplyHouseholdCount": 4, "applicationCondition": "대학생 제외"})
+    unit = Unit("Test", "26A", {"totalSupplyHouseholdCount": 9}, [first, second, other])
+    sheet = SupplySheet([unit], findings=[Finding(second, "rentalDeposit", "확인 못함"), Finding(first, "reserveCount", "a")])
+
+    result = sheet.emit(None)
+
+    assert [(target["label"], target["applicationCondition"]) for target in result["targets"]] == [
+        ("청년", None), ("청년", "대학생 제외")]
+    assert readable(result) == {
+        "cells": ["26A/청년", "26A/청년"],
+        "quotas": [("WINNER", 5, ["26A/청년"]), ("RESERVE", 1, ["26A/청년"]), ("WINNER", 4, ["26A/청년"])],
+        "leaseTerms": [(100, None, ["26A/청년"])],
+    }
+    assert result["unresolvedFields"] == [{"path": "cells[0].rentalDeposit", "reason": "확인 못함"},
+                                          {"path": "quotas[1].count", "reason": "a"}]
