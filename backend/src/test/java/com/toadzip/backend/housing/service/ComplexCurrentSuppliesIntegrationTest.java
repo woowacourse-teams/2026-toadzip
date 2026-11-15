@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.LeaseTerms;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplyRowTarget;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
@@ -213,18 +213,17 @@ class ComplexCurrentSuppliesIntegrationTest {
 
     private SupplyRow persistSupplyRow(Announcement announcement, HousingComplex complex, HousingType housingType,
             String sourceIdentifier, int displayOrder) {
-        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(announcement, complex,
-                housingType, sourceIdentifier, displayOrder, complex.getName(),
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager, announcement, complex,
+                housingType, displayOrder, complex.getName(),
                 housingType == null ? "36A" : housingType.getName(), "1114010100100010000", YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY, null));
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
 
     private SupplyRow persistUnmatchedSupplyRow(Announcement announcement, String sourceIdentifier) {
-        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(announcement, null, null,
-                sourceIdentifier, 1, "매칭되지 않은 단지", "36A", "1114010100100010000", YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY, "매칭 실패"));
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager, announcement, null, null, 1, "매칭되지 않은 단지", "36A", "1114010100100010000", YearMonth.of(2027, 3),
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }

@@ -19,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -31,11 +30,11 @@ import org.springframework.stereotype.Component;
  * 임대조건은 JdbcClient로 정한 순서대로 쓴다. Hibernate는 flush에서 삽입을 삭제보다 먼저 보내 "칸 하나에 임대조건 하나" 유일 제약에
  * 걸리기 때문이다.
  *
- * <p>등록은 원천 식별자를 가진 공급행을 먼저 만들어 저장하고 그 ID를 draft에 실어 부른다. 행을 새로 만드는 것은 부르는 쪽이지만,
- * 칸·묶음·임대조건과 draft에 없는 공급행의 삭제는 여기서만 한다. 공급행을 지우면 그 칸이 cascade로 지워져 묶음·임대조건 멤버가
+ * <p>공급행(주택형)은 여기서만 만든다. 공고 단지를 고르지 않은 주택형은 (공고, 단지명)의 공고 단지를 찾거나 만들어 그 안에 든다.
+ * 칸·묶음·임대조건과 draft에 없는 공급행의 삭제도 여기서만 한다. 공급행을 지우면 그 칸이 cascade로 지워져 묶음·임대조건 멤버가
  * 빠지므로, 공급행을 직접 지우는 쪽은 같은 트랜잭션에서 바로 이 메서드로 공고의 묶음·임대조건을 다시 써야 한다.
  *
- * <p>ID는 다시 써도 유지한다. 주택형은 draft의 공급행 ID나 (공고 단지 또는 단지명, 신청형 이름)으로, 공급대상은 (표기, 신청 조건)으로,
+ * <p>ID는 다시 써도 유지한다. 주택형은 draft의 공급행 ID나 (공고 단지, 신청형 이름)으로, 공급대상은 (표기, 신청 조건)으로,
  * 칸은 (주택형, 공급대상)으로 기존 행을 찾는다. 신청자격 단위(unit-{공급행 ID})와 공개 응답의 대상 ID가 이 ID를 가리킨다.
  * 수량 묶음과 임대조건은 공고 단위로 지우고 다시 넣는다.
  *
@@ -50,10 +49,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SupplySheetStore {
 
-    private static final String SHEET_ROW_PREFIX = "SHEET:";
-
     private final EntityManager entities;
     private final SupplyRowRepository supplyRows;
+    private final AnnouncementComplexRepository announcementComplexes;
     private final JdbcClient jdbc;
 
     public Saved replace(Announcement announcement, SupplySheetDraft draft) {
@@ -80,16 +78,45 @@ public class SupplySheetStore {
     }
 
     private Rows writeRows(Announcement announcement, List<HousingTypeRow> types) {
+        Map<String, AnnouncementComplex> complexes = complexes(announcement, types);
         List<SupplyRow> unclaimed = new ArrayList<>(supplyRows.findAllByAnnouncement(announcement));
         unclaimed.sort(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId));
         Map<String, SupplyRow> matched = new HashMap<>();
         types.stream().filter(type -> type.supplyRowId() != null)
                 .forEach(type -> matched.put(type.key(), claimById(unclaimed, type.supplyRowId())));
         types.stream().filter(type -> type.supplyRowId() == null)
-                .forEach(type -> claimBySheetKey(unclaimed, type).ifPresent(row -> matched.put(type.key(), row)));
+                .forEach(type -> claimBySheetKey(unclaimed, complexes.get(type.key()), type)
+                        .ifPresent(row -> matched.put(type.key(), row)));
         Map<String, Long> ids = new LinkedHashMap<>();
-        types.forEach(type -> ids.put(type.key(), write(announcement, matched.get(type.key()), type).getId()));
+        types.forEach(type -> ids.put(type.key(),
+                write(announcement, matched.get(type.key()), complexes.get(type.key()), type).getId()));
         return new Rows(ids, unclaimed);
+    }
+
+    /**
+     * 주택형마다 들 공고 단지. 공고 단지를 고르지 않은 주택형은 (공고, 단지명)의 공고 단지를 찾거나 만든다. 정본 행은 공고 단지 없이
+     * 두지 않는다.
+     */
+    private Map<String, AnnouncementComplex> complexes(Announcement announcement, List<HousingTypeRow> types) {
+        List<AnnouncementComplex> own =
+                new ArrayList<>(announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement));
+        Map<String, AnnouncementComplex> result = new HashMap<>();
+        for (HousingTypeRow type : types) {
+            if (type.announcementComplexId() != null) {
+                result.put(type.key(), find(AnnouncementComplex.class, type.announcementComplexId(), "공고 단지"));
+                continue;
+            }
+            result.put(type.key(), own.stream()
+                    .filter(complex -> complex.getSourceComplexName().strip().equals(type.complexName())).findFirst()
+                    .orElseGet(() -> created(own, announcementComplexes.save(
+                            AnnouncementComplex.observe(announcement, type.complexName(), null, null)))));
+        }
+        return result;
+    }
+
+    private static AnnouncementComplex created(List<AnnouncementComplex> own, AnnouncementComplex complex) {
+        own.add(complex);
+        return complex;
     }
 
     private static SupplyRow claimById(List<SupplyRow> unclaimed, long supplyRowId) {
@@ -99,20 +126,20 @@ public class SupplySheetStore {
         return row;
     }
 
-    private static Optional<SupplyRow> claimBySheetKey(List<SupplyRow> unclaimed, HousingTypeRow type) {
-        Optional<SupplyRow> row = unclaimed.stream().filter(candidate -> candidate.sameSheetHousingType(type))
-                .findFirst();
+    private static Optional<SupplyRow> claimBySheetKey(List<SupplyRow> unclaimed, AnnouncementComplex complex,
+            HousingTypeRow type) {
+        Optional<SupplyRow> row = unclaimed.stream()
+                .filter(candidate -> candidate.sameSheetHousingType(complex, type.typeName())).findFirst();
         row.ifPresent(unclaimed::remove);
         return row;
     }
 
-    private SupplyRow write(Announcement announcement, SupplyRow stored, HousingTypeRow type) {
-        AnnouncementComplex complex = find(AnnouncementComplex.class, type.announcementComplexId(), "공고 단지");
+    private SupplyRow write(Announcement announcement, SupplyRow stored, AnnouncementComplex complex,
+            HousingTypeRow type) {
         HousingComplex housing = find(HousingComplex.class, type.housingComplexId(), "단지");
         HousingType housingType = find(HousingType.class, type.housingTypeId(), "주택형");
         if (stored == null) {
-            return supplyRows.save(SupplyRow.createFromSheet(announcement, SHEET_ROW_PREFIX + UUID.randomUUID(), type,
-                    complex, housing, housingType));
+            return supplyRows.save(SupplyRow.createFromSheet(announcement, type, complex, housing, housingType));
         }
         stored.applySheet(type, complex, housing, housingType);
         return stored;

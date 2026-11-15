@@ -17,6 +17,7 @@ import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -84,7 +85,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
         assertThat(stored.getSourceAnnouncementIdentifier()).isEqualTo(identifier);
         assertThat(stored.getOriginalUrl()).isEqualTo(announcement.getOriginalUrl());
         assertThat(winnerCounts(id)).containsExactly(3);
-        assertThat(jdbc.queryForObject("SELECT announcement_exclusive_area FROM supply_rows WHERE announcement_id=?",
+        assertThat(jdbc.queryForObject("SELECT exclusive_area FROM supply_rows WHERE announcement_id=?",
                 BigDecimal.class, id)).isEqualByComparingTo("36.5");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcements", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class)).isZero();
@@ -200,9 +201,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var complex = fixtures.complex("11140", "1114010100");
         int order = 0;
         for (var name : new String[] {"26A", "36A"}) {
-            var row = SupplyRow.create(announcement, complex, type(complex, name, name.substring(0, 2) + ".5000"),
-                    UUID.randomUUID().toString(), order++, complex.getName(), name, "1114010100100010000", null,
-                    SupplyCategory.NEW_SUPPLY, null);
+            var row = SupplyRowSeed.create(entities, announcement, complex, type(complex, name, name.substring(0, 2) + ".5000"), order++, complex.getName(), name, "1114010100100010000", null,
+                    SupplyCategory.NEW_SUPPLY);
             entities.persist(row);
             new SupplySheetSeed(entities).row(row, 10);
         }
@@ -487,8 +487,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var fixtures = new NotificationFixtures(entities, jdbc);
         var announcement = fixtures.announcement();
         var complex = fixtures.complex("11140", "1114010100");
-        var row = SupplyRow.create(announcement, complex, type(complex, "36A", "36.5000"), UUID.randomUUID().toString(), 0,
-                complex.getName(), "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+        var row = SupplyRowSeed.create(entities, announcement, complex, type(complex, "36A", "36.5000"), 0,
+                complex.getName(), "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         int order = 0;
         for (var target : new String[] {"청년(소득 없음)", "청년(소득 있음)"}) {
@@ -504,8 +504,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
         var fixtures = new NotificationFixtures(entities, jdbc);
         var announcement = fixtures.announcement();
         var complex = fixtures.complex("11140", "1114010100");
-        var row = SupplyRow.create(announcement, complex, type(complex, "26", "26.4673"), UUID.randomUUID().toString(), 0,
-                complex.getName(), "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+        var row = SupplyRowSeed.create(entities, announcement, complex, type(complex, "26", "26.4673"), 0,
+                complex.getName(), "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 10, null, new BigDecimal("100000000"),
                 new BigDecimal("200000"), null, 0);

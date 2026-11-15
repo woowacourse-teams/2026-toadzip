@@ -5,10 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -341,35 +341,31 @@ class ComplexDetailQueryRepositoryTest {
             String sourceIdentifier,
             int displayOrder
     ) {
-        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 complex,
                 housingType,
-                sourceIdentifier,
                 displayOrder,
                 complex.getName(),
                 sourceHousingTypeName(housingType),
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                null));
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
 
     private SupplyRow persistUnmatchedSupplyRow(Announcement announcement, String sourceIdentifier) {
-        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 null,
                 null,
-                sourceIdentifier,
                 1,
                 "매칭되지 않은 단지",
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                "매칭 실패"));
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }

@@ -83,7 +83,8 @@ class SupplySheetPlanner {
     /**
      * 공고 단지 하나는 단지 하나에 이어진다(공고↔단지 연결은 공고 단지로 정한다). 주택형이 고른 단지는 저장 뒤 그 공고 단지의 연결 단지
      * (이번 관리자 연결, 없으면 지금 연결)와 같아야 한다. 아직 단지에 이어지지 않은 공고 단지와 저장 때 만들 공고 단지(단지명)는 처음 고른
-     * 단지로 이어지므로 같은 공고 단지의 주택형이 서로 다른 단지를 고르면 막는다.
+     * 단지로 이어지므로 같은 공고 단지의 주택형이 서로 다른 단지를 고르면 막는다. 이번 관리자 연결을 따라갈 주택형(plan.fillKeys)은
+     * 보지 않는다.
      */
     private void checkOneComplexPerAnnouncementComplex(Announcement announcement,
             List<SupplySheetView.HousingType> types, List<AnnouncementComplexAdminLinks.Plan> links) {
@@ -92,8 +93,9 @@ class SupplySheetPlanner {
                 .filter(complex -> complex.linkedComplex() != null)
                 .forEach(complex -> linked.put("ac:" + complex.getId(), complex.linkedComplex().getId()));
         links.forEach(link -> linked.put("ac:" + link.target().getId(), link.complex().getId()));
+        Set<String> following = links.stream().flatMap(link -> link.fillKeys().stream()).collect(Collectors.toSet());
         for (var type : types) {
-            if (type.housingComplexId() == null) { continue; }
+            if (type.housingComplexId() == null || following.contains(type.key())) { continue; }
             String place = type.announcementComplexId() != null ? "ac:" + type.announcementComplexId()
                     : "name:" + type.complexName();
             Long complexId = linked.putIfAbsent(place, type.housingComplexId());

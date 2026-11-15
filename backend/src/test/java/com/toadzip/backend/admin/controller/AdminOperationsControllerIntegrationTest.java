@@ -1,11 +1,11 @@
 package com.toadzip.backend.admin.controller;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -300,8 +300,7 @@ class AdminOperationsControllerIntegrationTest {
     }
 
     private void supply(Announcement announcement, HousingComplex complex) {
-        entities.persist(AnnouncementComplexSeed.place(entities, SupplyRow.create(announcement, complex, null,
-                UUID.randomUUID().toString(), 0, "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY, null)));
+        entities.persist(SupplyRowSeed.create(entities, announcement, complex, null, 0, "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY));
     }
 
     private void execution(String status, String at) {

@@ -19,10 +19,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.ComplexSort;
@@ -628,11 +628,12 @@ class HousingComplexApiIntegrationTest {
                 "exclusion-kept", 0);
         HousingType excludedType = persistHousingType(excluded, "36A", "36.00", "40.00",
                 "https://example.com/excluded.png", false, "0");
-        persistSupplyRow(announcement, excluded, excludedType, "exclusion-first", 1)
-                .correctPresentation(true, 1, false, null, null);
-        persistSupplyRow(announcement, excluded, excludedType, "exclusion-second", 2)
-                .correctPresentation(true, 2, false, null, null);
+        SupplyRow first = persistSupplyRow(announcement, excluded, excludedType, "exclusion-first", 1);
+        SupplyRow second = persistSupplyRow(announcement, excluded, excludedType, "exclusion-second", 2);
         entityManager.flush();
+        entityManager.createNativeQuery("UPDATE supply_rows SET admin_excluded = true WHERE id IN (:ids)")
+                .setParameter("ids", List.of(first.getId(), second.getId())).executeUpdate();
+        entityManager.clear();
 
         assertRecruitingOnMap(kept.getId());
         mockMvc.perform(get("/api/v1/complexes/{id}", kept.getId()))
@@ -1577,35 +1578,31 @@ class HousingComplexApiIntegrationTest {
             String sourceIdentifier,
             int displayOrder
     ) {
-        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 complex,
                 housingType,
-                sourceIdentifier,
                 displayOrder,
                 complex.getName(),
                 housingType.getName(),
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                null));
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
 
     private SupplyRow persistUnmatchedSupplyRow(Announcement announcement) {
-        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 null,
                 null,
-                "unmatched-row",
                 1,
                 "매칭되지 않은 단지",
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                "단지 매칭 실패"));
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }

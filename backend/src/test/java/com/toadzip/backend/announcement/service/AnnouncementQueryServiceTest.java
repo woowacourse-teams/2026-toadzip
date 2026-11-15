@@ -30,6 +30,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRowTarget;
 import com.toadzip.backend.announcement.domain.SupplySheet;
@@ -935,25 +936,16 @@ class AnnouncementQueryServiceTest {
             String sourceIdentifier,
             int displayOrder
     ) {
-        SupplyRow row = SupplyRow.create(
+        SupplyRow row = SupplyRowSeed.create(
                 announcement,
                 housingComplex,
                 housingType,
-                sourceIdentifier,
                 displayOrder,
                 "원문 단지 " + sourceIdentifier,
                 "원문 주택형 " + sourceIdentifier,
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason(housingComplex));
-        // 공급행의 단지는 공고 단지가 이은 단지다.
-        AnnouncementComplex announcementComplex = AnnouncementComplex.observe(announcement,
-                "원문 단지 " + sourceIdentifier, null, null);
-        if (housingComplex != null) {
-            announcementComplex.linkByAdmin(housingComplex, "test", Instant.parse("2026-01-01T00:00:00Z"));
-        }
-        row.fillAnnouncementComplex(announcementComplex);
+                SupplyCategory.NEW_SUPPLY);
         return row;
     }
 

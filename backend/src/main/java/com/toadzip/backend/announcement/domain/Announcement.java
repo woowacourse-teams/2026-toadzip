@@ -587,11 +587,10 @@ public class Announcement {
     }
 
     /**
-     * 관리자가 공급정보를 보고 저장했다. 정본을 확정하고 재확인 표시를 끈다. 기준 지문은 마지막 정제가 남긴 지문을 그대로 둔다. 저장 전에
-     * 새로 수집된 원천 변경도 다음 정제가 재확인으로 알린다.
+     * 관리자가 공급정보를 보고 저장했다. 재확인 표시를 끈다(정본 확정은 공급표 쓰기가 한다). 기준 지문은 마지막 정제가 남긴 지문을
+     * 그대로 둔다. 저장 전에 새로 수집된 원천 변경도 다음 정제가 재확인으로 알린다.
      */
     public void recordAdminSupplyChange() {
-        confirmSupply();
         supplyRecheckRequired = false;
         adminUpdatedAt = java.time.Instant.now();
     }

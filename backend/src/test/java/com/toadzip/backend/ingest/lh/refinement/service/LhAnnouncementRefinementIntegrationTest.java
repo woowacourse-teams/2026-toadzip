@@ -20,6 +20,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.domain.AgencySupplyLine;
@@ -379,16 +380,16 @@ class LhAnnouncementRefinementIntegrationTest {
                     0L, null));
             existing.enrichFromLh("P1", null, null);
             existing.recordAdminSupplyChange();
-            SupplyRow corrected = SupplyRow.create(existing, complex, area59, "21026:1", 0, "동탄 행복주택", "공고문 59",
-                    "1111010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+            SupplyRow corrected = SupplyRowSeed.create(entities, existing, complex, area59, 0, "동탄 행복주택", "공고문 59",
+                    "1111010100100010000", null, SupplyCategory.NEW_SUPPLY);
             ReflectionTestUtils.setField(corrected, "adminModified", true);
             supplyRows.save(corrected);
             new SupplySheetSeed(entities).row(corrected, 7);
             return existing.getId();
         });
-        // 공고문이 정한 공급표('전체' 칸 하나에 모집수 7)를 LH 정제가 덮지 않는다.
+        // 공고문이 정한 공급표('전체' 칸 하나에 모집수 7)를 LH 정제가 덮지 않는다. 신청형 이름은 공고문 이름 하나다.
         List<String> documentSheet = staged(existingId);
-        assertThat(documentSheet).containsExactly("동탄 행복주택|공고문 59|59A|" + area59.getId() + "|7|전체//WINNER:7/");
+        assertThat(documentSheet).containsExactly("동탄 행복주택|공고문 59|공고문 59|" + area59.getId() + "|7|전체//WINNER:7/");
         List<String> documentSheetIds = sheetIds(existingId);
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(30));
         details("P1", "동탄 행복주택 단지", ADDRESS);

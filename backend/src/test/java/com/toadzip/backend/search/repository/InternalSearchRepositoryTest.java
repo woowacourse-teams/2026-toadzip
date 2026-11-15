@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
@@ -13,6 +12,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -49,19 +49,19 @@ class InternalSearchRepositoryTest {
     void 모든_단어를_포함하는_최신_정정과_취소_공고만_검색한다() {
         HousingComplex complex = persistComplex("서울 행복 단지", "37.5", "126.9");
         Announcement original = persistAnnouncement(null, "ORIGINAL", "서울 행복 원공고", "original");
-        persistSupplyRow(original, complex, "original-row");
+        persistSupplyRow(original, complex);
         Announcement correction = persistAnnouncement(
                 original, "CORRECTION", "서울 행복 정정공고", "correction"
         );
-        persistSupplyRow(correction, complex, "correction-row");
+        persistSupplyRow(correction, complex);
         Announcement cancelledOriginal = persistAnnouncement(
                 null, "ORIGINAL", "서울 행복 다른 공고", "cancelled-original"
         );
-        persistSupplyRow(cancelledOriginal, complex, "cancelled-original-row");
+        persistSupplyRow(cancelledOriginal, complex);
         Announcement cancellation = persistAnnouncement(
                 cancelledOriginal, "CANCELLATION", "서울 행복 취소공고", "cancellation"
         );
-        persistSupplyRow(cancellation, complex, "cancellation-row");
+        persistSupplyRow(cancellation, complex);
         entityManager.flush();
 
         var results = repository.findAnnouncements(condition("서울 행복", Set.of()), 20);
@@ -87,13 +87,13 @@ class InternalSearchRepositoryTest {
     void 미확정_공고는_검색하지_않고_미확정_정정공고가_공개된_이전_공고를_가리지_않는다() {
         HousingComplex complex = persistComplex("서울 대기 단지", "37.5", "126.9");
         Announcement original = persistAnnouncement(null, "ORIGINAL", "서울 대기 원공고", "original");
-        persistSupplyRow(original, complex, "original-row");
+        persistSupplyRow(original, complex);
         Announcement correction = persistAnnouncement(original, "CORRECTION", "서울 대기 정정공고", "correction");
-        persistSupplyRow(correction, complex, "correction-row");
+        persistSupplyRow(correction, complex);
         Announcement unconfirmed = Announcement.createUnconfirmed("SH:1", "서울 대기 SH 공고", AgencyCode.SH,
                 LocalDate.of(2026, 8, 1), "https://example.com/sh/1");
         entityManager.persist(unconfirmed);
-        persistSupplyRow(unconfirmed, complex, "unconfirmed-row");
+        persistSupplyRow(unconfirmed, complex);
         entityManager.flush();
         entityManager.createNativeQuery("UPDATE announcements SET release_status = 'UNCONFIRMED' WHERE id = :id")
                 .setParameter("id", correction.getId()).executeUpdate();
@@ -114,11 +114,12 @@ class InternalSearchRepositoryTest {
         HousingComplex excluded = persistComplex("제외된 단지", "36.1", "127.1");
         HousingComplex kept = persistComplex("남는 단지", "36.2", "127.2");
         Announcement withExclusion = persistAnnouncement(null, "ORIGINAL", "연결규칙 제외", "links-excluded");
-        persistSupplyRow(withExclusion, excluded, "links-excluded-row");
-        persistSupplyRow(withExclusion, kept, "links-kept-row");
+        persistSupplyRow(withExclusion, excluded);
+        persistSupplyRow(withExclusion, kept);
         entityManager.flush();
-        entityManager.createNativeQuery("UPDATE supply_rows SET admin_excluded = true WHERE source_supply_row_identifier"
-                + " = 'links-excluded-row'").executeUpdate();
+        entityManager.createNativeQuery("UPDATE supply_rows r SET admin_excluded = true FROM announcement_complexes ac"
+                + " WHERE ac.id = r.announcement_complex_id AND ac.housing_complex_id = :complex")
+                .setParameter("complex", excluded.getId()).executeUpdate();
 
         var results = repository.findAnnouncements(condition("연결규칙", Set.of()), 20);
 
@@ -132,11 +133,11 @@ class InternalSearchRepositoryTest {
         HousingComplex withoutAnnouncement = persistComplex("서울 행복 무공고", "37.5", "126.9");
         HousingComplex cancelled = persistComplex("서울 행복 취소", "37.51", "126.91");
         Announcement original = persistAnnouncement(null, "ORIGINAL", "취소 전", "complex-original");
-        persistSupplyRow(original, cancelled, "complex-original-row");
+        persistSupplyRow(original, cancelled);
         Announcement cancellation = persistAnnouncement(
                 original, "CANCELLATION", "취소 후", "complex-cancellation"
         );
-        persistSupplyRow(cancellation, cancelled, "complex-cancellation-row");
+        persistSupplyRow(cancellation, cancelled);
         entityManager.flush();
 
         assertThat(repository.findComplexes(condition("서울 행복", Set.of()), 1)).hasSize(1);
@@ -161,8 +162,8 @@ class InternalSearchRepositoryTest {
         HousingComplex complex = persistComplex("서울 행복 단지", "37.5", "126.9");
         persistComplex("서울 행복 무공고", "37.51", "126.91");
         Announcement announcement = persistAnnouncement(null, "ORIGINAL", "서울 행복 모집", "count");
-        persistSupplyRow(announcement, complex, "count-row-1");
-        persistSupplyRow(announcement, complex, "count-row-2");
+        persistSupplyRow(announcement, complex);
+        persistSupplyRow(announcement, complex);
         entityManager.flush();
         IntegratedSearchCondition active = new IntegratedSearchCondition(
                 SearchMatch.from("서울 행복"), Set.of(RentalType.HAPPY_HOUSING),
@@ -187,7 +188,7 @@ class InternalSearchRepositoryTest {
     void 조건부_일정만_있는_공고와_단지는_확정_모집중_검색에서_제외한다() {
         HousingComplex complex = persistComplex("서울 행복 조건부", "37.5", "126.9");
         Announcement announcement = persistAnnouncement(null, "ORIGINAL", "서울 행복 조건부", "conditional");
-        persistSupplyRow(announcement, complex, "conditional-row");
+        persistSupplyRow(announcement, complex);
         LocalDate today = LocalDate.of(2026, 9, 1);
         announcement.confirmApplicationPeriod(today, today);
         entityManager.persist(AnnouncementApplicationSchedule.verified(announcement, complex, "후순위",
@@ -216,9 +217,9 @@ class InternalSearchRepositoryTest {
                 LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 25));
         Announcement applying = persistAnnouncement("서울 순서 접수", "order-applying", LocalDate.of(2026, 7, 1),
                 LocalDate.of(2026, 9, 5), LocalDate.of(2026, 9, 20));
-        persistSupplyRow(past, complex, "order-past-row");
-        persistSupplyRow(closed, complex, "order-closed-row");
-        persistSupplyRow(applying, complex, "order-applying-row");
+        persistSupplyRow(past, complex);
+        persistSupplyRow(closed, complex);
+        persistSupplyRow(applying, complex);
         entityManager.flush();
 
         var results = repository.findAnnouncements(condition("서울 순서", Set.of()), 20);
@@ -235,7 +236,7 @@ class InternalSearchRepositoryTest {
                 LocalDate.of(2026, 6, 20), LocalDate.of(2026, 8, 20));
         entityManager.persist(AnnouncementSchedule.create(moveIn, ScheduleType.MOVE_IN, "입주 예정",
                 LocalDateTime.of(2026, 8, 21, 10, 0), LocalDateTime.of(2026, 8, 25, 18, 0), 0));
-        persistSupplyRow(moveIn, complex, "move-in-closed-row");
+        persistSupplyRow(moveIn, complex);
         entityManager.flush();
 
         var results = repository.findAnnouncements(condition("서울 입주", Set.of()), 20);
@@ -334,18 +335,16 @@ class InternalSearchRepositoryTest {
         return announcement;
     }
 
-    private void persistSupplyRow(Announcement announcement, HousingComplex complex, String sourceId) {
-        entityManager.persist(AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+    private void persistSupplyRow(Announcement announcement, HousingComplex complex) {
+        entityManager.persist(SupplyRowSeed.create(entityManager,
                 announcement,
                 complex,
                 null,
-                sourceId,
                 1,
                 complex.getName(),
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                null)));
+                SupplyCategory.NEW_SUPPLY));
     }
 }

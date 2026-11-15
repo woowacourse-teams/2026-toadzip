@@ -56,8 +56,6 @@ class QueryLookupIndexMigrationTest {
                 List<Lookup> lookups = List.of(
                         new Lookup("SELECT id FROM supply_rows WHERE announcement_id = 42 ORDER BY display_order, id",
                                 "idx_supply_rows_announcement_order"),
-                        new Lookup("SELECT id FROM supply_rows WHERE housing_complex_id = 42 AND announcement_id = 42",
-                                "idx_supply_rows_complex_announcement"),
                         new Lookup("SELECT id FROM housing_complexes WHERE pnu = '0000000000000000042'"
                                 + " AND supply_type = 'HAPPY_HOUSING' AND NOT admin_deleted",
                                 "idx_housing_complexes_pnu_supply_type"));

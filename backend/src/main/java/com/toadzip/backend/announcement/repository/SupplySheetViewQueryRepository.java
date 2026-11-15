@@ -19,7 +19,7 @@ import org.springframework.stereotype.Repository;
 
 /**
  * 공고 공급표를 관리자 보기({@link SupplySheetView})로 읽는다. 관리자가 제외한 옛 공급행과 그 칸은 보이지 않고, 수량 묶음·임대조건의
- * 멤버도 보이는 칸만 남긴다(보이는 멤버가 없으면 뺀다).
+ * 멤버도 보이는 칸만 남긴다(보이는 멤버가 없으면 뺀다). 주택형의 단지명·단지는 그 공고 단지의 이름과 연결이다(공개 화면과 같다).
  *
  * <p>JDBC로 바로 읽는다. 공급표 쓰기(SupplySheetStore)가 JDBC로 쓰므로, 같은 트랜잭션의 영속성 컨텍스트에 읽어 둔 공급표 엔티티는 쓴 뒤에
  * 낡는다. 부르는 쪽은 읽기 전에 엔티티 변경을 flush한다.
@@ -31,13 +31,13 @@ public class SupplySheetViewQueryRepository {
 
     public SupplySheetView read(long announcementId) {
         var housingTypes = jdbc.sql("""
-                SELECT r.id, r.announcement_complex_id, r.source_complex_name, r.housing_complex_id,
-                  c.name AS housing_complex_name, r.housing_type_id,
-                  COALESCE(r.announcement_housing_type_name, r.source_housing_type_name) AS name,
-                  CASE WHEN r.area_override THEN r.announcement_exclusive_area END AS exclusive_area,
-                  CASE WHEN r.area_override THEN r.announcement_supply_area END AS supply_area,
-                  r.expected_move_in_month, r.supply_pnu, r.supply_category, r.display_order, r.admin_modified
-                FROM supply_rows r LEFT JOIN housing_complexes c ON c.id = r.housing_complex_id
+                SELECT r.id, r.announcement_complex_id, ac.source_complex_name, ac.housing_complex_id,
+                  c.name AS housing_complex_name, r.housing_type_id, r.housing_type_name AS name, r.exclusive_area,
+                  r.supply_area, r.expected_move_in_month, r.supply_pnu, r.supply_category, r.display_order,
+                  r.admin_modified
+                FROM supply_rows r
+                JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
+                LEFT JOIN housing_complexes c ON c.id = ac.housing_complex_id
                 WHERE r.announcement_id = :id AND NOT r.admin_excluded
                 ORDER BY r.display_order, r.id
                 """).param("id", announcementId).query((row, index) -> housingType(row)).list();

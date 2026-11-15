@@ -164,53 +164,6 @@ class AnnouncementDomainCreationTest {
     }
 
     @Test
-    void 매칭되지_않은_원천_공급행도_생성한다() {
-        Announcement announcement = new Announcement();
-        YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
-        Method createMethod = findCreateMethod(
-                SupplyRow.class,
-                Announcement.class,
-                HousingComplex.class,
-                HousingType.class,
-                String.class,
-                int.class,
-                String.class,
-                String.class,
-                String.class,
-                YearMonth.class,
-                SupplyCategory.class,
-                String.class
-        );
-
-        SupplyRow supplyRow = invoke(
-                createMethod,
-                announcement,
-                null,
-                null,
-                "source-supply-row-id",
-                1,
-                "원천 단지명",
-                "36A",
-                "1114010100100010000",
-                expectedMoveInMonth,
-                SupplyCategory.NEW_SUPPLY,
-                "단지 식별자 불일치"
-        );
-
-        assertEquals(announcement, supplyRow.getAnnouncement());
-        assertNull(supplyRow.getHousingComplex());
-        assertNull(supplyRow.getHousingType());
-        assertEquals("source-supply-row-id", supplyRow.getSourceSupplyRowIdentifier());
-        assertEquals(1, supplyRow.getDisplayOrder());
-        assertEquals("원천 단지명", supplyRow.getSourceComplexName());
-        assertEquals("36A", supplyRow.getSourceHousingTypeName());
-        assertEquals("1114010100100010000", supplyRow.getSupplyPnu());
-        assertEquals(expectedMoveInMonth, supplyRow.getExpectedMoveInMonth());
-        assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory());
-        assertEquals("단지 식별자 불일치", supplyRow.getMatchingFailureReason());
-    }
-
-    @Test
     void 공고_일정을_생성한다() {
         Announcement announcement = new Announcement();
         LocalDateTime startAt = LocalDateTime.of(2026, 8, 10, 10, 0);

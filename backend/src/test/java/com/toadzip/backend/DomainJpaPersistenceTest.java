@@ -17,6 +17,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplyRowTarget;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -96,10 +97,10 @@ class DomainJpaPersistenceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "housing_complex_id",
             "housing_type_id",
             "expected_move_in_month",
-            "matching_failure_reason"
+            "exclusive_area",
+            "supply_area"
     })
     void 공급행의_선택_컬럼은_null을_허용한다(String columnName) {
         Object isNullable = entityManager.createNativeQuery(
@@ -128,7 +129,7 @@ class DomainJpaPersistenceTest {
             "housing_types, housing_complex_id, NO",
             "announcements, previous_announcement_id, YES",
             "supply_rows, announcement_id, NO",
-            "supply_rows, housing_complex_id, YES",
+            "supply_rows, announcement_complex_id, NO",
             "supply_rows, housing_type_id, YES",
             "supply_row_targets, supply_row_id, NO",
             "announcement_schedules, announcement_id, NO",
@@ -226,13 +227,13 @@ class DomainJpaPersistenceTest {
         );
         entityManager.persist(correctedAnnouncement);
 
-        SupplyRow matchedSupplyRow = createSupplyRow(correctedAnnouncement, housingComplex, housingType, 1, null);
+        SupplyRow matchedSupplyRow = createSupplyRow(correctedAnnouncement, housingComplex, housingType, 1, "원천 단지명");
         SupplyRow unmatchedSupplyRow = createSupplyRow(
                 correctedAnnouncement,
                 null,
                 null,
                 2,
-                "단지 식별자 불일치"
+                "단지 미연결 단지명"
         );
         entityManager.persist(matchedSupplyRow);
         entityManager.persist(unmatchedSupplyRow);
@@ -334,10 +335,11 @@ class DomainJpaPersistenceTest {
                         "source-announcement-id-1",
                         foundCorrectedAnnouncement.getPreviousSourceAnnouncementIdentifier()
                 ),
-                () -> assertEquals(housingComplex.getId(), foundMatchedSupplyRow.getHousingComplex().getId()),
+                () -> assertEquals(housingComplex.getId(),
+                        foundMatchedSupplyRow.getAnnouncementComplex().getHousingComplex().getId()),
                 () -> assertEquals(housingTypeId, foundMatchedSupplyRow.getHousingType().getId()),
                 () -> assertEquals(YearMonth.of(2027, 3), foundMatchedSupplyRow.getExpectedMoveInMonth()),
-                () -> assertNull(foundUnmatchedSupplyRow.getHousingComplex()),
+                () -> assertNull(foundUnmatchedSupplyRow.getAnnouncementComplex().getHousingComplex()),
                 () -> assertNull(foundUnmatchedSupplyRow.getHousingType()),
                 () -> assertEquals(matchedSupplyRowId, foundSupplyTarget.getSupplyRow().getId()),
                 () -> assertEquals(correctedAnnouncementId, foundAnnouncementSchedule.getAnnouncement().getId()),
@@ -375,18 +377,16 @@ class DomainJpaPersistenceTest {
         );
         entityManager.persist(announcement);
 
-        SupplyRow supplyRow = SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 null,
                 null,
-                "source-supply-row-id-legacy",
                 1,
                 "원문 단지",
                 "36A",
                 "1114010100100010000",
                 null,
-                SupplyCategory.NEW_SUPPLY,
-                "미매칭");
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
 
         AnnouncementSchedule schedule = AnnouncementSchedule.create(
@@ -492,7 +492,7 @@ class DomainJpaPersistenceTest {
                 "원공고"
         );
         entityManager.persist(announcement);
-        SupplyRow supplyRow = createSupplyRow(announcement, null, null, 1, "미매칭");
+        SupplyRow supplyRow = createSupplyRow(announcement, null, null, 1, "미매칭 단지명");
         AnnouncementSchedule schedule = createAnnouncementSchedule(announcement);
         AnnouncementAttachment attachment = createAnnouncementAttachment(announcement);
         entityManager.persist(supplyRow);
@@ -642,20 +642,18 @@ class DomainJpaPersistenceTest {
             HousingComplex housingComplex,
             HousingType housingType,
             int displayOrder,
-            String matchingFailureReason
+            String complexName
     ) {
-        return SupplyRow.create(
+        return SupplyRowSeed.create(entityManager,
                 announcement,
                 housingComplex,
                 housingType,
-                "source-supply-row-id-" + displayOrder,
                 displayOrder,
-                "원천 단지명",
+                complexName,
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason);
+                SupplyCategory.NEW_SUPPLY);
     }
 
     private AnnouncementSchedule createAnnouncementSchedule(Announcement announcement) {

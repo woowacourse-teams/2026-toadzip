@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
@@ -71,8 +72,8 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
         complex = fixtures.complex("11140", "1114010100");
         type = HousingType.createFromMyHome(complex, "source-36", "36", new BigDecimal("36.91"), new BigDecimal("50.1"));
         entities.persist(type);
-        row = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 0, "알림 테스트 단지", "36A",
-                null, null, SupplyCategory.NEW_SUPPLY, null);
+        row = SupplyRowSeed.create(entities, announcement, complex, type, 0, "알림 테스트 단지", "36A",
+                null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         entities.flush();
     }
@@ -136,8 +137,8 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
 
     @Test
     void 같은_주택형을_고른_행들의_기본_임대조건이_다르면_지금_값을_유지한다() throws Exception {
-        var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36B", null, null, SupplyCategory.NEW_SUPPLY, null);
+        var second = SupplyRowSeed.create(entities, announcement, complex, type, 1, "알림 테스트 단지",
+                "36B", null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -234,8 +235,8 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
 
     @Test
     void 한_주택형에_서로_다른_공고_값이_오면_그_필드만_지금_값을_유지한다() throws Exception {
-        var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36B", null, null, SupplyCategory.NEW_SUPPLY, null);
+        var second = SupplyRowSeed.create(entities, announcement, complex, type, 1, "알림 테스트 단지",
+                "36B", null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -256,8 +257,8 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
 
     @Test
     void 같은_주택형을_고른_행들이_함께_비운_값은_지금_값을_유지하고_나머지는_반영한다() throws Exception {
-        var second = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 1, "알림 테스트 단지",
-                "36B", null, null, SupplyCategory.NEW_SUPPLY, null);
+        var second = SupplyRowSeed.create(entities, announcement, complex, type, 1, "알림 테스트 단지",
+                "36B", null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(second);
         entities.flush();
         var request = request();
@@ -369,10 +370,11 @@ class AnnouncementHousingTypeUpdateIntegrationTest {
 
     @Test
     void 휴지통_단지의_주택형에는_공고_값을_반영하지_않는다() throws Exception {
-        var request = request();
-        value(request, "row:" + row.getId(), "36A", null, 120);
+        // 단지를 휴지통에 넣으면 공고 상세의 단지도 바뀌므로 휴지통에 넣은 뒤의 화면에서 요청을 만든다.
         jdbc.update("UPDATE housing_complexes SET admin_deleted=true WHERE id=?", complex.getId());
         entities.clear();
+        var request = request();
+        value(request, "row:" + row.getId(), "36A", null, 120);
 
         mvc.perform(post(root() + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(request.toString()))

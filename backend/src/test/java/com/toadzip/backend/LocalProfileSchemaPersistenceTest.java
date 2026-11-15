@@ -311,7 +311,8 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "myhome_complex_links", "approved_household_count"));
                 assertEquals(1, countColumn(connection, "myhome_complex_merges", "before_state"));
                 assertEquals(1, countColumn(connection, "housing_complex_aliases", "housing_complex_id"));
-                assertEquals(1, countColumn(connection, "supply_rows", "lh_match_status"));
+                assertEquals(0, countColumn(connection, "supply_rows", "lh_match_status"));
+                assertEquals(1, countColumn(connection, "supply_rows", "housing_type_name"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_rows", "winner_announcement_date"));
                 assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));

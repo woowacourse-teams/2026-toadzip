@@ -3,11 +3,12 @@ package com.toadzip.backend.announcement.service;
 import com.toadzip.backend.announcement.domain.AdminAnnouncementImport;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.LeaseTerms;
 import com.toadzip.backend.announcement.domain.SourceSupplySheet;
-import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRegistrationRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRegistrationRequest.ComplexSelectionRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest;
@@ -25,7 +26,6 @@ import com.toadzip.backend.announcement.repository.AdminAnnouncementImportReposi
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -49,7 +49,6 @@ public class AdminAnnouncementImportRegistrationService {
     private final NotificationOutboxRepository notificationOutbox;
 
     private final AnnouncementRepository announcementRepository;
-    private final SupplyRowRepository supplyRowRepository;
     private final SupplySheetStore supplySheets;
     private final AnnouncementScheduleRepository scheduleRepository;
     private final AnnouncementAttachmentRepository attachmentRepository;
@@ -62,7 +61,6 @@ public class AdminAnnouncementImportRegistrationService {
             AdminAnnouncementImportJson importJson,
             AdminAnnouncementImportRepository importRepository,
             AnnouncementRepository announcementRepository,
-            SupplyRowRepository supplyRowRepository,
             SupplySheetStore supplySheets,
             AnnouncementScheduleRepository scheduleRepository,
             AnnouncementAttachmentRepository attachmentRepository,
@@ -75,7 +73,6 @@ public class AdminAnnouncementImportRegistrationService {
         this.importJson = importJson;
         this.importRepository = importRepository;
         this.announcementRepository = announcementRepository;
-        this.supplyRowRepository = supplyRowRepository;
         this.supplySheets = supplySheets;
         this.scheduleRepository = scheduleRepository;
         this.attachmentRepository = attachmentRepository;
@@ -101,8 +98,9 @@ public class AdminAnnouncementImportRegistrationService {
         // 등록은 공고 공급표(정본)를 쓴다. 저장 전에 확정해 등록 직후 버전이 0으로 남게 한다.
         created.confirmSupply();
         Announcement announcement = announcementRepository.save(created);
-        List<SupplyRow> supplyRows = saveSupplyRows(request, announcement, selectedComplexes, registeredBy);
-        int supplyTargetCount = writeSupplySheet(request, announcement, supplyRows);
+        List<SupplySheetDraft.HousingTypeRow> housingTypes = housingTypes(request, announcement, selectedComplexes,
+                registeredBy);
+        int supplyTargetCount = writeSupplySheet(request, announcement, housingTypes);
         scheduleRepository.saveAll(createSchedules(request, announcement));
         attachmentRepository.saveAll(createAttachments(request, announcement));
         AdminAnnouncementImport history = saveHistory(
@@ -117,7 +115,7 @@ public class AdminAnnouncementImportRegistrationService {
         return new AdminAnnouncementImportCreateResponse(
                 history.getId(),
                 announcement.getId(),
-                supplyRows.size(),
+                housingTypes.size(),
                 request.schedules().size(),
                 request.attachments().size(),
                 supplyTargetCount
@@ -200,37 +198,32 @@ public class AdminAnnouncementImportRegistrationService {
      * 공급행은 (공고, 단지명)의 공고 단지에 들고, 그 공고 단지는 고른 단지로 관리자 연결한다. 같은 단지명의 행이 서로 다른 단지를
      * 고르면 등록하지 않는다(공고 단지 하나는 단지 하나에 이어진다).
      */
-    private List<SupplyRow> saveSupplyRows(
+    private List<SupplySheetDraft.HousingTypeRow> housingTypes(
             AdminAnnouncementImportRequest request,
             Announcement announcement,
             Map<Integer, HousingComplex> selectedComplexes,
             String registeredBy
     ) {
         ensureOneComplexPerName(request, selectedComplexes);
-        List<SupplyRow> rows = new ArrayList<>();
+        List<SupplySheetDraft.HousingTypeRow> housingTypes = new ArrayList<>();
         for (int index = 0; index < request.supplyRows().size(); index++) {
             SupplyRowRequest row = request.supplyRows().get(index);
-            var supplyRow = SupplyRow.create(
-                    announcement,
-                    selectedComplexes.get(index),
-                    null,
-                    identifierGenerator.generateSupplyRowIdentifier(),
-                    index,
-                    row.complexReference().sourceComplexName(),
-                    row.sourceHousingTypeName(),
-                    row.complexReference().pnu(),
-                    row.expectedMoveInMonth(),
-                    row.supplyCategory(),
-                    null
-            );
-            if (row.exclusiveArea() != null || row.supplyArea() != null) {
-                supplyRow.correctPresentation(false, index, true, row.exclusiveArea(), row.supplyArea());
-            }
-            supplyRow.fillAnnouncementComplex(announcementComplexes.declare(announcement,
-                    row.complexReference().sourceComplexName(), selectedComplexes.get(index), registeredBy));
-            rows.add(supplyRow);
+            HousingComplex housingComplex = selectedComplexes.get(index);
+            AnnouncementComplex complex = announcementComplexes.declare(announcement,
+                    row.complexReference().sourceComplexName(), housingComplex, registeredBy);
+            housingTypes.add(new SupplySheetDraft.HousingTypeRow("row:" + index, null, complex.getId(),
+                    idOf(housingComplex), null, row.complexReference().sourceComplexName(),
+                    row.sourceHousingTypeName(), row.exclusiveArea(), row.supplyArea(), row.expectedMoveInMonth(),
+                    row.complexReference().pnu(), row.supplyCategory(), index));
         }
-        return supplyRowRepository.saveAll(rows);
+        return housingTypes;
+    }
+
+    private static Long idOf(HousingComplex complex) {
+        if (complex == null) {
+            return null;
+        }
+        return complex.getId();
     }
 
     private static void ensureOneComplexPerName(AdminAnnouncementImportRequest request,
@@ -249,7 +242,7 @@ public class AdminAnnouncementImportRegistrationService {
 
     /** 공급행마다 JSON의 대상·모집수·금액을 공고 공급표로 쓴다. 돌려주는 수는 JSON의 대상 수다. */
     private int writeSupplySheet(AdminAnnouncementImportRequest request, Announcement announcement,
-            List<SupplyRow> supplyRows) {
+            List<SupplySheetDraft.HousingTypeRow> housingTypes) {
         List<SourceSupplySheet.Row> sheet = new ArrayList<>();
         int targetCount = 0;
         for (int rowIndex = 0; rowIndex < request.supplyRows().size(); rowIndex++) {
@@ -262,7 +255,8 @@ public class AdminAnnouncementImportRegistrationService {
                                 target.rentalDeposit(), target.monthlyRent(), target.convertedDeposit()), targetIndex));
             }
             targetCount += targets.size();
-            sheet.add(new SourceSupplySheet.Row(supplyRows.get(rowIndex), row.totalSupplyHouseholdCount(), targets));
+            sheet.add(new SourceSupplySheet.Row(housingTypes.get(rowIndex), false, row.totalSupplyHouseholdCount(),
+                    targets));
         }
         supplySheets.replace(announcement, SourceSupplySheet.draft(sheet));
         return targetCount;

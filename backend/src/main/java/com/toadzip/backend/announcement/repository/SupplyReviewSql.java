@@ -9,11 +9,9 @@ public final class SupplyReviewSql {
      */
     public static final String TARGET_VALUES = """
             SELECT r.announcement_id, 'row:' || r.id AS target,
-              jsonb_build_object('complexName', r.source_complex_name,
-                'name', COALESCE(r.announcement_housing_type_name, r.source_housing_type_name),
-                'housingComplexId', r.housing_complex_id, 'housingTypeId', r.housing_type_id,
-                'exclusiveArea', CASE WHEN r.area_override THEN trim_scale(r.announcement_exclusive_area) END,
-                'supplyArea', CASE WHEN r.area_override THEN trim_scale(r.announcement_supply_area) END,
+              jsonb_build_object('complexName', ac.source_complex_name, 'name', r.housing_type_name,
+                'housingComplexId', ac.housing_complex_id, 'housingTypeId', r.housing_type_id,
+                'exclusiveArea', trim_scale(r.exclusive_area), 'supplyArea', trim_scale(r.supply_area),
                 'supplyPnu', r.supply_pnu, 'expectedMoveInMonth', r.expected_move_in_month,
                 'category', r.supply_category, 'displayOrder', r.display_order,
                 'householdCount', (SELECT q.household_count FROM supply_quotas q
@@ -24,7 +22,7 @@ public final class SupplyReviewSql {
                     AND NOT EXISTS (SELECT 1 FROM supply_row_targets c WHERE c.supply_row_id = r.id AND NOT EXISTS (
                       SELECT 1 FROM supply_quota_members m WHERE m.supply_quota_id = q.id AND m.supply_row_target_id = c.id))
                   ORDER BY q.id LIMIT 1)) AS values
-            FROM supply_rows r
+            FROM supply_rows r JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
             WHERE NOT r.admin_excluded
             UNION ALL
             SELECT r.announcement_id, 'cell:' || c.id,

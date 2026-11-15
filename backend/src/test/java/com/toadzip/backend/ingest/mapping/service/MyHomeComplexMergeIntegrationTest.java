@@ -20,6 +20,9 @@ import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
@@ -116,6 +119,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Autowired private HousingTypeRepository housingTypes;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private SupplyRowRepository supplies;
+    @Autowired private AnnouncementComplexRepository announcementComplexes;
     @Autowired private AnnouncementApplicationScheduleRepository schedules;
     @Autowired private UserRepository users;
     @Autowired private LhHousingTypeHouseholdEnrichmentService enrichment;
@@ -240,7 +244,8 @@ class MyHomeComplexMergeIntegrationTest {
             assertThat(complex.getImageUrl()).isEqualTo("manual-image");
             assertThat(complex.getRecentOneYearMoveOutCount()).isEqualTo(2);
         });
-        for (String table : List.of("housing_types", "supply_rows", "favorite_housing_complexes",
+        // 공고 공급행은 공고 단지로만 단지를 가리키므로 공고 단지를 따라 옮겨진다.
+        for (String table : List.of("housing_types", "favorite_housing_complexes",
                 "announcement_application_schedules", "announcement_complexes")) {
             assertThat(jdbc.sql("SELECT DISTINCT housing_complex_id FROM " + table)
                     .query(Long.class).list()).containsExactly(ids.getFirst());
@@ -314,18 +319,19 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 공고_단지_도입_전_통합_이력도_복구할_수_있다() throws Exception {
         addReferences();
+        jdbc.sql("DELETE FROM supply_rows").update();
         jdbc.sql("DELETE FROM announcement_complexes").update();
         List<String> before = productState();
         JsonNode merged = merge();
-        // LH 공고 정제 전에 저장한 스냅숏에는 공고 단지와 공급행의 공고 단지·LH 매칭 컬럼이 없다.
+        // LH 공고 정제 전에 저장한 스냅숏에는 공고 단지가 없고, 공급행이 단지를 직접 가리키던 때라 공급행이 들어 있다.
         jdbc.sql("""
                 UPDATE myhome_complex_merges
-                SET before_state = jsonb_set(before_state - 'announcement_complexes', '{supply_rows}', (
-                        SELECT COALESCE(jsonb_agg(row - 'announcement_complex_id' - 'lh_exclusive_area' - 'lh_match_status'),
-                            '[]'::jsonb) FROM jsonb_array_elements(before_state->'supply_rows') row)),
-                    after_state = jsonb_set(after_state - 'announcement_complexes', '{supply_rows}', (
-                        SELECT COALESCE(jsonb_agg(row - 'announcement_complex_id' - 'lh_exclusive_area' - 'lh_match_status'),
-                            '[]'::jsonb) FROM jsonb_array_elements(after_state->'supply_rows') row))
+                SET before_state = before_state - 'announcement_complexes'
+                        || jsonb_build_object('supply_rows', jsonb_build_array(jsonb_build_object('id', 1,
+                            'housing_complex_id', (before_state->'complexes'->0->>'id')::bigint))),
+                    after_state = after_state - 'announcement_complexes'
+                        || jsonb_build_object('supply_rows', jsonb_build_array(jsonb_build_object('id', 1,
+                            'housing_complex_id', (after_state->'complexes'->0->>'id')::bigint)))
                 """).update();
 
         postJson(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
@@ -801,9 +807,11 @@ class MyHomeComplexMergeIntegrationTest {
         for (long id : ids) {
             HousingComplex complex = complexes.findById(id).orElseThrow();
             HousingType type = housingTypes.findAllByHousingComplex(complex).getFirst();
-            supplies.save(SupplyRow.create(announcement, complex, type, "supply-" + id, 1,
-                    complex.getName(), type.getName(), complex.getAddress().getPnu(), YearMonth.of(2027, 3),
-                    SupplyCategory.NEW_SUPPLY, null));
+            AnnouncementComplex supplyComplex = AnnouncementComplex.observe(announcement, "공급 단지 " + id, null,
+                    null);
+            supplyComplex.linkByAdmin(complex, "test", COLLECTED_AT);
+            supplies.save(SupplyRowSeed.create(announcementComplexes.save(supplyComplex), type, 1, type.getName(),
+                    complex.getAddress().getPnu(), YearMonth.of(2027, 3), SupplyCategory.NEW_SUPPLY));
             schedules.save(AnnouncementApplicationSchedule.verified(
                     announcement, complex, null, ApplicationScheduleState.CONFIRMED, null,
                     LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 14), null, null,

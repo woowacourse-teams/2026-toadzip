@@ -27,8 +27,7 @@ import java.util.Set;
  *   <li>임대조건: 금액이 하나라도 있는 칸마다 하나. 금액이 같아도 합치지 않는다.</li>
  * </ol>
  *
- * <p>저장된 공급행(정제 전 등록·JSON 등록)은 그 ID로 쓰고 주택형 값은 {@link SupplyRow#sourceSheetRow}이다. 저장하지 않은 주택형
- * (기관 준비 데이터, {@link AgencySupplySheet})은 draft 주택형 값을 그대로 받는다.
+ * <p>주택형 값(관리자 등록·JSON 등록, 기관 준비 데이터 {@link AgencySupplySheet})은 draft 주택형 값을 그대로 받는다.
  */
 public final class SourceSupplySheet {
 
@@ -126,18 +125,6 @@ public final class SourceSupplySheet {
                 throw new IllegalArgumentException("주택형이 필요하다.");
             }
             targets = List.copyOf(targets);
-        }
-
-        /** 저장된 공급행 하나. 주택형 키는 `row:{공급행 ID}`다. */
-        public Row(SupplyRow saved, Integer householdCount, List<Target> targets) {
-            this(saved(saved).sourceSheetRow("row:" + saved.getId()), saved.isAdminModified(), householdCount, targets);
-        }
-
-        private static SupplyRow saved(SupplyRow row) {
-            if (row == null || row.getId() == null) {
-                throw new IllegalArgumentException("저장된 공급행이 필요하다.");
-            }
-            return row;
         }
     }
 

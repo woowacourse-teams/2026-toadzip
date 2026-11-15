@@ -161,8 +161,9 @@ public final class SupplySheetDraft {
     }
 
     /**
-     * 공고 주택형 한 줄(supply_rows). supplyRowId가 있으면 그 공급행을, 없으면 (공고 단지 또는 단지명, 신청형 이름)이 같은 공급행을 고친다.
-     * 신청형 이름은 공고 표시명(announcement_housing_type_name)에 쓴다. 면적이 하나라도 있으면 공고 면적으로 보인다.
+     * 공고 주택형 한 줄(supply_rows). supplyRowId가 있으면 그 공급행을, 없으면 공고 단지(없으면 단지명의 공고 단지)와 신청형 이름이
+     * 같은 공급행을 고친다. 면적이 하나라도 있으면 그 값이 행의 면적이고, 둘 다 없으면 연결 주택타입의 면적이다. 단지(housingComplexId)는
+     * 고른 주택타입이 그 단지의 것인지 확인하는 데만 쓰고, 행의 단지는 공고 단지의 연결이다.
      */
     public record HousingTypeRow(String key, Long supplyRowId, Long announcementComplexId, Long housingComplexId,
             Long housingTypeId, String complexName, String typeName, BigDecimal exclusiveArea, BigDecimal supplyArea,

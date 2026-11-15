@@ -163,8 +163,8 @@ class AdminAnnouncementImportIntegrationTest {
                 .andExpect(status().isCreated());
 
         var stored = supplyRowRepository.findAll().getFirst();
-        assertEquals(0, stored.getAnnouncementExclusiveArea().compareTo(new BigDecimal("36.5")));
-        assertEquals(0, stored.getAnnouncementSupplyArea().compareTo(new BigDecimal("49.8")));
+        assertEquals(0, stored.getExclusiveArea().compareTo(new BigDecimal("36.5")));
+        assertEquals(0, stored.getSupplyArea().compareTo(new BigDecimal("49.8")));
     }
 
     @Test

@@ -14,7 +14,6 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.HousingTypeAreas;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,14 +45,16 @@ class AnnouncementComplexAdminLinks {
     private final ObjectMapper json;
     private final Clock clock;
 
-    /** 보정 저장이 관리자 연결로 정하는 공고 단지와 단지, 그 자리에서 같은 면적 주택형으로 맞출 단지 없는 주택형의 저장 key. */
+    /** 보정 저장이 관리자 연결로 정하는 공고 단지와 단지, 그 자리에서 같은 면적 주택형으로 맞출 주택형의 저장 key. */
     record Plan(AnnouncementComplex target, HousingComplex complex, List<String> fillKeys) { }
 
     /**
      * 보정 요청에서 손댄 기존 주택형(changedIds: 주택형 값이나 그 칸의 수·임대조건을 바꾼 주택형)이 속한 공고 단지만 정한다.
      * 관리자가 손대지 않은 공고 단지의 연결은 그대로 둔다.
-     * 그 공고 단지의 주택형이 고른 단지는 하나여야 한다. 맞출 주택형은 저장 전에도 요청에도 단지가 없는 주택형이라,
-     * 관리자가 이번에 단지를 비운 주택형은 다시 채우지 않는다.
+     * 주택형의 단지는 공고 단지의 연결이므로, 저장 전에도 요청에도 주택타입이 없고 요청에서 단지를 그대로 둔 주택형은 공고 단지의
+     * 연결이 바뀔 때 새 연결을 따라가며 그 단지의 같은 면적 주택타입으로 맞춘다. 연결이 그대로면 그 주택형은 건드리지 않는다.
+     * 나머지 주택형(단지를 바꿨거나 주택타입을 고르거나 새로 만드는 주택형)이 고른 단지는 하나여야 한다. 관리자가 이번에 단지나
+     * 주택타입을 비운 주택형은 다시 채우지 않는다.
      */
     List<Plan> plan(Announcement announcement, List<SupplySheetView.HousingType> before,
             List<SupplySheetView.HousingType> after, Set<Long> changedIds) {
@@ -71,28 +72,40 @@ class AnnouncementComplexAdminLinks {
         touched.forEach((targetId, target) -> {
             var members = after.stream().filter(type -> type.id() != null && beforeById.containsKey(type.id())
                     && targetId.equals(beforeById.get(type.id()).announcementComplexId())).toList();
-            var chosen = members.stream().map(SupplySheetView.HousingType::housingComplexId).filter(Objects::nonNull)
+            var following = members.stream().filter(type -> follows(type, beforeById.get(type.id()))).toList();
+            var deciding = members.stream().filter(type -> !following.contains(type)).toList();
+            if (deciding.isEmpty()) {
+                deciding = following;
+            }
+            var chosen = deciding.stream().map(SupplySheetView.HousingType::housingComplexId).filter(Objects::nonNull)
                     .distinct().toList();
             if (chosen.size() > 1) {
                 throw new IllegalArgumentException(target.getSourceComplexName() + ": 공고문의 한 단지에 속한 주택형은 같은 단지로 연결하세요.");
             }
             if (chosen.isEmpty()) { return; }
-            var fill = members.stream().filter(type -> type.housingComplexId() == null
-                    && beforeById.get(type.id()).housingComplexId() == null).map(SupplySheetView.HousingType::key).toList();
             var complex = complexes.findById(chosen.getFirst()).filter(value -> !value.isAdminDeleted())
                     .orElseThrow(() -> new AdminDataConflictException("연결할 단지가 없거나 휴지통에 있습니다."));
+            List<String> fill = List.of();
+            if (target.linkedComplex() == null || !target.linkedComplex().getId().equals(complex.getId())) {
+                fill = following.stream().map(SupplySheetView.HousingType::key).toList();
+            }
             result.add(new Plan(target, complex, fill));
         });
         return result;
     }
 
+    private static boolean follows(SupplySheetView.HousingType after, SupplySheetView.HousingType before) {
+        return after.housingTypeId() == null && after.newHousingType() == null && before.housingTypeId() == null
+                && Objects.equals(after.housingComplexId(), before.housingComplexId());
+    }
+
     List<String> warnings(List<Plan> plans) {
         return plans.stream().map(plan -> plan.target().getSourceComplexName() + ": 공고 단지를 " + plan.complex().getName()
                 + "에 관리자 연결합니다." + (plan.fillKeys().isEmpty() ? ""
-                : " 단지가 없는 같은 단지 주택형 " + plan.fillKeys().size() + "개도 이 단지에 연결하고, 같은 전용면적 주택형이 하나면 그 주택형으로 맞춥니다.")).toList();
+                : " 주택타입을 고르지 않은 같은 단지 주택형 " + plan.fillKeys().size() + "개도 이 단지에 연결하고, 같은 전용면적 주택형이 하나면 그 주택형으로 맞춥니다.")).toList();
     }
 
-    /** 정한 연결을 저장하고 단지 없던 주택형을 연결 단지로 맞춘다. written은 저장 key별 저장된 공급행이다. */
+    /** 정한 연결을 저장하고 주택타입을 고르지 않은 주택형을 연결 단지로 맞춘다. written은 저장 key별 저장된 공급행이다. */
     void apply(List<Plan> plans, Map<String, SupplyRow> written, String actor) {
         for (var plan : plans) {
             link(plan.target(), plan.complex(), plan.fillKeys().stream().map(written::get).toList(), actor);
@@ -191,15 +204,15 @@ class AnnouncementComplexAdminLinks {
         link(target, complex, confirmOnly ? List.of() : members, actor);
     }
 
-    /** 공급행 주택형은 LH 대표 전용면적(없으면 공고 면적)으로 새 단지에서 {@link HousingTypeAreas#pick}으로 고른다. */
+    /** 공급행 주택형은 행의 전용면적과 신청형 이름으로 새 단지에서 {@link HousingTypeAreas#pick}으로 고른다. */
     private void link(AnnouncementComplex target, HousingComplex complex, Collection<SupplyRow> rows, String actor) {
         String before = linkData(target, rows);
         boolean changed = target.linkByAdmin(complex, actor, clock.instant());
         var candidates = types.findAllByHousingComplex(complex);
         for (var row : rows) {
-            BigDecimal area = row.getLhExclusiveArea() != null ? row.getLhExclusiveArea() : row.effectiveExclusiveArea();
-            HousingType type = HousingTypeAreas.pick(candidates, area, row.displayHousingTypeName()).orElse(null);
-            changed |= row.relinkByAdminMatch(complex, type);
+            HousingType type = HousingTypeAreas.pick(candidates, row.getExclusiveArea(), row.getHousingTypeName())
+                    .orElse(null);
+            changed |= row.relinkByAdminMatch(type);
         }
         if (changed) {
             changes.save(new AdminDataChange("ANNOUNCEMENT_COMPLEX", target.getId(), "LINK_BY_ADMIN", actor, before, linkData(target, rows)));
@@ -217,7 +230,8 @@ class AnnouncementComplexAdminLinks {
         data.put("rows", rows.stream().map(row -> {
             var value = new LinkedHashMap<String, Object>();
             value.put("id", row.getId());
-            value.put("housingComplexId", row.getHousingComplex() == null ? null : row.getHousingComplex().getId());
+            // 행의 단지는 공고 단지의 연결이다. 이력 모양은 그대로 둔다.
+            value.put("housingComplexId", data.get("housingComplexId"));
             value.put("housingTypeId", row.getHousingType() == null ? null : row.getHousingType().getId());
             return value;
         }).toList());

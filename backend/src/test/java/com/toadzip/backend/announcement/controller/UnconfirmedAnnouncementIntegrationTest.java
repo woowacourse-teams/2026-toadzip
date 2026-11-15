@@ -201,8 +201,10 @@ class UnconfirmedAnnouncementIntegrationTest {
 
         assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
         assertThat(outboxCount(announcement.getSourceAnnouncementIdentifier())).isOne();
-        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM supply_rows WHERE announcement_id = ?",
-                Long.class, id)).isEqualTo(complex.getId());
+        assertThat(jdbc.queryForObject("""
+                SELECT ac.housing_complex_id FROM supply_rows r
+                JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id WHERE r.announcement_id = ?
+                """, Long.class, id)).isEqualTo(complex.getId());
     }
 
     @Test

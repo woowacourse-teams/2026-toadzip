@@ -8,9 +8,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
@@ -55,6 +58,11 @@ class MyHomeComplexMappingServiceTest {
     private static final String NEW_ADDRESS = "서울특별시 종로구 새길 2";
     private static final String NEW_PNU = "1111010100200020000";
     private static final String SPLIT_ADDRESS = "대전광역시 서구 둔산로 100";
+    /** 공급행의 단지는 그 공고 단지가 이은 단지다. */
+    private static final String SUPPLY_ROW_COMPLEX = """
+            SELECT ac.housing_complex_id FROM supply_rows r
+            JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id WHERE r.id = ?
+            """;
 
     @Autowired
     private MyHomeComplexMappingService service;
@@ -78,6 +86,9 @@ class MyHomeComplexMappingServiceTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
+    private AnnouncementComplexRepository announcementComplexRepository;
+
+    @Autowired
     private JdbcClient jdbc;
 
     @MockitoBean
@@ -86,6 +97,7 @@ class MyHomeComplexMappingServiceTest {
     @BeforeEach
     void setUp() {
         supplyRowRepository.deleteAll();
+        announcementComplexRepository.deleteAll();
         announcementRepository.deleteAll();
         // 휴지통 주택형은 저장소 기본 조회에서 빠지므로 직접 지운다.
         jdbc.sql("DELETE FROM housing_types").update();
@@ -807,8 +819,8 @@ class MyHomeComplexMappingServiceTest {
             assertThat(complex.getId()).isEqualTo(representativeId);
             assertThat(complex.getTotalHouseholdCount()).isEqualTo(1380);
         });
-        assertThat(jdbc.sql("SELECT housing_complex_id FROM supply_rows WHERE id = ?").param(supply.getId())
-                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(jdbc.sql(SUPPLY_ROW_COMPLEX).param(supply.getId()).query(Long.class).single())
+                .isEqualTo(representativeId);
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(fragmentType.getId())
                 .query(Long.class).single()).isEqualTo(representativeId);
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_complex_aliases WHERE id = ?").param(donorId)
@@ -854,8 +866,7 @@ class MyHomeComplexMappingServiceTest {
         HousingType movedType = housingTypeRepository.findById(donorType.getId()).orElseThrow();
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(movedType.getId())
                 .query(Long.class).single()).isEqualTo(representativeId);
-        assertThat(jdbc.sql("SELECT housing_complex_id FROM supply_rows WHERE id = ?").param(rowId)
-                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(jdbc.sql(SUPPLY_ROW_COMPLEX).param(rowId).query(Long.class).single()).isEqualTo(representativeId);
         for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
                 "housing_complex_reviews")) {
             assertThat(jdbc.sql("SELECT housing_complex_id FROM " + table).query(Long.class).list())
@@ -1036,18 +1047,16 @@ class MyHomeComplexMappingServiceTest {
             HousingComplex complex,
             HousingType housingType
     ) {
-        return SupplyRow.create(
-                announcement,
-                complex,
+        AnnouncementComplex target = AnnouncementComplex.observe(announcement, complex.getName(), null, null);
+        target.linkByAdmin(complex, "test", COLLECTED_AT);
+        return SupplyRowSeed.create(
+                announcementComplexRepository.save(target),
                 housingType,
-                "supply-row-1",
                 1,
-                complex.getName(),
                 housingType.getName(),
                 complex.getAddress().getPnu(),
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                null);
+                SupplyCategory.NEW_SUPPLY);
     }
 
     private MyHomeComplexSourceView source(MyHomeComplexSourceSnapshot data) {

@@ -12,12 +12,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
-import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.ReceptionPlaceRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
@@ -25,7 +25,6 @@ import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateReque
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementCreateResponse;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -36,6 +35,7 @@ import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,8 +44,6 @@ import org.mockito.ArgumentCaptor;
 class AdminAnnouncementRegistrationServiceTest {
 
     private final AnnouncementRepository announcementRepository = mock(AnnouncementRepository.class);
-
-    private final SupplyRowRepository supplyRowRepository = mock(SupplyRowRepository.class);
 
     private final HousingComplexRepository housingComplexRepository = mock(HousingComplexRepository.class);
 
@@ -59,7 +57,6 @@ class AdminAnnouncementRegistrationServiceTest {
 
     private final AdminAnnouncementRegistrationService service = new AdminAnnouncementRegistrationService(
             announcementRepository,
-            supplyRowRepository,
             housingComplexRepository,
             identifierGenerator,
             mock(NotificationOutboxRepository.class),
@@ -72,43 +69,36 @@ class AdminAnnouncementRegistrationServiceTest {
         when(identifierGenerator.generateAnnouncementIdentifier()).thenReturn(
                 "ADMIN_ENTRY-ANNOUNCEMENT-123e4567-e89b-12d3-a456-426614174000"
         );
-        when(identifierGenerator.generateSupplyRowIdentifier()).thenReturn(
-                "ADMIN_ENTRY-SUPPLY-ROW-123e4567-e89b-12d3-a456-426614174001"
-        );
     }
 
     @Test
     void 원공고와_단지에_연결된_단일_공급행을_저장한다() {
         HousingComplex housingComplex = mock(HousingComplex.class);
         Announcement savedAnnouncement = mock(Announcement.class);
-        SupplyRow savedSupplyRow = mock(SupplyRow.class);
+        AnnouncementComplex announcementComplex = mock(AnnouncementComplex.class);
         when(housingComplex.getId()).thenReturn(11L);
         when(housingComplexRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(housingComplex));
         when(announcementRepository.save(any())).thenReturn(savedAnnouncement);
         when(savedAnnouncement.getId()).thenReturn(21L);
         when(savedAnnouncement.getName()).thenReturn("2026년 행복주택 입주자 모집");
-        when(supplyRowRepository.save(any())).thenReturn(savedSupplyRow);
-        when(savedSupplyRow.getId()).thenReturn(31L);
-        when(savedSupplyRow.sourceSheetRow("row:31")).thenReturn(new SupplySheetDraft.HousingTypeRow("row:31", 31L, null,
-                11L, null, "원문 두꺼비 행복주택", "36A", null, null, YearMonth.of(2027, 3), "1114010100100010000",
-                SupplyCategory.NEW_SUPPLY, 0));
+        when(announcementComplex.getId()).thenReturn(41L);
+        // 공급행은 (공고, 단지명)의 공고 단지에 들고, 그 공고 단지는 고른 단지로 관리자 연결한다.
+        when(announcementComplexes.declare(savedAnnouncement, "원문 두꺼비 행복주택", housingComplex, "admin"))
+                .thenReturn(announcementComplex);
+        ArgumentCaptor<SupplySheetDraft> sheetCaptor = ArgumentCaptor.forClass(SupplySheetDraft.class);
+        when(supplySheets.replace(eq(savedAnnouncement), sheetCaptor.capture()))
+                .thenReturn(new SupplySheetStore.Saved(Map.of("supply-row", 31L), Map.of(), Map.of()));
 
         AdminAnnouncementCreateResponse response = service.register(validRequest(), "admin");
 
         ArgumentCaptor<Announcement> announcementCaptor = ArgumentCaptor.forClass(Announcement.class);
-        ArgumentCaptor<SupplyRow> supplyRowCaptor = ArgumentCaptor.forClass(SupplyRow.class);
         verify(announcementRepository).save(announcementCaptor.capture());
-        verify(supplyRowRepository).save(supplyRowCaptor.capture());
-        // 공급행은 (공고, 단지명)의 공고 단지에 들고, 그 공고 단지는 고른 단지로 관리자 연결한다.
-        verify(announcementComplexes).declare(savedAnnouncement, "원문 두꺼비 행복주택", housingComplex, "admin");
         Announcement announcement = announcementCaptor.getValue();
-        SupplyRow supplyRow = supplyRowCaptor.getValue();
-        ArgumentCaptor<SupplySheetDraft> sheetCaptor = ArgumentCaptor.forClass(SupplySheetDraft.class);
-        verify(supplySheets).replace(eq(savedAnnouncement), sheetCaptor.capture());
         SupplySheetDraft sheet = sheetCaptor.getValue();
+        SupplySheetDraft.HousingTypeRow supplyRow = sheet.housingTypes().getFirst();
         assertAll(
                 // 대상 구분이 없는 등록은 '전체' 칸 하나가 모집수 20을 갖는다.
-                () -> assertEquals(List.of(31L), sheet.housingTypes().stream().map(SupplySheetDraft.HousingTypeRow::supplyRowId).toList()),
+                () -> assertEquals(1, sheet.housingTypes().size()),
                 () -> assertEquals(List.of("전체"), sheet.targets().stream().map(SupplySheetDraft.Target::label).toList()),
                 () -> assertEquals(1, sheet.cells().size()),
                 () -> assertEquals(List.of(SupplyQuota.Kind.WINNER + ":20"), sheet.quotas().stream()
@@ -130,20 +120,17 @@ class AdminAnnouncementRegistrationServiceTest {
                 () -> assertEquals(0L, announcement.getViewCount()),
                 () -> assertNull(announcement.getActualCompetitionRate()),
                 () -> assertNull(announcement.getPredictedCompetitionRate()),
-                () -> assertEquals(
-                        "ADMIN_ENTRY-SUPPLY-ROW-123e4567-e89b-12d3-a456-426614174001",
-                        supplyRow.getSourceSupplyRowIdentifier()
-                ),
-                () -> assertEquals(savedAnnouncement, supplyRow.getAnnouncement()),
-                () -> assertEquals(housingComplex, supplyRow.getHousingComplex()),
-                () -> assertNull(supplyRow.getHousingType()),
-                () -> assertEquals(0, supplyRow.getDisplayOrder()),
-                () -> assertNull(supplyRow.getMatchingFailureReason()),
-                () -> assertEquals("원문 두꺼비 행복주택", supplyRow.getSourceComplexName()),
-                () -> assertEquals("36A", supplyRow.getSourceHousingTypeName()),
-                () -> assertEquals("1114010100100010000", supplyRow.getSupplyPnu()),
-                () -> assertEquals(YearMonth.of(2027, 3), supplyRow.getExpectedMoveInMonth()),
-                () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory())
+                () -> assertNull(supplyRow.supplyRowId()),
+                () -> assertEquals(41L, supplyRow.announcementComplexId()),
+                () -> assertEquals(11L, supplyRow.housingComplexId()),
+                () -> assertNull(supplyRow.housingTypeId()),
+                () -> assertEquals(0, supplyRow.displayOrder()),
+                () -> assertEquals("원문 두꺼비 행복주택", supplyRow.complexName()),
+                () -> assertEquals("36A", supplyRow.typeName()),
+                () -> assertNull(supplyRow.exclusiveArea()),
+                () -> assertEquals("1114010100100010000", supplyRow.supplyPnu()),
+                () -> assertEquals(YearMonth.of(2027, 3), supplyRow.expectedMoveInMonth()),
+                () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.supplyCategory())
         );
     }
 
@@ -154,7 +141,6 @@ class AdminAnnouncementRegistrationServiceTest {
         assertThrows(AdminHousingComplexNotFoundException.class, () -> service.register(validRequest(), "admin"));
 
         verify(announcementRepository, never()).save(any());
-        verify(supplyRowRepository, never()).save(any());
         verify(supplySheets, never()).replace(any(), any());
     }
 
@@ -169,7 +155,6 @@ class AdminAnnouncementRegistrationServiceTest {
 
         verify(housingComplexRepository, never()).findById(any());
         verify(announcementRepository, never()).save(any());
-        verify(supplyRowRepository, never()).save(any());
     }
 
     private AdminAnnouncementCreateRequest validRequest() {

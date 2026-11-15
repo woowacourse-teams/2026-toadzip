@@ -14,18 +14,16 @@ class SupplyNullableValidationTest {
 
     @Test
     void 미확인_공급값은_null로_보존한다() {
-        SupplyRow supplyRow = SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(
                 createAnnouncement(),
                 null,
                 null,
-                "row-1",
                 1,
                 "원문 단지",
                 "36A",
                 "1114010100100010000",
                 null,
-                SupplyCategory.NEW_SUPPLY,
-                "미매칭");
+                SupplyCategory.NEW_SUPPLY);
         LeaseTerms.Amounts amounts = new LeaseTerms.Amounts(null, null, null);
 
         assertAll(
@@ -58,9 +56,9 @@ class SupplyNullableValidationTest {
     void 선택_문자열은_존재하면_비어_있을_수_없다() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> SupplyRow.create(
-                        createAnnouncement(), null, null, "row-2", 1, "원문 단지", "36A",
-                        "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, " ")
+                () -> SupplyRowSeed.create(
+                        createAnnouncement(), null, null, 1, "원문 단지", "36A",
+                        " ", null, SupplyCategory.NEW_SUPPLY)
         );
     }
 

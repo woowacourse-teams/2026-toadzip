@@ -13,8 +13,8 @@ import java.util.List;
 class SupplyValidationTest {
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2, 3})
-    void 공급행의_원천_문자열은_비어_있을_수_없다(int blankFieldIndex) {
+    @ValueSource(ints = {0, 1, 2})
+    void 공급행의_단지명_신청형_이름_PNU는_비어_있을_수_없다(int blankFieldIndex) {
         String[] fields = validSupplyRowStringFields();
         fields[blankFieldIndex] = " ";
 
@@ -64,18 +64,14 @@ class SupplyValidationTest {
             YearMonth expectedMoveInMonth,
             SupplyCategory supplyCategory
     ) {
-        return SupplyRow.create(
-                announcement,
-                null,
-                null,
-                fields[0],
-                displayOrder,
-                fields[1],
-                fields[2],
-                fields[3],
-                expectedMoveInMonth,
-                supplyCategory,
-                "단지 식별자 불일치");
+        Announcement owner = announcement;
+        if (owner == null) {
+            owner = createAnnouncement();
+        }
+        AnnouncementComplex complex = AnnouncementComplex.observe(owner, "원천 단지명", null, null);
+        var values = new SupplySheetDraft.HousingTypeRow("row", null, null, null, null, fields[0], fields[1], null,
+                null, expectedMoveInMonth, fields[2], supplyCategory, displayOrder);
+        return SupplyRow.createFromSheet(announcement, values, complex, null, null);
     }
 
     private Announcement createAnnouncement() {
@@ -101,7 +97,6 @@ class SupplyValidationTest {
 
     private String[] validSupplyRowStringFields() {
         return new String[]{
-                "source-supply-row-id",
                 "원천 단지명",
                 "36A",
                 "1114010100100010000"

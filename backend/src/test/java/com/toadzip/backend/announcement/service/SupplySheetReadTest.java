@@ -9,6 +9,7 @@ import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota.Kind;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Cell;
@@ -43,7 +44,7 @@ class SupplySheetReadTest {
     void 대상별로_나뉘지_않은_행_모집수는_행의_모든_칸이_함께_쓰고_대상_수에_더하지_않는다() {
         Announcement announcement = announcement();
         SupplyRow row = row(announcement, 0);
-        writeSource(announcement, new SourceSupplySheet.Row(row, 10, List.of(target("청년", 3, 5, "1000000", 0),
+        writeSource(announcement, SupplyRowSeed.sourceRow(row, 10, List.of(target("청년", 3, 5, "1000000", 0),
                 target("신혼부부", null, null, null, 1))));
 
         SupplySheet sheet = read(announcement, row);
@@ -65,7 +66,7 @@ class SupplySheetReadTest {
     void 대상이_하나뿐인_행의_나머지는_전체_칸이_함께_써서_그_대상의_수로_읽히지_않는다() {
         Announcement announcement = announcement();
         SupplyRow row = row(announcement, 0);
-        writeSource(announcement, new SourceSupplySheet.Row(row, 10, List.of(target("청년", 3, null, null, 0))));
+        writeSource(announcement, SupplyRowSeed.sourceRow(row, 10, List.of(target("청년", 3, null, null, 0))));
 
         SupplySheet sheet = read(announcement, row);
 
@@ -80,8 +81,8 @@ class SupplySheetReadTest {
         Announcement announcement = announcement();
         SupplyRow plain = row(announcement, 0);
         SupplyRow unknown = row(announcement, 1);
-        writeSource(announcement, new SourceSupplySheet.Row(plain, 8, List.of()),
-                new SourceSupplySheet.Row(unknown, null, List.of()));
+        writeSource(announcement, SupplyRowSeed.sourceRow(plain, 8, List.of()),
+                SupplyRowSeed.sourceRow(unknown, null, List.of()));
 
         SupplySheet sheet = read(announcement, plain, unknown);
 
@@ -99,7 +100,7 @@ class SupplySheetReadTest {
     void 대상별_수의_합이_행_모집수보다_크면_나머지를_만들지_않고_대상별_수의_합을_행_모집수로_읽는다() {
         Announcement announcement = announcement();
         SupplyRow row = row(announcement, 0);
-        writeSource(announcement, new SourceSupplySheet.Row(row, 10, List.of(target("청년", 6, null, null, 0),
+        writeSource(announcement, SupplyRowSeed.sourceRow(row, 10, List.of(target("청년", 6, null, null, 0),
                 target("신혼부부", 6, null, null, 1))));
 
         SupplySheet sheet = read(announcement, row);
@@ -111,7 +112,7 @@ class SupplySheetReadTest {
     void 대상끼리_함께_쓰는_예비자_수는_묶음_하나이고_행의_모든_칸이_써도_함께_쓰는_수로_읽힌다() {
         Announcement announcement = announcement();
         SupplyRow row = row(announcement, 0);
-        store.replace(announcement, SupplySheetDraft.of(List.of(row.sourceSheetRow("h")),
+        store.replace(announcement, SupplySheetDraft.of(List.of(SupplyRowSeed.sheetRow("h", row)),
                 List.of(sheetTarget("t1", "청년(소득 없음)", 0), sheetTarget("t2", "청년(소득 있음)", 1)),
                 List.of(new Cell("c1", "h", "t1", 0), new Cell("c2", "h", "t2", 1)),
                 List.of(new Quota(Kind.RESERVE, 20, List.of("c1", "c2"), false)), List.of()));
@@ -132,7 +133,7 @@ class SupplySheetReadTest {
         Announcement announcement = announcement();
         SupplyRow first = row(announcement, 0);
         SupplyRow second = row(announcement, 1);
-        store.replace(announcement, SupplySheetDraft.of(List.of(first.sourceSheetRow("h1"), second.sourceSheetRow("h2")),
+        store.replace(announcement, SupplySheetDraft.of(List.of(SupplyRowSeed.sheetRow("h1", first), SupplyRowSeed.sheetRow("h2", second)),
                 List.of(sheetTarget("t", "전체", 0)),
                 List.of(new Cell("c1", "h1", "t", 0), new Cell("c2", "h2", "t", 0)),
                 List.of(new Quota(Kind.WINNER, 103, List.of("c1", "c2"), false)), List.of()));
@@ -151,7 +152,7 @@ class SupplySheetReadTest {
     void 행의_일부_대상만_함께_쓰는_모집수는_그_대상들의_함께_쓰는_수로_읽히고_행_모집수에_한_번_든다() {
         Announcement announcement = announcement();
         SupplyRow row = row(announcement, 0);
-        store.replace(announcement, SupplySheetDraft.of(List.of(row.sourceSheetRow("h")),
+        store.replace(announcement, SupplySheetDraft.of(List.of(SupplyRowSeed.sheetRow("h", row)),
                 List.of(sheetTarget("t1", "청년", 0), sheetTarget("t2", "대학생", 1), sheetTarget("t3", "고령자", 2)),
                 List.of(new Cell("c1", "h", "t1", 0), new Cell("c2", "h", "t2", 1), new Cell("c3", "h", "t3", 2)),
                 List.of(new Quota(Kind.WINNER, 10, List.of("c1", "c2"), false),
@@ -173,12 +174,12 @@ class SupplySheetReadTest {
     void 다시_써도_칸_ID는_그대로이고_새_칸은_칸_표가_ID를_준다() {
         Announcement announcement = announcement();
         SupplyRow row = row(announcement, 0);
-        writeSource(announcement, new SourceSupplySheet.Row(row, 10, List.of(target("청년", 3, null, null, 0),
+        writeSource(announcement, SupplyRowSeed.sourceRow(row, 10, List.of(target("청년", 3, null, null, 0),
                 target("신혼부부", 2, null, null, 1))));
         List<Long> before = read(announcement, row).cells(row.getId()).stream().map(SupplySheet.Cell::id).toList();
 
         SupplyRow reloaded = entities.find(SupplyRow.class, row.getId());
-        writeSource(entities.find(Announcement.class, announcement.getId()), new SourceSupplySheet.Row(reloaded, 12,
+        writeSource(entities.find(Announcement.class, announcement.getId()), SupplyRowSeed.sourceRow(reloaded, 12,
                 List.of(target("청년", 3, null, null, 0), target("신혼부부", 2, null, null, 1),
                         target("고령자", 1, null, null, 2))));
         SupplySheet sheet = read(announcement, row);
@@ -230,8 +231,8 @@ class SupplySheetReadTest {
     }
 
     private SupplyRow row(Announcement announcement, int order) {
-        SupplyRow row = SupplyRow.create(announcement, null, null, UUID.randomUUID().toString(), order, "단지",
-                "36A-" + order, null, null, SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow row = SupplyRowSeed.create(entities, announcement, null, null, order, "단지",
+                "36A-" + order, null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         entities.flush();
         return row;

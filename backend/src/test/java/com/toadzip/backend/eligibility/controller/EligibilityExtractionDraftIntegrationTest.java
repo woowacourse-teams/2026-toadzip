@@ -255,11 +255,15 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                 INSERT INTO announcement_attachments (announcement_id, display_order, file_name, file_type, file_url)
                 VALUES (?, 0, ?, 'ANNOUNCEMENT', 'https://apply.lh.or.kr/notice.pdf')
                 """, announcement, FILE);
+        Long complex = jdbc.queryForObject("""
+                INSERT INTO announcement_complexes (announcement_id, source_complex_name, present_in_source, created_at)
+                VALUES (?, '인천석남', true, CURRENT_TIMESTAMP) RETURNING id
+                """, Long.class, announcement);
         Long row = jdbc.queryForObject("""
-                INSERT INTO supply_rows (announcement_id, display_order, source_supply_row_identifier, source_complex_name,
-                    source_housing_type_name, supply_category, announcement_exclusive_area)
-                VALUES (?, 0, ?, '인천석남', '21A', 'NEW_SUPPLY', 21.00) RETURNING id
-                """, Long.class, announcement, "row-" + announcement);
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
+                    supply_category, exclusive_area)
+                VALUES (?, ?, 0, '21A', 'NEW_SUPPLY', 21.00) RETURNING id
+                """, Long.class, announcement, complex);
         cell(announcement, row, "청년", 0, 10);
         cell(announcement, row, "고령자(주거약자용)", 1, 0);
         Map<String, Object> data = new LinkedHashMap<>(Map.of("announcement", Map.of("name", "인천석남 행복주택")));

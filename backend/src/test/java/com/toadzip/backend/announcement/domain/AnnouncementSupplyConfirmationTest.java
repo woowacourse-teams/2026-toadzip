@@ -16,7 +16,7 @@ class AnnouncementSupplyConfirmationTest {
     }
 
     @Test
-    void 관리자가_공급정보를_고치면_확정하고_일정만_확정하거나_공고문만_확인하면_확정하지_않는다() {
+    void 정본_확정은_공급표_쓰기만_하고_관리자_저장_표시는_확정하지_않는다() {
         Announcement schedule = announcement("21026");
         schedule.recordAdminScheduleChange();
         assertThat(schedule.isSupplyConfirmed()).isFalse();
@@ -26,9 +26,10 @@ class AnnouncementSupplyConfirmationTest {
         review.recordAdminDocumentReview();
         assertThat(review.isSupplyConfirmed()).isFalse();
 
+        // 공급정보 저장은 공급표 쓰기(SupplySheetStore.replace)가 확정한다. 저장 표시만으로는 확정하지 않는다.
         Announcement supply = announcement("21027");
         supply.recordAdminSupplyChange();
-        assertThat(supply.isSupplyConfirmed()).isTrue();
+        assertThat(supply.isSupplyConfirmed()).isFalse();
         assertThat(supply.getAdminUpdatedAt()).isNotNull();
     }
 
@@ -41,7 +42,7 @@ class AnnouncementSupplyConfirmationTest {
 
         Announcement confirmed = announcement("21027");
         confirmed.observeAgencySupply("a");
-        confirmed.recordAdminSupplyChange();
+        confirmed.confirmSupply();
         assertThat(confirmed.observeAgencySupply("a")).isFalse();
         assertThat(confirmed.observeAgencySupply("b")).isTrue();
         assertThat(confirmed.isSupplyRecheckRequired()).isTrue();

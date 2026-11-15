@@ -89,8 +89,13 @@ class LhAnnouncementQualityStoreTest {
                         'PERMANENT_RENTAL', 0, DATE '2026-10-10', true, false, false, CURRENT_TIMESTAMP)
                 RETURNING id
                 """).query(Long.class).single();
-        long linkedRow = row(announcementId, "linked", null);
-        row(announcementId, "unlinked", "주택형 후보 모호");
+        long complexId = jdbc.sql("""
+                INSERT INTO announcement_complexes (announcement_id, source_complex_name, present_in_source, created_at)
+                VALUES (:announcementId, '단지', true, CURRENT_TIMESTAMP)
+                RETURNING id
+                """).param("announcementId", announcementId).query(Long.class).single();
+        long linkedRow = row(announcementId, complexId, "36A");
+        row(announcementId, complexId, "46A");
         SupplySheetSeed sheet = new SupplySheetSeed(entityManager);
         sheet.target(entityManager.find(SupplyRow.class, linkedRow), "전체", null, null, null,
                 new BigDecimal("10000000"), BigDecimal.ZERO, null, 1);
@@ -333,15 +338,14 @@ class LhAnnouncementQualityStoreTest {
         }
     }
 
-    private long row(long announcementId, String key, String failureReason) {
+    private long row(long announcementId, long complexId, String typeName) {
         return jdbc.sql("""
                 INSERT INTO supply_rows
-                    (announcement_id, display_order, source_supply_row_identifier, source_complex_name,
-                     source_housing_type_name, supply_pnu, supply_category, matching_failure_reason)
-                VALUES (:announcementId, 1, :key, '단지', '주택형', '0000000000000000000', 'NEW_SUPPLY',
-                        :reason)
+                    (announcement_id, announcement_complex_id, display_order, housing_type_name, supply_pnu,
+                     supply_category)
+                VALUES (:announcementId, :complexId, 1, :typeName, '0000000000000000000', 'NEW_SUPPLY')
                 RETURNING id
-                """).param("announcementId", announcementId).param("key", key)
-                .param("reason", failureReason).query(Long.class).single();
+                """).param("announcementId", announcementId).param("complexId", complexId)
+                .param("typeName", typeName).query(Long.class).single();
     }
 }

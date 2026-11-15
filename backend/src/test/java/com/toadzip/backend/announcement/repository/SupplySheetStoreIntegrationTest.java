@@ -9,6 +9,7 @@ import com.toadzip.backend.announcement.domain.LeaseTerms;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota.Kind;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Cell;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.HousingTypeRow;
@@ -76,8 +77,8 @@ class SupplySheetStoreIntegrationTest {
         assertThat(saved.housingTypes()).containsOnlyKeys("h1", "h2", "h3");
         assertThat(saved.cells()).containsOnlyKeys("c1", "c2", "c3", "c4", "c5");
         assertThat(rows("""
-                SELECT announcement_housing_type_name || '/' || source_housing_type_name FROM supply_rows
-                WHERE announcement_id = ? ORDER BY display_order""")).containsExactly("55A/55A", "55B/55B", "84/84");
+                SELECT housing_type_name || '/' || COALESCE(exclusive_area::text, '-') FROM supply_rows
+                WHERE announcement_id = ? ORDER BY display_order""")).containsExactly("55A/55.1000", "55B/-", "84/-");
         assertThat(rows("""
                 SELECT label || '/' || application_condition FROM announcement_supply_targets
                 WHERE announcement_id = ? ORDER BY display_order""")).containsExactly("청년/", "신혼부부/소득 있음", "고령자/");
@@ -101,56 +102,41 @@ class SupplySheetStoreIntegrationTest {
 
     @Test
     void 기존_공급행은_자연_키로_찾아_고치고_공급표가_다루지_않는_열은_그대로_둔다() {
-        SupplyRow stored = SupplyRow.create(announcement, null, null, "LH:existing", 3, "행복단지2", "84", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow stored = SupplyRowSeed.create(entities, announcement, null, null, 3, "행복단지2", "84", null, null,
+                SupplyCategory.NEW_SUPPLY);
         entities.persist(stored);
         entities.flush();
+        jdbc.update("UPDATE supply_rows SET admin_modified = true WHERE id = ?", stored.getId());
+        entities.clear();
 
         SupplySheetStore.Saved saved = replace(sheet());
 
         assertThat(saved.housingTypes().get("h3")).isEqualTo(stored.getId());
         SupplyRow row = entities.find(SupplyRow.class, stored.getId());
-        assertThat(row.getSourceSupplyRowIdentifier()).isEqualTo("LH:existing");
-        assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("84");
+        assertThat(row.isAdminModified()).isTrue();
+        assertThat(row.getHousingTypeName()).isEqualTo("84");
         assertThat(row.getDisplayOrder()).isEqualTo(2);
         // 공급표에는 draft의 칸만 남는다.
         assertThat(rows("""
                 SELECT st.label FROM supply_row_targets c JOIN announcement_supply_targets st ON st.id = c.supply_target_id
-                JOIN supply_rows r ON r.id = c.supply_row_id WHERE r.announcement_id = ? AND r.source_housing_type_name = '84'
+                JOIN supply_rows r ON r.id = c.supply_row_id WHERE r.announcement_id = ? AND r.housing_type_name = '84'
                 """)).containsExactly("고령자");
     }
 
     @Test
-    void 공고_표시명이_없는_LH_공급행은_원천_주택형명이_신청형_이름과_같으면_그_행을_고친다() {
-        SupplyRow lhRow = SupplyRow.create(announcement, null, null, "LH:26A", 0, "행복단지", "26A", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
-        entities.persist(lhRow);
+    void 기존_주택형은_같은_공고_단지의_같은_신청형_이름일_때만_고친다() {
+        SupplyRow same = SupplyRowSeed.create(entities, announcement, null, null, 0, "행복단지", "26A", null, null,
+                SupplyCategory.NEW_SUPPLY);
+        SupplyRow otherComplex = SupplyRowSeed.create(entities, announcement, null, null, 1, "행복단지2", "26A", null,
+                null, SupplyCategory.NEW_SUPPLY);
+        entities.persist(same);
+        entities.persist(otherComplex);
         entities.flush();
 
         SupplySheetStore.Saved saved = replace(single(named("26A")));
 
-        assertThat(saved.housingTypes().get("h1")).isEqualTo(lhRow.getId());
-        SupplyRow row = entities.find(SupplyRow.class, lhRow.getId());
-        assertThat(row.getSourceHousingTypeName()).isEqualTo("26A");
-        assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("26A");
-    }
-
-    @Test
-    void 공고_표시명이_있는_공급행은_원천_주택형명이_아니라_공고_표시명으로_찾고_원천_주택형명은_그대로_둔다() {
-        SupplyRow labeled = SupplyRow.create(announcement, null, null, "LH:26", 0, "행복단지", "26", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
-        entities.persist(labeled);
-        entities.flush();
-        jdbc.update("UPDATE supply_rows SET announcement_housing_type_name = '26A' WHERE id = ?", labeled.getId());
-        entities.clear();
-
-        SupplySheetStore.Saved byLabel = replace(single(named("26A")));
-        SupplySheetStore.Saved bySource = replace(single(named("26")));
-
-        assertThat(byLabel.housingTypes().get("h1")).isEqualTo(labeled.getId());
-        assertThat(bySource.housingTypes().get("h1")).isNotEqualTo(labeled.getId());
-        assertThat(rows("SELECT source_housing_type_name FROM supply_rows WHERE announcement_id = ?"))
-                .containsExactly("26");
+        assertThat(saved.housingTypes().get("h1")).isEqualTo(same.getId());
+        assertThat(count("SELECT count(*) FROM supply_rows WHERE id = ?", otherComplex.getId())).isZero();
     }
 
     @Test
@@ -179,8 +165,8 @@ class SupplySheetStoreIntegrationTest {
     @Test
     void 다른_공고의_공급행_ID를_가리키면_거부한다() {
         Announcement other = fixtures.announcement();
-        SupplyRow foreign = SupplyRow.create(other, null, null, UUID.randomUUID().toString(), 0, "다른 단지", "36A", null,
-                null, SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow foreign = SupplyRowSeed.create(entities, other, null, null, 0, "다른 단지", "36A", null,
+                null, SupplyCategory.NEW_SUPPLY);
         entities.persist(foreign);
         entities.flush();
         HousingTypeRow pointing = new HousingTypeRow("h1", foreign.getId(), null, null, null, "다른 단지", "36A", null,
@@ -292,7 +278,7 @@ class SupplySheetStoreIntegrationTest {
     /** 이 테스트의 칸 키(c1~c5)를 (신청형 이름, 공급대상 표기)로 되찾는다. */
     private static String cellKey() {
         return """
-                (SELECT CASE COALESCE(r.announcement_housing_type_name, r.source_housing_type_name) || '/' || st.label
+                (SELECT CASE r.housing_type_name || '/' || st.label
                             WHEN '55A/청년' THEN 'c1' WHEN '55A/신혼부부' THEN 'c2' WHEN '55B/청년' THEN 'c3'
                             WHEN '55B/신혼부부' THEN 'c4' WHEN '84/고령자' THEN 'c5' END
                  FROM supply_rows r, announcement_supply_targets st

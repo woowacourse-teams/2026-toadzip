@@ -45,17 +45,15 @@ public class EligibilityDraftSourceRepository {
     public List<Unit> units(long announcementId) {
         Map<Long, UnitRow> rows = new LinkedHashMap<>();
         jdbc.sql("""
-                        SELECT r.id, COALESCE(ac.source_complex_name, r.source_complex_name, hc.name) AS complex_label,
-                               COALESCE(r.announcement_housing_type_name, r.source_housing_type_name, ht.name) AS type_label,
-                               COALESCE(r.announcement_exclusive_area, ht.exclusive_area) AS exclusive_area,
+                        SELECT r.id, ac.source_complex_name AS complex_label, r.housing_type_name AS type_label,
+                               r.exclusive_area,
                                hc.id AS complex_id, ht.id AS type_id, hc.city_county_district_code AS region_code,
                                COALESCE(a.supply_type, hc.supply_type) AS rental_type,
                                t.label AS target, q.household_count AS supply_household_count
                         FROM supply_rows r
                         JOIN announcements a ON a.id = r.announcement_id
-                        LEFT JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
-                        LEFT JOIN housing_complexes hc ON hc.id = COALESCE(r.housing_complex_id, ac.housing_complex_id)
-                            AND NOT hc.admin_deleted
+                        JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
+                        LEFT JOIN housing_complexes hc ON hc.id = ac.housing_complex_id AND NOT hc.admin_deleted
                         LEFT JOIN housing_types ht ON ht.id = r.housing_type_id AND NOT ht.admin_deleted
                         JOIN supply_row_targets c ON c.supply_row_id = r.id
                         JOIN announcement_supply_targets t ON t.id = c.supply_target_id

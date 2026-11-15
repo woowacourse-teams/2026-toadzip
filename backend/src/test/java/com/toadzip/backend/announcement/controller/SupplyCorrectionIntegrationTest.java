@@ -14,11 +14,11 @@ import com.toadzip.backend.admin.quality.service.QualityComparisonService;
 import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -243,7 +243,7 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 지번을_모르는_단지의_주택형은_소재지_PNU를_비워_저장한다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
-        jdbc.update("UPDATE housing_complexes SET pnu = NULL WHERE id = ?", row.getHousingComplex().getId());
+        jdbc.update("UPDATE housing_complexes SET pnu = NULL WHERE id = ?", row.getAnnouncementComplex().getHousingComplex().getId());
         jdbc.update("UPDATE supply_rows SET supply_pnu = NULL WHERE id = ?", row.getId());
         entities.clear();
         var request = request(id);
@@ -269,10 +269,10 @@ class SupplyCorrectionIntegrationTest {
         var again = apply(id, request, preview).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyApplied").value(true));
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_rows WHERE announcement_id = ?", Long.class, id)).isEqualTo(2L);
-        // 첫 적용이 공고 단지 없던 행을 같은 이름의 공고 단지에 넣으며 그 단지 연결을 한 번 기록한다. 재전송은 아무것도 더 쓰지 않는다.
+        // 첫 적용은 공급 보정 이력 한 건만 남긴다. 재전송은 아무것도 더 쓰지 않는다.
         assertThat(jdbc.queryForList("SELECT resource_type || ':' || action FROM admin_data_changes ORDER BY id",
                 String.class))
-                .containsExactlyInAnyOrder("ANNOUNCEMENT_COMPLEX:LINK_BY_ADMIN", "ANNOUNCEMENT:CORRECT_SUPPLY");
+                .containsExactly("ANNOUNCEMENT:CORRECT_SUPPLY");
         again.andExpect(jsonPath("$.data.workspace.sheet.housingTypes.length()").value(2));
     }
 
@@ -295,7 +295,7 @@ class SupplyCorrectionIntegrationTest {
         sheet(dangling).withArray("housingTypes").removeAll();
         rejects(id, dangling, "칸이 가리키는 주택형이나 공급대상이 공급표에 없습니다");
 
-        assertThat(jdbc.queryForObject("SELECT source_housing_type_name FROM supply_rows WHERE id = ?", String.class,
+        assertThat(jdbc.queryForObject("SELECT housing_type_name FROM supply_rows WHERE id = ?", String.class,
                 row.getId())).isEqualTo("26");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_rows WHERE announcement_id = ?", Long.class, id)).isOne();
     }
@@ -315,15 +315,15 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 미리보기_후_연결후보가_바뀌면_적용을_거절한다() throws Exception {
         var row = fixture(); var other = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
-        type(request, 0).put("housingComplexId", other.getHousingComplex().getId())
+        type(request, 0).put("housingComplexId", other.getAnnouncementComplex().getHousingComplex().getId())
                 .put("housingTypeId", other.getHousingType().getId());
         var preview = preview(id, request);
         other.getHousingType().reviseByAdmin("바뀐 공통형명", new BigDecimal("29.1234"), null);
         entities.flush();
 
         apply(id, request, preview).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
-        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM supply_rows WHERE id = ?", Long.class, row.getId()))
-                .isEqualTo(row.getHousingComplex().getId());
+        assertThat(jdbc.queryForObject("SELECT housing_type_id FROM supply_rows WHERE id = ?", Long.class, row.getId()))
+                .isEqualTo(row.getHousingType().getId());
     }
 
     @Test
@@ -331,7 +331,7 @@ class SupplyCorrectionIntegrationTest {
     void 화면을_연_뒤_저장값이_바뀌면_409로_거절하고_어느_확인에서_막혔는지_로그에_남긴다(CapturedOutput output) throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId(); var request = request(id);
         type(request, 0).put("name", "26A");
-        jdbc.update("UPDATE supply_rows SET source_housing_type_name = '다른 관리자 형명' WHERE id = ?", row.getId());
+        jdbc.update("UPDATE supply_rows SET housing_type_name = '다른 관리자 형명' WHERE id = ?", row.getId());
         entities.clear();
 
         mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
@@ -363,7 +363,7 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 확인한_일정이_참조하는_마지막_단지연결을_지울_수_없다() throws Exception {
         var row = fixture();
-        entities.persist(AnnouncementApplicationSchedule.verified(row.getAnnouncement(), row.getHousingComplex(), null,
+        entities.persist(AnnouncementApplicationSchedule.verified(row.getAnnouncement(), row.getAnnouncementComplex().getHousingComplex(), null,
                 ApplicationScheduleState.CONFIRMED, null, LocalDate.of(2026, 10, 19), LocalDate.of(2026, 10, 20), null, null,
                 "https://example.com/notice.pdf", 3));
         entities.flush();
@@ -467,9 +467,9 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 공급행이_연결된_주택형은_공고별_면적을_보호해도_공통_면적을_바꿀_수_없고_이름은_바꿀_수_있다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
-        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId()
+        String path = "/api/admin/housing-complexes/" + row.getAnnouncementComplex().getHousingComplex().getId()
                 + "/housing-types/" + row.getHousingType().getId();
-        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
+        var update = json.createObjectNode().put("version", row.getAnnouncementComplex().getHousingComplex().getVersion())
                 .put("name", "26 공통").put("exclusiveArea", 27).put("impactToken", impactToken(path));
         mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
@@ -477,7 +477,7 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.message").value(containsString("전용면적을 바꿀 수 없습니다")));
         // 공고가 면적을 따로 정해도(공고별 면적) 공통 주택형 면적은 바꿀 수 없다.
         var correction = request(id);
-        type(correction, 0).put("exclusiveArea", new BigDecimal("26.4673"));
+        type(correction, 0).put("exclusiveArea", new BigDecimal("26.5195"));
         apply(id, correction, preview(id, correction)).andExpect(status().isOk());
         update.put("impactToken", impactToken(path));
         mvc.perform(MockMvcRequestBuilders.put(path)
@@ -496,9 +496,9 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 공급행이_가리키는_주택형은_전용면적을_바꿀_수_없다() throws Exception {
         var row = fixture();
-        String path = "/api/admin/housing-complexes/" + row.getHousingComplex().getId()
+        String path = "/api/admin/housing-complexes/" + row.getAnnouncementComplex().getHousingComplex().getId()
                 + "/housing-types/" + row.getHousingType().getId();
-        var update = json.createObjectNode().put("version", row.getHousingComplex().getVersion())
+        var update = json.createObjectNode().put("version", row.getAnnouncementComplex().getHousingComplex().getVersion())
                 .put("name", "26").put("exclusiveArea", 27).put("impactToken", impactToken(path));
         mvc.perform(MockMvcRequestBuilders.put(path)
                 .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
@@ -577,8 +577,6 @@ class SupplyCorrectionIntegrationTest {
     @Test
     void 공고_단지의_모든_주택형을_단지_없이_저장하면_그_공고_단지의_단지_연결을_푼다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
-        AnnouncementComplexSeed.place(entities, row);
-        entities.flush();
         long announcementComplexId = row.getAnnouncementComplex().getId();
         var request = request(id);
         type(request, 0).putNull("housingComplexId").putNull("housingTypeId");
@@ -603,8 +601,8 @@ class SupplyCorrectionIntegrationTest {
         var announcement = fixtures.announcement(); var complex = fixtures.complex("11140", "1114010100");
         var type = HousingType.createFromMyHome(complex, UUID.randomUUID().toString(), "26", new BigDecimal("26.4673"), null);
         entities.persist(type);
-        var row = SupplyRow.create(announcement, complex, type, UUID.randomUUID().toString(), 0, complex.getName(),
-                "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+        var row = SupplyRowSeed.create(entities, announcement, complex, type, 0, complex.getName(),
+                "26", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 10, null, new BigDecimal("100000000"),
                 new BigDecimal("200000"), null, 0);
@@ -614,11 +612,11 @@ class SupplyCorrectionIntegrationTest {
 
     /** 같은 공고·단지의 둘째 주택형(36). */
     private SupplyRow second(SupplyRow first) {
-        var type = HousingType.createFromMyHome(first.getHousingComplex(), UUID.randomUUID().toString(), "36",
+        var type = HousingType.createFromMyHome(first.getAnnouncementComplex().getHousingComplex(), UUID.randomUUID().toString(), "36",
                 new BigDecimal("36.9100"), null);
         entities.persist(type);
-        var row = SupplyRow.create(first.getAnnouncement(), first.getHousingComplex(), type, UUID.randomUUID().toString(), 1,
-                first.getSourceComplexName(), "36", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null);
+        var row = SupplyRowSeed.create(entities, first.getAnnouncement(), first.getAnnouncementComplex().getHousingComplex(), type, 1,
+                first.getAnnouncementComplex().getSourceComplexName(), "36", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 5, null, new BigDecimal("150000000"),
                 new BigDecimal("250000"), null, 0);

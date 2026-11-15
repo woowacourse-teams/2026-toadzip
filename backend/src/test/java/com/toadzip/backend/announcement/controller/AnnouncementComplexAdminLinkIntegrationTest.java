@@ -14,6 +14,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -81,10 +82,10 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         announcementComplex = AnnouncementComplex.observe(announcement, "화성 리츠", "경기도 화성시 리츠로 1", null);
         announcementComplex.linkBySource(autoComplex, ComplexLinkMethod.AUTO, "refinement", AUTO_LINKED_AT);
         entities.persist(announcementComplex);
-        linkedRow = row(autoComplex, autoType, 0);
-        emptyRow = row(null, null, 1);
+        linkedRow = row(autoType, 0);
+        emptyRow = row(null, 1);
         entities.flush();
-        jdbc.update("UPDATE supply_rows SET lh_exclusive_area = 36.91 WHERE id = ?", emptyRow.getId());
+        jdbc.update("UPDATE supply_rows SET exclusive_area = 36.91 WHERE id = ?", emptyRow.getId());
         entities.clear();
     }
 
@@ -102,28 +103,45 @@ class AnnouncementComplexAdminLinkIntegrationTest {
                 .containsEntry("housing_complex_id", chosen.getId()).containsEntry("link_method", "ADMIN")
                 .containsEntry("linked_by", "admin");
         var empty = entities.find(SupplyRow.class, emptyRow.getId());
-        assertThat(empty.getHousingComplex()).extracting(HousingComplex::getId).isEqualTo(chosen.getId());
+        assertThat(empty.getAnnouncementComplex().getHousingComplex()).extracting(HousingComplex::getId)
+                .isEqualTo(chosen.getId());
         assertThat(empty.getHousingType()).extracting(HousingType::getName).isEqualTo("36");
     }
 
     @Test
-    void 연결은_그대로이고_단지_없던_행만_붙여도_그_행의_이전_이후를_이력으로_남긴다() throws Exception {
+    void 면적이_없던_행은_연결을_따라_붙은_주택타입의_면적을_갖는다() throws Exception {
+        jdbc.update("UPDATE supply_rows SET exclusive_area = NULL, supply_area = NULL WHERE id = ?", emptyRow.getId());
+        long id = announcement.getId();
+        var request = request(id);
+        select(typeOf(request, linkedRow), chosen.getId(), chosenType.getId());
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+
+        var stored = jdbc.queryForMap("""
+                SELECT t.name, trim_scale(r.exclusive_area) AS exclusive_area
+                FROM supply_rows r JOIN housing_types t ON t.id = r.housing_type_id WHERE r.id = ?
+                """, emptyRow.getId());
+        assertThat(stored).containsEntry("name", "36").containsEntry("exclusive_area", new BigDecimal("36.91"));
+    }
+
+    @Test
+    void 연결이_그대로면_주택타입을_고르지_않은_행을_다시_채우지_않는다() throws Exception {
         long id = announcement.getId();
         var first = request(id);
         select(typeOf(first, linkedRow), chosen.getId(), chosenType.getId());
         apply(id, first, preview(id, first)).andExpect(status().isOk());
-        // 다음 정제 전 단지가 비어 들어온 같은 공고 단지 행을 흉내 낸다.
-        jdbc.update("UPDATE supply_rows SET housing_complex_id = NULL, housing_type_id = NULL WHERE id = ?", emptyRow.getId());
+        // 관리자가 주택타입 연결을 비워 둔 같은 공고 단지 행을 흉내 낸다. 연결 단지(chosen)에는 같은 이름·면적 주택타입이 있다.
+        jdbc.update("UPDATE supply_rows SET housing_type_id = NULL WHERE id = ?", emptyRow.getId());
         entities.clear();
 
         var second = request(id);
         winner(second, linkedRow, 7);
         apply(id, second, preview(id, second)).andExpect(status().isOk());
 
-        var history = jdbc.queryForList("SELECT after_value FROM admin_data_changes WHERE resource_type = 'ANNOUNCEMENT_COMPLEX' "
-                + "AND resource_id = ? ORDER BY id", String.class, announcementComplex.getId());
-        assertThat(history).hasSize(2);
-        assertThat(history.get(1)).contains("\"id\":" + emptyRow.getId()).contains("\"housingComplexId\":" + chosen.getId());
+        assertThat(jdbc.queryForObject("SELECT housing_type_id FROM supply_rows WHERE id = ?", Long.class,
+                emptyRow.getId())).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_data_changes WHERE resource_type = "
+                + "'ANNOUNCEMENT_COMPLEX' AND resource_id = ?", Long.class, announcementComplex.getId())).isEqualTo(1L);
     }
 
     @Test
@@ -194,8 +212,8 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         other.linkBySource(entities.find(HousingComplex.class, autoComplex.getId()), ComplexLinkMethod.MIGRATED,
                 "migration", Instant.now());
         entities.persist(other);
-        var otherRow = row(entities.find(HousingComplex.class, autoComplex.getId()), null, 2, other);
-        var staleRow = row(entities.find(HousingComplex.class, autoComplex.getId()), null, 3, announcementComplex());
+        var otherRow = row(null, 2, other);
+        var staleRow = row(null, 3, announcementComplex());
         entities.flush(); entities.clear();
         long id = announcement.getId();
         var request = request(id);
@@ -208,12 +226,14 @@ class AnnouncementComplexAdminLinkIntegrationTest {
                 other.getId())).isEqualTo("MIGRATED");
         assertThat(jdbc.queryForObject("SELECT link_method FROM announcement_complexes WHERE id = ?", String.class,
                 announcementComplex.getId())).isEqualTo("ADMIN");
-        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM supply_rows WHERE id = ?", Long.class,
-                otherRow.getId())).isEqualTo(autoComplex.getId());
+        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM announcement_complexes WHERE id = ?", Long.class,
+                other.getId())).isEqualTo(autoComplex.getId());
+        assertThat(jdbc.queryForObject("SELECT housing_type_id FROM supply_rows WHERE id = ?", Long.class,
+                otherRow.getId())).isNull();
     }
 
     @Test
-    void 이번에_단지를_비운_행은_같은_공고_단지의_단지로_다시_채우지_않는다() throws Exception {
+    void 이번에_단지와_주택타입을_비운_행은_주택타입을_다시_채우지_않는다() throws Exception {
         long id = announcement.getId();
         var request = request(id);
         select(typeOf(request, linkedRow), chosen.getId(), chosenType.getId());
@@ -225,27 +245,11 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         winner(clear, emptyRow, 3);
         apply(id, clear, preview(id, clear)).andExpect(status().isOk());
 
-        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM supply_rows WHERE id = ?", Long.class,
+        assertThat(jdbc.queryForObject("SELECT housing_type_id FROM supply_rows WHERE id = ?", Long.class,
                 emptyRow.getId())).isNull();
         // 같은 단지로 다시 확인한 관리자 연결은 바뀌지 않아 이력이 더 쌓이지 않는다.
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_data_changes WHERE resource_type = "
                 + "'ANNOUNCEMENT_COMPLEX' AND resource_id = ?", Long.class, announcementComplex.getId())).isEqualTo(1L);
-    }
-
-    @Test
-    void 공고_단지가_없는_기존_행은_이_저장에서_같은_이름의_공고_단지에_든다() throws Exception {
-        // 공고↔단지 연결은 공고 단지로만 보이므로, PDF 보정 저장은 공고 단지 없는 행을 (공고, 단지명) 공고 단지에 넣는다.
-        var manual = row(entities.find(HousingComplex.class, chosen.getId()), null, 4, null);
-        entities.flush(); entities.clear();
-        long id = announcement.getId();
-        var request = request(id);
-        select(typeOf(request, linkedRow), chosen.getId(), chosenType.getId());
-        winner(request, manual, 5);
-
-        apply(id, request, preview(id, request)).andExpect(status().isOk());
-
-        assertThat(jdbc.queryForObject("SELECT announcement_complex_id FROM supply_rows WHERE id = ?", Long.class,
-                manual.getId())).isEqualTo(announcementComplex.getId());
     }
 
     @Test
@@ -259,8 +263,10 @@ class AnnouncementComplexAdminLinkIntegrationTest {
 
         apply(id, request, preview(id, request)).andExpect(status().isOk());
 
-        var stored = jdbc.queryForMap("SELECT housing_complex_id, housing_type_id FROM supply_rows WHERE id = ?",
-                emptyRow.getId());
+        var stored = jdbc.queryForMap("""
+                SELECT ac.housing_complex_id, r.housing_type_id
+                FROM supply_rows r JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id WHERE r.id = ?
+                """, emptyRow.getId());
         assertThat(stored.get("housing_complex_id")).isEqualTo(chosen.getId());
         assertThat(stored.get("housing_type_id")).isEqualTo(jdbc.queryForObject(
                 "SELECT id FROM housing_types WHERE housing_complex_id = ? AND name = '36'", Long.class, chosen.getId()));
@@ -294,7 +300,7 @@ class AnnouncementComplexAdminLinkIntegrationTest {
                 SELECT ac.source_complex_name || ':' || ac.housing_complex_id || ':' || ac.link_method || ':'
                     || ac.linked_by
                 FROM supply_rows r JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
-                WHERE r.announcement_id = ? AND COALESCE(r.announcement_housing_type_name, r.source_housing_type_name)
+                WHERE r.announcement_id = ? AND r.housing_type_name
                     = '26B'
                 """, String.class, id)).containsExactly("새 공고문 단지:" + chosen.getId() + ":ADMIN:admin");
     }
@@ -334,19 +340,20 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         return type;
     }
 
-    private SupplyRow row(HousingComplex complex, HousingType type, int order) {
-        return row(complex, type, order, announcementComplex);
+    private SupplyRow row(HousingType type, int order) {
+        return row(type, order, announcementComplex);
     }
 
     private AnnouncementComplex announcementComplex() {
         return entities.find(AnnouncementComplex.class, announcementComplex.getId());
     }
 
-    private SupplyRow row(HousingComplex complex, HousingType type, int order, AnnouncementComplex target) {
-        var row = SupplyRow.create(entities.find(Announcement.class, announcement.getId()), complex, type,
-                UUID.randomUUID().toString(), order, "화성 리츠", order == 0 ? "26" : "36", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
-        row.fillAnnouncementComplex(target);
+    private SupplyRow row(HousingType type, int order, AnnouncementComplex target) {
+        String name = "36";
+        if (order == 0) {
+            name = "26";
+        }
+        var row = SupplyRowSeed.create(target, type, order, name, null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         new SupplySheetSeed(entities).row(row, 10);
         return row;
@@ -428,7 +435,7 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     /** 새로 더한 26B 주택형의 공고 단지. */
     private List<Long> newTypeComplexes(long id) {
         return jdbc.queryForList("SELECT announcement_complex_id FROM supply_rows WHERE announcement_id = ? "
-                + "AND COALESCE(announcement_housing_type_name, source_housing_type_name) = '26B'", Long.class, id);
+                + "AND housing_type_name = '26B'", Long.class, id);
     }
 
     private ObjectNode request(long id) throws Exception {

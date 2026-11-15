@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -20,6 +19,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -846,15 +846,14 @@ class AnnouncementQueryRepositoryTest {
                 LocalDate.of(2026, 8, 14)
         ));
         HousingComplex matchingComplex = persist(createHousingComplex("29110", "region-matching-complex"));
-        persist(createSupplyRow(multiSupplyRowAnnouncement, matchingComplex, null, "region-matching-row-1", 0, null));
-        persist(createSupplyRow(multiSupplyRowAnnouncement, matchingComplex, null, "region-matching-row-2", 1, null));
+        persist(createSupplyRow(multiSupplyRowAnnouncement, matchingComplex, null, "원문 단지", 0));
+        persist(createSupplyRow(multiSupplyRowAnnouncement, matchingComplex, null, "원문 단지", 1));
         persist(createSupplyRow(
                 multiSupplyRowAnnouncement,
                 null,
                 null,
-                "region-null-complex-row",
-                2,
-                "단지 매칭 실패"
+                "미연결 단지",
+                2
         ));
 
         Announcement unmatchedAnnouncement = persist(createAnnouncement(
@@ -863,7 +862,7 @@ class AnnouncementQueryRepositoryTest {
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 14)
         ));
-        persist(createSupplyRow(unmatchedAnnouncement, null, null, "region-unmatched-row", 0, "단지 매칭 실패"));
+        persist(createSupplyRow(unmatchedAnnouncement, null, null, "미연결 단지", 0));
 
         List<Announcement> announcements = search(withRegionCodes(Set.of("12210", "29110")), null, null, 20);
 
@@ -920,12 +919,12 @@ class AnnouncementQueryRepositoryTest {
                 List.of(matchedSupplyRowId, unmatchedSupplyRowId, sameDateLeafSupplyRowId),
                 supplyRows.stream().map(SupplyRow::getId).toList()
         );
-        assertTrue(entityManagerFactory.getPersistenceUnitUtil().isLoaded(supplyRows.getFirst(), "housingComplex"));
+        assertTrue(entityManagerFactory.getPersistenceUnitUtil().isLoaded(supplyRows.getFirst(), "announcementComplex"));
         assertTrue(entityManagerFactory.getPersistenceUnitUtil().isLoaded(supplyRows.getFirst(), "housingType"));
         entityManager.clear();
-        assertEquals("조회 단지", supplyRows.getFirst().getHousingComplex().getName());
+        assertEquals("조회 단지", supplyRows.getFirst().getAnnouncementComplex().getHousingComplex().getName());
         assertEquals("36A", supplyRows.getFirst().getHousingType().getName());
-        assertNull(supplyRows.get(1).getHousingComplex());
+        assertNull(supplyRows.get(1).getAnnouncementComplex().getHousingComplex());
         assertNull(supplyRows.get(1).getHousingType());
     }
 
@@ -973,25 +972,22 @@ class AnnouncementQueryRepositoryTest {
                 cancellationAnnouncement,
                 housingComplex,
                 housingType,
-                "matched-row",
-                1,
-                null
+                "원문 단지",
+                1
         ));
         unmatchedSupplyRow = persist(createSupplyRow(
                 cancellationAnnouncement,
                 null,
                 null,
-                "unmatched-row",
-                1,
-                "단지 매칭 실패"
+                "미연결 단지",
+                1
         ));
         sameDateLeafSupplyRow = persist(createSupplyRow(
                 sameDateLeafAnnouncement,
                 null,
                 null,
-                "same-date-row",
-                0,
-                "단지 매칭 실패"
+                "미연결 단지",
+                0
         ));
     }
 
@@ -1363,22 +1359,19 @@ class AnnouncementQueryRepositoryTest {
             Announcement announcement,
             HousingComplex housingComplex,
             HousingType housingType,
-            String sourceIdentifier,
-            int displayOrder,
-            String matchingFailureReason
+            String complexName,
+            int displayOrder
     ) {
-        return AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+        return SupplyRowSeed.create(entityManager,
                 announcement,
                 housingComplex,
                 housingType,
-                sourceIdentifier,
                 displayOrder,
-                "원문 단지",
+                complexName,
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason));
+                SupplyCategory.NEW_SUPPLY);
     }
 
     private <T> T persist(T entity) {

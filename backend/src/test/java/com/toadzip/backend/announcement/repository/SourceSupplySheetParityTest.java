@@ -8,6 +8,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -93,7 +94,7 @@ class SourceSupplySheetParityTest {
         List<SourceSupplySheet.Row> rows = new ArrayList<>();
         for (int order = 0; order < supplies.size(); order++) {
             Supply supply = supplies.get(order);
-            rows.add(new SourceSupplySheet.Row(row(storeWritten, order), supply.total(),
+            rows.add(SupplyRowSeed.sourceRow(row(storeWritten, order), supply.total(),
                     supply.lines().stream().map(line -> new SourceSupplySheet.Target(line.label(), line.condition(),
                             line.winner(), line.reserve(), new LeaseTerms.Amounts(money(line.deposit()),
                                     money(line.rent()), null), line.order())).toList()));
@@ -150,8 +151,8 @@ class SourceSupplySheetParityTest {
     }
 
     private SupplyRow row(Announcement announcement, int order) {
-        SupplyRow row = SupplyRow.create(announcement, null, null, UUID.randomUUID().toString(), order, "단지",
-                "36A-" + order, null, null, SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow row = SupplyRowSeed.create(entities, announcement, null, null, order, "단지",
+                "36A-" + order, null, null, SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         return row;
     }

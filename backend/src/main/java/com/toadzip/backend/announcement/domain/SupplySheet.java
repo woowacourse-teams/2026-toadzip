@@ -63,12 +63,10 @@ public final class SupplySheet {
             Collection<SupplyQuota> quotas, Collection<LeaseTerms> leases) {
         List<Row> visible = supplyRows.stream().filter(row -> !row.isAdminExcluded())
                 .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
-                .map(row -> new Row(row.getId(), row.getSourceComplexName(), row.getSourceHousingTypeName(),
-                        row.displayHousingTypeName(),
-                        row.getAnnouncementComplex() == null ? null : row.getAnnouncementComplex().linkedComplex(),
-                        row.getHousingType(),
-                        row.getExpectedMoveInMonth(), row.getSupplyCategory(), row.effectiveExclusiveArea(),
-                        row.effectiveSupplyArea(), row.isAdminModified()))
+                .map(row -> new Row(row.getId(), row.getAnnouncementComplex().getSourceComplexName(),
+                        row.getHousingTypeName(), row.getHousingTypeName(),
+                        row.getAnnouncementComplex().linkedComplex(), row.getHousingType(), row.getExpectedMoveInMonth(), row.getSupplyCategory(),
+                        row.getExclusiveArea(), row.getSupplyArea(), row.isAdminModified()))
                 .toList();
         return new SupplySheet(visible,
                 cells.stream().map(cell -> new Cell(cell.getId(), cell.getSupplyRow().getId(),
@@ -196,8 +194,9 @@ public final class SupplySheet {
     }
 
     /**
-     * 보이는 공급행 하나. 이름·면적은 화면에 보일 값이다(공고 표시명, 면적 보정이 없으면 연결 주택타입 값). 원천 단지명·형명은 공개 응답의
-     * 원문 칸이다. 단지는 행의 공고 단지가 이은 단지다(공고↔단지 연결은 공고 단지로 정한다).
+     * 보이는 공급행 하나. 이름·면적은 화면에 보일 값이다. 정본은 공고 단지 이름과 행의 신청형 이름·면적이고, 준비 데이터는 원천 형명과
+     * 임시로 고른 주택타입 값이다({@link AgencySupplySheet}). 원천 단지명·형명은 공개 응답의 원문 칸이다. 단지는 공고 단지가 이은
+     * 단지다(공고↔단지 연결은 공고 단지로 정한다).
      */
     public record Row(long id, String sourceComplexName, String sourceHousingTypeName, String displayTypeName,
             HousingComplex complex, HousingType housingType, YearMonth expectedMoveInMonth,

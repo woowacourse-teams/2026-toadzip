@@ -306,18 +306,14 @@ class IngestFailureReviewControllerIntegrationTest {
                        (:notice, '미연결 단지', true, NULL, NULL, CURRENT_TIMESTAMP)
                 """).param("notice", notice).param("complex", complexId).update();
         jdbc.sql("""
-                INSERT INTO supply_rows (announcement_id, housing_complex_id, announcement_complex_id,
-                    source_supply_row_identifier, display_order, source_complex_name, source_housing_type_name,
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
                     supply_pnu, supply_category)
-                SELECT :notice, row_value.complex_id, ac.id, row_value.identifier, row_value.display_order,
-                       ac.source_complex_name, row_value.type_name, 'pnu', 'NEW_SUPPLY'
-                FROM (VALUES (CAST(:complex AS BIGINT), 'row-1', 1, '단지', '36형'),
-                             (CAST(:complex AS BIGINT), 'row-2', 2, '단지', '46형'),
-                             (CAST(NULL AS BIGINT), 'row-3', 3, '미연결 단지', '56형'))
-                    row_value(complex_id, identifier, display_order, complex_name, type_name)
+                SELECT :notice, ac.id, row_value.display_order, row_value.type_name, 'pnu', 'NEW_SUPPLY'
+                FROM (VALUES (1, '단지', '36형'), (2, '단지', '46형'), (3, '미연결 단지', '56형'))
+                    row_value(display_order, complex_name, type_name)
                 JOIN announcement_complexes ac ON ac.announcement_id = :notice
                     AND ac.source_complex_name = row_value.complex_name
-                """).param("notice", notice).param("complex", complexId).update();
+                """).param("notice", notice).update();
         jdbc.sql("""
                 INSERT INTO announcement_application_schedules (announcement_id, state, start_date, end_date,
                     source_url, source_page)

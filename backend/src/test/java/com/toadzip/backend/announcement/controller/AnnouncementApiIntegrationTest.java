@@ -12,7 +12,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
@@ -25,6 +24,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -1004,18 +1004,16 @@ class AnnouncementApiIntegrationTest {
             int displayOrder,
             String matchingFailureReason
     ) {
-        return AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
+        return SupplyRowSeed.create(entityManager,
                 announcement,
                 housingComplex,
                 housingType,
-                sourceIdentifier,
                 displayOrder,
                 "원문 단지 " + sourceIdentifier,
                 "원문 주택형 " + sourceIdentifier,
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason));
+                SupplyCategory.NEW_SUPPLY);
     }
 
     private void persistSearchSupplyRows(HousingComplex housingComplex, Announcement... announcements) {

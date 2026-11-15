@@ -16,110 +16,22 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
-import java.time.YearMonth;
 import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * 공고 공급표(정본)의 주택형(신청형) 한 줄. 공고 단지에 들고, 이름·전용·공급면적은 공고문 값이다. 단지는 공고 단지가 이은 단지이고
+ * ({@link AnnouncementComplex#linkedComplex}), 단지 주택타입 연결은 따로 둔다(같은 면적이어도 같은 형이 아니다).
+ * 공고 공급표 쓰기(SupplySheetStore)만 만들고 고친다.
+ */
 @Getter
 @Entity
-@Table(
-        name = "supply_rows",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_supply_row_source_identifier",
-                columnNames = "source_supply_row_identifier"
-        )
-)
+@Table(name = "supply_rows")
 @NoArgsConstructor(access = PROTECTED)
 public class SupplyRow {
-
-    @Column(nullable = false)
-    @org.hibernate.annotations.ColumnDefault("false")
-    private boolean adminModified;
-
-    /** 관리자가 고친 표기값은 그대로 두고, 저장한 매칭이나 관리자 선택의 단지·주택형으로 연결만 바꾼다. */
-    public boolean relinkByAdminMatch(HousingComplex complex, HousingType type) {
-        if (announcement.isAdminDeleted()) {
-            return false;
-        }
-        if (Objects.equals(idOf(housingComplex), idOf(complex)) && Objects.equals(idOf(housingType), idOf(type))
-                && matchingFailureReason == null) {
-            return false;
-        }
-        housingComplex = complex;
-        housingType = type;
-        matchingFailureReason = null;
-        return true;
-    }
-
-    private static Long idOf(HousingComplex complex) {
-        return complex == null ? null : complex.getId();
-    }
-
-    private static Long idOf(HousingType type) {
-        return type == null ? null : type.getId();
-    }
-
-    @Column(nullable = false)
-    @org.hibernate.annotations.ColumnDefault("false")
-    private boolean adminExcluded;
-
-    @Column(nullable = false)
-    @org.hibernate.annotations.ColumnDefault("false")
-    private boolean areaOverride;
-
-    @Column(precision = 10, scale = 4)
-    private BigDecimal announcementExclusiveArea;
-
-    @Column(precision = 10, scale = 4)
-    private BigDecimal announcementSupplyArea;
-
-    public void correctPresentation(boolean excluded, int order, boolean overrideArea,
-            BigDecimal exclusiveArea, BigDecimal supplyArea) {
-        validateNonNegative(order, "표시 순서");
-        if ((exclusiveArea != null && exclusiveArea.signum() < 0)
-                || (supplyArea != null && supplyArea.signum() < 0)) {
-            throw new IllegalArgumentException("면적은 음수일 수 없습니다.");
-        }
-        adminExcluded = excluded;
-        displayOrder = order;
-        areaOverride = overrideArea;
-        announcementExclusiveArea = exclusiveArea;
-        announcementSupplyArea = supplyArea;
-        adminModified = true;
-    }
-
-    public void reorder(int order) {
-        validateNonNegative(order, "표시 순서");
-        displayOrder = order;
-    }
-
-    public BigDecimal effectiveExclusiveArea() {
-        if (areaOverride) { return announcementExclusiveArea; }
-        if (housingType == null) { return null; }
-        return housingType.getExclusiveArea();
-    }
-
-    public BigDecimal effectiveSupplyArea() {
-        if (areaOverride) { return announcementSupplyArea; }
-        if (housingType == null) { return null; }
-        return housingType.getSupplyArea();
-    }
-
-    /** 공개 화면의 주택형 이름은 공고 표시명 → 단지 주택형명 → 원천 주택형명 순서로 정한다. */
-    public String displayHousingTypeName() {
-        if (announcementHousingTypeName != null) { return announcementHousingTypeName; }
-        return defaultHousingTypeName();
-    }
-
-    private String defaultHousingTypeName() {
-        if (housingType != null) { return housingType.getName(); }
-        return sourceHousingTypeName;
-    }
-
-    private String announcementHousingTypeName;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -129,41 +41,22 @@ public class SupplyRow {
     @JoinColumn(name = "announcement_id", nullable = false)
     private Announcement announcement;
 
-    @ManyToOne(fetch = LAZY)
-    @JoinColumn(name = "housing_complex_id")
-    private HousingComplex housingComplex;
+    @ManyToOne(fetch = LAZY, optional = false)
+    @JoinColumn(name = "announcement_complex_id", nullable = false)
+    private AnnouncementComplex announcementComplex;
 
     @ManyToOne(fetch = LAZY)
     @JoinColumn(name = "housing_type_id")
     private HousingType housingType;
 
     @Column(nullable = false)
-    private String sourceSupplyRowIdentifier;
+    private String housingTypeName;
 
-    @Column(nullable = false)
-    private int displayOrder;
-
-    @Column(nullable = false)
-    private String sourceComplexName;
-
-    @Column(nullable = false)
-    private String sourceHousingTypeName;
-
-    /** LH 원천으로 만든 공급행은 공급 PNU가 없을 수 있다. */
-    private String supplyPnu;
-
-    /** 이 공급행이 속한 공고 단지. LH 원천으로 만든 공급행만 채워지고, 공고 단지를 모르는 행은 비어 있다. */
-    @ManyToOne(fetch = LAZY)
-    @JoinColumn(name = "announcement_complex_id")
-    private AnnouncementComplex announcementComplex;
-
-    /** LH가 준 대표 전용면적. 함께 모집하는 면적 중 하나이고 어느 면적을 고르는지는 일정하지 않다. */
     @Column(precision = 10, scale = 4)
-    private BigDecimal lhExclusiveArea;
+    private BigDecimal exclusiveArea;
 
-    @Enumerated(STRING)
-    @Column(length = 30)
-    private LhSupplyMatchStatus lhMatchStatus;
+    @Column(precision = 10, scale = 4)
+    private BigDecimal supplyArea;
 
     @Convert(converter = YearMonthAttributeConverter.class)
     private YearMonth expectedMoveInMonth;
@@ -172,184 +65,100 @@ public class SupplyRow {
     @Column(nullable = false)
     private SupplyCategory supplyCategory;
 
-    private String matchingFailureReason;
+    private String supplyPnu;
 
-    /**
-     * 이 공급행을 만든 첫 LH 공급 원천 행 식별자. LH 행이 붙는 공급행은 저장하지 않고 면적으로 계산하며(LhRowAttachments),
-     * 이 값은 면적이 없는 LH 줄의 공급행과 단지 연결 이행이 읽는다.
-     */
-    private String lhSourceSupplyRowIdentifier;
+    @Column(nullable = false)
+    private int displayOrder;
 
-    private SupplyRow(
-            Announcement announcement,
-            HousingComplex housingComplex,
-            HousingType housingType,
-            String sourceSupplyRowIdentifier,
-            int displayOrder,
-            String sourceComplexName,
-            String sourceHousingTypeName,
-            String supplyPnu,
-            YearMonth expectedMoveInMonth,
-            SupplyCategory supplyCategory,
-            String matchingFailureReason
-    ) {
-        validateRequired(announcement, "공고");
-        validateNotBlank(sourceSupplyRowIdentifier, "원천 공급행 식별자");
-        validateNonNegative(displayOrder, "표시순서");
-        validateNotBlank(sourceComplexName, "원천 단지명");
-        validateNotBlank(sourceHousingTypeName, "원천 주택형명");
-        validateNotBlankIfPresent(supplyPnu, "공급 PNU");
-        validateRequired(supplyCategory, "공급구분");
-        validateNotBlankIfPresent(matchingFailureReason, "매칭 실패 사유");
-        // 공고 공급표(정본) 행이 생기면 그 공고는 정본을 보인다. 확정 전 공고에 정본 행이 남아 준비 데이터와 섞이지 않게 한다.
-        announcement.confirmSupply();
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminExcluded;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
+    private SupplyRow(Announcement announcement) {
+        if (announcement == null) {
+            throw new IllegalArgumentException("공고는 필수다.");
+        }
         this.announcement = announcement;
-        this.housingComplex = housingComplex;
-        this.housingType = housingType;
-        this.sourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-        this.displayOrder = displayOrder;
-        this.sourceComplexName = sourceComplexName;
-        this.sourceHousingTypeName = sourceHousingTypeName;
-        this.supplyPnu = supplyPnu;
-        this.expectedMoveInMonth = expectedMoveInMonth;
-        this.supplyCategory = supplyCategory;
-        this.matchingFailureReason = matchingFailureReason;
     }
 
-    public static SupplyRow create(
-            Announcement announcement,
-            HousingComplex housingComplex,
-            HousingType housingType,
-            String sourceSupplyRowIdentifier,
-            int displayOrder,
-            String sourceComplexName,
-            String sourceHousingTypeName,
-            String supplyPnu,
-            YearMonth expectedMoveInMonth,
-            SupplyCategory supplyCategory,
-            String matchingFailureReason
-    ) {
-        return new SupplyRow(
-                announcement,
-                housingComplex,
-                housingType,
-                sourceSupplyRowIdentifier,
-                displayOrder,
-                sourceComplexName,
-                sourceHousingTypeName,
-                supplyPnu,
-                expectedMoveInMonth,
-                supplyCategory,
-                matchingFailureReason
-        );
-    }
-
-    /**
-     * 공고 공급표 쓰기(SupplySheetStore)가 처음 만드는 주택형. 원천 주택형명은 필수라 신청형 이름으로 채우고, 공급표가 정하지 않는 열은
-     * 비워 둔다.
-     */
-    public static SupplyRow createFromSheet(Announcement announcement, String sourceSupplyRowIdentifier,
-            SupplySheetDraft.HousingTypeRow values, AnnouncementComplex complex, HousingComplex housing,
-            HousingType type) {
-        SupplyRow row = new SupplyRow(announcement, housing, type, sourceSupplyRowIdentifier, values.displayOrder(),
-                values.complexName(), values.typeName(), values.supplyPnu(), values.expectedMoveInMonth(),
-                values.supplyCategory(), null);
+    /** 공고 공급표 쓰기가 처음 만드는 주택형. 값은 {@link #applySheet}와 같다. */
+    public static SupplyRow createFromSheet(Announcement announcement, SupplySheetDraft.HousingTypeRow values,
+            AnnouncementComplex complex, HousingComplex housing, HousingType type) {
+        SupplyRow row = new SupplyRow(announcement);
         row.applySheet(values, complex, housing, type);
         return row;
     }
 
     /**
-     * 공고 공급표가 정한 주택형 값으로 맞춘다. 신청형 이름은 공고문 이름이므로 공고 표시명에 쓴다. 원천 주택형명은 정제가 소유하는 매칭
-     * 기준이라 바꾸지 않고, 공급표가 다루지 않는 열(관리자 제외·수정 표시, LH 대응)도 그대로 둔다.
+     * 공고 공급표가 정한 주택형 값으로 맞춘다. 공고 단지는 이 공고의 것이어야 하고, 주택타입은 공급표가 고른 단지(housing)의
+     * 주택타입이어야 한다. 단지 자체는 공고 단지의 연결로 정하므로 행에 두지 않는다. 공급표가 면적을 주지 않으면 연결 주택타입의
+     * 면적을 공고 면적으로 쓴다. 공급표가 다루지 않는 열(관리자 제외·수정 표시)은 그대로 둔다.
      */
     public void applySheet(SupplySheetDraft.HousingTypeRow values, AnnouncementComplex complex, HousingComplex housing,
             HousingType type) {
-        if (complex != null && !complex.getAnnouncement().getId().equals(announcement.getId())) {
+        if (complex == null) {
+            throw new IllegalArgumentException("공고 단지는 필수다.");
+        }
+        if (!sameAnnouncement(complex.getAnnouncement())) {
             throw new IllegalArgumentException("다른 공고의 공고 단지는 연결할 수 없다.");
         }
         if (type != null && (housing == null || !Objects.equals(idOf(type.getHousingComplex()), idOf(housing)))) {
             throw new IllegalArgumentException("주택형은 연결한 단지의 주택형이어야 한다.");
         }
         announcementComplex = complex;
-        housingComplex = housing;
         housingType = type;
-        sourceComplexName = values.complexName();
-        announcementHousingTypeName = values.typeName();
-        // 면적 보정이 전후 모두 없으면 공고 면적 칸을 그대로 둔다.
-        if (areaOverride || values.overridesArea()) {
-            areaOverride = values.overridesArea();
-            announcementExclusiveArea = values.exclusiveArea();
-            announcementSupplyArea = values.supplyArea();
-        }
+        housingTypeName = values.typeName();
+        applyAreas(values, type);
         expectedMoveInMonth = values.expectedMoveInMonth();
         supplyPnu = values.supplyPnu();
         supplyCategory = values.supplyCategory();
         displayOrder = values.displayOrder();
     }
 
-    /**
-     * 정제·등록이 쓴 이 공급행을 지금 값 그대로 공급표 주택형으로 옮긴다({@link SourceSupplySheet}). 신청형 이름은 원천 주택형명이다.
-     * 원천 형명이 바뀌면 신청형 이름도 따라가도록 앞서 적힌 공고 표시명을 쓰지 않는다.
-     * 관리자가 고친 행만 공급표 보기와 같은 이름(공고 표시명, 없으면 원천 주택형명)을 지킨다.
-     */
-    public SupplySheetDraft.HousingTypeRow sourceSheetRow(String key) {
-        String typeName = (adminModified ? Objects.requireNonNullElse(announcementHousingTypeName, sourceHousingTypeName)
-                : sourceHousingTypeName).strip();
-        return new SupplySheetDraft.HousingTypeRow(key, id, idOf(announcementComplex), idOf(housingComplex),
-                idOf(housingType), sourceComplexName, typeName, areaOverride ? announcementExclusiveArea : null,
-                areaOverride ? announcementSupplyArea : null, expectedMoveInMonth, supplyPnu, supplyCategory,
-                displayOrder);
+    /** 공급표의 같은 주택형이면 true다: 같은 공고 단지의 같은 신청형 이름. */
+    public boolean sameSheetHousingType(AnnouncementComplex complex, String typeName) {
+        return Objects.equals(announcementComplex.getId(), complex.getId()) && housingTypeName.strip().equals(typeName);
     }
 
     /**
-     * 공급표의 같은 주택형이면 true다. 신청형 이름(공고 표시명, 없으면 원천 주택형명)과, 공고 단지가 있으면 공고 단지, 없으면 단지명으로
-     * 가린다.
+     * 관리자가 공고 단지를 다른 단지로 이으면 표기값은 그대로 두고 주택타입 연결만 그 단지의 주택타입으로 바꾼다. 면적이 없던 행은
+     * 공급표 쓰기({@link #applyAreas})처럼 새로 붙은 주택타입의 면적을 갖는다.
      */
-    public boolean sameSheetHousingType(SupplySheetDraft.HousingTypeRow values) {
-        String applicationTypeName = Objects.requireNonNullElse(announcementHousingTypeName, sourceHousingTypeName);
-        if (!applicationTypeName.strip().equals(values.typeName())) {
+    public boolean relinkByAdminMatch(HousingType type) {
+        if (announcement.isAdminDeleted() || Objects.equals(idOf(housingType), idOf(type))) {
             return false;
         }
-        if (announcementComplex != null || values.announcementComplexId() != null) {
-            return Objects.equals(idOf(announcementComplex), values.announcementComplexId());
+        housingType = type;
+        if (type != null && exclusiveArea == null && supplyArea == null) {
+            exclusiveArea = type.getExclusiveArea();
+            supplyArea = type.getSupplyArea();
         }
-        return sourceComplexName.strip().equals(values.complexName());
-    }
-
-    /** 비어 있는 공고 단지 참조만 채운다. 관리자 등록·JSON 등록이 새 행을 (공고, 단지명) 공고 단지에 이것으로 넣는다. */
-    public boolean fillAnnouncementComplex(AnnouncementComplex complex) {
-        if (announcementComplex != null || complex == null) {
-            return false;
-        }
-        announcementComplex = complex;
         return true;
     }
 
-    private static Long idOf(AnnouncementComplex complex) {
+    private boolean sameAnnouncement(Announcement other) {
+        return other == announcement || other.getId() != null && other.getId().equals(announcement.getId());
+    }
+
+    private void applyAreas(SupplySheetDraft.HousingTypeRow values, HousingType type) {
+        if (values.overridesArea() || type == null) {
+            exclusiveArea = values.exclusiveArea();
+            supplyArea = values.supplyArea();
+            return;
+        }
+        exclusiveArea = type.getExclusiveArea();
+        supplyArea = type.getSupplyArea();
+    }
+
+    private static Long idOf(HousingComplex complex) {
         return complex == null ? null : complex.getId();
     }
 
-    private void validateRequired(Object value, String fieldName) {
-        if (value == null) {
-            throw new IllegalArgumentException(fieldName + "은 필수다.");
-        }
-    }
-
-    private void validateNotBlank(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + "은 필수다.");
-        }
-    }
-
-    private void validateNonNegative(int value, String fieldName) {
-        if (value < 0) {
-            throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
-        }
-    }
-
-    private void validateNotBlankIfPresent(String value, String fieldName) {
-        if (value != null && value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + "은 비어 있을 수 없다.");
-        }
+    private static Long idOf(HousingType type) {
+        return type == null ? null : type.getId();
     }
 }

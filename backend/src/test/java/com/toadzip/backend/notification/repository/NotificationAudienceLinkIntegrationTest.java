@@ -47,7 +47,8 @@ class NotificationAudienceLinkIntegrationTest {
         HousingComplex excluded = fixtures.complex("11140", "1114010200");
         fixtures.link(announcement, kept);
         fixtures.link(announcement, excluded);
-        jdbc.update("UPDATE supply_rows SET admin_excluded = true WHERE housing_complex_id = ?", excluded.getId());
+        jdbc.update("UPDATE supply_rows r SET admin_excluded = true FROM announcement_complexes ac"
+                + " WHERE ac.id = r.announcement_complex_id AND ac.housing_complex_id = ?", excluded.getId());
 
         assertThat(audiences.snapshot(announcement.getId(), "제목").complexes()).extracting(ComplexTarget::id)
                 .containsExactly(kept.getId());

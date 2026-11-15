@@ -11,6 +11,7 @@ import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota.Kind;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.repository.SupplySheetStore;
@@ -68,11 +69,11 @@ class AnnouncementSuppliesIntegrationTest {
         Announcement confirmed = announcement();
         AnnouncementComplex complex = complex(confirmed, "행복단지");
         line(confirmed, complex, "LH:1", 0, "26A(청년)", 5, "1000", "10");
-        SupplyRow row = SupplyRow.create(confirmed, null, null, "MANUAL:1", 0, "행복단지", "26A", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow row = SupplyRowSeed.create(entities, confirmed, null, null, 0, "행복단지", "26A", null, null,
+                SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         entities.flush();
-        store.replace(confirmed, SourceSupplySheet.draft(List.of(new SourceSupplySheet.Row(row, 9, List.of(
+        store.replace(confirmed, SourceSupplySheet.draft(List.of(SupplyRowSeed.sourceRow(row, 9, List.of(
                 new SourceSupplySheet.Target("청년", null, 9, null,
                         new LeaseTerms.Amounts(new BigDecimal("2000"), null, null), 0))))));
 
@@ -88,11 +89,11 @@ class AnnouncementSuppliesIntegrationTest {
         Announcement emptied = announcement();
         AnnouncementComplex complex = complex(emptied, "행복단지");
         line(emptied, complex, "LH:1", 0, "26A(청년)", 5, "1000", "10");
-        SupplyRow row = SupplyRow.create(emptied, null, null, "MANUAL:1", 0, "행복단지", "26A", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow row = SupplyRowSeed.create(entities, emptied, null, null, 0, "행복단지", "26A", null, null,
+                SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         entities.flush();
-        store.replace(emptied, SourceSupplySheet.draft(List.of(new SourceSupplySheet.Row(row, 9, List.of()))));
+        store.replace(emptied, SourceSupplySheet.draft(List.of(SupplyRowSeed.sourceRow(row, 9, List.of()))));
         store.replace(emptied, SupplySheetDraft.of(List.of(), List.of(), List.of(), List.of(), List.of()));
 
         AnnouncementSupplies.AnnouncementSupply supply = read(emptied);
@@ -107,11 +108,11 @@ class AnnouncementSuppliesIntegrationTest {
         Announcement staged = announcement();
         line(staged, complex(staged, "준비단지"), "LH:1", 0, "36A", 4, null, null);
         Announcement confirmed = announcement();
-        SupplyRow row = SupplyRow.create(confirmed, null, null, "MANUAL:1", 0, "정본단지", "26A", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
+        SupplyRow row = SupplyRowSeed.create(entities, confirmed, null, null, 0, "정본단지", "26A", null, null,
+                SupplyCategory.NEW_SUPPLY);
         entities.persist(row);
         entities.flush();
-        store.replace(confirmed, SourceSupplySheet.draft(List.of(new SourceSupplySheet.Row(row, 2, List.of()))));
+        store.replace(confirmed, SourceSupplySheet.draft(List.of(SupplyRowSeed.sourceRow(row, 2, List.of()))));
         Announcement nothing = announcement();
         entities.flush();
         entities.clear();

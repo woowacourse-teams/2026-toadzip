@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.repository.AgencySupplyLineRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -71,8 +72,8 @@ class PdfExtractionInputsIntegrationTest {
     }
 
     private SupplyRow frame(Announcement announcement, String key, int order, String typeName, Integer count) {
-        SupplyRow row = supplyRows.save(SupplyRow.create(announcement, null, null, key, order, "다산", typeName, null,
-                null, SupplyCategory.NEW_SUPPLY, null));
+        SupplyRow row = supplyRows.save(SupplyRowSeed.create(entities, announcement, null, null, order, "다산", typeName, null,
+                null, SupplyCategory.NEW_SUPPLY));
         new SupplySheetSeed(entities).row(row, count);
         return row;
     }

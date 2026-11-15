@@ -19,14 +19,4 @@ class LhSourceIdentifierTest {
         assertThat(LhSourceIdentifier.isLhSourceOfAny("LH:PAN-10:SUPPLY:0", Set.of("PAN-1"))).isFalse();
         assertThat(LhSourceIdentifier.isLhSourceOfAny(null, Set.of("PAN-1"))).isFalse();
     }
-
-    @Test
-    void 공고에_LH_공급으로_만든_공급행은_그_공고의_것으로만_판정한다() {
-        String row = LhSourceIdentifier.supplyRow("21026", "PAN-1", 3);
-
-        assertThat(row).isEqualTo("21026:LH:PAN-1:3");
-        assertThat(LhSourceIdentifier.isSupplyRowOf("21026", row)).isTrue();
-        assertThat(LhSourceIdentifier.isSupplyRowOf("2102", row)).isFalse();
-        assertThat(LhSourceIdentifier.isSupplyRowOf("21026", "21026")).isFalse();
-    }
 }
