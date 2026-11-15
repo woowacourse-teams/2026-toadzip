@@ -5,8 +5,8 @@ import dataclasses
 
 import pytest
 
-from ai_worker import pages, supply_assembly, tables
-from conftest import evidence_at, model_supply, readable
+from ai_worker import checks, pages, supply_assembly, tables
+from conftest import evidence_at, model_stage, model_supply, readable, sheet_answer
 
 
 def supplied(selected, *rows, shared=(), source_names=()):
@@ -1080,3 +1080,21 @@ def test_same_name_targets_without_different_conditions_do_not_share_a_count_row
                                           (5, "주거급여 수급자", {}))]
 
     assert supplied(selected, *items).sheet["quotas"] == []
+
+
+def test_units_with_the_same_name_are_told_apart_in_warnings_by_their_first_source_row():
+    # 41번 공고 모양: 원문에서 단지명을 확인하지 못한 두 단지의 26.37은 이름이 같아 같은 경고 문구가 두 번 나왔다.
+    selected = table_pages([["단지명", "주택형", "공급대상", "모집호수"], ["", "26.37", "청년", "3"],
+                            ["", "26.37", "고령자", "4"]], page=2)
+    supply = model_stage(selected, sheet_answer({"data": {"rows": [
+        {"rowIds": ["P2:T1:R2"], "complexName": "가단지", "housingType": "26.37", "target": "청년", "recruitmentCount": 3},
+        {"rowIds": ["P2:T1:R3"], "complexName": "나단지", "housingType": "26.37", "target": "고령자", "recruitmentCount": 4},
+    ]}}))
+    supply.tree["data"]["announcement"] = {}
+
+    warnings = checks.review(supply.tree, supply.sheet, [1, 2], ["", ""], [], 0)
+
+    assert [warning for warning in warnings if "면적 숫자만" in warning] == [
+        "26.37(원본 2쪽 표 1의 2행) 주택형 이름: 면적 숫자만 있음(26.37)",
+        "26.37(원본 2쪽 표 1의 3행) 주택형 이름: 면적 숫자만 있음(26.37)",
+    ]

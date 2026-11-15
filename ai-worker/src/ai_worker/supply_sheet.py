@@ -43,7 +43,8 @@ class Unit:
     """모집 단위: 모집수를 정하는 주택형과 그 공급대상들. 보통 주택형 하나이고, 모집 칸 하나를 함께 쓰는 주택형들은
     주택형 여럿(parts)인 단위 하나다. name은 단위 표기로, 주택형이 여럿이면 공통 형명(49)이다. values는 모집수(TOTAL)·면적
     (AREA_FIELDS)·입주 예정 연월(expectedMoveInMonth)이다. house_types는 주택형 하나가 묶은 단지 주택타입(84 = 84A·84B)의
-    이름과 면적, source_row는 GH 공급행 틀 행 식별자다."""
+    이름과 면적, source_row는 GH 공급행 틀 행 식별자다. place는 이름이 같은 다른 단위와 경고에서 가릴 원문 자리(원본 2쪽 표 1의 4행)로,
+    이름이 겹칠 때만 있다."""
 
     complex_name: object
     name: object
@@ -52,6 +53,7 @@ class Unit:
     house_types: list[dict] = field(default_factory=list)
     parts: list[HousingType] = field(default_factory=list)
     source_row: str | None = None
+    place: str | None = None
 
     def areas(self) -> list[object]:
         """단위 면적과 그 주택형·주택타입의 전용면적들. LH 검산이 쓴다."""
@@ -67,7 +69,8 @@ class Unit:
     def label(self) -> str:
         """경고에서 관리자가 알아볼 이름(단지 주택형)."""
         words = [text for text in (_text(self.complex_name), _text(self.name)) if text]
-        return " ".join(words) or "이름을 확인하지 못한 주택형"
+        name = " ".join(words) or "이름을 확인하지 못한 주택형"
+        return f"{name}({self.place})" if self.place else name
 
 
 @dataclass(eq=False)
@@ -345,8 +348,6 @@ class _Emit:
         if isinstance(owner, HousingType):
             return [f"housingTypes[{self.part_type[owner]}]" + (f".{name}" if name else "")]
         types = [f"housingTypes[{at}]" for at in self.unit_types[owner]]
-        if name == "targets":
-            return [f"cells[{cell}]" for cell in self.unit_cells[owner]]
         if name == TOTAL:
             if owner in self.rest_quota:
                 return [f"quotas[{self.rest_quota[owner]}].count"]

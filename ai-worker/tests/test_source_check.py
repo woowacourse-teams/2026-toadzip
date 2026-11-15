@@ -1,90 +1,77 @@
 import pytest
 
-from ai_worker import source_check
+from ai_worker import pages, source_check
+from ai_worker.supply_sheet import Cite, Entry, Finding, Unit
 
 
-def test_supply_count_not_present_in_referenced_source_row_is_cleared_and_unresolved():
-    rows = [{"sourceHousingTypeName": "26A", "targets": [{"target": "청년", "reserveCount": 99}]}]
-    source_rows = {"supplyRows[0]": {"P1:T1:R2"}, "supplyRows[0].targets[0]": {"P1:T1:R2"}}
-    source_text = {"P1:T1:R2": "Test\t26A\t청년\t20"}
-    source_values = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "26A 청년"},
-    ]
-    unresolved = []
-
-    warnings = source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["targets"][0]["reserveCount"] is None
-    assert unresolved == [{"path": "supplyRows[0].targets[0].reserveCount",
-                           "reason": "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"}]
-    # 근거는 확인됐으므로 경고는 없고, 값을 비운 사유는 미확인에만 남는다.
-    assert warnings == []
+def source(text, values, headings=None):
+    """원문 표 행(행 ID → 글·칸)만 담은 입력."""
+    return pages.PromptPages(
+        rental_rows=0, supply_text="", supply_pages=[1, 4], supply_row_ids=frozenset(text), supply_row_text=text,
+        notice_text="", notice_pages=[], complex_candidates=[], table_structure_fallback=False,
+        ambiguous_supply_tables=False, supply_row_values=values, supply_row_headings=headings or {})
 
 
-def test_supply_count_matching_a_different_source_cell_is_cleared_and_unresolved():
-    rows = [{"sourceHousingTypeName": "26A", "targets": [{"target": "청년", "reserveCount": 26}]}]
-    source_rows = {"supplyRows[0]": {"P1:T1:R2"}, "supplyRows[0].targets[0]": {"P1:T1:R2"}}
-    source_text = {"P1:T1:R2": "Test\t26A\t청년\t20"}
-    source_values = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "26A 청년 20"},
-    ]
-    unresolved = []
-
-    warnings = source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["targets"][0]["reserveCount"] is None
-    assert {"path": "supplyRows[0].targets[0].reserveCount",
-            "reason": "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"} in unresolved
-    assert warnings == []
+ROW = {"P1:T1:R2": "Test\t26A\t청년\t20"}
+ROW_VALUES = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
 
 
-def test_non_numeric_supply_values_must_match_their_meaningful_source_cells():
-    rows = [{"complexReference": {"sourceComplexName": "Fake"}, "sourceHousingTypeName": "26B",
-             "targets": [{"target": "고령자", "reserveCount": 20}]}]
-    row_ids = {"P1:T1:R2"}
-    source_rows = {"supplyRows[0]": row_ids, "supplyRows[0].targets[0]": row_ids}
-    source_text = {"P1:T1:R2": "Test\t26A\t청년\t20"}
-    source_values = {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20"}}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "청년 20"},
-    ]
-    unresolved = []
-
-    source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
-
-    assert rows[0]["complexReference"]["sourceComplexName"] == ""
-    assert rows[0]["sourceHousingTypeName"] is None
-    assert rows[0]["targets"][0]["target"] == ""
-    assert {item["path"] for item in unresolved} >= {
-        "supplyRows[0].complexReference.sourceComplexName", "supplyRows[0].sourceHousingTypeName",
-        "supplyRows[0].targets[0].target",
-    }
+def check(owner, quote, selected, row_ids=("P1:T1:R2",), page=1, headings=None, confirmed=None):
+    cite = Cite(owner, "", page, quote) if quote is not None else None
+    return source_check.check_source(owner, set(row_ids), cite, selected, headings, confirmed or {})
 
 
-def test_allowed_target_group_notation_normalization_is_preserved():
-    rows = [{"complexReference": {"sourceComplexName": "Test"}, "sourceHousingTypeName": "26A",
-             "targets": [{"target": "가군", "reserveCount": 20}]}]
-    row_ids = {"P1:T1:R2"}
-    source_rows = {"supplyRows[0]": row_ids, "supplyRows[0].targets[0]": row_ids}
-    source_text = {"P1:T1:R2": "Test\t26A\t「가」군\t20"}
-    source_values = {"P1:T1:R2": {
-        "complexName": "Test", "housingType": "26A", "target": "「가」군", "reserveCount": "20",
-    }}
-    evidence = [
-        {"path": "supplyRows[0]", "page": 1, "quote": "Test 26A"},
-        {"path": "supplyRows[0].targets[0]", "page": 1, "quote": "「가」군 20"},
-    ]
-    unresolved = []
+@pytest.mark.parametrize("quote, reserve", [("26A 청년", 99), ("26A 청년 20", 26)])
+def test_count_not_in_the_same_meaning_source_cell_is_cleared_and_unresolved(quote, reserve):
+    # 99는 원문 행에 없고, 26은 원문 행의 다른 칸(주택형 26A)에만 있다. 예비자 칸은 20이다.
+    entry = Entry("청년", {"reserveCount": reserve})
 
-    source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values)
+    findings, failure = check(entry, quote, source(ROW, ROW_VALUES))
 
-    assert rows[0]["targets"][0]["target"] == "가군"
-    assert "supplyRows[0].targets[0].target" not in {item["path"] for item in unresolved}
+    assert entry.values["reserveCount"] is None
+    assert findings == [Finding(entry, "reserveCount", "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음")]
+    # 근거는 확인됐으므로 경고할 사유는 없고, 값을 비운 사유는 미확인에만 남는다.
+    assert failure is None
+
+
+def test_names_must_match_their_meaningful_source_cells():
+    unit = Unit("Fake", "26B", {})
+    entry = Entry("고령자", {"reserveCount": 20})
+    selected = source(ROW, ROW_VALUES)
+
+    unit_findings, _ = check(unit, "Test 26A", selected)
+    entry_findings, _ = check(entry, "청년 20", selected)
+
+    assert (unit.complex_name, unit.name, entry.label) == ("", None, "")
+    assert [(finding.owner, finding.field) for finding in unit_findings + entry_findings] == [
+        (unit, "name"), (unit, "complexName"), (entry, "label")]
+    # 예비자 수 20은 원문 칸과 같아 남는다.
+    assert entry.values["reserveCount"] == 20
+
+
+def test_target_group_notation_matches_without_its_corner_brackets():
+    entry = Entry("가군", {"reserveCount": 20})
+    selected = source({"P1:T1:R2": "Test\t26A\t「가」군\t20"},
+                      {"P1:T1:R2": {"complexName": "Test", "housingType": "26A", "target": "「가」군", "reserveCount": "20"}})
+
+    findings, _ = check(entry, "「가」군 20", selected)
+
+    assert entry.label == "가군"
+    assert findings == []
+
+
+def test_confirmed_value_is_checked_instead_of_the_source_cells():
+    # 주택타입 행 수량의 합(41 + 3)은 원문 칸 하나에 없다. 합을 정하지 못한 필드(None)는 원문 칸과 같아도 확인하지 못한다.
+    unit = Unit("Test", "26A", {"totalSupplyHouseholdCount": 44})
+    entry = Entry("청년", {"supplyHouseholdCount": 44, "reserveCount": 20})
+    selected = source(ROW, ROW_VALUES)
+
+    check(unit, "Test 26A", selected, confirmed={"totalSupplyHouseholdCount": 44})
+    findings, _ = check(entry, "청년 20", selected, confirmed={"supplyHouseholdCount": 44, "reserveCount": None})
+
+    assert unit.values["totalSupplyHouseholdCount"] == 44
+    assert entry.values == {"supplyHouseholdCount": 44, "reserveCount": None}
+    assert [finding.field for finding in findings] == ["reserveCount"]
 
 
 def test_complex_name_without_a_complex_column_must_be_the_nearest_heading_above_its_table():
@@ -92,41 +79,30 @@ def test_complex_name_without_a_complex_column_must_be_the_nearest_heading_above
     # A-3블록 표의 행에 위쪽 A-1블록 이름을 붙인 값은 받지 않는다.
     above_a1 = "2. 임대대상 및 임대조건\n■ 광주선운2 A-1블록 (총 336세대)\n[단지전체현황]\n55A 217\n[금회모집 임대조건]"
     above_a3 = f"{above_a1}\n55A-1 신혼부부· 한부모가족 20\n■ 광주선운2 A-3블록 (총 147세대)\n[금회모집 임대조건]"
-    rows = [{"complexReference": {"sourceComplexName": name}, "sourceHousingTypeName": "55B-1",
-             "targets": [{"target": "신혼부부·한부모가족", "reserveCount": 20}]}
-            for name in ("광주선운2 A-1블록", "광주선운2 A-3블록", "광주선운2 A-1블록")]
-    row_ids = ["P4:T2:R5", "P4:T4:R4", "P4:T4:R4"]
-    source_rows = {f"supplyRows[{index}]{suffix}": {row_id} for index, row_id in enumerate(row_ids)
-                   for suffix in ("", ".targets[0]")}
-    source_text = {"P4:T2:R5": "55B-1\t\t-\t20", "P4:T4:R4": "55B-1\t신혼부부· 한부모가족\t-\t20"}
-    source_values = {"P4:T2:R5": {"housingType": "55B-1", "target": "신혼부부·한부모가족", "reserveCount": "20"},
-                     "P4:T4:R4": {"housingType": "55B-1", "target": "신혼부부·한부모가족", "reserveCount": "20"}}
-    evidence = [item for index in range(3) for item in (
-        {"path": f"supplyRows[{index}]", "page": 4, "quote": "55B-1"},
-        {"path": f"supplyRows[{index}].targets[0]", "page": 4, "quote": "55B-1 20"})]
-    unresolved = []
+    selected = source({"P4:T2:R5": "55B-1\t\t-\t20", "P4:T4:R4": "55B-1\t신혼부부· 한부모가족\t-\t20"},
+                      {"P4:T2:R5": {"housingType": "55B-1", "target": "신혼부부·한부모가족", "reserveCount": "20"},
+                       "P4:T4:R4": {"housingType": "55B-1", "target": "신혼부부·한부모가족", "reserveCount": "20"}},
+                      {"P4:T2:R5": above_a1, "P4:T4:R4": above_a3})
+    headings = source_check.Headings(selected.supply_row_headings, ("광주선운2 A-1블록", "광주선운2 A-3블록"))
+    units = [Unit(name, "55B-1", {}) for name in ("광주선운2 A-1블록", "광주선운2 A-3블록", "광주선운2 A-1블록")]
 
-    source_check.check_source_rows(rows, source_rows, source_text, evidence, unresolved, source_values,
-                                   headings=source_check.Headings({"P4:T2:R5": above_a1, "P4:T4:R4": above_a3},
-                                                                  ("광주선운2 A-1블록", "광주선운2 A-3블록")))
+    findings = [finding for unit, row_id in zip(units, ["P4:T2:R5", "P4:T4:R4", "P4:T4:R4"])
+                for finding in check(unit, "55B-1", selected, [row_id], 4, headings)[0]]
 
-    assert [row["complexReference"]["sourceComplexName"] for row in rows] == ["광주선운2 A-1블록", "광주선운2 A-3블록", ""]
-    assert [item["path"] for item in unresolved] == ["supplyRows[2].complexReference.sourceComplexName"]
+    assert [unit.complex_name for unit in units] == ["광주선운2 A-1블록", "광주선운2 A-3블록", ""]
+    assert findings == [Finding(units[2], "complexName", "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음")]
 
 
 def test_heading_is_not_used_when_the_row_has_a_complex_cell():
-    rows = [{"complexReference": {"sourceComplexName": "광주선운2 A-1블록"}, "sourceHousingTypeName": "55B-1",
-             "targets": []}]
-    source_values = {"P4:T2:R5": {"complexName": "광주선운2 A-3블록", "housingType": "55B-1"}}
-    unresolved = []
+    unit = Unit("광주선운2 A-1블록", "55B-1", {})
+    selected = source({"P4:T2:R5": "광주선운2 A-3블록\t55B-1"},
+                      {"P4:T2:R5": {"complexName": "광주선운2 A-3블록", "housingType": "55B-1"}},
+                      {"P4:T2:R5": "■ 광주선운2 A-3블록\n55A 20\n■ 광주선운2 A-1블록"})
 
-    source_check.check_source_rows(rows, {"supplyRows[0]": {"P4:T2:R5"}}, {"P4:T2:R5": "광주선운2 A-3블록\t55B-1"},
-                                   [{"path": "supplyRows[0]", "page": 4, "quote": "55B-1"}], unresolved, source_values,
-                                   headings=source_check.Headings(
-                                       {"P4:T2:R5": "■ 광주선운2 A-3블록\n55A 20\n■ 광주선운2 A-1블록"},
-                                       ("광주선운2 A-1블록", "광주선운2 A-3블록")))
+    check(unit, "55B-1", selected, ["P4:T2:R5"], 4,
+          source_check.Headings(selected.supply_row_headings, ("광주선운2 A-1블록", "광주선운2 A-3블록")))
 
-    assert rows[0]["complexReference"]["sourceComplexName"] == ""
+    assert unit.complex_name == ""
 
 
 @pytest.mark.parametrize("name, expected", [
@@ -154,16 +130,21 @@ def test_two_spellings_of_one_block_count_as_one_heading_candidate():
     assert not headings.confirms("광주선운2 A-1블록", {"P4:T4:R4"}, {"P4:T4:R4": {"housingType": "55B-1"}})
 
 
-def test_unsupported_target_evidence_clears_numeric_values_and_marks_each_field_unresolved():
-    rows = [{"targets": [{"target": "청년", "reserveCount": 20, "rentalDeposit": 46920000}]}]
-    unresolved = []
+@pytest.mark.parametrize("row_ids, quote, page, reason", [
+    ((), "26A 청년", 1, "원문 표 행 ID를 확인하지 못함"),
+    (("P9:T1:R1",), "26A 청년", 9, "응답의 원문 표 행 ID가 입력 표와 일치하지 않음"),
+    (("P1:T1:R2",), None, 1, "근거 인용을 지정한 원문 표 행에서 확인하지 못함"),
+    (("P1:T1:R2",), "26A 고령자", 1, "근거 인용을 지정한 원문 표 행에서 확인하지 못함"),
+    (("P1:T1:R2",), "26A 청년", 4, "근거 쪽과 원문 표 행 ID의 쪽이 일치하지 않음"),
+])
+def test_unsupported_evidence_clears_every_value_and_marks_each_one_unresolved(row_ids, quote, page, reason):
+    entry = Entry("청년", {"reserveCount": 20, "rentalDeposit": 46920000, "monthlyRent": None})
 
-    warnings = source_check.check_source_rows(rows, {}, {}, [], unresolved)
+    findings, failure = check(entry, quote, source(ROW, ROW_VALUES), row_ids, page)
 
-    # 경고는 근거를 확인하지 못한 경로마다 한 줄이다. 비운 값마다의 사유는 미확인에만 남는다.
-    assert warnings == [("supplyRows[0]", "원문 표 행 ID를 확인하지 못함"), ("supplyRows[0].targets[0]", "원문 표 행 ID를 확인하지 못함")]
-    assert rows[0]["targets"][0]["reserveCount"] is None
-    assert rows[0]["targets"][0]["rentalDeposit"] is None
-    assert {item["path"] for item in unresolved} >= {
-        "supplyRows[0].targets[0]", "supplyRows[0].targets[0].reserveCount", "supplyRows[0].targets[0].rentalDeposit",
-    }
+    # 경고할 사유는 하나이고, 비운 값마다의 사유는 미확인에만 남는다.
+    assert failure == reason
+    assert (entry.label, entry.values["reserveCount"], entry.values["rentalDeposit"]) == ("", None, None)
+    assert findings == [Finding(entry, "", reason), Finding(entry, "label", f"{reason}; 문자열 원문을 확인하지 못함"),
+                        Finding(entry, "reserveCount", f"{reason}; 수치 원문을 확인하지 못함"),
+                        Finding(entry, "rentalDeposit", f"{reason}; 수치 원문을 확인하지 못함")]
