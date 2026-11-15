@@ -78,6 +78,21 @@ def test_merged_cells_become_shared_counts_area_lines_and_inherited_names_across
     assert result.warnings == []
 
 
+
+def test_a_target_cell_merged_down_over_several_types_gives_each_type_that_target_with_its_own_count():
+    # 공급대상 칸이 여러 주택형에 걸쳐 세로로 병합된 표(광주선운2 A-1블록 모양)는 아래 주택형도 그 대상이다.
+    # 주택형마다 자기 수로 읽고 두 주택형을 한 칸으로 접거나 수를 함께 쓰는 수량으로 두지 않는다(사용자 결정).
+    page = table(4, [
+        ["Alpha", "26A", "청년", "20", "26.1", "15.1"],
+        [None, "36A", None, "12", "36.1", "20.1"],
+    ])
+
+    result = read(page)
+
+    assert cells(result) == [("Alpha", "26A", "청년"), ("Alpha", "36A", "청년")]
+    assert readable(result.sheet)["quotas"] == [("RESERVE", 20, ["26A/청년"]), ("RESERVE", 12, ["36A/청년"])]
+    assert result.unresolved() == set()
+
 def test_income_split_rent_rows_are_separate_targets_sharing_the_supply_count():
     quantity = table(4, [["Alpha", "24ABC", "청년", "20", "24.97", "15.37"]])
     rent = table(8, [
