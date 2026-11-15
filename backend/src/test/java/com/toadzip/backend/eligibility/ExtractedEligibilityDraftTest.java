@@ -47,6 +47,7 @@ import com.toadzip.backend.eligibility.domain.RegionMembership;
 import com.toadzip.backend.eligibility.exception.EligibilityDraftUnavailableException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -425,6 +426,19 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 가구원_수를_적은_맞벌이_비율은_그_가구원_수_기준에서_더한_만큼으로_판정한다() {
+        // 구리갈매 A-1BL: "100퍼센트 이하(2인 110퍼센트), 맞벌이 부부 120퍼센트 이하, 맞벌이 2인 가구의 경우 130퍼센트 이하".
+        // 2인 가구 맞벌이 상한은 5,866,270원의 130%인 7,626,151원이다. 2인 줄을 읽지 못해 넓게 충족으로 보면 안 된다.
+        EligibilityContent content = draft(evidence(), dualIncome(Map.of(2L, 10),
+                "맞벌이 부부 120퍼센트 이하", "맞벌이 2인 가구의 경우 130퍼센트 이하"));
+        EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
+                HOUSEHOLD_MONTHLY_INCOME, 7_626_151L);
+
+        assertThat(youth(content, dual)).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(dual, HOUSEHOLD_MONTHLY_INCOME, 7_626_152L))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
     void 본인_소득_기준은_가구원_수를_알_수_없어_판정하지_않고_목록에_둔다() {
         EligibilityContent content = draft(evidence(), applicantIncome());
 
@@ -739,8 +753,13 @@ class ExtractedEligibilityDraftTest {
     }
 
     private static List<Requirement> dualIncome(String asWritten) {
+        return dualIncome(Map.of(), asWritten);
+    }
+
+    private static List<Requirement> dualIncome(Map<Long, Integer> sizeExtra, String... asWritten) {
+        List<Adjustment> adjustments = Arrays.stream(asWritten).map(text -> new Adjustment("DUAL_INCOME", text)).toList();
         return List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null, "URBAN_WORKER_MONTHLY_INCOME", 2025, 100,
-                Map.of(), List.of(new Adjustment("DUAL_INCOME", asWritten)), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
+                sizeExtra, adjustments, null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
                 YOUTH + ".requirements[1]"));
     }
 
