@@ -297,6 +297,7 @@
 .rowList tr[data-excluded] { color:var(--pdf-quiet-text); }
 .page .rowListButton { all:unset; cursor:pointer; color:var(--ds-color-action); font-weight:500; overflow-wrap:anywhere; }
 .page .rowListButton:focus-visible { outline:2px solid var(--ds-color-action); outline-offset:2px; }
+.rowHouseTypes { display:block; font-size:12px; font-weight:400; color:var(--ds-color-label); overflow-wrap:anywhere; }
 .statusBadge { display:inline-block; padding:0 var(--ds-space-2); border-radius:var(--ds-status-badge-radius, 999px); border:1px solid currentColor; font-size:12px; line-height:1.7; white-space:nowrap; }
 /* 남은 확인으로 옮기는 상태 배지. 배지 모양을 유지하되 누를 수 있음을 손가락 커서와 밑줄로 알린다. */
 button.statusBadge { background:transparent; font:inherit; font-size:12px; line-height:1.7; cursor:pointer; text-align:left; }

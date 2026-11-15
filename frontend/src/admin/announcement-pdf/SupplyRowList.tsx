@@ -27,9 +27,10 @@ export function SupplyRowList({ review, pending, selected, visible, onSelect, on
       const sum = counts.every(count => count !== null) ? (counts as number[]).reduce((total, count) => total + count, 0) : null
       return <tbody key={group.key}><tr><th colSpan={5} scope="rowgroup" className={styles.rowListGroup}>{group.name}<small>{` · 주택형 ${group.indexes.length}개 · 모집 합 ${sum ?? '미확인'}`}</small></th></tr>
         {indexes.map(index => {
-          const { name, area } = rowFacts(review, index)
+          const { name, area, houseTypes } = rowFacts(review, index)
           return <tr key={index} aria-current={index === selected || undefined}>
-            <th scope="row"><button type="button" className={styles.rowListButton} aria-pressed={index === selected} onClick={() => onSelect(index)}>{`${index + 1}. ${name}`}</button></th>
+            <th scope="row"><button type="button" className={styles.rowListButton} aria-pressed={index === selected} onClick={() => onSelect(index)}>{`${index + 1}. ${name}`}</button>
+              {houseTypes.length > 0 && <small className={styles.rowHouseTypes}>{`주택타입 ${houseTypes.map(house => house.name).join(', ')}`}</small>}</th>
             <td>{area !== null ? `${area}㎡` : '미확인'}</td><td>{assembledCount(review.rows[index]) ?? '미확인'}</td><td>{rowKind(review, index)}</td>
             <td><RowStatusBadge review={review} index={index} pending={pending} onJump={onJump} /></td></tr>
         })}</tbody>

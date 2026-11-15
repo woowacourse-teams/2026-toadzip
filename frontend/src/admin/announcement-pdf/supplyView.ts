@@ -28,5 +28,16 @@ export function rowKind(review: Review, index: number) { return review.rows[inde
 /** PDF 주택형 표기와 전용면적 */
 export function rowFacts(review: Review, index: number) {
   const source = review.extraction.sheet.housingTypes[index]
-  return { name: source?.name ?? '주택형 미확인', area: source?.exclusiveArea ?? null }
+  return { name: source?.name ?? '주택형 미확인', area: source?.exclusiveArea ?? null, houseTypes: houseTypesOf(review, index) }
+}
+
+/**
+ * 공고문 주택형 하나가 함께 모집하는 단지 주택타입(55 = 55A·55C, 55B). 주택타입이 주택형 표기와 같은 하나뿐이면 묶은 것이 없어 빈 목록이다.
+ * 이름이 같은 전용면적끼리 묶인 주택타입(55A·55C)은 한 항목이다.
+ */
+export function houseTypesOf(review: Review, index: number) {
+  const source = review.extraction.sheet.housingTypes[index]
+  const types = (source?.houseTypes ?? []).filter(house => house.name)
+  if (types.length === 1 && types[0].name === source?.name) return []
+  return types.map(house => ({ name: house.name!, area: house.exclusiveArea }))
 }

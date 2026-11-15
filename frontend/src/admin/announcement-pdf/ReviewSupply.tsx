@@ -9,7 +9,7 @@ import { type ComplexLabels, type HousingCandidates } from './matching'
 import { SupplyRowList } from './SupplyRowList'
 import { ComplexTypesPanel } from './ComplexTypesPanel'
 import { ReviewCells } from './ReviewCells'
-import { supplyView, targetMatches } from './supplyView'
+import { houseTypesOf, supplyView, targetMatches } from './supplyView'
 import styles from './PdfCorrection.module.css'
 
 export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, warnings = [], savesHousingTypes = true, selected, onSelect, onJump }: { warnings?: string[]
@@ -78,12 +78,14 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   }
   function supplyRow(row: RowReview, index: number) {
     const source = review.extraction.sheet.housingTypes[index], complex = complexFor(review, index)
-    const expected = expectedHousingType(review, index)
+    const expected = expectedHousingType(review, index), houses = houseTypesOf(review, index)
     return <section className={styles.supplyBlock} key={index} aria-label={`주택형 ${index + 1} 검토`} data-review-id={`row:${index}`} tabIndex={-1}>
       <header><h3>{`${index + 1}. ${source.name ?? '주택형 미확인'}`}</h3><div className={styles.actions}><Button data-design-system className={styles.quietButton} aria-expanded={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? '단지 주택타입 닫기' : '단지 주택타입 보기'}</Button></div></header>
       {/* 편집 영역은 단지 → 값 비교 → 대상별 칸 → 함께 쓰는 수 → 주택타입 가격 순서의 같은 모양 구역으로 나눈다. */}
       <div className={styles.rowPart}><h4>단지</h4>
         <p className={styles.hint}>{row.existing ? '지금 공급정보의 같은 주택형을 PDF 값으로 고칩니다.' : '지금 공급정보에 없는 주택형이라 새로 더합니다.'}</p>
+        {/* 공고문은 주택형(신청형) 하나로 모집하고, 단지에는 그 아래 주택타입을 따로 둔다. 모집수·임대조건은 이 주택형 한 줄에 둔다. */}
+        {houses.length > 0 && <p>{`함께 모집하는 단지 주택타입: ${houses.map(house => house.area === null ? house.name : `${house.name}(전용 ${house.area}㎡)`).join(', ')}`}</p>}
         {complex.housingComplexId === null
           ? <p className={styles.hint}>이 주택형의 단지를 아직 정하지 않았습니다. {onJump && <Button data-design-system className={styles.quietButton} onClick={() => onJump('complex')}>단지 정하기로 이동</Button>}</p>
           // 공급 구분은 서버가 공고명으로 정하고(지금 주택형은 그 값을 지킴), 소재지 PNU는 묻지 않는다.

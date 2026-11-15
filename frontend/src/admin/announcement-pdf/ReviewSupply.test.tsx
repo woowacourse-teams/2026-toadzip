@@ -181,3 +181,18 @@ it('상태 배지는 남은 확인을 종류별 개수로 알리고, 누르면 �
   fireEvent.click(within(rowList()).getByRole('button', { name: /^주택형 1 확인 필요: 값 2.* 확인하러 가기$/ }))
   expect(moved).toHaveBeenLastCalledWith(`cell:${first}`)
 })
+
+it('단지 주택타입 여럿을 함께 모집하는 PDF 주택형은 목록 줄과 편집 영역에 묶은 주택타입을 보인다', () => {
+  renderSupply(scenario('hansville'), review => {
+    const [first, second] = review.extraction.sheet.housingTypes
+    first.houseTypes = [{ name: '26A·26C', exclusiveArea: 26.73, supplyArea: null }, { name: '26B', exclusiveArea: 26.81, supplyArea: null }]
+    // 주택형 표기와 같은 주택타입 하나뿐이면 묶은 것이 없다.
+    second.houseTypes = [{ name: second.name, exclusiveArea: second.exclusiveArea, supplyArea: null }]
+  })
+  const row = (number: number) => within(rowList()).getByRole('button', { name: new RegExp(`^${number}\\. `) }).closest('th')
+  expect(row(1)).toHaveTextContent('주택타입 26A·26C, 26B')
+  expect(row(2)).not.toHaveTextContent('주택타입')
+  expect(screen.getByText('함께 모집하는 단지 주택타입: 26A·26C(전용 26.73㎡), 26B(전용 26.81㎡)')).toBeVisible()
+  fireEvent.click(within(rowList()).getByRole('button', { name: /^2\. / }))
+  expect(screen.queryByText(/함께 모집하는 단지 주택타입/)).not.toBeInTheDocument()
+})
