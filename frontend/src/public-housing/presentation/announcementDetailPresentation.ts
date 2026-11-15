@@ -56,6 +56,14 @@ export function toHousingAnnouncementDetailData(
   }
 }
 
+/**
+ * 공고문으로 보정한 공급행이 하나도 없으면 세대수는 공고 기관(LH 등)이 준 '금회공급' 합이다. 공고에 따라 예비 입주자 수가
+ * 함께 들어 있다(당첨자 34 + 예비 22 = 56). 보정 여부를 모르는 응답은 안내하지 않는다.
+ */
+export function householdCountMayIncludeWaitlist(rows: readonly HousingAnnouncementDetailSupplyRow[]): boolean {
+  return rows.length > 0 && rows.every(row => row.corrected === false)
+}
+
 export function groupAnnouncementSupplyRows(
   rows: readonly HousingAnnouncementDetailSupplyRow[],
 ): readonly HousingAnnouncementSupplyComplexGroup[] {

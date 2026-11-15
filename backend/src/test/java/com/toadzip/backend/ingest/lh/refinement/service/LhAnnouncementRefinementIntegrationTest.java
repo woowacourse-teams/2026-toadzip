@@ -237,6 +237,33 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 같은_형명의_주거약자용_줄은_신청자_묶음이_아니라_별도_공급행이다() {
+        // 공고문 공급표의 "26A"와 "26A(주거약자)"는 다른 주택형이다. 괄호를 신청자 표기로 떼어 한 공급행에 합치지 않는다.
+        publish("P1", "대구신서 국민임대 입주자 모집", today().minusDays(1));
+        details("P1", "동탄 행복주택 단지", ADDRESS);
+        supplies("P1", supply("동탄 행복주택 단지", "26A", "26.92", "38", "", ""),
+                supply("동탄 행복주택 단지", "26A(주거약자)", "26.92", "14", "", ""),
+                supply("동탄 행복주택 단지", "59C(주거약자)", "59.98", "4", "30000000", "200000"));
+
+        refinement.refineAll();
+
+        inTransaction(() -> {
+            Announcement announcement = announcements.findAllByLhPanIdOrderByIdAsc("P1").getFirst();
+            long complexId = announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement).getFirst().getId();
+            List<SupplyRow> rows = supplyRows.findAllByAnnouncement(announcement);
+            // 같은 기본 형명이 없는 주거약자용 형명은 지금처럼 기본 형명 키를 쓴다(기존 공급행 식별자 유지).
+            assertThat(rows).extracting(SupplyRow::getSourceSupplyRowIdentifier, SupplyRow::getSourceHousingTypeName,
+                    SupplyRow::getTotalSupplyHouseholdCount).containsExactlyInAnyOrder(
+                    tuple("LHROW:" + complexId + ":26a#1", "26A", 38),
+                    tuple("LHROW:" + complexId + ":26a(주거약자)#1", "26A(주거약자)", 14),
+                    tuple("LHROW:" + complexId + ":59c#1", "59C(주거약자)", 4));
+            SupplyRow variant = rows.stream().filter(row -> row.getSourceHousingTypeName().equals("26A(주거약자)"))
+                    .findFirst().orElseThrow();
+            assertThat(supplyTargets.findAllBySupplyRow(variant)).isEmpty();
+        });
+    }
+
+    @Test
     void LH_한_줄마다_만든_옛_공급행은_다시_정제하면_신청형_공급행으로_바뀐다() {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);

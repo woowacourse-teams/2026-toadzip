@@ -713,14 +713,15 @@ public class SupplyCorrectionService {
     /**
      * 한 단지에서 공급행은 주택형(신청형)마다 하나다. 이번 저장에서 바꾸거나 새로 만든 행이 제외하지 않은 다른 행과 같은 단지에서
      * 신청형({@link HousingTypeNames})이 같으면 거절한다. 신청자 묶음마다 나뉜 옛 공급행이 남아 모집수가 두 번 세지지 않게 하려는 것이다.
-     * 같은 단지 주택타입을 신청형이 다른 여러 행(55A1·55C(주거약자))이 가리키는 것은 허용한다. 손대지 않은 옛 공급행끼리는 그대로 둔다.
+     * 같은 단지 주택타입을 신청형이 다른 여러 행(55A1·55C(주거약자), 26A·26A(주거약자))이 가리키는 것은 허용한다.
+     * 손대지 않은 옛 공급행끼리는 그대로 둔다.
      */
     private void checkOneRowPerApplicationType(Announcement announcement, List<Row> before, List<Row> planned, Set<String> deleted) {
         var beforeByKey = before.stream().collect(Collectors.toMap(Row::key, Function.identity()));
         var stored = rows.findAllByAnnouncement(announcement).stream().collect(Collectors.toMap(SupplyRow::getId, Function.identity()));
         var active = planned.stream().filter(row -> !row.excluded() && !deleted.contains(row.key())).toList();
         Map<String, Set<String>> keys = new HashMap<>();
-        active.forEach(row -> keys.put(row.key(), HousingTypeNames.keys(applicationTypeName(row, beforeByKey.get(row.key()), stored))));
+        active.forEach(row -> keys.put(row.key(), HousingTypeNames.applicationKeys(applicationTypeName(row, beforeByKey.get(row.key()), stored))));
         for (var row : active) {
             // 앞에 끼어든 행 때문에 표시 순서만 밀린 행은 손대지 않은 행이다.
             if (row.housingComplexId() == null || row.id() != null && untouched(beforeByKey.get(row.key()), row)) { continue; }

@@ -22,6 +22,8 @@ interface AnnouncementComplexHousingProps {
   readonly onToggleAreaUnit: () => void
   readonly groups: readonly HousingAnnouncementSupplyComplexGroup[]
   readonly supplyHouseholdCount: number | null
+  /** 세대수가 공고문으로 보정되지 않아 예비 입주자가 포함될 수 있는지 */
+  readonly waitlistMayBeIncluded?: boolean
   readonly onOpenComplex?: (complexId: string) => void
   readonly onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }
@@ -32,6 +34,7 @@ export function AnnouncementComplexHousing({
   onToggleAreaUnit,
   groups,
   supplyHouseholdCount,
+  waitlistMayBeIncluded = false,
   onOpenComplex,
   onOpenFloorPlan,
 }: AnnouncementComplexHousingProps) {
@@ -50,6 +53,9 @@ export function AnnouncementComplexHousing({
       aside={`${groups.length.toLocaleString('ko-KR')}개 단지 · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
       {groups.length === 0 && <p className={styles.empty}>단지 정보: {MISSING_DATA_LABEL}</p>}
+      {groups.length > 0 && waitlistMayBeIncluded && (
+        <p className={styles.countNote}>세대수는 공고 기관이 제공한 수치라 예비 입주자가 포함될 수 있어요. 정확한 수는 공고문에서 확인해 주세요.</p>
+      )}
       {targetNames.length > 1 && (
         <TargetChips names={targetNames} chosen={chosen} onChoose={setTarget} />
       )}

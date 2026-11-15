@@ -5,6 +5,7 @@ import type {
 } from '../model/publicHousing.ts'
 import {
   groupAnnouncementSupplyRows,
+  householdCountMayIncludeWaitlist,
   toHousingAnnouncementDetailData,
 } from './announcementDetailPresentation.ts'
 
@@ -103,6 +104,15 @@ describe('groupAnnouncementSupplyRows', () => {
       supplyHouseholdCount: 12,
     })
     expect(groups[0]?.rows).toHaveLength(2)
+  })
+
+  it('공고문으로 보정한 공급행이 하나도 없을 때만 세대수에 예비 입주자가 들어 있을 수 있다고 본다', () => {
+    const row = toHousingAnnouncementDetailData(announcementDetail()).supplyRows[0]!
+    expect(householdCountMayIncludeWaitlist([{ ...row, corrected: false }, { ...row, corrected: false }])).toBe(true)
+    expect(householdCountMayIncludeWaitlist([{ ...row, corrected: false }, { ...row, corrected: true }])).toBe(false)
+    // 보정 여부를 모르는 응답(이전 스냅숏)과 공급행이 없는 공고는 안내하지 않는다.
+    expect(householdCountMayIncludeWaitlist([{ ...row, corrected: undefined }])).toBe(false)
+    expect(householdCountMayIncludeWaitlist([])).toBe(false)
   })
 
   it('공급 세대수가 전부 null이면 합계도 null로 유지한다', () => {

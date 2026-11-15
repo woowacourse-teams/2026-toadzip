@@ -835,6 +835,13 @@ describe('공급행은 단지 × 전용면적 주택형 하나', () => {
       .toEqual([['A단지', '26A', 0, 26.01, 7, 2], ['A단지', '26B(주거약자)', 0, 26.01, 2, 1], ['B단지', '26A', 0, 26.01, 5, 1]])
   })
 
+  it('같은 형명의 주거약자용 주택(26A·26A(주거약자))은 공고문에서 다른 주택형이라 접지 않는다', () => {
+    const folded = foldSameHousingType(extract([pdfRow('A단지', '26A', 26.92, 22, [target('일반')]),
+      pdfRow('A단지', '26A(주거약자)', 26.92, 8, [target('주거약자')])]))
+    expect(folded.supplyRows.map(row => [row.typeName, row.values.totalSupplyHouseholdCount]))
+      .toEqual([['26A', 22], ['26A(주거약자)', 8]])
+  })
+
   it('같은 주택형을 신청자 구분마다 나눠 저장한 옛 공급행은 앞 행만 고치고 나머지는 안내와 함께 제외하며, 직접 추가한 행이면 지운다', () => {
     const { review, workspace } = scenario('gwangju')
     const merged = review.rows.findIndex(row => row.proposal.destination === 'row:26')

@@ -20,7 +20,7 @@ import java.util.stream.Stream;
  * LH 공급 원천 줄이 붙는 공급행. 대응은 저장하지 않고 면적으로 계산한다. 같은 공고 단지에서 LH 전용면적(소수 둘째 자리)이 공급행의
  * 연결 주택형·LH 대표·공고 면적 중 하나와 같은 공급행이다. LH 줄에 면적이 없으면 그 줄로 만든 공급행(LH 원천 식별자)이다.
  * 같은 면적 후보가 여럿이면(같은 주택타입을 가리키는 다른 신청형 55A1·55C, 신청자 묶음마다 나뉜 옛 공급행) 신청형
- * ({@link HousingTypeNames})이 같은 후보로 좁힌다. 그래도 하나로 정해지지 않으면 표시 순서상 첫 행에 붙이고 모호로 알린다.
+ * ({@link HousingTypeNames#applicationKeys}, 같은 형명의 주거약자용 공급행은 다른 신청형)이 같은 후보로 좁힌다. 그래도 하나로 정해지지 않으면 표시 순서상 첫 행에 붙이고 모호로 알린다.
  * 모든 후보에 붙이면 LH 세대수가 중복으로 더해지기 때문이다.
  */
 final class LhRowAttachments {
@@ -47,7 +47,7 @@ final class LhRowAttachments {
                     .filter(row -> area != null ? areas(row).anyMatch(rowArea -> HousingTypeAreas.sameArea(rowArea, area))
                             : identifier.equals(row.getLhSourceSupplyRowIdentifier()))
                     .toList();
-            String typeKey = HousingTypeNames.key(supply.getTypeName());
+            String typeKey = HousingTypeNames.applicationKey(supply.getTypeName());
             List<SupplyRow> named = candidates.stream().filter(row -> typeKeys(row).contains(typeKey)).toList();
             List<SupplyRow> chosen = named.isEmpty() ? candidates : named;
             if (!chosen.isEmpty()) {
@@ -72,8 +72,8 @@ final class LhRowAttachments {
 
     // 공급행의 신청형 키. 원천 형명과 공고 표기(PDF 보정)를 모두 본다.
     private static Set<String> typeKeys(SupplyRow row) {
-        Set<String> keys = new HashSet<>(HousingTypeNames.keys(row.getSourceHousingTypeName()));
-        keys.addAll(HousingTypeNames.keys(row.getAnnouncementHousingTypeName()));
+        Set<String> keys = new HashSet<>(HousingTypeNames.applicationKeys(row.getSourceHousingTypeName()));
+        keys.addAll(HousingTypeNames.applicationKeys(row.getAnnouncementHousingTypeName()));
         return keys;
     }
 
