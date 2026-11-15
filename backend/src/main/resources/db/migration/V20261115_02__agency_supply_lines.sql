@@ -162,10 +162,12 @@ SELECT n.announcement_id, n.announcement_complex_id, 'GH',
        CASE WHEN n.title LIKE '%예비입주자%' THEN 'RESUPPLY' ELSE 'NEW_SUPPLY' END
 FROM numbered n;
 
--- 4. 정본이 남는 공고를 확정한다. 확정 시각은 관리자 수정 시각, 없으면 이행 시각이다.
+-- 4. 정본이 남는 공고를 확정한다. 관리자가 넘겨받은 LH 공고는 행을 모두 지웠어도 확정한다(빈 공급표가 관리자 결정이다).
+--    확정 시각은 관리자 수정 시각, 없으면 이행 시각이다.
 UPDATE announcements a
 SET supply_confirmed_at = COALESCE(a.admin_updated_at, CURRENT_TIMESTAMP)
-WHERE EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = a.id)
+WHERE (EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = a.id)
+       OR (a.supply_owner = 'ANNOUNCEMENT_DOCUMENT' AND a.lh_pan_id IS NOT NULL))
   AND NOT EXISTS (SELECT 1 FROM staged_announcements s WHERE s.announcement_id = a.id);
 
 -- 5. 준비 데이터로 옮긴 공고의 정본을 지운다(칸·묶음 멤버는 FK로 함께 지워진다).
