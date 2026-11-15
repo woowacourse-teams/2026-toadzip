@@ -8,9 +8,9 @@ export type DraftBaseType = { key: string; label: string; householdCount: number
 /**
  * 화면 작업 상태. review에 칸마다 기존·추출·직접 입력 선택과 미완성 입력, 단지·주택타입 연결,
  * 일정·접수처 선택, 확인 진행이 모두 들어 있다. text는 추출 응답 원문, reason·sourceUrl·sourcePage는 적용 근거다.
- * version 3부터 공급정보는 공고 공급표(주택형 × 공급대상 칸)다. 공급행으로 검토하던 이전 초안은 이어 쓸 수 없다.
+ * version 4부터 공급정보는 공고 공급표(주택형 × 공급대상 칸)이고 공급대상마다 분류가 있다. 이전 초안은 이어 쓸 수 없다.
  */
-export const draftVersion = 3
+export const draftVersion = 4
 export type DraftPayload = { version: typeof draftVersion; text: string; review: Review; reason: string; sourceUrl: string; sourcePage: string; section: ReviewSection; pdfName: string; baseSheet: DraftBaseType[]
   /** 추출할 때 AI 워커가 남긴 경고(LH 행 분리 등). 이 필드 전에 저장한 초안에는 없다. */
   warnings?: string[]

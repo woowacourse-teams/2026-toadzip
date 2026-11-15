@@ -190,6 +190,16 @@ it('이전 공급행 형식으로 남은 적용 대기 기록은 버리고 편�
   expect(sessionStorage.getItem('admin:pending-supply-apply:21')).toBeNull()
 })
 
+it('공급대상 분류가 생기기 전에 남은 적용 대기 기록도 버려, 분류 없는 요청을 같은 작업으로 다시 보내지 않는다', async () => {
+  const sheet = toSheetInput(renamed)
+  const targets = sheet.targets.map(target => { const copy: Record<string, unknown> = { ...target }; delete copy.groups; return copy })
+  const input = { operationId: 'pending-id', snapshotToken: 'before', reason: '근거 확인', sourceUrl: 'https://example.com/notice.pdf', sourcePage: null, sheet: { ...sheet, targets } }
+  sessionStorage.setItem('admin:pending-supply-apply:21', JSON.stringify({ input, result: preview }))
+  await setup(false)
+  expect(screen.queryByRole('button', { name: '같은 작업으로 적용 결과 확인' })).not.toBeInTheDocument()
+  expect(sessionStorage.getItem('admin:pending-supply-apply:21')).toBeNull()
+})
+
 it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단지가 다른 단지처럼 보이지 않는다', async () => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, sheet: updateHousingType(sampleSheet(), 'row:2', { complexName: '두꺼비 국민임대' }) })
   await setup(false)

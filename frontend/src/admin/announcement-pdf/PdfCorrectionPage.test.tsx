@@ -586,7 +586,7 @@ function storedDraft(overrides: Record<string, unknown> = {}) {
   review.rows[0].cells = review.rows[0].cells.map(cell => cell.field === 'name' ? { ...cell, mode: 'manual', input: '26A 초안', manualInput: '26A 초안', value: '26A 초안', state: 'changed', selected: true, edited: true, reviewed: true } : cell)
   const baseSheet = draftBaseSheet(workspace.supply.sheet).map(type => type.key === 'row:1' ? { ...type, exclusiveArea: 26 } : type)
   return { revision: 4, baseSnapshotToken: 'current', pdfSha256: EMPTY_PDF_SHA256, extractionId: 31, updatedAt: '2026-11-03T03:00:00Z', stale: false,
-    payload: { version: 3, text: JSON.stringify(fixtures.hansville.extraction), review, reason: '초안 이유', sourceUrl: 'https://example.com/notice', sourcePage: '4', section: 'supply', pdfName: '공고문.pdf', baseSheet }, ...overrides }
+    payload: { version: 4, text: JSON.stringify(fixtures.hansville.extraction), review, reason: '초안 이유', sourceUrl: 'https://example.com/notice', sourcePage: '4', section: 'supply', pdfName: '공고문.pdf', baseSheet }, ...overrides }
 }
 
 it('편집을 멈추면 잠시 뒤 작업 상태 전체를 임시저장하고, 실패하면 편집을 유지한 채 다시 시도할 수 있다', async () => {
@@ -600,7 +600,7 @@ it('편집을 멈추면 잠시 뒤 작업 상태 전체를 임시저장하고, �
   await waitFor(() => expect(screen.getByLabelText(/^임시저장 상태: 저장됨/)).toBeInTheDocument())
   const saved = draftApi.saveCorrectionDraft.mock.lastCall!
   expect(saved[0]).toBe('29')
-  expect(saved[1]).toMatchObject({ expectedRevision: null, baseSnapshotToken: 'current', pdfSha256: EMPTY_PDF_SHA256, payload: { version: 3, reason: expect.any(String), section: 'supply', baseSheet: draftBaseSheet(workspace.supply.sheet) } })
+  expect(saved[1]).toMatchObject({ expectedRevision: null, baseSnapshotToken: 'current', pdfSha256: EMPTY_PDF_SHA256, payload: { version: 4, reason: expect.any(String), section: 'supply', baseSheet: draftBaseSheet(workspace.supply.sheet) } })
   const cell = saved[1].payload.review.rows[0].cells.find((item: { field: string }) => item.field === 'name')
   expect(cell).toMatchObject({ mode: 'manual', manualInput: '26A 관리자' })
 })
@@ -679,7 +679,7 @@ it('공급행으로 검토하던 이전 방식의 임시저장은 복원하지 �
   await screen.findByRole('heading', { name: '공급정보' })
   fireEvent.click(screen.getByRole('button', { name: '임시저장' }))
   await waitFor(() => expect(draftApi.saveCorrectionDraft).toHaveBeenCalled())
-  expect(draftApi.saveCorrectionDraft.mock.calls[0][1]).toMatchObject({ expectedRevision: 4, payload: { version: 3 } })
+  expect(draftApi.saveCorrectionDraft.mock.calls[0][1]).toMatchObject({ expectedRevision: 4, payload: { version: 4 } })
 })
 
 it('복원한 초안으로 검토하다 응답 준비로 돌아가도 다시 추출하지 않고 복원한 입력으로 돌아온다', async () => {
@@ -795,8 +795,10 @@ it('미확정 공고 저장(공개) 응답을 잃고 공급표만 같으면 재�
 
 it('주택형 목록은 주택형마다 저장할 곳과 상태를 요약하고, 단지 주택형 패널에서 기존 주택형을 고른 행에 연결해도 패널을 닫았다 열면 그대로다', async () => {
   await open()
+  // 병합 모집(26A·26B 함께 모집 170)만 있는 주택형은 모집수를 미확인으로 보이지 않는다.
+  expect(screen.getByRole('group', { name: '주택형 이동' })).toHaveTextContent('모집 함께 170')
   const list = screen.getByRole('region', { name: '주택형 목록' })
-  expect(within(list).getAllByRole('row').slice(2).map(row => row.textContent)).toEqual(['1. 26A26.5195㎡미확인기존 주택형준비됨', '2. 26B26.4673㎡미확인기존 주택형준비됨'])
+  expect(within(list).getAllByRole('row').slice(2).map(row => row.textContent)).toEqual(['1. 26A26.5195㎡함께 170기존 주택형준비됨', '2. 26B26.4673㎡함께 170기존 주택형준비됨'])
   fireEvent.click(screen.getByRole('button', { name: '단지 주택타입 보기' }))
   const panel = screen.getByRole('complementary', { name: '익산한스빌 주택타입' })
   const types = within(panel).getAllByRole('listitem')

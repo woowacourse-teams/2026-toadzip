@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { daegu, savedSheet, scenario } from './fixtures/workspace'
+import { daegu, savedSheet, scenario, workspaceOf } from './fixtures/workspace'
+import type { TargetGroup } from '../supply/targetGroups'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction, type Extraction } from './extraction'
 import { assembledSheet, assembleReview, chooseCellValue, complexGroups, complexKey, createReview, decideComplex, editCell, foreignCharacters, needsComplex, pendingChanges, pendingItems, pendingJumpTarget, rebaseReview,
@@ -119,7 +120,7 @@ describe('공고 공급표 검토', () => {
     // LH 정제는 금액 있는 단일 줄을 '전체|공고문 참조'로, 금액 없는 줄을 조건 없는 '전체'로 쓴다. 26A는 앞의 것, 26B는 뒤의 것이다.
     const { review, workspace } = scenario('hansville', extraction, extracted => {
       const sheet = hansvilleLinked(extracted)
-      return { ...sheet, targets: [...sheet.targets, { key: 'target:9', id: 9, label: '전체', applicationCondition: '공고문 참조', displayOrder: 2 }],
+      return { ...sheet, targets: [...sheet.targets, { key: 'target:9', id: 9, label: '전체', applicationCondition: '공고문 참조', groups: [], displayOrder: 2 }],
         cells: sheet.cells.map(cell => cell.key === 'cell:3' ? { ...cell, target: 'target:9' } : cell) }
     })
     const shown = review.rows.flatMap(row => row.targets.filter(target => review.extraction.sheet.cells[target.cell].target === 1).map(target => target.existing))
@@ -297,6 +298,29 @@ describe('공고 공급표 검토', () => {
     expect(() => assembleReview(review, workspace, evidence)).toThrow('직접 입력값을 확인')
     row.cells[index] = chooseCellValue(row.cells[index], 'keep')
     expect(assembleReview(review, workspace, evidence).correction.sheet.housingTypes[0].exclusiveArea).toBe(workspace.supply.sheet.housingTypes[0].exclusiveArea)
+  })
+
+  it('공급대상 분류는 짝지은 지금 대상의 분류를, 없으면 AI 워커가 읽은 분류를 저장하고, 화면에서 고친 분류만 최신 공급표 위에 이어받는다', () => {
+    const extraction = structuredClone(fixtures.hansville.extraction), targets: unknown[] = extraction.data.supplySheet.targets
+    // 이 화면이 모르는 이름(새 워커 상수)은 버린다.
+    targets[0] = { key: 't0', label: '일반', applicationCondition: null, groups: ['GENERAL', 'NEW_WORKER_GROUP'] }
+    const withGroups = (groups: TargetGroup[]) => (extracted: Extraction) => {
+      const sheet = hansvilleLinked(extracted)
+      return { ...sheet, targets: sheet.targets.map(target => ({ ...target, groups })) }
+    }
+    const fresh = scenario('hansville', extraction, withGroups([]))
+    expect(fresh.review.labels.map(entry => entry.groups)).toEqual([['GENERAL']])
+    expect(assembledSheet(fresh.review, fresh.workspace).targets.map(target => [target.key, target.groups])).toEqual([['target:1', ['GENERAL']]])
+
+    // 관리자가 공급표 화면에서 고친 분류는 다시 PDF로 보정해도 유지한다.
+    const { review, workspace, housing } = scenario('hansville', extraction, withGroups(['GENERAL', 'ELDERLY']))
+    expect(review.labels[0].groups).toEqual(['GENERAL', 'ELDERLY'])
+    const latest = workspaceOf(withGroups(['YOUTH'])(review.extraction), { events: workspace.events })
+    expect(rebaseReview(review, latest, housing).labels[0].groups).toEqual(['YOUTH'])
+
+    const edited: Review = { ...review, labels: [{ ...review.labels[0], groups: ['GENERAL', 'HOUSING_VULNERABLE'], groupsEdited: true }] }
+    expect(assembledSheet(edited, workspace).targets[0].groups).toEqual(['GENERAL', 'HOUSING_VULNERABLE'])
+    expect(rebaseReview(edited, latest, housing).labels[0]).toMatchObject({ groups: ['GENERAL', 'HOUSING_VULNERABLE'], groupsEdited: true })
   })
 
   it('최신 공급표로 다시 비교해도 단지 정하기에서 고른 단지와 칸 선택을 이어받는다', () => {

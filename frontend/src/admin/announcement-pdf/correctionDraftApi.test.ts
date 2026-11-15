@@ -8,14 +8,15 @@ const stored = (payload: Record<string, unknown>) => ({ revision: 4, baseSnapsho
 const payload = (version: number) => ({ version, text: '{}', review: { rows: [], schedules: [] }, baseSheet: [], reason: '이유', sourceUrl: 'https://example.com', sourcePage: '', section: 'supply', pdfName: '' })
 beforeEach(() => vi.mocked(requestManagementApi).mockReset())
 
-it.each([1, 2])('공급행으로 검토하던 이전 방식(version %i) 초안은 복원하지 않고 덮어쓸 revision만 알린다', async version => {
+// version 1·2는 공급행으로 검토하던 초안, 3은 공급대상 분류가 없던 초안이다.
+it.each([1, 2, 3])('이전 방식(version %i) 초안은 복원하지 않고 덮어쓸 revision만 알린다', async version => {
   vi.mocked(requestManagementApi).mockResolvedValue(stored(payload(version)))
   await expect(loadCorrectionDraft('29')).resolves.toEqual({ outdated: true, revision: 4 })
 })
 
 it('지금 방식의 초안은 그대로 읽고, 형식이 틀리거나 더 새 방식이면 읽지 않는다', async () => {
   vi.mocked(requestManagementApi).mockResolvedValue(stored(payload(draftVersion)))
-  await expect(loadCorrectionDraft('29')).resolves.toMatchObject({ revision: 4, payload: { version: 3, reason: '이유' } })
+  await expect(loadCorrectionDraft('29')).resolves.toMatchObject({ revision: 4, payload: { version: draftVersion, reason: '이유' } })
   vi.mocked(requestManagementApi).mockResolvedValue(stored(payload(draftVersion + 1)))
   await expect(loadCorrectionDraft('29')).rejects.toThrow('임시저장 응답이 올바르지 않습니다.')
   vi.mocked(requestManagementApi).mockResolvedValue(stored({ ...payload(draftVersion), review: null }))

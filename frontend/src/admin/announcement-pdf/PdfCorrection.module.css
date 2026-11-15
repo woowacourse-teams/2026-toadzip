@@ -218,6 +218,7 @@
 .targetTable small { display:block; color:var(--ds-color-muted-base); font-size:12px; font-weight:400; margin-top:var(--ds-space-1); }
 .targetTable tr[data-excluded=true] { color:var(--ds-color-muted-base); background:var(--ds-color-surface-subtle); }
 .target { background:var(--ds-color-surface-subtle); padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); }
+.groups { display:grid; gap:var(--ds-space-2); margin-block:var(--ds-space-3); }
 .conditions { font-size:var(--ds-text-caption); margin-bottom:var(--ds-space-4); }
 .conditions li { line-height:1.7; margin-block:var(--ds-space-3); }
 .filePicker { position:relative; min-width:0; }

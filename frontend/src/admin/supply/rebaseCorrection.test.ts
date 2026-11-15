@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { sampleSheet } from './fixtures/sheet'
 import { rebaseCorrection, resolveConflict } from './rebaseCorrection'
-import { addCell, removeCells, removeHousingType, setLeaseAmount, setMembersCount, setQuotaCount, updateHousingType } from './sheetEdits'
+import { addCell, removeCells, removeHousingType, setCellTargetGroups, setLeaseAmount, setMembersCount, setQuotaCount, updateHousingType } from './sheetEdits'
 import { leaseOf, ownCount } from './supplySheet'
 
 it('다른 항목의 변경은 합치고 같은 항목을 서로 다르게 고친 것은 고르게 한다', () => {
@@ -14,6 +14,13 @@ it('다른 항목의 변경은 합치고 같은 항목을 서로 다르게 고�
   expect(result.conflicts[0]).toMatchObject({ field: '월 임대료 (원)', mine: '90000', current: '85000', missing: false })
   expect(leaseOf(result.sheet, 'cell:3')?.monthlyRent).toBe('85000')
   expect(leaseOf(resolveConflict(result.sheet, result.conflicts[0], true), 'cell:3')?.monthlyRent).toBe('90000')
+})
+
+it('같은 공급대상의 분류를 서로 다르게 고치면 분류 이름으로 고르게 하고, 비운 분류는 분류 없음으로 보인다', () => {
+  const base = sampleSheet()
+  const result = rebaseCorrection(base, setCellTargetGroups(base, 'cell:2', ['ELDERLY', 'HOUSING_VULNERABLE']), setCellTargetGroups(base, 'cell:2', []))
+  expect(result.conflicts.map(conflict => [conflict.field, conflict.mine, conflict.current])).toEqual([['공급대상 분류', '고령자·주거약자용', '분류 없음']])
+  expect(resolveConflict(result.sheet, result.conflicts[0], true).targets.find(target => target.key === 'target:2')?.groups).toEqual(['ELDERLY', 'HOUSING_VULNERABLE'])
 })
 
 it('묶음은 종류와 멤버 칸으로 맞추고, 같은 묶음의 수를 서로 다르게 고치면 고르게 한다', () => {

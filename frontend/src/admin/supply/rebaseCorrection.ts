@@ -1,5 +1,6 @@
 import type { SheetCell, SheetHousingType, SheetLeaseTerms, SheetQuota, SheetTarget, SupplySheet } from './supplySheet'
 import { cellName, removeCells, updateHousingType } from './sheetEdits'
+import { groupsText } from './targetGroups'
 
 /**
  * 최신값 위에 다시 맞출 때 내 입력과 다른 관리자의 변경이 겹친 항목. 겹친 항목은 최신값으로 두고, 내 입력을 고르면 keepMine으로 바꾼다.
@@ -11,8 +12,9 @@ type Group<T> = [string, (keyof T)[]]
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const pick = <T,>(item: T, fields: (keyof T)[]) => Object.fromEntries(fields.map(field => [field, item[field] ?? null])) as Partial<T>
 function text(values: object) {
-  return Object.values(values).filter(value => value !== null && value !== '')
-    .map(value => isNamed(value) ? `새 주택형 ${value.name}` : String(value)).join(' · ') || '미확인'
+  return Object.entries(values).filter(([, value]) => value !== null && value !== '')
+    .map(([field, value]) => field === 'groups' ? groupsText(value as SheetTarget['groups']) : isNamed(value) ? `새 주택형 ${value.name}` : String(value))
+    .join(' · ') || '미확인'
 }
 function isNamed(value: unknown): value is { name: string } {
   return typeof value === 'object' && value !== null && 'name' in value
@@ -20,7 +22,7 @@ function isNamed(value: unknown): value is { name: string } {
 const typeGroups: Group<SheetHousingType>[] = [['단지·주택형 연결', ['housingComplexId', 'housingComplexName', 'housingTypeId', 'newHousingType']],
   ['공고 단지', ['announcementComplexId', 'complexName']], ['주택형 표기', ['name']], ['전용면적 (㎡)', ['exclusiveArea']], ['공급면적 (㎡)', ['supplyArea']],
   ['입주 예정 연월', ['expectedMoveInMonth']], ['공급 PNU', ['supplyPnu']], ['공급 구분', ['category']], ['표시 순서', ['displayOrder']]]
-const targetGroups: Group<SheetTarget>[] = [['공급대상', ['label', 'applicationCondition']], ['표시 순서', ['displayOrder']]]
+const targetFields: Group<SheetTarget>[] = [['공급대상', ['label', 'applicationCondition']], ['공급대상 분류', ['groups']], ['표시 순서', ['displayOrder']]]
 const cellGroups: Group<SheetCell>[] = [['공급대상', ['target']], ['표시 순서', ['displayOrder']]]
 const leaseGroups: Group<SheetLeaseTerms>[] = [['보증금 (원)', ['rentalDeposit']], ['월 임대료 (원)', ['monthlyRent']], ['전환 보증금 (원)', ['convertedDeposit']]]
 const kindLabel = { WINNER: '모집', RESERVE: '예비' } as const
@@ -65,7 +67,7 @@ export function rebaseCorrection(base: SupplySheet, draft: SupplySheet, latest: 
     return result
   }
   const housingTypes = keyed('type', sheet => sheet.housingTypes, typeGroups, type => `${type.complexName} · ${type.name || '이름 없는 주택형'}`, updateHousingType)
-  const targets = keyed('target', sheet => sheet.targets, targetGroups, target => `공급대상 ${target.label || '이름 없음'}`,
+  const targets = keyed('target', sheet => sheet.targets, targetFields, target => `공급대상 ${target.label || '이름 없음'}`,
     (sheet, key, patch) => ({ ...sheet, targets: sheet.targets.map(target => target.key === key ? { ...target, ...patch } : target) }))
   const cells = keyed('cell', sheet => sheet.cells, cellGroups, cell => cellName(draft, cell.key),
     (sheet, key, patch) => ({ ...sheet, cells: sheet.cells.map(cell => cell.key === key ? { ...cell, ...patch } : cell) }))

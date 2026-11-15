@@ -1,5 +1,6 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject } from '../announcement-json/api'
+import { extractedGroups, type TargetGroup } from '../supply/targetGroups'
 
 export type ExtractionNote = { path: string; reason: string }
 export type Evidence = { path: string; page: number; quote: string }
@@ -12,8 +13,8 @@ export type ExtractedComplex = { name: string; address: string | null; totalHous
 export type SheetSourceType = { key: string; complexName: string | null; name: string | null; exclusiveArea: number | null; commonArea: number | null
   supplyArea: number | null; givenSupplyArea: number | null; constructedHouseholdCount: number | null; expectedMoveInMonth: string | null
   houseTypes: { name: string | null; exclusiveArea: number | null; supplyArea: number | null }[] }
-/** 공급대상. 표기를 원문에서 확인하지 못하면 label이 빈 문자열이다. 신청 조건이 없으면 빈 문자열이다. */
-export type SheetSourceTarget = { key: string; label: string; applicationCondition: string }
+/** 공급대상. 표기를 원문에서 확인하지 못하면 label이 빈 문자열이다. 신청 조건이 없으면 빈 문자열이다. groups는 AI 워커가 표기에서 읽은 분류다. */
+export type SheetSourceTarget = { key: string; label: string; applicationCondition: string; groups: TargetGroup[] }
 /** 칸은 주택형 × 공급대상이다. 경로 cells[n]의 n이 이 목록의 순번이다. */
 export type SheetSourceCell = { housingType: number; target: number }
 /** members는 칸 순번이다. 칸 하나만이면 그 대상만의 수, 여럿이면 함께 쓰는 수다. */
@@ -178,7 +179,7 @@ function supplySheet(source: Record<string, unknown>): ExtractedSheet | string {
         supplyArea: area(house.supplyArea) ?? summedArea(area(house.exclusiveArea), area(house.commonArea)) })) : [] }
   })
   const sheetTargets = targets.map(item => ({ key: String(item.key), label: typeof item.label === 'string' ? item.label.trim() : '',
-    applicationCondition: typeof item.applicationCondition === 'string' ? item.applicationCondition.trim() : '' }))
+    applicationCondition: typeof item.applicationCondition === 'string' ? item.applicationCondition.trim() : '', groups: extractedGroups(item.groups) }))
   const typeAt = new Map(housingTypes.map((item, at) => [item.key, at])), targetAt = new Map(sheetTargets.map((item, at) => [item.key, at]))
   const sheetCells = cells.map(item => ({ housingType: typeAt.get(String(item.housingType)) ?? -1, target: targetAt.get(String(item.target)) ?? -1 }))
   if (sheetCells.some(cell => cell.housingType < 0 || cell.target < 0)) return '공급표의 칸이 없는 주택형이나 공급대상을 가리킵니다. 다시 추출해 주세요.'

@@ -1,4 +1,5 @@
 import { cellsOf, leaseOf, ownCount, type QuotaKind, type SheetCell, type SheetHousingType, type SheetLeaseTerms, type SheetQuota, type SheetTarget, type SupplySheet } from './supplySheet'
+import type { TargetGroup } from './targetGroups'
 
 /**
  * 공급정보 편집표가 공급표를 고치는 동작. 모두 새 공급표를 돌려주고, 칸·공급대상·주택형을 더하거나 지워도 공급표가 어긋나지 않게 한다:
@@ -17,7 +18,7 @@ export const leaseFields: LeaseField[] = ['rentalDeposit', 'monthlyRent', 'conve
 export function cellValues(sheet: SupplySheet, cell: SheetCell) {
   const target = sheet.targets.find(item => item.key === cell.target)
   const lease = leaseOf(sheet, cell.key)
-  return { label: target?.label ?? '', applicationCondition: target?.applicationCondition ?? '',
+  return { label: target?.label ?? '', applicationCondition: target?.applicationCondition ?? '', groups: target?.groups ?? [],
     winner: ownCount(sheet, cell.key, 'WINNER'), reserve: ownCount(sheet, cell.key, 'RESERVE'),
     rentalDeposit: lease?.rentalDeposit ?? null, monthlyRent: lease?.monthlyRent ?? null, convertedDeposit: lease?.convertedDeposit ?? null }
 }
@@ -78,7 +79,7 @@ export function moveHousingType(sheet: SupplySheet, housingTypeKey: string, delt
  */
 export function addCell(sheet: SupplySheet, housingTypeKey: string): SupplySheet {
   const typeCells = cellsOf(sheet, housingTypeKey)
-  const target: SheetTarget = { key: newKey(), id: null, label: '', applicationCondition: '', displayOrder: nextOrder(sheet.targets) }
+  const target: SheetTarget = { key: newKey(), id: null, label: '', applicationCondition: '', groups: [], displayOrder: nextOrder(sheet.targets) }
   const cell: SheetCell = { key: newKey(), id: null, housingType: housingTypeKey, target: target.key, displayOrder: nextOrder(typeCells) }
   const whole = typeCells.length >= 2 ? wholeTypeQuota(sheet, housingTypeKey) : null
   return { ...sheet, targets: [...sheet.targets, target], cells: [...sheet.cells, cell],
@@ -87,7 +88,7 @@ export function addCell(sheet: SupplySheet, housingTypeKey: string): SupplySheet
 
 /**
  * 칸의 공급대상 이름·신청조건을 바꾼다. 공급대상은 여러 주택형의 칸이 함께 가리키므로, 다른 칸이 쓰는 대상은 고치지 않고
- * 같은 이름·조건의 대상으로 옮기거나 새 대상을 만든다. 이 칸만 쓰는 대상은 그대로 고친다.
+ * 같은 이름·조건의 대상으로 옮기거나 새 대상을 만든다. 이 칸만 쓰는 대상은 그대로 고친다. 새 대상은 이전 대상의 분류를 이어받는다.
  */
 export function setCellTarget(sheet: SupplySheet, cellKey: string, label: string, applicationCondition: string): SupplySheet {
   const cell = sheet.cells.find(item => item.key === cellKey)
@@ -97,10 +98,24 @@ export function setCellTarget(sheet: SupplySheet, cellKey: string, label: string
     && target.label === label && target.applicationCondition === applicationCondition)
   const alone = sheet.cells.every(item => item.key === cellKey || item.target !== cell.target)
   if (!match && alone) return { ...sheet, targets: sheet.targets.map(target => target.key === cell.target ? { ...target, label, applicationCondition } : target) }
-  const target = match ?? { key: newKey(), id: null, label, applicationCondition, displayOrder: nextOrder(sheet.targets) }
+  const groups = sheet.targets.find(item => item.key === cell.target)?.groups ?? []
+  const target = match ?? { key: newKey(), id: null, label, applicationCondition, groups, displayOrder: nextOrder(sheet.targets) }
   const cells = sheet.cells.map(item => item.key === cellKey ? { ...item, target: target.key } : item)
   const used = new Set(cells.map(item => item.target))
   return { ...sheet, cells, targets: [...sheet.targets, ...(match ? [] : [target])].filter(item => used.has(item.key)) }
+}
+
+/** 칸이 가리키는 공급대상의 분류를 바꾼다. 분류는 공급대상의 속성이라 같은 대상을 쓰는 다른 칸에도 함께 적용된다. */
+export function setCellTargetGroups(sheet: SupplySheet, cellKey: string, groups: TargetGroup[]): SupplySheet {
+  const cell = sheet.cells.find(item => item.key === cellKey)
+  if (!cell) return sheet
+  return { ...sheet, targets: sheet.targets.map(target => target.key === cell.target ? { ...target, groups } : target) }
+}
+
+/** 이 칸의 공급대상을 함께 쓰는 다른 칸. */
+export const sharingCells = (sheet: SupplySheet, cellKey: string) => {
+  const target = sheet.cells.find(item => item.key === cellKey)?.target
+  return sheet.cells.filter(item => item.key !== cellKey && item.target === target).map(item => item.key)
 }
 
 /** 멤버가 정확히 이 칸들인 묶음의 수를 정한다. null이면 그 묶음을 지운다(미확인). */

@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { sampleSheet } from './fixtures/sheet'
 import { SupplyCorrectionPreview } from './SupplyCorrectionPreview'
-import { addCell, addSharedQuota, removeHousingType, setCellTarget, setLeaseAmount } from './sheetEdits'
+import { addCell, addSharedQuota, removeHousingType, setCellTarget, setCellTargetGroups, setLeaseAmount } from './sheetEdits'
 
 const rows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map(row => row.textContent)
 
@@ -26,4 +26,11 @@ it('지운 주택형은 공급대상 수와 함께 삭제로 보여 주고, 함�
   const before = sampleSheet()
   render(<SupplyCorrectionPreview value={{ confirmationToken: '', before, after: removeHousingType(before, 'row:2'), warnings: [] }} />)
   expect(rows()).toEqual(['두꺼비 · 59B주택형공급대상 1개삭제', '46A 고령자예비 수미확인8', '46A 고령자·59B 일반함께 쓰는 예비 수8삭제'])
+})
+
+it('공급대상 분류를 바꾸면 그 대상을 쓰는 칸마다 분류 이름으로 보여 준다', () => {
+  const before = sampleSheet()
+  const after = setCellTargetGroups(before, 'cell:2', ['ELDERLY', 'HOUSING_VULNERABLE'])
+  render(<SupplyCorrectionPreview value={{ confirmationToken: '', before, after, warnings: [] }} />)
+  expect(rows()).toEqual(['46A 고령자공급대상 분류고령자고령자·주거약자용'])
 })

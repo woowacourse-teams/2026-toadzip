@@ -9,6 +9,8 @@ import { type ComplexLabels, type HousingCandidates } from './matching'
 import { SupplyRowList } from './SupplyRowList'
 import { ComplexTypesPanel } from './ComplexTypesPanel'
 import { ReviewCells } from './ReviewCells'
+import { TargetGroupPicker } from '../supply/TargetGroupPicker'
+import type { TargetGroup } from '../supply/targetGroups'
 import { houseTypesOf, supplyView, targetMatches } from './supplyView'
 import styles from './PdfCorrection.module.css'
 
@@ -124,6 +126,7 @@ function TargetBlock({ review, index, filter, onChange, onEvidence }: { review: 
   if (!row.targets.some(target => targetMatches(review, target, filter))) return null
   const updateCells = (at: number, cells: Cell[]) => onChange({ ...review, rows: review.rows.map((item, rowAt) => rowAt === index ? { ...item, targets: item.targets.map((target, targetAt) => targetAt === at ? { ...target, cells } : target) } : item) })
   const updateLabel = (target: number, cells: Cell[]) => onChange({ ...review, labels: review.labels.map(entry => entry.target === target ? { ...entry, cells } : entry) })
+  const updateGroups = (target: number, groups: TargetGroup[]) => onChange({ ...review, labels: review.labels.map(entry => entry.target === target ? { ...entry, groups, groupsEdited: true } : entry) })
   const label = selected ? labelOf(review, selected.cell) : undefined
   return <div className={styles.rowPart}>
     <h4>대상별 칸</h4>
@@ -148,8 +151,12 @@ function TargetBlock({ review, index, filter, onChange, onEvidence }: { review: 
         {!targetName(review, selected.cell) && <p className={styles.pendingLabel} role="note">{extractedName(review, selected.cell)
           ? 'PDF에서 읽은 공급대상 이름을 원문과 대조해 고르세요. 고르거나 직접 넣어야 저장할 수 있습니다.'
           : '공급대상 이름을 원문에서 읽지 못했습니다. 이름을 넣어야 저장할 수 있습니다.'}</p>}
-        <p className={styles.hint}>공급대상 이름·신청 조건은 이 대상을 쓰는 모든 주택형에 함께 적용됩니다.</p>
+        <p className={styles.hint}>공급대상 이름·신청 조건·분류는 이 대상을 쓰는 모든 주택형에 함께 적용됩니다.</p>
         <ReviewCells cells={label.cells} scope={`공급대상 ${label.target + 1}`} onChange={cells => updateLabel(label.target, cells)} onEvidence={onEvidence} />
+        <div className={styles.groups}><strong>공급대상 분류</strong>
+          <TargetGroupPicker name={`공급대상 ${label.target + 1}`} groups={label.groups} onChange={groups => updateGroups(label.target, groups)} />
+          <p className={styles.hint}>신청자격을 이 공급대상에 이을 때 씁니다. 공고문 표기에 담긴 대상을 모두 고르세요(신혼부부 예비신혼부부 한부모가족 → 셋).</p>
+        </div>
       </>}
       <ReviewCells cells={selected.cells} scope={`주택형 ${index + 1} 대상 ${expanded + 1}`} onChange={cells => updateCells(expanded, cells)} onEvidence={onEvidence} />
     </section>}

@@ -72,6 +72,25 @@ it('공급대상 칸마다 이름·모집·예비 수와 임대조건을 고치�
   expect(latest.targets.map(target => target.key)).toEqual(['target:1'])
 })
 
+it('공급대상 분류는 여러 개를 고르고, 같은 대상을 쓰는 다른 주택형 칸에도 함께 적용된다고 알린다', () => {
+  render(<Editor />)
+  const table = screen.getByRole('table', { name: '공급대상 표' })
+  // 46A 일반(공급대상 1)은 59B 일반과 같은 공급대상을 쓴다.
+  const general = within(table).getByText('일반', { selector: 'summary' })
+  expect(general).toHaveAccessibleName('공급대상 1 분류: 일반')
+  expect(within(general).getByText('같은 공급대상을 쓰는 다른 주택형에도 함께 적용')).toBeInTheDocument()
+  fireEvent.click(general)
+  const options = within(table).getByRole('group', { name: '공급대상 1 분류' })
+  fireEvent.click(within(options).getByRole('checkbox', { name: '주거약자용' }))
+  fireEvent.click(within(options).getByRole('checkbox', { name: '청년' }))
+  expect(latest.targets.find(target => target.key === 'target:1')?.groups).toEqual(['GENERAL', 'YOUTH', 'HOUSING_VULNERABLE'])
+  expect(within(table).getByText('일반·청년·주거약자용', { selector: 'summary', exact: false })).toBeInTheDocument()
+  fireEvent.click(within(options).getByRole('checkbox', { name: '일반' }))
+  expect(latest.targets.find(target => target.key === 'target:1')?.groups).toEqual(['YOUTH', 'HOUSING_VULNERABLE'])
+  // 고령자(공급대상 2)는 이 칸만 쓰는 대상이라 안내가 없다.
+  expect(within(table).getByLabelText('공급대상 2 분류: 고령자')).not.toHaveTextContent('함께 적용')
+})
+
 it('주택형 모집수는 주택형의 모든 칸이 함께 쓰는 모집 수를 고친다', () => {
   render(<Editor />)
   expect(screen.getByLabelText('주택형 모집수 (세대)')).toHaveValue(10)

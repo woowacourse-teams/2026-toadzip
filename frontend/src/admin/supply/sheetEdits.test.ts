@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { sampleSheet } from './fixtures/sheet'
-import { cellsOf, housingTypeCount, leaseOf, ownCount, sharedQuotas, toSheetInput, totalCount } from './supplySheet'
-import { addCell, addHousingType, addSharedQuota, cellName, cellValues, moveHousingType, removeCells, removeHousingType, setCellTarget, setLeaseAmount, setMembersCount, wholeTypeQuota } from './sheetEdits'
+import { cellsOf, housingTypeCount, leaseOf, ownCount, parseSupplySheet, sharedQuotas, toSheetInput, totalCount } from './supplySheet'
+import { addCell, addHousingType, addSharedQuota, cellName, cellValues, moveHousingType, removeCells, removeHousingType, setCellTarget, setCellTargetGroups, setLeaseAmount, setMembersCount, sharingCells, wholeTypeQuota } from './sheetEdits'
 
 describe('공급표 읽기', () => {
   it('칸 하나만 멤버면 그 대상만의 수, 한 주택형의 모든 칸이면 주택형 모집수, 여러 주택형에 걸치면 함께 쓰는 수로 읽는다', () => {
@@ -15,9 +15,17 @@ describe('공급표 읽기', () => {
     expect(sharedQuotas(sheet, 'row:1')).toEqual([{ quota: sheet.quotas[3], acrossTypes: true }])
     expect(totalCount(sheet)).toBe(17)
     expect(totalCount(sheet, 'RESERVE')).toBe(13)
-    expect(cellValues(sheet, sheet.cells[1])).toEqual({ label: '고령자', applicationCondition: '', winner: null, reserve: null,
+    expect(cellValues(sheet, sheet.cells[1])).toEqual({ label: '고령자', applicationCondition: '', groups: ['ELDERLY'], winner: null, reserve: null,
       rentalDeposit: '1000000', monthlyRent: '50000', convertedDeposit: null })
     expect(cellName(sheet, 'cell:2')).toBe('46A 고령자')
+  })
+
+  it('공급대상 분류는 상수 순서로 읽고, 목록이 아니거나 모르는 이름이 있으면 응답을 거절한다', () => {
+    const response = (groups: unknown) => ({ ...sampleSheet(), targets: sampleSheet().targets.map(target => ({ ...target, groups })) })
+    expect(parseSupplySheet(response(['HOUSING_VULNERABLE', 'NEWLYWED'])).targets[0].groups).toEqual(['NEWLYWED', 'HOUSING_VULNERABLE'])
+    expect(() => parseSupplySheet(response(['DISABLED']))).toThrow('공급표 응답이 올바르지 않습니다.')
+    expect(() => parseSupplySheet(response('YOUTH'))).toThrow('공급표 응답이 올바르지 않습니다.')
+    expect(() => parseSupplySheet(response(undefined))).toThrow('공급표 응답이 올바르지 않습니다.')
   })
 
   it('보낼 입력에서는 보호 표시·단지 표시명과 묶음·임대조건의 키·ID를 뺀다', () => {
@@ -78,6 +86,19 @@ describe('공급표 편집이 어긋나지 않게 하기', () => {
     // 이 칸만 쓰는 대상은 그대로 고친다.
     const alone = setCellTarget(sampleSheet(), 'cell:2', '고령자', '65세 이상')
     expect(alone.targets.find(target => target.key === 'target:2')?.applicationCondition).toBe('65세 이상')
+    // 이름만 바꿔 새로 만든 대상은 이전 대상의 분류를 이어받고, 옮겨 간 기존 대상은 자기 분류를 쓴다.
+    expect(renamed.targets.find(target => target.key === moved.target)?.groups).toEqual(['GENERAL'])
+    expect(reused.targets.find(target => target.key === 'target:2')?.groups).toEqual(['ELDERLY'])
+  })
+
+  it('분류는 공급대상의 속성이라 같은 대상을 쓰는 다른 주택형 칸에도 함께 바뀌고, 다른 대상은 그대로다', () => {
+    // target:1은 46A·59B 일반(cell:1, cell:3)이 함께 쓴다.
+    expect(sharingCells(sampleSheet(), 'cell:1')).toEqual(['cell:3'])
+    expect(sharingCells(sampleSheet(), 'cell:2')).toEqual([])
+    const changed = setCellTargetGroups(sampleSheet(), 'cell:3', ['GENERAL', 'HOUSING_VULNERABLE'])
+    expect(cellValues(changed, changed.cells[0]).groups).toEqual(['GENERAL', 'HOUSING_VULNERABLE'])
+    expect(changed.targets.map(target => [target.key, target.groups])).toEqual([['target:1', ['GENERAL', 'HOUSING_VULNERABLE']], ['target:2', ['ELDERLY']]])
+    expect(toSheetInput(changed).targets[0].groups).toEqual(['GENERAL', 'HOUSING_VULNERABLE'])
   })
 
   it('수량을 비우면 그 묶음을 지우고, 함께 쓰는 수는 칸을 둘 이상 고르고 같은 묶음이 없어야 더한다', () => {

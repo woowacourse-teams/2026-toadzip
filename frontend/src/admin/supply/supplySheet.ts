@@ -1,4 +1,5 @@
 import { isRecord } from '../management/managementContract'
+import { parseTargetGroups, type TargetGroup } from './targetGroups'
 
 /**
  * 공고 공급표(관리자 계약). 주택형(신청형) × 공급대상 칸이 있고, 수량 묶음(당첨·예비)과 임대조건은 칸을 멤버로 가진다.
@@ -13,7 +14,8 @@ export type SheetHousingType = {
   name: string; exclusiveArea: number | null; supplyArea: number | null; expectedMoveInMonth: string | null
   supplyPnu: string | null; category: 'NEW_SUPPLY' | 'RESUPPLY' | null; displayOrder: number; adminModified: boolean
 }
-export type SheetTarget = { key: string; id: number | null; label: string; applicationCondition: string; displayOrder: number }
+/** groups는 공급대상 분류(여러 개)다. 공급대상의 속성이라 이 대상을 쓰는 모든 칸에 함께 적용된다. */
+export type SheetTarget = { key: string; id: number | null; label: string; applicationCondition: string; groups: TargetGroup[]; displayOrder: number }
 export type SheetCell = { key: string; id: number | null; housingType: string; target: string; displayOrder: number }
 export type QuotaKind = 'WINNER' | 'RESERVE'
 export type SheetQuota = { key: string; id: number | null; kind: QuotaKind; count: number; members: string[]; adminModified: boolean }
@@ -53,9 +55,10 @@ export function parseSupplySheet(value: unknown): SupplySheet {
     return item as SheetHousingType
   })
   const targets = (value.targets as unknown[]).map(item => {
+    const groups = isRecord(item) ? parseTargetGroups(item.groups) : null
     if (!isRecord(item) || typeof item.key !== 'string' || !nullableId(item.id) || typeof item.label !== 'string'
-      || typeof item.applicationCondition !== 'string' || !count(item.displayOrder)) invalid()
-    return item as SheetTarget
+      || typeof item.applicationCondition !== 'string' || !groups || !count(item.displayOrder)) invalid()
+    return { ...item, groups } as SheetTarget
   })
   const typeKeys = new Set(housingTypes.map(type => type.key))
   const targetKeys = new Set(targets.map(target => target.key))

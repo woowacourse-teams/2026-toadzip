@@ -1,6 +1,7 @@
 import { display } from '../management/fields'
 import { cellsOf, type SheetHousingType, type SupplySheet } from './supplySheet'
 import { cellName, cellValues } from './sheetEdits'
+import { groupsText } from './targetGroups'
 import type { SupplyPreview } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
 
@@ -10,7 +11,7 @@ const typeLabels: Partial<Record<keyof SheetHousingType, string>> = {
   name: '주택형 표기', exclusiveArea: '전용면적 (㎡)', supplyArea: '공급면적 (㎡)', expectedMoveInMonth: '입주 예정 연월',
   supplyPnu: '공급 PNU', category: '공급 구분', displayOrder: '표시 순서',
 }
-const cellLabels = { label: '공급대상', applicationCondition: '신청조건', winner: '모집 수', reserve: '예비 수',
+const cellLabels = { label: '공급대상', applicationCondition: '신청조건', groups: '공급대상 분류', winner: '모집 수', reserve: '예비 수',
   rentalDeposit: '보증금 (원)', monthlyRent: '월 임대료 (원)', convertedDeposit: '전환 보증금 (원)' } as const
 const kindLabel = { WINNER: '모집', RESERVE: '예비' } as const
 function text(value: unknown) {
@@ -18,10 +19,11 @@ function text(value: unknown) {
     const type = value as { name: string; exclusiveArea: number; supplyArea: number | null }
     return `${type.name} · 전용 ${type.exclusiveArea}㎡ · 공급 ${type.supplyArea ?? '미확인'}㎡`
   }
+  if (Array.isArray(value)) return groupsText(value)
   return display(value as string | number | null | undefined)
 }
 // 새로 추가한 항목은 실제로 입력한 값만 보여 준다. 빈 값과 범위 이름에 이미 나온 항목은 변경으로 세지 않는다.
-const worthShowing = (value: unknown) => value !== null && value !== undefined && value !== ''
+const worthShowing = (value: unknown) => value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && !value.length)
 const typeName = (type: SheetHousingType) => `${type.complexName} · ${type.name || '이름 없는 주택형'}`
 // 칸 여럿이 함께 쓰는 수(주택형 모집수 포함)를 종류와 멤버 칸으로 맞춘다. 칸 하나의 수는 칸 변경에서 보여 준다.
 function sharedCounts(sheet: SupplySheet) {
@@ -55,7 +57,7 @@ function supplyDifferences(before: SupplySheet, after: SupplySheet): Change[] {
       if (!was) changes.push({ scope: cellScope, field: '공급대상', before: '없음', after: '새 공급대상 추가' })
       for (const key of Object.keys(cellLabels) as (keyof typeof cellLabels)[]) {
         if (!was && (!worthShowing(now[key]) || key === 'label')) continue
-        if (was?.[key] !== now[key]) changes.push({ scope: cellScope, field: cellLabels[key], before: was ? text(was[key]) : '없음', after: text(now[key]) })
+        if (JSON.stringify(was?.[key]) !== JSON.stringify(now[key])) changes.push({ scope: cellScope, field: cellLabels[key], before: was ? text(was[key]) : '없음', after: text(now[key]) })
       }
     }
   }

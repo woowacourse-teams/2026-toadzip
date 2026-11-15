@@ -15,7 +15,7 @@ type FixtureRow = { id: number; displayOrder: number; sourceComplexName: string;
   exclusiveArea: number | null; supplyArea: number | null; complexId: number | null; housingTypeId: number | null }
 /** 지금 공급표. 시나리오의 저장된 행마다 주택형 하나, 공급대상 '일반' 칸 하나, 그 칸의 모집 묶음이다. */
 export function rowsSheet(rows: FixtureRow[], complexName = (row: FixtureRow) => row.sourceComplexName): SupplySheet {
-  const sheet: SupplySheet = { housingTypes: [], targets: [{ key: 'target:1', id: 1, label: '일반', applicationCondition: '', displayOrder: 0 }], cells: [], quotas: [], leaseTerms: [] }
+  const sheet: SupplySheet = { housingTypes: [], targets: [{ key: 'target:1', id: 1, label: '일반', applicationCondition: '', groups: ['GENERAL'], displayOrder: 0 }], cells: [], quotas: [], leaseTerms: [] }
   rows.forEach((row, at) => {
     const key = `row:${row.id}`, cell = `cell:${row.id}`
     sheet.housingTypes.push({ key, id: row.id, announcementComplexId: null, complexName: row.sourceComplexName, housingComplexId: row.complexId, housingComplexName: row.complexId === null ? null : complexName(row),

@@ -6,6 +6,7 @@ import { ReviewSupply } from './ReviewSupply'
 import { daegu, savedSheet, scenario } from './fixtures/workspace'
 import type { Extraction } from './extraction'
 import type { Review, ReviewFilter } from './review'
+import { groupsText, orderedGroups } from '../supply/targetGroups'
 
 const hansvilleLinked = (extracted: Extraction) => savedSheet(extracted, { id: 3055, name: '익산한스빌' })
 
@@ -195,4 +196,49 @@ it('단지 주택타입 여럿을 함께 모집하는 PDF 주택형은 목록 �
   expect(screen.getByText('함께 모집하는 단지 주택타입: 26A·26C(전용 26.73㎡), 26B(전용 26.81㎡)')).toBeVisible()
   fireEvent.click(within(rowList()).getByRole('button', { name: /^2\. / }))
   expect(screen.queryByText(/함께 모집하는 단지 주택타입/)).not.toBeInTheDocument()
+})
+
+it('공급대상 분류는 대조·수정 영역에서 여러 개 고르고, 고친 분류는 화면에서 고쳤다는 표시와 함께 검토에 남는다', () => {
+  const found = scenario('hansville')
+  const { changed } = renderSupply(found)
+  const before = found.review.labels[0].groups
+  fireEvent.click(within(screen.getByRole('region', { name: '주택형 1 대상별 칸 표' })).getByRole('button', { name: '대상 1 대조·수정' }))
+  const target = screen.getByRole('region', { name: '주택형 1 대상 1 수정' })
+  fireEvent.click(target.querySelector('summary')!)
+  const picker = within(target).getByRole('group', { name: '공급대상 1 분류' })
+  fireEvent.click(within(picker).getByRole('checkbox', { name: '주거약자용' }))
+  fireEvent.click(within(picker).getByRole('checkbox', { name: '청년' }))
+  const saved = changed.mock.lastCall![0].labels.find(label => label.target === 0)!
+  expect(saved.groups).toEqual(orderedGroups([...before, 'YOUTH', 'HOUSING_VULNERABLE']))
+  expect(saved.groupsEdited).toBe(true)
+  expect(target.querySelector('summary')).toHaveAccessibleName(`공급대상 1 분류: ${groupsText(saved.groups)}`)
+})
+
+it('다른 주택형과 함께 쓰는 모집 수만 있는 주택형은 모집수를 미확인이 아니라 함께 쓰는 수로 보이고, 단지 모집 합에는 그 수를 한 번만 더한다', () => {
+  renderSupply(scenario('hansville'))
+  const rows = within(rowList()).getAllByRole('row').filter(row => within(row).queryByRole('button', { name: /^\d\. 26[AB]$/ }))
+  expect(rows.map(row => within(row).getAllByRole('cell')[1].textContent)).toEqual(['함께 170', '함께 170'])
+  expect(within(rowList()).getByRole('rowheader', { name: /주택형 2개/ })).toHaveTextContent('주택형 2개 · 모집 합 170')
+})
+
+it('주택형 모집수와 함께 쓰는 수가 함께 있으면 둘 다 보이고, 단지 합에는 함께 쓰는 수를 한 번만 더한다', () => {
+  const counts = () => within(rowList()).getAllByRole('row').filter(row => within(row).queryByRole('button', { name: /^\d\. 26[AB]$/ }))
+    .map(row => within(row).getAllByRole('cell')[1].textContent)
+  const sum = () => within(rowList()).getByRole('rowheader', { name: /주택형 2개/ })
+  renderSupply(scenario('hansville'), review => {
+    Object.assign(review.rows[0].cells.find(cell => cell.field === 'count')!, { before: 12, selected: false })
+  })
+  expect(counts()).toEqual(['12 · 함께 170', '함께 170'])
+  expect(sum()).toHaveTextContent('주택형 2개 · 모집 합 182')
+})
+
+it('함께 쓰는 수를 읽지 못한 주택형은 자기 모집수가 있어도 모집수와 단지 합을 미확인으로 보인다', () => {
+  renderSupply(scenario('hansville'), review => {
+    Object.assign(review.rows[0].cells.find(cell => cell.field === 'count')!, { before: 12, selected: false })
+    for (const entry of review.shared) Object.assign(entry.cell, { before: null, value: null })
+  })
+  const counts = within(rowList()).getAllByRole('row').filter(row => within(row).queryByRole('button', { name: /^\d\. 26[AB]$/ }))
+    .map(row => within(row).getAllByRole('cell')[1].textContent)
+  expect(counts).toEqual(['미확인', '미확인'])
+  expect(within(rowList()).getByRole('rowheader', { name: /주택형 2개/ })).toHaveTextContent('주택형 2개 · 모집 합 미확인')
 })

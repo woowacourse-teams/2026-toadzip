@@ -12,7 +12,7 @@ export function housingType(fields: Partial<SheetHousingType> & Pick<SheetHousin
 export function sampleSheet(): SupplySheet {
   return {
     housingTypes: [housingType({ key: 'row:1', name: '46A', housingTypeId: 21 }), housingType({ key: 'row:2', name: '59B', housingTypeId: 22, exclusiveArea: 59.1, displayOrder: 1 })],
-    targets: [{ key: 'target:1', id: 1, label: '일반', applicationCondition: '', displayOrder: 0 }, { key: 'target:2', id: 2, label: '고령자', applicationCondition: '', displayOrder: 1 }],
+    targets: [{ key: 'target:1', id: 1, label: '일반', applicationCondition: '', groups: ['GENERAL'], displayOrder: 0 }, { key: 'target:2', id: 2, label: '고령자', applicationCondition: '', groups: ['ELDERLY'], displayOrder: 1 }],
     cells: [{ key: 'cell:1', id: 1, housingType: 'row:1', target: 'target:1', displayOrder: 0 }, { key: 'cell:2', id: 2, housingType: 'row:1', target: 'target:2', displayOrder: 1 },
       { key: 'cell:3', id: 3, housingType: 'row:2', target: 'target:1', displayOrder: 0 }],
     quotas: [{ key: 'quota:1', id: 1, kind: 'WINNER', count: 10, members: ['cell:1', 'cell:2'], adminModified: false },

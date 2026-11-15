@@ -7,6 +7,7 @@ import { withoutApplicant } from '../supply/applicationType'
 import { evidenceFor, normalizePath, noteFor, receptionPlacesOf, type Evidence, type Extraction } from './extraction'
 import { duplicateOf, normalizedMethod, samePlace } from './receptionPlaces'
 import { namedHousingType, sameTypeName } from './areas'
+import { orderedGroups, type TargetGroup } from '../supply/targetGroups'
 import { areaValue, canonicalTarget, missingHousingType, originalDate, proposeSchedules, sameComplex, sourceComplexNames, typeKey, type HousingCandidates, type ScheduleProposal } from './matching'
 type Kind = 'text' | 'count' | 'area' | 'money' | 'date' | 'datetime' | 'month' | 'method' | 'scheduleType' | 'url' | 'housingType'
 export type CellState = 'unresolved' | 'notApplicable' | 'invalid' | 'confirm' | 'same' | 'changed' | 'new'
@@ -30,8 +31,11 @@ export const receptionFields: FieldSpec[] = [['name', '접수처명', 'text'], [
 export type ReceptionReview = { extracted: number | null; existing: number | null; include: boolean; cells: Cell[]; duplicateOf?: number | null }
 /** PDF 칸 하나(주택형 × 공급대상)의 검토. cell은 PDF 칸 순번, existing은 처음 짝지은 지금 공급표 칸 키다(없으면 새 칸). */
 export type TargetReview = { cell: number; existing: string | null; cells: Cell[] }
-/** PDF 공급대상 하나의 이름·신청 조건 검토. target은 PDF 공급대상 순번이다. */
-export type TargetLabelReview = { target: number; cells: Cell[] }
+/**
+ * PDF 공급대상 하나의 이름·신청 조건 검토와 분류. target은 PDF 공급대상 순번이다. groups는 저장할 분류로, 짝지은 지금 대상에 분류가 있으면
+ * 그 분류(관리자가 고친 값일 수 있다), 없으면 AI 워커가 표기에서 읽은 분류다. groupsEdited는 관리자가 이 화면에서 분류를 고쳤는지다.
+ */
+export type TargetLabelReview = { target: number; cells: Cell[]; groups: TargetGroup[]; groupsEdited?: boolean }
 /** 칸 여럿이 함께 쓰는 PDF 수량 묶음(주택형 모집수 제외)의 검토. quota는 PDF 묶음 순번이다. */
 export type SharedReview = { quota: number; cell: Cell }
 /**
@@ -188,7 +192,7 @@ export function pdfSheet(extraction: Pick<Extraction, 'sheet'>): SupplySheet {
     housingTypes: housingTypes.map((type, at) => ({ key: pdfKey.type(at), id: null, announcementComplexId: null, complexName: type.complexName ?? '', housingComplexId: null, housingComplexName: null,
       housingTypeId: null, newHousingType: null, name: type.name ?? '', exclusiveArea: type.exclusiveArea, supplyArea: type.supplyArea, expectedMoveInMonth: type.expectedMoveInMonth,
       supplyPnu: null, category: null, displayOrder: at, adminModified: false })),
-    targets: targets.map((target, at) => ({ key: pdfKey.target(at), id: null, label: target.label, applicationCondition: target.applicationCondition, displayOrder: at })),
+    targets: targets.map((target, at) => ({ key: pdfKey.target(at), id: null, label: target.label, applicationCondition: target.applicationCondition, groups: target.groups, displayOrder: at })),
     cells: cells.map((cell, at) => ({ key: pdfKey.cell(at), id: null, housingType: pdfKey.type(cell.housingType), target: pdfKey.target(cell.target), displayOrder: at })),
     quotas: quotas.map((quota, at) => ({ key: pdfKey.quota(at), id: null, kind: quota.kind, count: quota.count, members: quota.members.map(pdfKey.cell), adminModified: false })),
     leaseTerms: leaseTerms.map((lease, at) => ({ key: pdfKey.lease(at), id: null, rentalDeposit: lease.rentalDeposit, monthlyRent: lease.monthlyRent, convertedDeposit: lease.convertedDeposit,
@@ -331,7 +335,7 @@ function labelReviews(extraction: Extraction, workspace: JsonWorkspace): TargetL
     const label = target.label ? canonicalTarget(target.label) : '', value = { label, applicationCondition: target.applicationCondition }
     const existing = pairedTarget(workspace.supply.sheet.targets, value, extraction.sheet.targets)
     const values = cells(extraction, `targets[${at}]`, targetFields, value, existing ? { label: existing.label, applicationCondition: existing.applicationCondition } : {})
-    return { target: at, cells: values.map(cell => cell.field === 'applicationCondition' && !target.applicationCondition ? notApplicable(cell, noConditionNote)
+    return { target: at, groups: existing?.groups.length ? existing.groups : target.groups, cells: values.map(cell => cell.field === 'applicationCondition' && !target.applicationCondition ? notApplicable(cell, noConditionNote)
       : cell.field === 'label' && label === EVERYONE && !cell.evidence && ['confirm', 'unresolved'].includes(cell.state)
         ? { ...cell, state: 'new', selected: true, mode: 'extracted', note: addedEveryoneNote, extracted: { ...cell.extracted, state: 'confirm', note: addedEveryoneNote } } : cell) }
   })
@@ -847,7 +851,7 @@ export function assembledSheet(review: Review, workspace: JsonWorkspace): Supply
     for (const [index, row] of review.rows.entries()) { const at = row.targets.findIndex(item => extracted.cells[item.cell].target === target); if (at >= 0) return `target:${index}:${at}` }
     return undefined
   }
-  // 1. 공급대상. 이름·신청 조건이 같아지면 하나로 합치고, 지금 공급표에 표기·신청 조건이 글자 그대로 같은 대상이 있으면 그 키를 쓴다.
+  // 1. 공급대상. 이름·신청 조건이 같아지면 하나로 합치고(분류는 둘을 합친다), 지금 공급표에 표기·신청 조건이 글자 그대로 같은 대상이 있으면 그 키를 쓴다.
   //    서버는 표기 그대로 대상을 짝짓는다. 띄어쓰기·가운뎃점만 다른 표기도 새 대상이라 지금 대상의 키를 쓰면, 그 대상을 그대로 둘 단지가
   //    쓸 때 두 대상이 한 키로 겹친다.
   const targets: SheetTarget[] = [], targetOf = new Map<number, string>()
@@ -859,12 +863,15 @@ export function assembledSheet(review: Review, workspace: JsonWorkspace): Supply
     const label = typeof rawLabel === 'string' ? canonicalTarget(rawLabel) : '', condition = typeof rawCondition === 'string' ? rawCondition.trim() : ''
     if (!label) throw new ReviewError(`공급대상 ${entry.target + 1}: 공급대상 이름을 입력하세요.`, reviewId)
     const value = { label, applicationCondition: condition }
-    let target = targets.find(item => sameTarget(item, value))
-    if (!target) {
-      const saved = current.targets.find(item => item.label.trim() === label && item.applicationCondition.trim() === condition && !targets.some(used => used.key === item.key))
-      target = { key: saved?.key ?? `new:g${entry.target}`, id: saved?.id ?? null, ...value, displayOrder: targets.length }
-      targets.push(target)
+    const merged = targets.findIndex(item => sameTarget(item, value))
+    if (merged >= 0) {
+      targets[merged] = { ...targets[merged], groups: orderedGroups([...targets[merged].groups, ...entry.groups]) }
+      targetOf.set(entry.target, targets[merged].key)
+      continue
     }
+    const saved = current.targets.find(item => item.label.trim() === label && item.applicationCondition.trim() === condition && !targets.some(used => used.key === item.key))
+    const target = { key: saved?.key ?? `new:g${entry.target}`, id: saved?.id ?? null, ...value, groups: entry.groups, displayOrder: targets.length }
+    targets.push(target)
     targetOf.set(entry.target, target.key)
   }
   // 2. 주택형. 단지를 정해야 저장한다.
@@ -1062,7 +1069,11 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
     const kept: RowReview = { ...row, cells: row.cells.map(retain), targets: row.targets.map(target => ({ ...target, cells: target.cells.map(retain) })) }
     return old && linkedHousingTypeId(kept) === linkedHousingTypeId(old) ? { ...kept, priceTarget: old.priceTarget } : kept
   })
-  next.labels = next.labels.map(entry => ({ ...entry, cells: entry.cells.map(retain) }))
+  // 분류는 관리자가 이 화면에서 고친 것만 이어받는다. 고치지 않았으면 최신 공급표의 분류를 따른다.
+  next.labels = next.labels.map(entry => {
+    const old = previous.labels.find(item => item.target === entry.target)
+    return { ...entry, cells: entry.cells.map(retain), ...(old?.groupsEdited ? { groups: old.groups, groupsEdited: true } : {}) }
+  })
   next.shared = next.shared.map(entry => ({ ...entry, cell: retain(entry.cell) }))
   next.schedules = next.schedules.map((schedule, index) => {
     const old = previous.schedules[index]

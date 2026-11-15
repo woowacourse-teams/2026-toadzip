@@ -1,7 +1,7 @@
 import { Button } from '../../design-system/components/Button'
-import { assembledCount, rowOfReviewId, type PendingItem, type Review } from './review'
+import { rowOfReviewId, type PendingItem, type Review } from './review'
 import { RowStatusBadge } from './SupplyRowList'
-import { rowFacts, rowKind, type SupplyView } from './supplyView'
+import { rowCountText, rowFacts, rowKind, type SupplyView } from './supplyView'
 import styles from './PdfCorrection.module.css'
 
 /**
@@ -19,7 +19,7 @@ export function SupplyNavigator({ review, view, pending, onSelectComplex, onSele
   const next = at >= 0 ? order[at + 1] ?? null : order.find(index => groupAt(index) > groupIndex) ?? null
   const stepper = (label: string, target: number | null, text: string) => <Button key={label} data-design-system className={styles.stepButton} aria-label={label} disabled={target === null} onClick={() => onSelectRow(target!)}>{text}</Button>
   const row = current >= 0 ? review.rows[current] : null
-  const facts = row ? rowFacts(review, current) : null, count = row ? assembledCount(row) : null
+  const facts = row ? rowFacts(review, current) : null, count = row ? rowCountText(review, current) : null
   return <div className={styles.supplyNav} role="group" aria-label="주택형 이동">
     {groups.length > 1 ? <label className={styles.complexSelect}><span>단지</span>
       <select aria-label="단지" value={groupIndex} onChange={event => { const target = groups[Number(event.target.value)]; onSelectComplex(target.indexes.find(index => order.includes(index)) ?? target.indexes[0]) }}>
@@ -31,7 +31,7 @@ export function SupplyNavigator({ review, view, pending, onSelectComplex, onSele
       {stepper('이전 주택형', previous, '‹')}
       {facts && row ? <div className={styles.currentRowText}>
         <p aria-live="polite"><strong>{`${current + 1}. ${facts.name}`}</strong>
-          <span>{[facts.area !== null ? `전용 ${facts.area}㎡` : '전용 미확인', count === null ? '모집 미확인' : `모집 ${count}세대`, rowKind(review, current)].join(' · ')}</span></p>
+          <span>{[facts.area !== null ? `전용 ${facts.area}㎡` : '전용 미확인', /^\d+$/.test(count ?? '') ? `모집 ${count}세대` : `모집 ${count}`, rowKind(review, current)].join(' · ')}</span></p>
         <div className={styles.currentRowStatus}><RowStatusBadge review={review} index={current} pending={pending} onJump={onJump} detailed />
           <span className={styles.rowPosition} aria-label={`이 단지 주택형 ${shown.length}개 중 ${shown.indexOf(current) + 1}번째`}>{`${shown.indexOf(current) + 1}/${shown.length}`}</span></div>
       </div> : <p className={`${styles.currentRowText} ${styles.hint}`}>{`이 단지에는 지금 필터에 맞는 주택형이 없습니다.${order.length ? ` 다른 단지에 ${order.length}개 남음` : ''}`}</p>}
