@@ -158,6 +158,8 @@ class ComplexCurrentSuppliesIntegrationTest {
                         tuple(type.getId(), "고령자", "900"));
         assertThat(result.targets()).extracting(CurrentAnnouncementTargetRow::target).containsExactly("청년", "고령자");
         assertThat(staged.isSupplyConfirmed()).isFalse();
+        assertThat(result.conditions()).extracting(CurrentSupplyConditionRow::supplyConfirmed).containsOnly(false);
+        assertThat(result.unconfirmedAnnouncementIds()).containsExactly(staged.getId());
     }
 
     /** 저장한 값을 DB에서 다시 읽는다(금액 scale 등 운영 조회와 같은 값). */
@@ -181,7 +183,7 @@ class ComplexCurrentSuppliesIntegrationTest {
                 target.getId(), target.getTarget().getLabel(), new BigDecimal(deposit + ".00"),
                 new BigDecimal(monthlyRent + ".00"),
                 convertibleDeposit == null ? null : new BigDecimal(convertibleDeposit + ".00"),
-                announcement.getPostedDate());
+                announcement.getPostedDate(), true);
     }
 
     private HousingComplex persistComplex(String name) {

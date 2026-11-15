@@ -119,6 +119,7 @@ public class HousingComplexQueryService {
                 supplies.conditions(),
                 announcements,
                 supplies.targets(),
+                supplies.unconfirmedAnnouncementIds(),
                 today
         );
     }

@@ -488,7 +488,8 @@ class HousingComplexControllerTest {
                         "currentSupplyConditions"
                 )))
                 .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[0].keys()",
-                        containsInAnyOrder("target", "deposit", "monthlyRent", "convertibleDeposit", "postedDate")))
+                        containsInAnyOrder("target", "deposit", "monthlyRent", "convertibleDeposit", "postedDate",
+                                "supplyConfirmed")))
                 .andExpect(jsonPath("$.data.currentAnnouncements[0].keys()", containsInAnyOrder(
                         "announcementId",
                         "title",
@@ -498,7 +499,8 @@ class HousingComplexControllerTest {
                         "applicationStartAt",
                         "applicationEndAt",
                         "dDay",
-                        "actualCompetitionRate"
+                        "actualCompetitionRate",
+                        "supplyConfirmed"
                 )))
                 .andExpect(jsonPath("$.data.currentAnnouncements[0].applicationStartAt")
                         .value("2026-08-20"))
@@ -624,7 +626,8 @@ class HousingComplexControllerTest {
                                 50000000L,
                                 200000L,
                                 null,
-                                LocalDate.of(2026, 5, 1)
+                                LocalDate.of(2026, 5, 1),
+                                true
                         ))
                 )),
                 List.of(new CurrentAnnouncementResponse(
@@ -636,7 +639,8 @@ class HousingComplexControllerTest {
                         LocalDate.of(2026, 8, 20),
                         LocalDate.of(2026, 8, 27),
                         0,
-                        null
+                        null,
+                        true
                 ))
         );
     }

@@ -33,15 +33,20 @@ class ComplexCurrentSupplies {
     Result read(long complexId, List<CurrentAnnouncementRow> current) {
         List<Long> ids = current.stream().map(CurrentAnnouncementRow::announcementId).toList();
         if (ids.isEmpty()) {
-            return new Result(List.of(), List.of());
+            return new Result(List.of(), List.of(), Set.of());
         }
         Map<Long, Announcement> found = announcements.findAllById(ids).stream()
                 .collect(Collectors.toMap(Announcement::getId, Function.identity()));
         Map<Long, AnnouncementSupplies.AnnouncementSupply> read = supplies.read(ids.stream().map(found::get).toList());
         List<CurrentSupplyConditionRow> conditions = new ArrayList<>();
         List<CurrentAnnouncementTargetRow> targets = new ArrayList<>();
+        Set<Long> unconfirmed = new HashSet<>();
         for (CurrentAnnouncementRow announcement : current) {
-            SupplySheet sheet = read.get(announcement.announcementId()).sheet();
+            AnnouncementSupplies.AnnouncementSupply supply = read.get(announcement.announcementId());
+            if (!supply.confirmed()) {
+                unconfirmed.add(announcement.announcementId());
+            }
+            SupplySheet sheet = supply.sheet();
             Set<String> seenLabels = new HashSet<>();
             for (SupplySheet.Row row : sheet.rows()) {
                 if (row.complex() == null || row.complex().getId() != complexId) {
@@ -58,14 +63,16 @@ class ComplexCurrentSupplies {
                         sheet.lease(cell).ifPresent(lease -> conditions.add(new CurrentSupplyConditionRow(
                                 announcement.announcementId(), row.id(), row.housingType().getId(), cell.id(),
                                 cell.label(), lease.amounts().rentalDeposit(), lease.amounts().monthlyRent(),
-                                lease.amounts().convertedDeposit(), announcement.postedDate())));
+                                lease.amounts().convertedDeposit(), announcement.postedDate(), supply.confirmed())));
                     }
                 }
             }
         }
-        return new Result(List.copyOf(conditions), List.copyOf(targets));
+        return new Result(List.copyOf(conditions), List.copyOf(targets), Set.copyOf(unconfirmed));
     }
 
-    record Result(List<CurrentSupplyConditionRow> conditions, List<CurrentAnnouncementTargetRow> targets) {
+    /** unconfirmedAnnouncementIds는 공고문으로 확정하기 전이라 준비 데이터를 보인 공고다. */
+    record Result(List<CurrentSupplyConditionRow> conditions, List<CurrentAnnouncementTargetRow> targets,
+                  Set<Long> unconfirmedAnnouncementIds) {
     }
 }

@@ -243,7 +243,7 @@ class SeoPageServiceTest {
                 LocalDate.of(2020, 1, 1), "아파트", true, "개별난방", "계단식", 3, 100, 80,
                 null, null, null, null, List.of(), null, List.of(),
                 List.of(new CurrentAnnouncementResponse(171, "남동구 국민임대", "ORIGINAL", "APPLYING", List.of(),
-                        LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 17), 6, null)));
+                        LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 17), 6, null, true)));
     }
 
     private static HousingComplexListItemResponse listItem(long complexId, String name) {
