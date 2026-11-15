@@ -768,6 +768,20 @@ def test_count_cell_merged_over_all_house_type_rows_is_the_housing_type_count():
     assert not {path for path in result.unresolved() if path.endswith((".winner", ".reserve"))}
 
 
+def test_count_merged_in_only_some_columns_is_not_the_housing_type_count():
+    # 당첨자 칸은 55A·55B에 걸쳐 병합됐지만 예비자는 행마다 따로 적혔다. 병합 칸 하나로도, 행마다의 합으로도 정하지 않는다.
+    # 모델이 첫 행만 읽은 값(103 + 60, 예비 60)을 내도 확인된 값이 아니다.
+    table = [["주택형", "주택 타입", "공급대상", "당첨자", "예비자", "주거 전용"],
+             ["55", "55A", "신혼부부", "103", "60", "55.93"], [None, "55B", None, None, "40", "55.97"]]
+    result = supplied(table_pages(table), {"rowIds": ["P5:T1:R2", "P5:T1:R3"], "housingType": "55", "target": "신혼부부",
+                                           "supplyHouseholdCount": 163, "reserveCount": 60})
+
+    assert [house["name"] for house in result.sheet["housingTypes"][0]["houseTypes"]] == ["55A", "55B"]
+
+    assert result.sheet["quotas"] == []
+    assert {"cells[0].winner", "cells[0].reserve"} <= result.unresolved()
+
+
 def test_housing_type_row_sum_does_not_let_other_house_type_cells_confirm_other_values():
     # 합을 위해 84B 행을 읽어도 84A 행만 가리킨 주택형의 면적은 84A 칸과만 대조한다(84B 면적 84.95는 아니다).
     result = dasan(table_pages(SPLIT_COUNT_TABLE), {"rowIds": ["P5:T1:R3"], "housingType": "72"},
@@ -1056,12 +1070,15 @@ def test_row_without_a_target_gets_its_recruitment_count_on_an_everyone_cell():
 
 
 @pytest.mark.parametrize("targets", [["대학생"], ["대학생", "청년층"]])
-def test_a_count_cell_merged_over_other_targets_does_not_confirm_one_targets_count(targets):
+# 모델이 주택형을 원문 칸과 다르게 적어도(21A형) 같다.
+@pytest.mark.parametrize("housing_type", ["21A", "21A형"])
+def test_a_count_cell_merged_over_other_targets_does_not_confirm_one_targets_count(targets, housing_type):
     # 대학생 행에서 시작해 청년 행까지 병합된 일반 공급 28은 둘의 공통 수량이다. 코드가 대상별 수를 정하지 못했을 때
     # 모델이 대학생 몫으로 낸 5 + 28은 원문 칸 합과 같아도 확인된 값으로 보지 않는다.
-    result = seoknam(*targets, **{"대학생": {"supplyHouseholdCount": 33}})
+    result = seoknam(*targets, housing_type=housing_type, **{"대학생": {"supplyHouseholdCount": 33}})
 
-    assert ("WINNER", 33, ["21A/대학생"]) not in readable(result.sheet)["quotas"]
+    assert not [quota for quota in readable(result.sheet)["quotas"]
+                if quota[1] == 33 and len(quota[2]) == 1 and quota[2][0].endswith("/대학생")]
     assert "cells[0].winner" in result.unresolved()
 
 

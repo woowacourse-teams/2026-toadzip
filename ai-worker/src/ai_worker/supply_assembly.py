@@ -574,13 +574,14 @@ class _Assembly:
             self._drop(entry, "reserveCount")
 
     def _count_rows(self, rows: set[str], unit: Unit) -> set[str]:
-        """단위·대상이 가리키는 행 가운데 그 수량을 읽을 수 있는 행. 주택형 칸에 다른 주택형이 적힌 행은 병합된 공급대상·단지
-        칸의 근거로만 가리킨 행이라(울산다운2 55(주거약자용)이 55A 행의 공급대상 칸을 함께 씀) 그 행의 수량은 이 단위 것이 아니다."""
-        name = normalize_source_text(unit.name or "")
+        """단위·대상이 가리키는 행 가운데 그 수량을 읽을 수 있는 행. 주택형 칸에 다른 단위의 주택형이 적힌 행은 병합된 공급대상·단지
+        칸의 근거로만 가리킨 행이라(울산다운2 55(주거약자용)이 55A 행의 공급대상 칸을 함께 씀) 그 행의 수량은 이 단위 것이 아니다.
+        이름이 원문 칸과 조금 달라도(21A형) 다른 단위 이름과 같다고 확인되지 않은 행은 남겨 병합 수량 검사를 건너뛰지 않는다."""
+        own = normalize_source_text(unit.name or "")
+        others = {normalize_source_text(other.name or "") for other in self.units if other is not unit} - {own, ""}
         values = self.selected.supply_row_values
         return {row_id for row_id in rows
-                if not (housing := normalize_source_text(values.get(row_id, {}).get("housingType", "")))
-                or housing == name or normalize_source_text(values.get(row_id, {}).get("houseType", "")) == name}
+                if normalize_source_text(values.get(row_id, {}).get("housingType", "")) not in others}
 
     def _leave_merged_cells_unconfirmed(self, unit: Unit) -> None:
         """대상의 수량 칸이 그 대상 밖의 행까지 병합된 칸이면(대학생·청년이 함께 쓰는 일반 공급 28) 여러 대상의 공통 수량이다.

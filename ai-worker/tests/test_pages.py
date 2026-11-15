@@ -448,8 +448,13 @@ def test_selects_a_separate_complex_overview_address_page_but_not_addressless_gu
     assert 5 in selection.pages and 6 not in selection.pages
 
 
-@pytest.mark.parametrize("caption, unit", [("(단위: 천원)", "천원"), ("■ 임대조건", None)])
-def test_money_unit_written_just_above_a_table_is_the_unit_of_money_columns_without_one(caption, unit):
+@pytest.mark.parametrize("caption, x, unit", [
+    ("(단위: 천원)", 20, "천원"),
+    ("■ 임대조건", 20, None),
+    # 표 너비 밖(두 단 편집의 옆 단)에 적은 단위는 이 표의 단위가 아니다.
+    ("(단위: 천원)", 590, None),
+])
+def test_money_unit_written_just_above_a_table_is_the_unit_of_money_columns_without_one(caption, x, unit):
     # 울산다운2 임대조건표는 보증금 머리글에 단위가 없고 표 바로 위에 (단위: 천원)을 적는다. 월임대료(원)처럼 머리글에
     # 단위가 있는 열은 그 단위를 지킨다.
     from conftest import grid_page
@@ -458,7 +463,9 @@ def test_money_unit_written_just_above_a_table_is_the_unit_of_money_columns_with
         ["공급형", "주택형", "공급대상", "임대보증금", "월임대료 (원)", "주거전용"],
         ["55", "55A", "신혼부부", "66,000", "302,500", "55.93"],
     ])
-    page.insert_text((20, 40), caption, fontname="korea", fontsize=8)
+    if x > page.rect.x1 - 60:
+        page.set_mediabox(pymupdf.Rect(0, 0, x + 120, page.rect.y1))
+    page.insert_text((x, 40), caption, fontname="korea", fontsize=8)
     with pages.open_pdf(document.tobytes()) as opened:
         split = pages.prompt_pages(opened, [1], later())
 

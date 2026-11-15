@@ -178,6 +178,12 @@ def test_rent_row_whose_merged_housing_type_cell_also_holds_another_types_house_
                                                     (66000000, 302500, ["55 (주거약자용)/신혼부부"])]
     assert {"cells[2].rentalDeposit", "cells[2].monthlyRent"} <= result.unresolved()
 
+    # 55(주거약자용)의 주택타입 가운데 일부(55AT)가 임대조건 행에 없으면 잇지 않는다.
+    with_more = table(4, [*quantity.cells[1:4], [None, "55AT", None, None, "55.93", "24.1"], *quantity.cells[4:]], header=header)
+    result = read(with_more, rent)
+    assert readable(result.sheet)["leaseTerms"] == [(66000000, 302500, ["55/신혼부부"])]
+    assert {"cells[1].rentalDeposit", "cells[1].monthlyRent"} <= result.unresolved()
+
 
 def test_conflicting_rent_rows_for_one_target_stay_unresolved():
     quantity = table(4, [["Alpha", "26B", "청년", "5", "26.73", "13.07"]])
