@@ -42,7 +42,7 @@ class SupplySheetOnlyMigrationTest {
                 assertThat(folded.quotaMembers()).isPositive();
                 assertThat(folded.leaseMembers()).isPositive();
 
-                Flyway flyway = migration(database).load();
+                Flyway flyway = migration(database).target("20261114.01").load();
                 assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
                 flyway.validate();
 

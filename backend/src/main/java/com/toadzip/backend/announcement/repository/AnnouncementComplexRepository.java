@@ -8,4 +8,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AnnouncementComplexRepository extends JpaRepository<AnnouncementComplex, Long> {
 
     List<AnnouncementComplex> findAllByAnnouncementOrderByIdAsc(Announcement announcement);
+
+    /** 휴지통에 없는 공고의 공고 단지가 이 단지를 가리키는지. 공개 연결 규칙과 달리 제외 행만 남은 공고 단지도 센다. */
+    boolean existsByHousingComplexIdAndAnnouncementAdminDeletedFalse(long housingComplexId);
+
+    /** 이 공고의 공고 단지가 휴지통 단지를 가리키는지. 공개 연결 규칙과 달리 제외 행만 남은 공고 단지도 센다. */
+    boolean existsByAnnouncementIdAndHousingComplexAdminDeletedTrue(long announcementId);
 }

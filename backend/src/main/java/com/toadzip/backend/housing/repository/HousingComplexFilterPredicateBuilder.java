@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexLinkSql;
 import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 
@@ -76,10 +77,10 @@ final class HousingComplexFilterPredicateBuilder {
     private static final String CANCELLED_FILTER = """
             EXISTS (
                 SELECT 1
-                FROM supply_rows cancelled_supply_row
+                FROM %s cancelled_link
                 JOIN announcements cancelled_announcement
-                  ON cancelled_announcement.id = cancelled_supply_row.announcement_id
-                WHERE cancelled_supply_row.admin_excluded = false AND cancelled_supply_row.housing_complex_id = housing_complex.id
+                  ON cancelled_announcement.id = cancelled_link.announcement_id
+                WHERE cancelled_link.housing_complex_id = housing_complex.id
                   AND cancelled_announcement.admin_deleted = false AND cancelled_announcement.release_status = 'PUBLISHED'
                   AND cancelled_announcement.status IN ('CANCELLATION', '취소공고')
                   AND NOT EXISTS (
@@ -89,7 +90,7 @@ final class HousingComplexFilterPredicateBuilder {
                         AND cancelled_successor.admin_deleted = false AND cancelled_successor.release_status = 'PUBLISHED'
                   )
             )
-            """.strip();
+            """.formatted(AnnouncementComplexLinkSql.LINKS).strip();
 
     private static final String AREA_EXISTS_START = """
               AND EXISTS (

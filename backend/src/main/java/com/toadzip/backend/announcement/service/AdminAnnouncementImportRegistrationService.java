@@ -55,6 +55,7 @@ public class AdminAnnouncementImportRegistrationService {
     private final AnnouncementAttachmentRepository attachmentRepository;
     private final HousingComplexRepository housingComplexRepository;
     private final AdminAnnouncementSourceIdentifierGenerator identifierGenerator;
+    private final AnnouncementComplexAdminLinks announcementComplexes;
 
     public AdminAnnouncementImportRegistrationService(
             AdminAnnouncementImportValidationService validationService,
@@ -67,7 +68,8 @@ public class AdminAnnouncementImportRegistrationService {
             AnnouncementAttachmentRepository attachmentRepository,
             HousingComplexRepository housingComplexRepository,
             AdminAnnouncementSourceIdentifierGenerator identifierGenerator,
-            NotificationOutboxRepository notificationOutbox
+            NotificationOutboxRepository notificationOutbox,
+            AnnouncementComplexAdminLinks announcementComplexes
     ) {
         this.validationService = validationService;
         this.importJson = importJson;
@@ -78,6 +80,7 @@ public class AdminAnnouncementImportRegistrationService {
         this.scheduleRepository = scheduleRepository;
         this.attachmentRepository = attachmentRepository;
         this.housingComplexRepository = housingComplexRepository;
+        this.announcementComplexes = announcementComplexes;
         this.identifierGenerator = identifierGenerator;
         this.notificationOutbox = notificationOutbox;
     }
@@ -96,7 +99,7 @@ public class AdminAnnouncementImportRegistrationService {
 
         Announcement created = createAnnouncement(request);
         Announcement announcement = announcementRepository.save(created);
-        List<SupplyRow> supplyRows = saveSupplyRows(request, announcement, selectedComplexes);
+        List<SupplyRow> supplyRows = saveSupplyRows(request, announcement, selectedComplexes, registeredBy);
         int supplyTargetCount = writeSupplySheet(request, announcement, supplyRows);
         scheduleRepository.saveAll(createSchedules(request, announcement));
         attachmentRepository.saveAll(createAttachments(request, announcement));
@@ -191,11 +194,17 @@ public class AdminAnnouncementImportRegistrationService {
         );
     }
 
+    /**
+     * 공급행은 (공고, 단지명)의 공고 단지에 들고, 그 공고 단지는 고른 단지로 관리자 연결한다. 같은 단지명의 행이 서로 다른 단지를
+     * 고르면 등록하지 않는다(공고 단지 하나는 단지 하나에 이어진다).
+     */
     private List<SupplyRow> saveSupplyRows(
             AdminAnnouncementImportRequest request,
             Announcement announcement,
-            Map<Integer, HousingComplex> selectedComplexes
+            Map<Integer, HousingComplex> selectedComplexes,
+            String registeredBy
     ) {
+        ensureOneComplexPerName(request, selectedComplexes);
         List<SupplyRow> rows = new ArrayList<>();
         for (int index = 0; index < request.supplyRows().size(); index++) {
             SupplyRowRequest row = request.supplyRows().get(index);
@@ -215,9 +224,25 @@ public class AdminAnnouncementImportRegistrationService {
             if (row.exclusiveArea() != null || row.supplyArea() != null) {
                 supplyRow.correctPresentation(false, index, true, row.exclusiveArea(), row.supplyArea());
             }
+            supplyRow.fillAnnouncementComplex(announcementComplexes.declare(announcement,
+                    row.complexReference().sourceComplexName(), selectedComplexes.get(index), registeredBy));
             rows.add(supplyRow);
         }
         return supplyRowRepository.saveAll(rows);
+    }
+
+    private static void ensureOneComplexPerName(AdminAnnouncementImportRequest request,
+            Map<Integer, HousingComplex> selectedComplexes) {
+        Map<String, Long> chosen = new HashMap<>();
+        for (int index = 0; index < request.supplyRows().size(); index++) {
+            HousingComplex complex = selectedComplexes.get(index);
+            if (complex == null) { continue; }
+            String name = request.supplyRows().get(index).complexReference().sourceComplexName().strip();
+            Long previous = chosen.putIfAbsent(name, complex.getId());
+            if (previous != null && !previous.equals(complex.getId())) {
+                throw new InvalidAnnouncementImportException();
+            }
+        }
     }
 
     /** 공급행마다 JSON의 대상·모집수·금액을 공고 공급표로 쓴다. 돌려주는 수는 JSON의 대상 수다. */

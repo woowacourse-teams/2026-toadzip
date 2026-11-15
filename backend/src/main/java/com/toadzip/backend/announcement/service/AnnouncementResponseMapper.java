@@ -54,9 +54,11 @@ final class AnnouncementResponseMapper {
         this.applicationStatusCalculator = applicationStatusCalculator;
     }
 
+    /** linkedComplexes는 공고별 연결 단지(공고↔단지 연결 규칙)다. 지역·단지 수·대표 이미지는 연결 단지로 정한다. */
     List<AnnouncementListItemResponse> toListItemResponses(
             List<Announcement> announcements,
             List<SupplyRow> supplyRows,
+            Map<Long, List<HousingComplex>> linkedComplexes,
             SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             List<AnnouncementSchedule> schedules,
@@ -67,6 +69,7 @@ final class AnnouncementResponseMapper {
                 .map(announcement -> toListItem(
                         announcement,
                         rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
+                        linkedComplexes.getOrDefault(announcement.getId(), List.of()),
                         sheet,
                         applicationSchedules.stream().filter(schedule ->
                                 schedule.getAnnouncement().getId().equals(announcement.getId())).toList(),
@@ -81,11 +84,12 @@ final class AnnouncementResponseMapper {
             List<AnnouncementSchedule> schedules,
             List<AnnouncementAttachment> attachments,
             List<SupplyRow> supplyRows,
+            List<HousingComplex> linkedComplexes,
             SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate today
     ) {
-        ListAggregate aggregate = aggregateRows(supplyRows, sheet);
+        ListAggregate aggregate = aggregate(supplyRows, linkedComplexes, sheet);
         SupplyComposition supplyComposition = composeSupplyRows(supplyRows, sheet);
         return new AnnouncementDetailResponse(
                 announcement.getId(),
@@ -135,12 +139,13 @@ final class AnnouncementResponseMapper {
     private AnnouncementListItemResponse toListItem(
             Announcement announcement,
             List<SupplyRow> supplyRows,
+            List<HousingComplex> linkedComplexes,
             SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate resultAnnouncementDate,
             LocalDate today
     ) {
-        ListAggregate aggregate = aggregateRows(supplyRows, sheet);
+        ListAggregate aggregate = aggregate(supplyRows, linkedComplexes, sheet);
         LocalDate start = announcement.getApplicationStartDate();
         LocalDate end = announcement.getApplicationEndDate();
         if (announcement.isApplicationScheduleReviewed()) {
@@ -353,27 +358,21 @@ final class AnnouncementResponseMapper {
         return amount.longValueExact();
     }
 
-    private ListAggregate aggregateRows(List<SupplyRow> supplyRows, SupplySheet sheet) {
+    private ListAggregate aggregate(List<SupplyRow> supplyRows, List<HousingComplex> linkedComplexes,
+            SupplySheet sheet) {
         Set<String> regionNames = new LinkedHashSet<>();
-        Set<Long> complexIds = new HashSet<>();
         String thumbnailImageUrl = null;
-        Set<Long> visibleRows = new HashSet<>();
-        for (SupplyRow supplyRow : supplyRows) {
-            if (supplyRow.isAdminExcluded()) { continue; }
-            visibleRows.add(supplyRow.getId());
-            HousingComplex housingComplex = supplyRow.getHousingComplex();
-            if (housingComplex == null) {
-                continue;
-            }
-            complexIds.add(housingComplex.getId());
+        for (HousingComplex housingComplex : linkedComplexes) {
             addRegionName(regionNames, housingComplex.getAddress());
             if (thumbnailImageUrl == null && housingComplex.getImageUrl() != null) {
                 thumbnailImageUrl = housingComplex.getImageUrl();
             }
         }
+        Set<Long> visibleRows = new HashSet<>();
+        supplyRows.stream().filter(row -> !row.isAdminExcluded()).forEach(row -> visibleRows.add(row.getId()));
         return new ListAggregate(
                 List.copyOf(regionNames),
-                complexIds.size(),
+                linkedComplexes.size(),
                 sheet.total(SupplyQuota.Kind.WINNER, visibleRows::contains),
                 thumbnailImageUrl
         );

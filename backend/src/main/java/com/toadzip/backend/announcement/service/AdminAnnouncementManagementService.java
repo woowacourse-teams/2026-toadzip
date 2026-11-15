@@ -19,9 +19,9 @@ import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentRespo
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplySheetViewQueryRepository;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -40,19 +40,20 @@ public class AdminAnnouncementManagementService {
     private final AnnouncementSearchRepository adminQueries;
     private final Clock clock;
     private final AnnouncementRepository announcements;
-    private final SupplyRowRepository rows;
+    private final AnnouncementComplexRepository announcementComplexes;
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
     private final AnnouncementApplicationScheduleRepository schedules;
     private final AnnouncementAttachmentRepository attachments;
     private final SupplySheetViewQueryRepository sheets;
 
-    public AdminAnnouncementManagementService(AnnouncementRepository announcements, SupplyRowRepository rows,
+    public AdminAnnouncementManagementService(AnnouncementRepository announcements,
+            AnnouncementComplexRepository announcementComplexes,
             AdminDataChangeRepository changes, ObjectMapper json, AnnouncementApplicationScheduleRepository schedules,
             AnnouncementAttachmentRepository attachments, AnnouncementSearchRepository adminQueries, Clock clock,
             SupplySheetViewQueryRepository sheets) {
         this.announcements = announcements;
-        this.rows = rows;
+        this.announcementComplexes = announcementComplexes;
         this.adminQueries = adminQueries;
         this.clock = clock;
         this.changes = changes;
@@ -123,8 +124,7 @@ public class AdminAnnouncementManagementService {
                 && announcement.getPreviousAnnouncement().isAdminDeleted()) {
             throw new AdminDataConflictException("이전 공고를 먼저 복구해 주세요.");
         }
-        if (restore && rows.findAllByAnnouncement(announcement).stream().anyMatch(row ->
-                row.getHousingComplex() != null && row.getHousingComplex().isAdminDeleted())) {
+        if (restore && announcementComplexes.existsByAnnouncementIdAndHousingComplexAdminDeletedTrue(id)) {
             throw new AdminDataConflictException("연결된 단지를 먼저 복구해 주세요.");
         }
         String before = json.writeValueAsString(summary(announcement));

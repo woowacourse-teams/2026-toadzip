@@ -55,13 +55,16 @@ class AdminAnnouncementRegistrationServiceTest {
 
     private final SupplySheetStore supplySheets = mock(SupplySheetStore.class);
 
+    private final AnnouncementComplexAdminLinks announcementComplexes = mock(AnnouncementComplexAdminLinks.class);
+
     private final AdminAnnouncementRegistrationService service = new AdminAnnouncementRegistrationService(
             announcementRepository,
             supplyRowRepository,
             housingComplexRepository,
             identifierGenerator,
             mock(NotificationOutboxRepository.class),
-            supplySheets
+            supplySheets,
+            announcementComplexes
     );
 
     @BeforeEach
@@ -90,12 +93,14 @@ class AdminAnnouncementRegistrationServiceTest {
                 11L, null, "원문 두꺼비 행복주택", "36A", null, null, YearMonth.of(2027, 3), "1114010100100010000",
                 SupplyCategory.NEW_SUPPLY, 0));
 
-        AdminAnnouncementCreateResponse response = service.register(validRequest());
+        AdminAnnouncementCreateResponse response = service.register(validRequest(), "admin");
 
         ArgumentCaptor<Announcement> announcementCaptor = ArgumentCaptor.forClass(Announcement.class);
         ArgumentCaptor<SupplyRow> supplyRowCaptor = ArgumentCaptor.forClass(SupplyRow.class);
         verify(announcementRepository).save(announcementCaptor.capture());
         verify(supplyRowRepository).save(supplyRowCaptor.capture());
+        // 공급행은 (공고, 단지명)의 공고 단지에 들고, 그 공고 단지는 고른 단지로 관리자 연결한다.
+        verify(announcementComplexes).declare(savedAnnouncement, "원문 두꺼비 행복주택", housingComplex, "admin");
         Announcement announcement = announcementCaptor.getValue();
         SupplyRow supplyRow = supplyRowCaptor.getValue();
         ArgumentCaptor<SupplySheetDraft> sheetCaptor = ArgumentCaptor.forClass(SupplySheetDraft.class);
@@ -146,7 +151,7 @@ class AdminAnnouncementRegistrationServiceTest {
     void 없는_단지면_아무것도_저장하지_않는다() {
         when(housingComplexRepository.findByIdForUpdate(11L)).thenReturn(Optional.empty());
 
-        assertThrows(AdminHousingComplexNotFoundException.class, () -> service.register(validRequest()));
+        assertThrows(AdminHousingComplexNotFoundException.class, () -> service.register(validRequest(), "admin"));
 
         verify(announcementRepository, never()).save(any());
         verify(supplyRowRepository, never()).save(any());
@@ -160,7 +165,7 @@ class AdminAnnouncementRegistrationServiceTest {
                 LocalDate.of(2026, 8, 10)
         );
 
-        assertThrows(InvalidAnnouncementRequestException.class, () -> service.register(invalid));
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.register(invalid, "admin"));
 
         verify(housingComplexRepository, never()).findById(any());
         verify(announcementRepository, never()).save(any());

@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementHousingComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -43,6 +44,7 @@ import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestExce
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementHousingComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementDeadlineRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
@@ -98,6 +100,9 @@ class AnnouncementQueryServiceTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Mock
+    private AnnouncementHousingComplexRepository links;
+
+    @Mock
     private SupplySheets supplySheets;
 
     @Mock
@@ -118,6 +123,7 @@ class AnnouncementQueryServiceTest {
                 announcementScheduleRepository,
                 announcementAttachmentRepository,
                 supplyRowRepository,
+                links,
                 supplySheets,
                 new AnnouncementResponseMapper(regionCodeResolver, new AnnouncementApplicationStatusCalculator()),
                 announcementCursorCodec,
@@ -231,6 +237,12 @@ class AnnouncementQueryServiceTest {
         when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(
                 correction.getId(), applying.getId(), beforeApplication.getId(), closed.getId()
         ))).thenReturn(supplyRows);
+        // 지역·단지 수·대표 이미지는 공고↔단지 연결(공고 단지)로 정한다. 공급행이 가리키는 단지가 아니다.
+        List<AnnouncementHousingComplex> correctionLinks = List.of(link(correction, seoulComplex),
+                link(correction, busanComplex), link(correction, unresolvedComplex));
+        when(links.findAllByAnnouncementIdInOrderByAnnouncementIdAscHousingComplexIdAsc(List.of(
+                correction.getId(), applying.getId(), beforeApplication.getId(), closed.getId()
+        ))).thenReturn(correctionLinks);
         when(regionCodeResolver.resolve("11", "11140")).thenReturn(Optional.of("서울특별시 중구"));
         when(regionCodeResolver.resolve("26", "26110")).thenReturn(Optional.of("부산광역시 중구"));
 
@@ -382,6 +394,7 @@ class AnnouncementQueryServiceTest {
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
                 mock(SupplyRowRepository.class),
+                mock(AnnouncementHousingComplexRepository.class),
                 mock(SupplySheets.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
@@ -462,6 +475,7 @@ class AnnouncementQueryServiceTest {
         when(announcementResponseMapper.toListItemResponses(
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyMap(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
@@ -495,6 +509,7 @@ class AnnouncementQueryServiceTest {
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),
                 org.mockito.ArgumentMatchers.eq(List.of()),
+                org.mockito.ArgumentMatchers.eq(java.util.Map.of()),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
@@ -612,6 +627,9 @@ class AnnouncementQueryServiceTest {
                 .thenReturn(List.of(earlierAttachment, laterAttachment));
         when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(detail.getId())))
                 .thenReturn(List.of(matchedRow, complexOnlyRow, unmatchedRow, housingTypeOnlyRow));
+        List<AnnouncementHousingComplex> detailLinks = List.of(link(detail, complex));
+        when(links.findAllByAnnouncementIdInOrderByAnnouncementIdAscHousingComplexIdAsc(List.of(detail.getId())))
+                .thenReturn(detailLinks);
         when(regionCodeResolver.resolve("11", "11140")).thenReturn(Optional.of("서울특별시 중구"));
 
         AnnouncementDetailResponse response = announcementQueryService.getAnnouncement(detail.getId());
@@ -1016,12 +1034,20 @@ class AnnouncementQueryServiceTest {
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
                 mock(SupplyRowRepository.class),
+                mock(AnnouncementHousingComplexRepository.class),
                 mock(SupplySheets.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
                 fixedClock(),
                 regionCodeResolver
         );
+    }
+
+    private static AnnouncementHousingComplex link(Announcement announcement, HousingComplex complex) {
+        AnnouncementHousingComplex link = mock(AnnouncementHousingComplex.class);
+        lenient().when(link.getAnnouncementId()).thenReturn(announcement.getId());
+        lenient().when(link.getHousingComplex()).thenReturn(complex);
+        return link;
     }
 
     private <T> T withId(T entity) {

@@ -265,7 +265,10 @@ class SupplyCorrectionIntegrationTest {
         var again = apply(id, request, preview).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyApplied").value(true));
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_rows WHERE announcement_id = ?", Long.class, id)).isEqualTo(2L);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_data_changes", Long.class)).isEqualTo(1L);
+        // 첫 적용이 공고 단지 없던 행을 같은 이름의 공고 단지에 넣으며 그 단지 연결을 한 번 기록한다. 재전송은 아무것도 더 쓰지 않는다.
+        assertThat(jdbc.queryForList("SELECT resource_type || ':' || action FROM admin_data_changes ORDER BY id",
+                String.class))
+                .containsExactlyInAnyOrder("ANNOUNCEMENT_COMPLEX:LINK_BY_ADMIN", "ANNOUNCEMENT:CORRECT_SUPPLY");
         again.andExpect(jsonPath("$.data.workspace.sheet.housingTypes.length()").value(2));
     }
 

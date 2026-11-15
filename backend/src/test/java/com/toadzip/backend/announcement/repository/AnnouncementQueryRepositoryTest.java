@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -1366,7 +1367,7 @@ class AnnouncementQueryRepositoryTest {
             int displayOrder,
             String matchingFailureReason
     ) {
-        return SupplyRow.create(
+        return AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
                 announcement,
                 housingComplex,
                 housingType,
@@ -1377,7 +1378,7 @@ class AnnouncementQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason);
+                matchingFailureReason));
     }
 
     private <T> T persist(T entity) {

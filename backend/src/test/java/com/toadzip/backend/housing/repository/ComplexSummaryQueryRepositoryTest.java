@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
@@ -1918,7 +1919,7 @@ class ComplexSummaryQueryRepositoryTest {
             String sourceIdentifier,
             int displayOrder
     ) {
-        SupplyRow supplyRow = SupplyRow.create(
+        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
                 announcement,
                 complex,
                 housingType,
@@ -1929,7 +1930,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                null);
+                null));
         entityManager.persist(supplyRow);
         return supplyRow;
     }
@@ -1964,7 +1965,7 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     private void persistUnmatchedSupplyRow(Announcement announcement) {
-        SupplyRow supplyRow = SupplyRow.create(
+        SupplyRow supplyRow = AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
                 announcement,
                 null,
                 null,
@@ -1975,7 +1976,7 @@ class ComplexSummaryQueryRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                "단지 매칭 실패");
+                "단지 매칭 실패"));
         entityManager.persist(supplyRow);
     }
 

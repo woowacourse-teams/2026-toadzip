@@ -229,7 +229,8 @@ public class SupplyCorrectionService {
         rows.deleteAll(rows.findAllByAnnouncement(announcement).stream().filter(SupplyRow::isAdminExcluded).toList());
         rows.flush();
         var created = createTypes(plan.after(), request);
-        var saved = store.replace(announcement, plan.draft(created));
+        var announcementComplexIds = adminLinks.ensure(announcement, plan, actor);
+        var saved = store.replace(announcement, plan.draft(created, announcementComplexIds));
         Map<String, SupplyRow> written = new LinkedHashMap<>();
         saved.housingTypes().forEach((key, rowId) -> written.put(key, rows.findById(rowId).orElseThrow()));
         adminLinks.apply(plan.links(), written, actor);

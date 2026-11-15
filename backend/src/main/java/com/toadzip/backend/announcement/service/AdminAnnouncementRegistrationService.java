@@ -35,13 +35,16 @@ public class AdminAnnouncementRegistrationService {
 
     private final SupplySheetStore supplySheets;
 
+    private final AnnouncementComplexAdminLinks announcementComplexes;
+
     public AdminAnnouncementRegistrationService(
             AnnouncementRepository announcementRepository,
             SupplyRowRepository supplyRowRepository,
             HousingComplexRepository housingComplexRepository,
             AdminAnnouncementSourceIdentifierGenerator identifierGenerator,
             NotificationOutboxRepository notificationOutbox,
-            SupplySheetStore supplySheets
+            SupplySheetStore supplySheets,
+            AnnouncementComplexAdminLinks announcementComplexes
     ) {
         this.announcementRepository = announcementRepository;
         this.supplyRowRepository = supplyRowRepository;
@@ -49,15 +52,19 @@ public class AdminAnnouncementRegistrationService {
         this.identifierGenerator = identifierGenerator;
         this.notificationOutbox = notificationOutbox;
         this.supplySheets = supplySheets;
+        this.announcementComplexes = announcementComplexes;
     }
 
+    /** 공급행은 (공고, 단지명)의 공고 단지에 들고, 그 공고 단지는 고른 단지로 관리자 연결한다. */
     @Transactional
-    public AdminAnnouncementCreateResponse register(AdminAnnouncementCreateRequest request) {
+    public AdminAnnouncementCreateResponse register(AdminAnnouncementCreateRequest request, String actor) {
         validateApplicationPeriod(request);
         HousingComplex housingComplex = findHousingComplex(request.housingComplexId());
         Announcement created = createAnnouncement(request);
         Announcement announcement = announcementRepository.save(created);
         SupplyRow createdSupplyRow = createSupplyRow(request.supplyRow(), announcement, housingComplex);
+        createdSupplyRow.fillAnnouncementComplex(announcementComplexes.declare(announcement,
+                request.supplyRow().sourceComplexName(), housingComplex, actor));
         SupplyRow supplyRow = supplyRowRepository.save(createdSupplyRow);
         // 대상 구분 없이 모집수만 받으므로 공급표는 '전체' 칸 하나가 그 모집수를 갖는다.
         supplySheets.replace(announcement, SourceSupplySheet.draft(List.of(new SourceSupplySheet.Row(supplyRow,

@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,7 +41,7 @@ class AdminAnnouncementControllerTest {
 
     @Test
     void 관리자_공고_등록은_201과_생성_ID를_반환한다() throws Exception {
-        when(registrationService.register(any())).thenReturn(new AdminAnnouncementCreateResponse(
+        when(registrationService.register(any(), eq("admin"))).thenReturn(new AdminAnnouncementCreateResponse(
                 21L,
                 31L,
                 11L,
@@ -48,6 +49,7 @@ class AdminAnnouncementControllerTest {
         ));
 
         mockMvc.perform(post(ENDPOINT)
+                        .principal(() -> "admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest()))
                 .andExpect(status().isCreated())
@@ -66,6 +68,7 @@ class AdminAnnouncementControllerTest {
                 .replace("\"totalSupplyHouseholdCount\": 20", "\"totalSupplyHouseholdCount\": -1");
 
         mockMvc.perform(post(ENDPOINT)
+                        .principal(() -> "admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(invalidRequest))
                 .andExpect(status().isBadRequest())
@@ -85,9 +88,10 @@ class AdminAnnouncementControllerTest {
 
     @Test
     void 접수_종료일이_시작일보다_빠르면_INVALID_REQUEST를_반환한다() throws Exception {
-        when(registrationService.register(any())).thenThrow(new InvalidAnnouncementRequestException());
+        when(registrationService.register(any(), eq("admin"))).thenThrow(new InvalidAnnouncementRequestException());
 
         mockMvc.perform(post(ENDPOINT)
+                        .principal(() -> "admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest().replace("2026-08-14", "2026-08-09")))
                 .andExpect(status().isBadRequest())
@@ -96,9 +100,10 @@ class AdminAnnouncementControllerTest {
 
     @Test
     void 없는_단지_ID는_HOUSING_COMPLEX_NOT_FOUND를_반환한다() throws Exception {
-        when(registrationService.register(any())).thenThrow(new AdminHousingComplexNotFoundException());
+        when(registrationService.register(any(), eq("admin"))).thenThrow(new AdminHousingComplexNotFoundException());
 
         mockMvc.perform(post(ENDPOINT)
+                        .principal(() -> "admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest()))
                 .andExpect(status().isNotFound())
@@ -108,6 +113,7 @@ class AdminAnnouncementControllerTest {
 
     private void assertInvalidRequest(String request) throws Exception {
         mockMvc.perform(post(ENDPOINT)
+                        .principal(() -> "admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadRequest())

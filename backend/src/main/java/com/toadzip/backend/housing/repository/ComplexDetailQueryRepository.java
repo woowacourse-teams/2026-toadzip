@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.repository;
 
+import com.toadzip.backend.announcement.repository.AnnouncementComplexLinkSql;
 import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 
 import java.sql.ResultSet;
@@ -123,16 +124,12 @@ public class ComplexDetailQueryRepository {
                    %s
             FROM current_leaf announcement
             %s
-            WHERE EXISTS (
-                SELECT 1
-                FROM supply_rows supply_row
-                WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
-                  AND supply_row.housing_complex_id = :complexId
-            )
+            WHERE %s
             ORDER BY announcement.posted_date DESC, announcement.id DESC
             """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"),
                     ApplicationScheduleSql.displayPeriodColumns("announcement"),
-                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"));
+                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"),
+                    AnnouncementComplexLinkSql.linked("announcement.id", ":complexId"));
 
     private static final String FIND_CURRENT_ANNOUNCEMENT_TARGETS = CURRENT_LEAF_CTE + """
             , ranked_target AS (
@@ -153,7 +150,8 @@ public class ComplexDetailQueryRepository {
                 FROM current_leaf announcement
                 JOIN supply_rows supply_row
                   ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
-                 AND supply_row.housing_complex_id = :complexId
+                JOIN announcement_complexes row_complex
+                  ON row_complex.id = supply_row.announcement_complex_id AND row_complex.housing_complex_id = :complexId
                 JOIN supply_row_targets cell ON cell.supply_row_id = supply_row.id
                 JOIN announcement_supply_targets supply_target
                   ON supply_target.id = cell.supply_target_id AND supply_target.label <> '전체'

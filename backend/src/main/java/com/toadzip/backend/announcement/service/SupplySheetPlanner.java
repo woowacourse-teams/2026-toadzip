@@ -71,12 +71,37 @@ class SupplySheetPlanner {
         housingTypes.forEach((key, type) -> housingTypeKeys.put(key, type.key()));
         var plan = new SupplySheetPlan(before, after, housingTypeKeys, targetFlags, List.of(), List.of(), List.of(), false);
         // 결과는 버린다. 공급표 쓰기(SupplySheetDraft.of)가 하는 칸·묶음·임대조건 참조 검증을 미리보기에서도 돌려 적용 때 거절될 입력을 먼저 막는다.
-        plan.draft(Map.of());
+        plan.draft(Map.of(), Map.of());
         boolean changed = !canonical(before).equals(canonical(after));
         var warnings = new ArrayList<>(warnings(announcement.getId(), after, changed));
         var links = adminLinks.plan(announcement, before.housingTypes(), after.housingTypes(), touchedIds(before, after));
+        checkOneComplexPerAnnouncementComplex(announcement, after.housingTypes(), links);
         warnings.addAll(adminLinks.warnings(links));
         return new SupplySheetPlan(before, after, housingTypeKeys, targetFlags, warnings, links, candidates(after), changed);
+    }
+
+    /**
+     * 공고 단지 하나는 단지 하나에 이어진다(공고↔단지 연결은 공고 단지로 정한다). 주택형이 고른 단지는 저장 뒤 그 공고 단지의 연결 단지
+     * (이번 관리자 연결, 없으면 지금 연결)와 같아야 한다. 아직 단지에 이어지지 않은 공고 단지와 저장 때 만들 공고 단지(단지명)는 처음 고른
+     * 단지로 이어지므로 같은 공고 단지의 주택형이 서로 다른 단지를 고르면 막는다.
+     */
+    private void checkOneComplexPerAnnouncementComplex(Announcement announcement,
+            List<SupplySheetView.HousingType> types, List<AnnouncementComplexAdminLinks.Plan> links) {
+        Map<String, Long> linked = new HashMap<>();
+        announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement).stream()
+                .filter(complex -> complex.linkedComplex() != null)
+                .forEach(complex -> linked.put("ac:" + complex.getId(), complex.linkedComplex().getId()));
+        links.forEach(link -> linked.put("ac:" + link.target().getId(), link.complex().getId()));
+        for (var type : types) {
+            if (type.housingComplexId() == null) { continue; }
+            String place = type.announcementComplexId() != null ? "ac:" + type.announcementComplexId()
+                    : "name:" + type.complexName();
+            Long complexId = linked.putIfAbsent(place, type.housingComplexId());
+            if (complexId != null && !complexId.equals(type.housingComplexId())) {
+                throw new IllegalArgumentException(type.complexName() + " · " + type.name()
+                        + ": 공고문의 한 단지에 속한 주택형은 같은 단지로 연결하세요.");
+            }
+        }
     }
 
     /**
@@ -184,6 +209,12 @@ class SupplySheetPlanner {
             var linked = ownComplexes.values().stream().filter(candidate -> candidate.linkedComplex() != null
                     && candidate.linkedComplex().getId().equals(complex.getId())).toList();
             if (linked.size() == 1) { announcementComplexId = linked.getFirst().getId(); }
+        }
+        if (announcementComplexId == null) {
+            // 공고 단지를 고르지 않은 주택형은 같은 이름의 공고 단지에 든다. 없으면 저장 때 만든다(AnnouncementComplexAdminLinks.ensure).
+            announcementComplexId = ownComplexes.values().stream()
+                    .filter(candidate -> candidate.getSourceComplexName().strip().equals(type.complexName().strip()))
+                    .map(AnnouncementComplex::getId).findFirst().orElse(null);
         }
         BigDecimal exclusiveArea = SupplySheetViewQueryRepository.area(type.exclusiveArea());
         BigDecimal supplyArea = SupplySheetViewQueryRepository.area(type.supplyArea());

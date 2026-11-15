@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.SupplyOwner;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
@@ -391,8 +392,9 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                         new BigDecimal("37.5"), new BigDecimal("127.0")),
                 100, "LH", LocalDate.of(2020, 1, 1), "개별난방", "아파트", "계단식", true, 80, null, null);
         entityManager.persist(complex);
-        entityManager.persist(SupplyRow.create(announcement, complex, null, "review:" + regionCode, 0,
-                complex.getName(), "주택형", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null));
+        entityManager.persist(AnnouncementComplexSeed.place(entityManager, SupplyRow.create(announcement, complex,
+                null, "review:" + regionCode, 0, complex.getName(), "주택형", "1114010100100010000", null,
+                SupplyCategory.NEW_SUPPLY, null)));
         entityManager.flush();
         return complex;
     }

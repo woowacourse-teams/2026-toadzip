@@ -233,7 +233,8 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     }
 
     @Test
-    void 공고_단지가_없는_기존_행은_이_저장에서_공고_단지를_채우지_않는다() throws Exception {
+    void 공고_단지가_없는_기존_행은_이_저장에서_같은_이름의_공고_단지에_든다() throws Exception {
+        // 공고↔단지 연결은 공고 단지로만 보이므로, PDF 보정 저장은 공고 단지 없는 행을 (공고, 단지명) 공고 단지에 넣는다.
         var manual = row(entities.find(HousingComplex.class, chosen.getId()), null, 4, null);
         entities.flush(); entities.clear();
         long id = announcement.getId();
@@ -244,7 +245,7 @@ class AnnouncementComplexAdminLinkIntegrationTest {
         apply(id, request, preview(id, request)).andExpect(status().isOk());
 
         assertThat(jdbc.queryForObject("SELECT announcement_complex_id FROM supply_rows WHERE id = ?", Long.class,
-                manual.getId())).isNull();
+                manual.getId())).isEqualTo(announcementComplex.getId());
     }
 
     @Test
@@ -266,7 +267,7 @@ class AnnouncementComplexAdminLinkIntegrationTest {
     }
 
     @Test
-    void 새_주택형의_단지에_연결된_공고_단지가_둘이면_공고_단지를_비워_둔다() throws Exception {
+    void 새_주택형은_그_단지에_연결된_공고_단지가_둘이어도_같은_이름의_공고_단지에_든다() throws Exception {
         var other = AnnouncementComplex.observe(entities.find(Announcement.class, announcement.getId()), "다른 단지", null, null);
         other.linkBySource(entities.find(HousingComplex.class, autoComplex.getId()), ComplexLinkMethod.AUTO, "refinement",
                 Instant.now());
@@ -278,7 +279,42 @@ class AnnouncementComplexAdminLinkIntegrationTest {
 
         apply(id, request, preview(id, request)).andExpect(status().isOk());
 
-        assertThat(newTypeComplexes(id)).containsExactly((Long) null);
+        assertThat(newTypeComplexes(id)).containsExactly(announcementComplex.getId());
+    }
+
+    @Test
+    void 새_단지명의_주택형은_새_공고_단지를_만들어_고른_단지에_관리자_연결한다() throws Exception {
+        long id = announcement.getId();
+        var request = request(id);
+        addHousingType(request, " 새 공고문 단지 ", "26B", chosen.getId());
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForList("""
+                SELECT ac.source_complex_name || ':' || ac.housing_complex_id || ':' || ac.link_method || ':'
+                    || ac.linked_by
+                FROM supply_rows r JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
+                WHERE r.announcement_id = ? AND COALESCE(r.announcement_housing_type_name, r.source_housing_type_name)
+                    = '26B'
+                """, String.class, id)).containsExactly("새 공고문 단지:" + chosen.getId() + ":ADMIN:admin");
+    }
+
+    @Test
+    void 같은_새_단지명의_주택형을_서로_다른_단지로_고르면_거절하고_공고_단지를_만들지_않는다() throws Exception {
+        long id = announcement.getId();
+        // 두 단지 모두 이 공고의 어느 공고 단지에도 이어지지 않아 두 주택형은 단지명으로 같은 새 공고 단지에 든다.
+        var other = new NotificationFixtures(entities, jdbc).complex("11140", "1114010300");
+        entities.flush();
+        var request = request(id);
+        addHousingType(request, "새 공고문 단지", "26B", chosen.getId());
+        addHousingType(request, "새 공고문 단지", "36B", other.getId());
+
+        mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content(json.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("새 공고문 단지 · 36B: 공고문의 한 단지에 속한 주택형은")));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_complexes WHERE announcement_id = ?",
+                Long.class, id)).isOne();
     }
 
     @Test
@@ -359,10 +395,14 @@ class AnnouncementComplexAdminLinkIntegrationTest {
 
     /** 단지만 정한 새 주택형을 공급표의 첫 공급대상 칸과 당첨 수 4로 더한다. */
     private void addHousingType(ObjectNode request, String name, long complexId) {
+        addHousingType(request, "화성 리츠", name, complexId);
+    }
+
+    private void addHousingType(ObjectNode request, String complexName, String name, long complexId) {
         var sheet = (ObjectNode) request.get("sheet");
         String key = "new:" + name;
         sheet.withArray("housingTypes").addObject().put("key", key).putNull("id").putNull("announcementComplexId")
-                .put("complexName", "화성 리츠").put("housingComplexId", complexId).putNull("housingTypeId")
+                .put("complexName", complexName).put("housingComplexId", complexId).putNull("housingTypeId")
                 .putNull("newHousingType").put("name", name).putNull("exclusiveArea").putNull("supplyArea")
                 .putNull("expectedMoveInMonth").putNull("supplyPnu").put("category", "NEW_SUPPLY").put("displayOrder", 9);
         sheet.withArray("cells").addObject().put("key", key + ":cell").putNull("id").put("housingType", key)

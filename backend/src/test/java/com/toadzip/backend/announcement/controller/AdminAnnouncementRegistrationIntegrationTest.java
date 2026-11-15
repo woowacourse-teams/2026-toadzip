@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.hamcrest.Matchers.contains;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,6 +30,7 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +83,7 @@ class AdminAnnouncementRegistrationIntegrationTest {
     void cleanDatabase() {
         notificationJdbc.update("DELETE FROM notification_outbox_events");
         supplyRowRepository.deleteAll();
+        notificationJdbc.update("DELETE FROM announcement_complexes");
         announcementRepository.deleteAll();
         housingComplexRepository.deleteAll();
         housingComplexRepository.flush();
@@ -122,6 +126,44 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 WHERE r.announcement_id = ?""", String.class, announcementId));
         assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
                 Integer.class));
+    }
+
+    @Test
+    @Transactional
+    void 등록한_공고는_공고_단지로_고른_단지에_이어져_지도와_단지_상세_공고_목록에_보인다() throws Exception {
+        HousingComplex housingComplex = housingComplexRepository.save(createHousingComplex());
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        String request = validRequest(housingComplex.getId())
+                .replace("2026-08-10", today.minusDays(1).toString())
+                .replace("2026-08-14", today.plusDays(3).toString());
+
+        MvcResult result = mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isCreated()).andReturn();
+        long announcementId = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("announcementId").asLong();
+        entityManager.flush();
+        entityManager.clear();
+
+        // 등록 요청에는 공고 단지가 없다. 행의 단지명으로 공고 단지를 만들고 관리자가 고른 단지에 잇는다.
+        assertEquals(java.util.List.of("원문 두꺼비 행복주택:" + housingComplex.getId() + ":ADMIN:admin"),
+                notificationJdbc.queryForList("""
+                        SELECT ac.source_complex_name || ':' || ac.housing_complex_id || ':' || ac.link_method || ':'
+                            || ac.linked_by
+                        FROM announcement_complexes ac
+                        JOIN supply_rows r ON r.announcement_complex_id = ac.id
+                        WHERE ac.announcement_id = ?""", String.class, announcementId));
+        mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "18.00")
+                        .param("southWestLat", "37.500000").param("southWestLng", "126.900000")
+                        .param("northEastLat", "37.600000").param("northEastLng", "127.000000")
+                        .param("hasActiveAnnouncement", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nodes[*].complexId", contains(housingComplex.getId().intValue())))
+                .andExpect(jsonPath("$.data.nodes[0].applicationStatus").value("APPLYING"));
+        mockMvc.perform(get("/api/v1/complexes/{id}", housingComplex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentAnnouncements[*].announcementId",
+                        contains((int) announcementId)));
     }
 
     @Test

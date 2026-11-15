@@ -100,6 +100,56 @@ class AnnouncementComplexAdminLinks {
     }
 
     /**
+     * 공고 단지가 없는 정본 행이 생기지 않게 저장할 주택형마다 공고 단지를 정한다. 공고 단지를 고르지 않은 주택형은 (공고, 단지명)의
+     * 공고 단지를 찾거나 만든다. 주택형이 고른 단지가 있고 그 공고 단지가 아직 단지에 이어지지 않았으면 그 단지로 관리자 연결한다.
+     * 이번 관리자 연결(plan.links)이 정하는 공고 단지는 {@link #apply}가 잇는다. 돌려주는 값은 주택형 key별 공고 단지 ID다. 고른 단지와
+     * 다른 단지에 이어진 공고 단지는 계획({@link SupplySheetPlanner})이 막는다.
+     */
+    Map<String, Long> ensure(Announcement announcement, SupplySheetPlan plan, String actor) {
+        var own = new ArrayList<>(announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement));
+        var planned = plan.links().stream().map(link -> link.target().getId()).collect(Collectors.toSet());
+        Map<String, Long> result = new LinkedHashMap<>();
+        for (var type : plan.after().housingTypes()) {
+            var target = type.announcementComplexId() == null
+                    ? findOrCreate(announcement, own, type.complexName())
+                    : own.stream().filter(complex -> complex.getId().equals(type.announcementComplexId())).findFirst()
+                            .orElseThrow(() -> new IllegalArgumentException(type.name() + ": 이 공고의 공고 단지가 아닙니다."));
+            if (type.housingComplexId() != null && target.linkedComplex() == null
+                    && !planned.contains(target.getId())) {
+                link(target, complexes.findById(type.housingComplexId()).orElseThrow(), List.of(), actor);
+            }
+            result.put(type.key(), target.getId());
+        }
+        return result;
+    }
+
+    /**
+     * 관리자 등록·JSON 등록의 공급행이 가리킬 공고 단지. (공고, 단지명)의 공고 단지를 찾거나 만들고, 고른 단지가 있으면 그 단지로
+     * 관리자 연결한다. 이미 다른 단지에 이어진 공고 단지면 거절한다.
+     */
+    AnnouncementComplex declare(Announcement announcement, String complexName, HousingComplex complex, String actor) {
+        var target = findOrCreate(announcement,
+                new ArrayList<>(announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement)), complexName);
+        if (complex == null) { return target; }
+        if (target.linkedComplex() != null && !target.linkedComplex().getId().equals(complex.getId())) {
+            throw new IllegalArgumentException(complexName.strip() + ": 공고문의 한 단지에 속한 주택형은 같은 단지로 연결하세요.");
+        }
+        if (target.linkedComplex() == null) { link(target, complex, List.of(), actor); }
+        return target;
+    }
+
+    /** (공고, 단지명)의 공고 단지. 없으면 만들어 own에 더한다. */
+    private AnnouncementComplex findOrCreate(Announcement announcement, List<AnnouncementComplex> own,
+            String complexName) {
+        String name = complexName.strip();
+        var found = own.stream().filter(complex -> complex.getSourceComplexName().strip().equals(name)).findFirst();
+        if (found.isPresent()) { return found.get(); }
+        var created = announcementComplexes.save(AnnouncementComplex.observe(announcement, name, null, null));
+        own.add(created);
+        return created;
+    }
+
+    /**
      * 공고 단지 하나의 연결 단지를 관리자가 바꾼다. 그 공고 단지의 제외하지 않은 공급행도 새 단지의 같은 전용면적 주택형으로 옮긴다.
      * 지금 연결과 같은 단지로 확인만 하면 공급행의 주택형 연결은 건드리지 않는다.
      */

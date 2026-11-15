@@ -3,6 +3,8 @@ package com.toadzip.backend.search.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
+import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
@@ -18,6 +20,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.search.domain.SearchMatch;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -99,6 +102,29 @@ class InternalSearchRepositoryTest {
 
         assertThat(results).extracting(SearchSourceItem::id).containsExactly(original.getId().toString());
         assertThat(repository.countAnnouncements(condition("서울 대기", Set.of()))).isEqualTo(1);
+    }
+
+    @Test
+    void 공고의_단지는_공고_단지_연결로_정해_공급행_없는_공고도_단지를_갖고_행을_모두_제외한_단지는_빠진다() {
+        HousingComplex linkedOnly = persistComplex("연결만 있는 단지", "35.1", "129.0");
+        Announcement withoutRows = persistAnnouncement(null, "ORIGINAL", "연결규칙 공급행없음", "links-no-rows");
+        AnnouncementComplex link = AnnouncementComplex.observe(withoutRows, "공고문 단지", null, null);
+        link.linkByAdmin(linkedOnly, "admin", Instant.parse("2026-08-01T00:00:00Z"));
+        entityManager.persist(link);
+        HousingComplex excluded = persistComplex("제외된 단지", "36.1", "127.1");
+        HousingComplex kept = persistComplex("남는 단지", "36.2", "127.2");
+        Announcement withExclusion = persistAnnouncement(null, "ORIGINAL", "연결규칙 제외", "links-excluded");
+        persistSupplyRow(withExclusion, excluded, "links-excluded-row");
+        persistSupplyRow(withExclusion, kept, "links-kept-row");
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE supply_rows SET admin_excluded = true WHERE source_supply_row_identifier"
+                + " = 'links-excluded-row'").executeUpdate();
+
+        var results = repository.findAnnouncements(condition("연결규칙", Set.of()), 20);
+
+        assertThat(results).extracting(result -> result.title() + " "
+                        + result.latitude().stripTrailingZeros().toPlainString())
+                .containsExactlyInAnyOrder("연결규칙 공급행없음 35.1", "연결규칙 제외 36.2");
     }
 
     @Test
@@ -309,7 +335,7 @@ class InternalSearchRepositoryTest {
     }
 
     private void persistSupplyRow(Announcement announcement, HousingComplex complex, String sourceId) {
-        entityManager.persist(SupplyRow.create(
+        entityManager.persist(AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
                 announcement,
                 complex,
                 null,
@@ -320,6 +346,6 @@ class InternalSearchRepositoryTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                null));
+                null)));
     }
 }

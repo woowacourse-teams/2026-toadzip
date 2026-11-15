@@ -30,11 +30,15 @@ public record SupplySheetPlan(SupplySheetView before, SupplySheetView after, Map
         return after.housingTypes().stream().filter(type -> type.key().equals(key)).findFirst().orElseThrow();
     }
 
-    /** 저장할 공급표. createdTypeIds는 after 주택형 key별로 이 저장에서 만든 단지 주택형 ID다(미리보기 검증에서는 비어 있다). */
-    SupplySheetDraft draft(Map<String, Long> createdTypeIds) {
+    /**
+     * 저장할 공급표. createdTypeIds는 after 주택형 key별로 이 저장에서 만든 단지 주택형 ID, announcementComplexIds는 저장 때 정한 공고
+     * 단지 ID다(미리보기 검증에서는 둘 다 비어 있다).
+     */
+    SupplySheetDraft draft(Map<String, Long> createdTypeIds, Map<String, Long> announcementComplexIds) {
         return SupplySheetDraft.of(
                 after.housingTypes().stream().map(type -> new SupplySheetDraft.HousingTypeRow(type.key(), type.id(),
-                        type.announcementComplexId(), type.housingComplexId(),
+                        announcementComplexIds.getOrDefault(type.key(), type.announcementComplexId()),
+                        type.housingComplexId(),
                         type.housingTypeId() != null ? type.housingTypeId() : createdTypeIds.get(type.key()),
                         type.complexName(), type.name(), type.exclusiveArea(), type.supplyArea(), type.expectedMoveInMonth(),
                         type.supplyPnu(), type.category(), type.displayOrder())).toList(),

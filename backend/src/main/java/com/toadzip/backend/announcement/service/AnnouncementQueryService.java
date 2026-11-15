@@ -2,6 +2,7 @@ package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementHousingComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementListPhase;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -18,19 +19,23 @@ import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementDeadlineRow;
+import com.toadzip.backend.announcement.repository.AnnouncementHousingComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +57,7 @@ public class AnnouncementQueryService {
     private final AnnouncementScheduleRepository announcementScheduleRepository;
     private final AnnouncementAttachmentRepository announcementAttachmentRepository;
     private final SupplyRowRepository supplyRowRepository;
+    private final AnnouncementHousingComplexRepository links;
     private final SupplySheets supplySheets;
     private final AnnouncementResponseMapper announcementResponseMapper;
     private final AnnouncementCursorCodec announcementCursorCodec;
@@ -65,6 +71,7 @@ public class AnnouncementQueryService {
             AnnouncementScheduleRepository announcementScheduleRepository,
             AnnouncementAttachmentRepository announcementAttachmentRepository,
             SupplyRowRepository supplyRowRepository,
+            AnnouncementHousingComplexRepository links,
             SupplySheets supplySheets,
             AnnouncementResponseMapper announcementResponseMapper,
             AnnouncementCursorCodec announcementCursorCodec,
@@ -77,6 +84,7 @@ public class AnnouncementQueryService {
         this.announcementScheduleRepository = announcementScheduleRepository;
         this.announcementAttachmentRepository = announcementAttachmentRepository;
         this.supplyRowRepository = supplyRowRepository;
+        this.links = links;
         this.supplySheets = supplySheets;
         this.announcementResponseMapper = announcementResponseMapper;
         this.announcementCursorCodec = announcementCursorCodec;
@@ -161,6 +169,7 @@ public class AnnouncementQueryService {
         return announcementResponseMapper.toListItemResponses(
                 announcements,
                 supplyRows,
+                linkedComplexes(announcementIds),
                 supplySheets.read(announcementIds, supplyRowIds(supplyRows)),
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds).stream()
                         .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
@@ -189,6 +198,7 @@ public class AnnouncementQueryService {
                 schedules,
                 attachments,
                 supplyRows,
+                linkedComplexes(announcementIds).getOrDefault(announcement.getId(), List.of()),
                 supplySheets.read(announcementIds, supplyRowIds(supplyRows)),
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds),
                 today
@@ -341,6 +351,17 @@ public class AnnouncementQueryService {
             return List.of();
         }
         return supplyRowRepository.findAllByAnnouncementIdIn(announcementIds);
+    }
+
+    private Map<Long, List<HousingComplex>> linkedComplexes(Collection<Long> announcementIds) {
+        if (announcementIds.isEmpty()) {
+            return Map.of();
+        }
+        // 휴지통 단지는 공고의 지역·단지 수·대표 이미지에 넣지 않는다(전에는 휴지통 단지를 가리키는 행이 없었다).
+        return links.findAllByAnnouncementIdInOrderByAnnouncementIdAscHousingComplexIdAsc(announcementIds).stream()
+                .filter(link -> !link.getHousingComplex().isAdminDeleted())
+                .collect(Collectors.groupingBy(AnnouncementHousingComplex::getAnnouncementId,
+                        Collectors.mapping(AnnouncementHousingComplex::getHousingComplex, Collectors.toList())));
     }
 
     private List<AnnouncementSchedule> findSchedules(Collection<Long> announcementIds) {

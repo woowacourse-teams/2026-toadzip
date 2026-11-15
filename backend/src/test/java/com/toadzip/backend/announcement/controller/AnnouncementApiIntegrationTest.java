@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
@@ -1003,7 +1004,7 @@ class AnnouncementApiIntegrationTest {
             int displayOrder,
             String matchingFailureReason
     ) {
-        return SupplyRow.create(
+        return AnnouncementComplexSeed.place(entityManager, SupplyRow.create(
                 announcement,
                 housingComplex,
                 housingType,
@@ -1014,7 +1015,7 @@ class AnnouncementApiIntegrationTest {
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
-                matchingFailureReason);
+                matchingFailureReason));
     }
 
     private void persistSearchSupplyRows(HousingComplex housingComplex, Announcement... announcements) {

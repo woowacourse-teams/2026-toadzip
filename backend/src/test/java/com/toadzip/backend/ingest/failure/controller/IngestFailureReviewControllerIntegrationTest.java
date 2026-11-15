@@ -298,12 +298,25 @@ class IngestFailureReviewControllerIntegrationTest {
     void 공고_공급행_수를_단지수와_구분하고_마감된_공고도_목록_대상이_된다() throws Exception {
         long notice = announcement("notice", "ORIGINAL", null);
         long complexId = complex("complex", "연결 단지", false);
+        // 공고문의 두 단지 중 '단지'만 제품 단지에 이어졌다. 공급행 셋 중 둘이 그 단지에 든다.
         jdbc.sql("""
-                INSERT INTO supply_rows (announcement_id, housing_complex_id, source_supply_row_identifier,
-                    display_order, source_complex_name, source_housing_type_name, supply_pnu, supply_category)
-                VALUES (:notice, :complex, 'row-1', 1, '단지', '36형', 'pnu', 'NEW_SUPPLY'),
-                       (:notice, :complex, 'row-2', 2, '단지', '46형', 'pnu', 'NEW_SUPPLY'),
-                       (:notice, NULL, 'row-3', 3, '미연결 단지', '56형', 'pnu', 'NEW_SUPPLY')
+                INSERT INTO announcement_complexes (announcement_id, source_complex_name, present_in_source,
+                    housing_complex_id, link_method, created_at)
+                VALUES (:notice, '단지', true, :complex, 'ADMIN', CURRENT_TIMESTAMP),
+                       (:notice, '미연결 단지', true, NULL, NULL, CURRENT_TIMESTAMP)
+                """).param("notice", notice).param("complex", complexId).update();
+        jdbc.sql("""
+                INSERT INTO supply_rows (announcement_id, housing_complex_id, announcement_complex_id,
+                    source_supply_row_identifier, display_order, source_complex_name, source_housing_type_name,
+                    supply_pnu, supply_category)
+                SELECT :notice, row_value.complex_id, ac.id, row_value.identifier, row_value.display_order,
+                       ac.source_complex_name, row_value.type_name, 'pnu', 'NEW_SUPPLY'
+                FROM (VALUES (CAST(:complex AS BIGINT), 'row-1', 1, '단지', '36형'),
+                             (CAST(:complex AS BIGINT), 'row-2', 2, '단지', '46형'),
+                             (CAST(NULL AS BIGINT), 'row-3', 3, '미연결 단지', '56형'))
+                    row_value(complex_id, identifier, display_order, complex_name, type_name)
+                JOIN announcement_complexes ac ON ac.announcement_id = :notice
+                    AND ac.source_complex_name = row_value.complex_name
                 """).param("notice", notice).param("complex", complexId).update();
         jdbc.sql("""
                 INSERT INTO announcement_application_schedules (announcement_id, state, start_date, end_date,

@@ -25,7 +25,7 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementHousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
@@ -71,7 +71,7 @@ public class AnnouncementJsonCorrectionService {
     private final ObjectMapper json;
     private final Validator validator;
     private final NotificationOutboxRepository notificationOutbox;
-    private final SupplyRowRepository supplyRows;
+    private final AnnouncementHousingComplexRepository links;
     private final HousingComplexRepository complexes;
 
     public Workspace workspace(long id) {
@@ -382,8 +382,8 @@ public class AnnouncementJsonCorrectionService {
 
     /** 저장된 공급행으로 하는 {@link #verifyLinkedToComplex}와 같은 판단이다. */
     private boolean linkedToComplex(Announcement announcement) {
-        return supplyRows.findAllByAnnouncement(announcement).stream().anyMatch(row -> !row.isAdminExcluded()
-                && row.getHousingComplex() != null && !row.getHousingComplex().isAdminDeleted());
+        return links.findAllByAnnouncementId(announcement.getId()).stream()
+                .anyMatch(link -> !link.getHousingComplex().isAdminDeleted());
     }
 
     private void writeEvents(Announcement announcement, List<EventChange> planned) {

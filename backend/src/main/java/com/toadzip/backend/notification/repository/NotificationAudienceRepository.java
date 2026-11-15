@@ -1,5 +1,6 @@
 package com.toadzip.backend.notification.repository;
 
+import com.toadzip.backend.announcement.repository.AnnouncementComplexLinkSql;
 import com.toadzip.backend.notification.domain.NotificationAudienceSnapshot;
 import com.toadzip.backend.notification.domain.NotificationContent;
 import com.toadzip.backend.notification.domain.NotificationRecipient;
@@ -57,10 +58,11 @@ public class NotificationAudienceRepository {
     public NotificationAudienceSnapshot snapshot(long announcementId, String title) {
         List<ComplexTarget> complexes = jdbc.query("""
                 SELECT DISTINCT c.id,c.province_code,c.city_county_district_code,c.legal_dong_code
-                FROM supply_rows s JOIN housing_complexes c ON c.id=s.housing_complex_id
-                WHERE s.admin_excluded = false AND s.announcement_id=? AND NOT c.admin_deleted ORDER BY c.id LIMIT ?
-                """, (row, number) -> new ComplexTarget(row.getLong("id"), row.getString("province_code"),
-                row.getString("city_county_district_code"), row.getString("legal_dong_code")),
+                FROM %s link JOIN housing_complexes c ON c.id=link.housing_complex_id
+                WHERE link.announcement_id=? AND NOT c.admin_deleted ORDER BY c.id LIMIT ?
+                """.formatted(AnnouncementComplexLinkSql.LINKS), (row, number) -> new ComplexTarget(row.getLong("id"),
+                row.getString("province_code"), row.getString("city_county_district_code"),
+                row.getString("legal_dong_code")),
                 announcementId, MAX_COMPLEXES + 1);
         if (complexes.size() > MAX_COMPLEXES) {
             throw new IllegalStateException("알림 공고의 단지 스냅샷 한도를 초과했습니다.");

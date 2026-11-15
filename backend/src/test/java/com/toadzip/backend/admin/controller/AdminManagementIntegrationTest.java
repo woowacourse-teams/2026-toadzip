@@ -315,6 +315,27 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 공급행을_모두_제외해_공개_연결에서_빠진_단지도_휴지통과_복구_순서를_보호한다() throws Exception {
+        long complexId = createComplex();
+        long id = createAnnouncement(complexId);
+        entityManager.flush();
+        entityManager.createNativeQuery(
+                "UPDATE supply_rows SET admin_excluded = true WHERE announcement_id = :id")
+                .setParameter("id", id).executeUpdate();
+        // 공고 단지가 이 단지를 가리키는 한 공개 화면에 안 보여도 단지를 휴지통에 넣을 수 없다.
+        mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+
+        String path = "/api/admin/announcements/" + id;
+        mvc.perform(delete(path).param("version", "0").with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isNoContent());
+        mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(post(path + "/restore").param("version", "1")
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+    }
+
+    @Test
     void 접수일정_변경도_버전과_공식_근거를_검증하고_이력을_남긴다() throws Exception {
         long id = createAnnouncement(createComplex());
         String path = "/api/admin/announcements/" + id;

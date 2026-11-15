@@ -380,7 +380,8 @@ public class SupplyRow {
     }
 
     /**
-     * 공고문 소유 공급행은 정제가 값·단지·주택형을 바꾸지 않고 비어 있는 공고 단지 참조만 채운다. PDF가 정한 연결을 덮지 않기 위해서다.
+     * 비어 있는 공고 단지 참조만 채운다. 정제는 공고문 소유 공급행의 값·단지·주택형을 바꾸지 않고 이것만 채워 PDF가 정한 연결을 덮지
+     * 않는다. 관리자 등록·JSON 등록도 새 행을 (공고, 단지명) 공고 단지에 이것으로 넣는다.
      */
     public boolean fillAnnouncementComplex(AnnouncementComplex complex) {
         if (announcementComplex != null || complex == null) {

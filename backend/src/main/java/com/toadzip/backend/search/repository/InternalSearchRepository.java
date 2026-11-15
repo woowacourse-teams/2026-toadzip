@@ -2,6 +2,7 @@ package com.toadzip.backend.search.repository;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.ClosedAnnouncementFollowUp;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexLinkSql;
 import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -19,6 +20,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class InternalSearchRepository {
+
+    private static final String LINKS = AnnouncementComplexLinkSql.LINKS;
 
     private static final String PROVIDER_NAME = """
             CASE announcement.provider
@@ -60,33 +63,35 @@ public class InternalSearchRepository {
                        %s AS announcement_phase,
                        COALESCE((
                            SELECT STRING_AGG(DISTINCT complex.road_address, ' ')
-                           FROM supply_rows supply_row
-                           JOIN housing_complexes complex ON complex.id = supply_row.housing_complex_id
-                           WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
+                           FROM %s link
+                           JOIN housing_complexes complex ON complex.id = link.housing_complex_id
+                           WHERE link.announcement_id = announcement.id
                        ), '') AS region_names,
                        (
                            SELECT complex.latitude
-                           FROM supply_rows supply_row
-                           JOIN housing_complexes complex ON complex.id = supply_row.housing_complex_id
-                           WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
+                           FROM %s link
+                           JOIN housing_complexes complex ON complex.id = link.housing_complex_id
+                           WHERE link.announcement_id = announcement.id
                              AND complex.latitude IS NOT NULL
                              AND complex.longitude IS NOT NULL
-                           ORDER BY supply_row.display_order, complex.id
+                           ORDER BY complex.id
                            LIMIT 1
                        ) AS latitude,
                        (
                            SELECT complex.longitude
-                           FROM supply_rows supply_row
-                           JOIN housing_complexes complex ON complex.id = supply_row.housing_complex_id
-                           WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
+                           FROM %s link
+                           JOIN housing_complexes complex ON complex.id = link.housing_complex_id
+                           WHERE link.announcement_id = announcement.id
                              AND complex.latitude IS NOT NULL
                              AND complex.longitude IS NOT NULL
-                           ORDER BY supply_row.display_order, complex.id
+                           ORDER BY complex.id
                            LIMIT 1
                        ) AS longitude
                 FROM announcements announcement
                 WHERE
-                """.formatted(ApplicationScheduleSql.status("announcement", null), ApplicationScheduleSql.phase("announcement")))
+                """.formatted(ApplicationScheduleSql.status("announcement", null),
+                        ApplicationScheduleSql.phase("announcement"),
+                        LINKS, LINKS, LINKS))
                 .append(LATEST_LEAF);
         addAnnouncementFilters(sql, parameters, condition);
         addAnnouncementOrder(sql);
@@ -177,14 +182,14 @@ public class InternalSearchRepository {
                          LOWER(announcement.name) LIKE :%s ESCAPE '\\'
                          OR LOWER(%s) LIKE :%s ESCAPE '\\'
                          OR EXISTS (
-                             SELECT 1 FROM supply_rows matched_row
+                             SELECT 1 FROM %s matched_link
                              JOIN housing_complexes matched_complex
-                               ON matched_complex.id = matched_row.housing_complex_id
-                             WHERE matched_row.admin_excluded = false AND matched_row.announcement_id = announcement.id
+                               ON matched_complex.id = matched_link.housing_complex_id
+                             WHERE matched_link.announcement_id = announcement.id
                                AND LOWER(matched_complex.road_address) LIKE :%s ESCAPE '\\'
                          )
                      )
-                    """.formatted(parameter, PROVIDER_NAME, parameter, parameter));
+                    """.formatted(parameter, PROVIDER_NAME, parameter, LINKS, parameter));
             parameters.put(parameter, like(condition.match().tokens().get(index)));
         }
     }
@@ -271,9 +276,9 @@ public class InternalSearchRepository {
     }
 
     private String statusAnnouncementStart() {
-        return "SELECT 1 FROM supply_rows supply_row JOIN announcements announcement"
-                + " ON announcement.id = supply_row.announcement_id"
-                + " WHERE supply_row.admin_excluded = false AND supply_row.housing_complex_id = complex.id AND " + LATEST_LEAF;
+        return "SELECT 1 FROM " + LINKS + " link JOIN announcements announcement"
+                + " ON announcement.id = link.announcement_id"
+                + " WHERE link.housing_complex_id = complex.id AND " + LATEST_LEAF;
     }
 
     private String complexStatus(ApplicationStatus status) {
@@ -340,15 +345,15 @@ public class InternalSearchRepository {
     private void addAnnouncementOrder(StringBuilder sql) {
         sql.append(" ORDER BY CASE WHEN LOWER(announcement.name) = :exactQuery")
                 .append(" OR LOWER(").append(PROVIDER_NAME).append(") = :exactQuery")
-                .append(" OR EXISTS (SELECT 1 FROM supply_rows exact_row")
-                .append(" JOIN housing_complexes exact_complex ON exact_complex.id = exact_row.housing_complex_id")
-                .append(" WHERE exact_row.admin_excluded = false AND exact_row.announcement_id = announcement.id")
+                .append(" OR EXISTS (SELECT 1 FROM ").append(LINKS).append(" exact_link")
+                .append(" JOIN housing_complexes exact_complex ON exact_complex.id = exact_link.housing_complex_id")
+                .append(" WHERE exact_link.announcement_id = announcement.id")
                 .append(" AND LOWER(exact_complex.road_address) = :exactQuery) THEN 0")
                 .append(" WHEN LOWER(announcement.name) LIKE :prefixQuery ESCAPE '\\'")
                 .append(" OR LOWER(").append(PROVIDER_NAME).append(") LIKE :prefixQuery ESCAPE '\\'")
-                .append(" OR EXISTS (SELECT 1 FROM supply_rows prefix_row")
-                .append(" JOIN housing_complexes prefix_complex ON prefix_complex.id = prefix_row.housing_complex_id")
-                .append(" WHERE prefix_row.admin_excluded = false AND prefix_row.announcement_id = announcement.id")
+                .append(" OR EXISTS (SELECT 1 FROM ").append(LINKS).append(" prefix_link")
+                .append(" JOIN housing_complexes prefix_complex ON prefix_complex.id = prefix_link.housing_complex_id")
+                .append(" WHERE prefix_link.announcement_id = announcement.id")
                 .append(" AND LOWER(prefix_complex.road_address) LIKE :prefixQuery ESCAPE '\\') THEN 1")
                 .append(" ELSE 2 END, announcement_phase");
     }

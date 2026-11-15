@@ -21,12 +21,12 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
                   OR lower(c.source_announcement_identifier) = :identifier)
               AND (:provider = '' OR c.provider IN (:provider, :providerLegacy))
               AND (:rental = '' OR c.supply_type IN (:rental, :rentalLegacy))
-              AND (:region = '' OR EXISTS (SELECT 1 FROM supply_rows r
-                  JOIN housing_complexes h ON h.id = r.housing_complex_id
-                  WHERE r.announcement_id = c.id AND (h.province_code = :region
+              AND (:region = '' OR EXISTS (SELECT 1 FROM """ + AnnouncementComplexLinkSql.LINKS + """
+                   link JOIN housing_complexes h ON h.id = link.housing_complex_id
+                  WHERE link.announcement_id = c.id AND (h.province_code = :region
                       OR h.city_county_district_code = :region)))
-              AND (:complexId = 0 OR EXISTS (SELECT 1 FROM supply_rows r
-                  WHERE r.announcement_id = c.id AND r.housing_complex_id = :complexId))
+              AND (:complexId = 0 OR EXISTS (SELECT 1 FROM """ + AnnouncementComplexLinkSql.LINKS + """
+                   link WHERE link.announcement_id = c.id AND link.housing_complex_id = :complexId))
             """;
 
     Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);

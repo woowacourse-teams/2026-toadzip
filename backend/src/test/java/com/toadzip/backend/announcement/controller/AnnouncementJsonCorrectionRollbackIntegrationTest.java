@@ -96,6 +96,7 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
         if (announcementId == 0) { return; }
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             jdbc.update("DELETE FROM supply_rows WHERE announcement_id=?", announcementId);
+            jdbc.update("DELETE FROM announcement_complexes WHERE announcement_id=?", announcementId);
             jdbc.update("DELETE FROM supply_quotas WHERE announcement_id=?", announcementId);
             jdbc.update("DELETE FROM lease_terms WHERE announcement_id=?", announcementId);
             jdbc.update("DELETE FROM announcement_supply_targets WHERE announcement_id=?", announcementId);
