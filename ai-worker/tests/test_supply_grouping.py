@@ -481,3 +481,16 @@ def test_recruitment_column_beside_a_separate_reserve_column_is_entrants():
     assert (row["totalSupplyHouseholdCount"], row["targets"][0]["supplyHouseholdCount"],
             row["targets"][0]["reserveCount"]) == (43, 43, 41)
     assert unresolved_paths(tree) == set()
+
+
+def test_type_cells_reads_only_data_rows_of_quantity_tables():
+    # PDF 공급표의 주택형을 셀 때 머리글 행과, 앞 표의 열 역할을 물려받았지만 제 머리글이 있는 다른 표(소득 기준표)는 넣지 않는다.
+    quantity = table(3, [["Sample", "16A", "청년", "78", "26.37", "13.50"], ["", "", "고령자", "20", "26.37", "13.50"]])
+    continuation = table(4, [["Sample", "31A", "청년", "12", "31.32", "12.60"]], inherit=quantity)
+    income = table(5, [["가구 원수", "1구간", "2구간", "3구간", "4구간", "5구간"],
+                       ["1인", "769,271", "1,282,119", "1,794,967", "2,564,238", "2,820,662"]], inherit=quantity)
+
+    cells = supply_grouping.type_cells([quantity, continuation, income])
+
+    assert {row_id: values["housingType"] for row_id, values in cells.items()} == {
+        "P3:T1:R2": "16A", "P3:T1:R3": "", "P4:T1:R1": "31A"}

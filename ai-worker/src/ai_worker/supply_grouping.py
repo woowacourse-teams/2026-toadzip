@@ -160,6 +160,26 @@ def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
     return Grouped({"data": {"rows": rows}, "sharedCounts": shared_counts}, row_values, warnings, count_columns)
 
 
+def type_cells(tables: list[SupplyTable]) -> dict[str, dict[str, str]]:
+    """수량표 데이터 행마다 원문 표 행 ID와 주택형·주택타입 칸. 머리글 행, 수량 열이 없는 표(소득 기준표·임대조건표),
+    공급표인지 불확실한 표, 앞 표의 열 역할을 물려받았는데 제 머리글 줄이 있는 표(이어짐 표가 아니라 다른 표다)는 넣지 않는다.
+    공급 단계가 코드와 모델 중 어느 쪽이든 PDF 공급표에 있는 주택형을 같은 기준으로 센다."""
+    found: dict[str, dict[str, str]] = {}
+    for table in tables:
+        columns = table.columns
+        if table.ambiguous or "housingType" not in columns or not any(name in columns for name in _COUNT_FIELDS):
+            continue
+        start = _data_start(table.cells, columns)
+        if start > 0 and not table.header_found:
+            continue
+        for index in range(start, len(table.cells)):
+            cells = table.cells[index]
+            found[source_row_id(table.page, table.number, index + 1)] = {
+                name: cells[column] or "" for name in ("housingType", "houseType")
+                if (column := columns.get(name)) is not None and column < len(cells)}
+    return found
+
+
 def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes: dict[int, list[int]]) -> list[dict]:
     """병합된 수량 칸은 덮은 대상들의 공통 수량으로 남기고 대상별로 복제하지 않는다."""
     shared_counts = []

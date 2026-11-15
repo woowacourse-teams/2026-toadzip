@@ -294,3 +294,80 @@ def test_note_paths_are_made_readable_by_the_admin_screen():
         "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(receptionPlaces[1].주소: f)",
         "notApplicable: 경로를 읽을 수 없는 항목을 뺐습니다(None: g)",
     ]
+
+
+def sheet(*types):
+    """공급표 주택형 목록. 항목은 (이름, 전용면적, [(주택타입 이름, 전용면적)])다."""
+    return {"housingTypes": [{"name": name, "exclusiveArea": area,
+                              "houseTypes": [{"name": house, "exclusiveArea": house_area} for house, house_area in houses]}
+                             for name, area, houses in types]}
+
+
+def cells(*rows):
+    """원문 표 행 ID마다 읽은 칸. 항목은 (행 ID, 주택형 칸, 주택타입 칸)이다."""
+    return {row_id: {"housingType": housing, **({"houseType": house} if house is not None else {})}
+            for row_id, housing, house in rows}
+
+
+def test_a_pdf_housing_type_left_out_of_the_sheet_is_warned_once():
+    # 저장은 PDF에 없는 주택형을 지우므로, 모델이 공급표의 형 하나를 빠뜨리면 관리자가 저장 전에 알아야 한다.
+    warnings = checks.missing_housing_types(
+        sheet(("16A", 16.37, [])),
+        cells(("P2:T1:R2", "16A", None), ("P2:T1:R3", "31A", None), ("P2:T1:R4", "31A", None)), [])
+
+    assert warnings == ["원본 2쪽 공급표의 주택형 31A이(가) 추출 결과에 없어 "
+                        "저장하면 지금 공급표의 그 주택형이 지워질 수 있음"]
+
+
+def test_a_housing_type_whose_name_was_not_confirmed_counts_as_missing():
+    # 원문에서 확인하지 못한 이름은 null로 나간다. 그 형은 저장에서 지금 공급표의 형과 짝지어지지 않는다.
+    assert checks.missing_housing_types(sheet((None, None, [])), cells(("P3:T1:R2", "16A", None)), []) == [
+        "원본 3쪽 공급표의 주택형 16A이(가) 추출 결과에 없어 저장하면 지금 공급표의 그 주택형이 지워질 수 있음"]
+
+
+@pytest.mark.parametrize("extracted", [
+    sheet(("84", 84.9, [])),  # 주택형 단위로 뽑았다
+    sheet(("84A", 84.9, []), ("84B", 84.8, [])),  # 주택타입 단위로 뽑았다
+    sheet(("84", None, [("84A", 84.9), ("84B", 84.8)])),
+], ids=["housing-type", "house-types", "house-type-list"])
+def test_a_merged_housing_type_cell_is_found_by_either_column(extracted):
+    # 주택형 칸이 세로로 병합되면 아래 행은 주택형 칸이 비고 주택타입 칸만 있다. 윗행 주택형을 잇는다.
+    rows = cells(("P4:T1:R2", "84", "84A"), ("P4:T1:R3", "", "84B"))
+
+    assert checks.missing_housing_types(extracted, rows, []) == []
+
+
+def test_a_missing_house_type_row_names_both_columns():
+    rows = cells(("P4:T1:R2", "84", "84A"), ("P4:T1:R3", "", "84B"))
+
+    assert checks.missing_housing_types(sheet(("84A", 84.9, [])), rows, []) == [
+        "원본 4쪽 공급표의 주택형 84(주택타입 84B)이(가) 추출 결과에 없어 "
+        "저장하면 지금 공급표의 그 주택형이 지워질 수 있음"]
+
+
+def test_total_rows_and_cells_listing_several_types_are_not_missing_types():
+    rows = cells(("P5:T1:R2", "26A/26B", None), ("P5:T1:R3", "49A·49B", None), ("P5:T1:R4", "계", None),
+                 ("P5:T1:R5", "", None), ("P5:T2:R2", "-", None))
+
+    assert checks.missing_housing_types(sheet(("26A", 26.1, []), ("26B", 26.2, []), ("49A·49B", None, [])), rows, []) == []
+
+
+def test_a_merged_cell_does_not_carry_over_to_another_table():
+    rows = cells(("P6:T1:R2", "16A", None), ("P6:T2:R2", "", "36A"))
+
+    assert checks.missing_housing_types(sheet(("16A", 16.37, [])), rows, []) == [
+        "원본 6쪽 공급표의 주택형 36A이(가) 추출 결과에 없어 저장하면 지금 공급표의 그 주택형이 지워질 수 있음"]
+
+
+def test_an_lh_type_with_no_matching_name_or_area_is_warned_once():
+    extracted = sheet(("16A", None, []), ("36", 36.8, []))
+    lh_rows = [lh("16A(대학생/청년)", "16.37"), lh("36A(고령자)", "36.80"), lh("44A(청년)", "44.1"),
+               lh("44A(고령자)", "44.1"), lh("51", "")]
+
+    assert checks.missing_housing_types(extracted, {}, lh_rows) == [
+        "LH 공급정보의 주택형 44A(청년)(전용 44.10㎡)과 형명이나 전용면적이 같은 주택형이 추출 결과에 없음"]
+
+
+def test_a_trailing_note_in_parentheses_does_not_make_a_type_missing():
+    # 공급표가 31AS (주거약자용)으로 적고 결과가 31AS로 냈다. 화면도 끝 괄호를 떼고 주택형을 짝짓는다.
+    assert checks.missing_housing_types(sheet(("31AS", 31.96, [])), cells(("P4:T1:R2", "31AS (주거약자용)", None)), []) == []

@@ -220,6 +220,73 @@ def _check_target_count(rows: list[dict], rental_rows: int, warnings: list[str])
         warnings.append(f"supplyRows: 공급대상 {targets}개가 임대조건표 {rental_rows}줄보다 적어 빠진 대상이 있을 수 있음")
 
 
+_SUMMARY_WORDS = {"합계", "소계", "계", "총계"}
+# 주택형 칸 하나에 여러 형을 적거나(26A/26B) 공급표가 형을 이어 붙인 이름(49A·49B)을 낱낱의 형으로 나눈다.
+_TYPE_SEPARATORS = re.compile(r"[\s,，、/·ㆍ․‧•∙・]+")
+
+
+def missing_housing_types(sheet: dict, row_values: dict[str, dict[str, str]],
+                          lh_rows: list["SourceSupplyRow"]) -> list[str]:
+    """PDF 보정 저장은 공급표에 없는 주택형을 지우고 이름이 다른 주택형을 새로 만든다(PDF 주택형이 기준, 사용자 결정).
+    그래서 PDF 공급표 칸에 있는 주택형이 결과에 빠지면 저장 전에 관리자가 알도록 경고한다. 값은 고치지 않는다.
+    row_values는 수량표 데이터 행 ID마다 주택형·주택타입 칸(supply_grouping.type_cells)이고, 주택형 칸이 비어 있는 행은 같은 표의
+    윗행 주택형(세로 병합 칸)을 잇는다. 형 하나가 주택형 열(84)이나 주택타입 열(84A) 어느 이름으로든 결과에 있으면 빠진 것이 아니다.
+    LH API 행은 공급행을 정하지 않지만, 형명도 전용면적도 같은 주택형이 결과에 하나도 없으면 PDF에서 빠뜨렸을 수 있어 함께 경고한다."""
+    types = objects(sheet.get("housingTypes"))
+    named = [_text(value.get("name")) for item in types for value in (item, *objects(item.get("houseTypes")))]
+    extracted = {token for name in named for token in (_type_key(name), *_type_tokens(name)) if token}
+    warnings, seen, current = [], set(), {}
+    for row_id, values in row_values.items():
+        table = row_id.rsplit(":", 1)[0]
+        housing, house = _text(values.get("housingType")).strip(), _text(values.get("houseType")).strip()
+        if housing:
+            if _type_key(housing) in _SUMMARY_WORDS or _type_key(housing) == "-":
+                current.pop(table, None)
+                continue
+            current[table] = housing
+        housing = current.get(table, "")
+        if not housing and not house:
+            continue
+        if any(_covered(name, extracted) for name in (housing, house) if name):
+            continue
+        label = housing if not house or _type_key(house) == _type_key(housing) else (
+            f"{housing}(주택타입 {house})" if housing else house)
+        if label not in seen:
+            seen.add(label)
+            page = row_id.split(":", 1)[0].removeprefix("P")
+            warnings.append(f"원본 {page}쪽 공급표의 주택형 {label}이(가) 추출 결과에 없어 "
+                            "저장하면 지금 공급표의 그 주택형이 지워질 수 있음")
+    areas = {area_key(item.get("exclusiveArea")) for item in types} | {
+        area_key(house.get("exclusiveArea")) for item in types for house in objects(item.get("houseTypes"))}
+    for lh_row in lh_rows:
+        area = area_key(lh_row.exclusive_area)
+        # LH 형명은 신청자 괄호를 붙인다(16A(대학생/청년)). 괄호 앞 형명이 결과에 있으면 면적이 비어 있어도 빠진 것이 아니다.
+        core = _type_key(lh_row.type_name.split("(")[0])
+        # 신청자 구분으로 나뉜 LH 행(44A(청년)·44A(고령자))은 같은 형이라 면적마다 한 번만 알린다.
+        if area is None or area in areas or core in extracted or ("LH", area) in seen:
+            continue
+        seen.add(("LH", area))
+        warnings.append(f"LH 공급정보의 주택형 {lh_row.type_name}(전용 {area}㎡)과 형명이나 전용면적이 "
+                        "같은 주택형이 추출 결과에 없음")
+    return warnings
+
+
+def _covered(name: str, extracted: set[str]) -> bool:
+    """주택형 칸 값이 결과 주택형 이름과 같거나, 칸에 적은 형마다 결과에 있으면 결과에 있는 것이다.
+    형명 끝의 신청자·용도 괄호(31AS (주거약자용))는 떼고도 맞대 본다(화면이 주택형을 짝짓는 기준과 같다)."""
+    names = dict.fromkeys([name, re.sub(r"\s*\([^)]*\)\s*$", "", name)])
+    return any(_type_key(value) in extracted or bool(tokens := _type_tokens(value)) and all(token in extracted for token in tokens)
+               for value in names if value)
+
+
+def _type_key(name: str) -> str:
+    return _WHITESPACE.sub("", _MIDDLE_DOTS.sub("·", name))
+
+
+def _type_tokens(name: str) -> list[str]:
+    return [token for token in _TYPE_SEPARATORS.split(name) if token]
+
+
 def _check_announcement(announcement: dict, warnings: list[str]) -> None:
     for field in _DATE_FIELDS:
         value = _text(announcement.get(field))

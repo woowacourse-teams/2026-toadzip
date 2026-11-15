@@ -82,18 +82,21 @@ class SupplyTable:
     rows: list[TableRow]
     # 머리글 줄 다음 첫 데이터 행이 신청형 칸 없이 주택타입으로 시작한다. 열 구성이 같은 앞 표의 마지막 신청형이 이어진 것이다.
     continues_subtypes: bool = False
+    # 머리글에서 열 역할을 찾았다. 아니면 columns는 앞 공급표에서 물려받은 것이다.
+    header_found: bool = True
 
     @classmethod
     def of(cls, page: int, number: int, cells: list[list[str | None]], inherited_columns: dict[str, int] | None,
            ambiguous: bool) -> "SupplyTable":
         """셀에서 열 역할과 행 값을 읽어 공급표를 만든다. 머리글에서 열 역할을 찾지 못하면 inherited_columns를 쓴다."""
-        columns = _table_field_columns(cells) or inherited_columns or {}
+        own_columns = _table_field_columns(cells)
+        columns = own_columns or inherited_columns or {}
         subtypes = _house_type_subtypes(cells, columns)
         rows = [TableRow(source_row_id(page, number, index), "\t".join(cell or "" for cell in row),
                          _table_row_field_values(cells, index - 1, columns), _row_target_group_values(cells, index - 1),
                          subtypes.get(index - 1, ()))
                 for index, row in enumerate(cells, 1)]
-        return cls(page, number, cells, columns, ambiguous, rows, _starts_with_house_types(cells, columns))
+        return cls(page, number, cells, columns, ambiguous, rows, _starts_with_house_types(cells, columns), bool(own_columns))
 
     def last_housing_type_row_id(self) -> str | None:
         """신청형(주택형) 칸이 시작하는 마지막 행. 다음 표로 이어질 수 있는 신청형이다."""

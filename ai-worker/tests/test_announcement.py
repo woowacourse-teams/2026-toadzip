@@ -179,6 +179,20 @@ def test_a_stray_lh_row_number_from_the_model_is_not_kept(supply_stage):
     assert (row["sourceHousingTypeName"], row["sourceRow"]) == ("16A", None)
 
 
+def test_a_housing_type_the_model_left_out_is_warned_before_saving():
+    # 저장은 PDF에 없는 주택형을 지운다. 모델이 공급표의 31A 행을 빠뜨리면 결과에 31A가 없다는 경고가 나야 한다(머리글 행은 형이 아니다).
+    compact = {"data": {"rows": [{"rowIds": ["P2:T1:R2"], "complexName": "Sample Complex", "housingType": "16A",
+                                  "target": "청년"}]}, "sharedCounts": []}
+    notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
+              "notApplicable": [], "evidence": []}
+
+    result = AnnouncementPdfExtractor(StageReplyModel(compact, notice)).extract(job(pdf(COVER, SUPPLY, RENT)))
+
+    assert [name for name in (item["name"] for item in json.loads(result["json"])["data"]["supplySheet"]["housingTypes"])] == ["16A"]
+    assert [warning for warning in result["warnings"] if "추출 결과에 없어" in warning] == [
+        "원본 2쪽 공급표의 주택형 31A이(가) 추출 결과에 없어 저장하면 지금 공급표의 그 주택형이 지워질 수 있음"]
+
+
 def test_shared_count_for_several_types_stays_one_row_without_warning(supply_stage):
     # 공급 표가 두 주택형을 모집수 하나로만 안내하면 한 공급행에 subtypes로 두고 수를 나누거나 복제하지 않는다.
     subtypes = [{"name": "051.9800A", "exclusiveArea": 51.98, "commonArea": None, "constructedHouseholdCount": 468},
