@@ -1,7 +1,11 @@
 """실제 Postgres 17에 Spring Flyway의 ai_jobs 마이그레이션을 그대로 적용하고, 워커는 제한 역할로 접속한다."""
 
+import copy
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
@@ -9,8 +13,9 @@ import pymupdf
 import pytest
 from testcontainers.community.postgres import PostgresContainer
 
-from ai_worker import checks, jev
+from ai_worker import checks, jev, supply_grouping, supply_sources
 from ai_worker.openai import Reply
+from ai_worker.source_frame import SourceSupplyRow
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = REPO_ROOT / "backend/src/main/resources/db/migration/V20261103_01__ai_jobs.sql"
@@ -178,6 +183,8 @@ class FakeModel:
             tree = stage_output(checks.first_json_object(self.content), stage, prompt)
         if stage == "supply" and "rows" not in tree.get("data", {}):
             tree = compact_stage_output(tree, prompt)
+        if stage == "supply":
+            tree = sheet_answer(tree)
         return Reply(json.dumps(tree, ensure_ascii=False) + "\n뒤에 붙은 글", USAGE)
 
 
@@ -250,6 +257,84 @@ def compact_stage_output(tree, prompt):
     return {"data": {"rows": rows}}
 
 
+def sheet_answer(compact):
+    """공급행 목록 모양으로 적어 둔 공급 단계 응답을 모델이 실제로 내는 공급표 모양 답으로 바꾼다. 이미 공급표 모양이면 그대로 둔다.
+    행(단지·주택형·대상) 하나의 수·금액은 그 칸 하나만 멤버인 수량·임대조건이고, 공통 수량은 그 행들의 칸이 멤버인 수량 하나다.
+    주택형의 근거 행은 그 주택형 행들이 함께 가리키는 행이고, 대상마다 더 가리킨 행은 그 대상의 수·금액 근거 행이다.
+    기존 테스트 입력을 옛 공급행 목록 모양 그대로 두고 쓰려는 호환 도구다. 새 테스트는 공급표 모양 답을 직접 적는다."""
+    data = compact.get("data", {})
+    if "rows" not in data:
+        return compact
+    items = checks.objects(data["rows"])
+    types, targets, target_at, label_of, cells = [], [], {}, {}, []
+    for item in items:
+        # 같은 단지·주택형 표기라도 가리킨 원문 행이 겹치지 않으면 다른 표 행(다른 블록)이라 다른 주택형이다.
+        row_ids = set(item.get("rowIds") or [])
+        at = next((index for index, value in enumerate(types)
+                   if (value["complexName"], value["name"]) == (item.get("complexName"), item.get("housingType"))
+                   and (row_ids & set(value["_rowIds"]) or not row_ids)), None)
+        if at is None:
+            at = len(types)
+            value = {"key": f"h{len(types) + 1}", "complexName": item.get("complexName"), "name": item.get("housingType"),
+                     "rowIds": list(item.get("rowIds") or []), "targets": []}
+            value.update({field: item[field] for field in (
+                "exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount", "expectedMoveInMonth")
+                if item.get(field) is not None})
+            if item.get("subtypes"):
+                value["houseTypes"] = item["subtypes"]
+            value["_rowIds"] = list(row_ids)
+            types.append(value)
+        housing_type = types[at]
+        housing_type["rowIds"] = [row_id for row_id in housing_type["rowIds"] if row_id in (item.get("rowIds") or [])]
+        target = None
+        if "target" in item:
+            # 한 주택형에 같은 대상 표기가 또 나오면(청년 소득(×)·소득(○) 금액 구간) 다른 대상이다.
+            label = (item.get("target"), item.get("applicationCondition"))
+            repeat = sum(1 for other in housing_type["targets"] if label_of[other] == label)
+            target_key = (*label, repeat)
+            if target_key not in target_at:
+                target_at[target_key] = len(targets)
+                value = {"key": f"t{len(targets) + 1}", "label": item.get("target")}
+                if item.get("applicationCondition") is not None:
+                    value["applicationCondition"] = item["applicationCondition"]
+                targets.append(value)
+                label_of[value["key"]] = label
+            target = targets[target_at[target_key]]["key"]
+            if target not in housing_type["targets"]:
+                housing_type["targets"].append(target)
+        cells.append((housing_type["key"], target))
+    quotas, leases = [], []
+    for item, cell in zip(items, cells):
+        row_ids = list(item.get("rowIds") or [])
+        type_cells = [[*other] for other in dict.fromkeys(cells) if other[0] == cell[0] and other[1]]
+        total = item.get("totalSupplyHouseholdCount")
+        if total is not None and not any(quota["members"] == [[cell[0]]] for quota in quotas):
+            if len(type_cells) != 1 or item.get("supplyHouseholdCount") is None:
+                quotas.append({"kind": "WINNER", "count": total, "members": [[cell[0]]], "rowIds": row_ids})
+        if cell[1] is None:
+            if item.get("reserveCount") is not None:
+                quotas.append({"kind": "RESERVE", "count": item["reserveCount"], "members": [[cell[0]]], "rowIds": row_ids})
+            continue
+        for field, kind in (("supplyHouseholdCount", "WINNER"), ("reserveCount", "RESERVE")):
+            if item.get(field) is not None:
+                quotas.append({"kind": kind, "count": item[field], "members": [[*cell]], "rowIds": row_ids})
+        amounts = {field: item[field] for field in ("rentalDeposit", "monthlyRent", "convertedDeposit")
+                   if item.get(field) is not None}
+        if amounts:
+            leases.append({"members": [[*cell]], **amounts, "rowIds": row_ids})
+    for shared in checks.objects(compact.get("sharedCounts")):
+        indexes = [index for index in shared.get("rowIndexes", []) if 0 <= index < len(cells)]
+        if shared.get("field") == "totalSupplyHouseholdCount":
+            members = [[owner] for owner in dict.fromkeys(cells[index][0] for index in indexes)]
+        else:
+            members = [[*cells[index]] for index in indexes]
+        kind = "RESERVE" if shared.get("field") == "reserveCount" else "WINNER"
+        quotas.append({"kind": kind, "count": shared.get("count"), "members": members, "rowIds": shared.get("rowIds", [])})
+    for value in types:
+        del value["_rowIds"]
+    return {"data": {"housingTypes": types, "targets": targets, "quotas": quotas, "leaseTerms": leases}}
+
+
 class FakeJudge:
     """Jev 대역. 기본은 머리글대로(예비 → 새 예비자 수, 그 밖 → 당첨자 전체) 높은 확률로 답한다.
     by_header로 특정 머리글에만 다른 뜻을 답하게 할 수 있다."""
@@ -299,3 +384,82 @@ def two_quantity_tables_pdf(title="Sample Notice"):
         ["Beta", "36A", "고령자", "3", "36.92", "18.06"],
     ])
     return document.tobytes()
+
+
+@dataclass(frozen=True)
+class Supplied:
+    """공급 단계가 내보내는 결과. sheet는 data.supplySheet, tree는 단지·단지 경로의 미확인·근거가 든 공급 단계 tree다."""
+
+    tree: dict
+    warnings: list[str]
+
+    @property
+    def sheet(self) -> dict:
+        return self.tree["data"]["supplySheet"]
+
+    def unresolved(self) -> set[str]:
+        """공급표 안 미확인 경로."""
+        return {item["path"] for item in self.sheet["unresolvedFields"]}
+
+
+class _AnswerModel:
+    def __init__(self, answer: dict):
+        self.answer = answer
+
+    def chat(self, prompt, deadline):
+        return Reply(json.dumps(self.answer, ensure_ascii=False), USAGE)
+
+
+def _finished(supply) -> Supplied:
+    tree = copy.deepcopy(supply.tree)
+    tree["data"]["supplySheet"] = supply.sheet.emit(None)
+    return Supplied(tree, supply.warnings)
+
+
+def model_stage(selected, answer, source_names=()) -> supply_sources.Supply:
+    """공급 단계 모델이 answer(공급표 모양 답)로 답했을 때의 공급 단계 결과(공급표 모델을 내보내기 전)."""
+    lh_rows = [SourceSupplyRow("LH", None, name, "", "", "", "") for name in source_names]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return supply_sources.ModelSupply(_AnswerModel(answer), lh_rows, selected, time.monotonic() + 60, pool).read()
+
+
+def model_supply(selected, answer=None, *, rows=(), shared=(), source_names=()) -> Supplied:
+    """공급 단계 모델이 answer(공급표 모양 답)로 답했을 때의 공급 단계 결과. rows·shared는 옛 짧은 공급행 목록 모양으로 적은
+    테스트 입력이고 sheet_answer가 공급표 모양 답으로 바꾼다. source_names는 LH 공급행의 단지명이다."""
+    if answer is None:
+        answer = sheet_answer({"data": {"rows": list(rows)}, "sharedCounts": list(shared)})
+    return _finished(model_stage(selected, answer, source_names))
+
+
+def code_stage(selected, source_names=()) -> supply_sources.Supply | None:
+    """코드가 표 셀에서 공급표를 읽었을 때의 공급 단계 결과(공급표 모델을 내보내기 전). 코드가 표를 읽지 못하면 None이다."""
+    grouped = supply_grouping.group(selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
+    if grouped is None:
+        return None
+    return supply_sources.CodeSupply(grouped, selected, list(source_names)).read()
+
+
+def code_supply(selected, source_names=()) -> Supplied | None:
+    """코드가 표 셀에서 공급표를 읽었을 때의 공급 단계 결과. 코드가 표를 읽지 못하면 None이다."""
+    supply = code_stage(selected, source_names)
+    return None if supply is None else _finished(supply)
+
+
+def readable(sheet: dict) -> dict:
+    """공급표를 키 대신 '주택형/대상' 이름으로 읽는다."""
+    types = {item["key"]: item["name"] for item in sheet["housingTypes"]}
+    labels = {item["key"]: item["label"] for item in sheet["targets"]}
+
+    def members(items):
+        return [f"{types[item['housingType']]}/{labels[item['target']]}" for item in items]
+    return {
+        "cells": members(sheet["cells"]),
+        "quotas": [(quota["kind"], quota["count"], members(quota["members"])) for quota in sheet["quotas"]],
+        "leaseTerms": [(lease["rentalDeposit"], lease["monthlyRent"], members(lease["members"]))
+                       for lease in sheet["leaseTerms"]],
+    }
+
+
+def evidence_at(sheet: dict, path: str) -> dict:
+    """그 경로의 첫 근거. 화면은 같은 경로의 첫 근거를 쓴다."""
+    return next(item for item in sheet["evidence"] if item["path"] == path)

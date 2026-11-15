@@ -5,6 +5,7 @@ import com.toadzip.backend.announcement.dto.response.AdminAnnouncementCreateResp
 import com.toadzip.backend.announcement.service.AdminAnnouncementRegistrationService;
 import com.toadzip.backend.global.response.ApiResponse;
 import jakarta.validation.Valid;
+import java.security.Principal;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,9 +25,10 @@ public class AdminAnnouncementController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<AdminAnnouncementCreateResponse>> registerAnnouncement(
-            @Valid @RequestBody AdminAnnouncementCreateRequest request
+            @Valid @RequestBody AdminAnnouncementCreateRequest request,
+            Principal principal
     ) {
-        AdminAnnouncementCreateResponse registered = registrationService.register(request);
+        AdminAnnouncementCreateResponse registered = registrationService.register(request, principal.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(registered));
     }
 }

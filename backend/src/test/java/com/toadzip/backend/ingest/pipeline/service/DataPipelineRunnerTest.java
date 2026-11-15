@@ -627,9 +627,9 @@ class DataPipelineRunnerTest {
 
     private LhAnnouncementRefinementReport lhRefinementReport(Map<String, Integer> heldCounts, int failedCount) {
         return new LhAnnouncementRefinementReport(
-                1, 1, 0, 0, heldCounts, failedCount, 0, 0, 1, 0,
-                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 0, 1, 0),
-                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0, 1, 0, 0, 1, Map.of())
+                1, 1, 0, 0, heldCounts, failedCount, 0, 1, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 1, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0)
         );
     }
 

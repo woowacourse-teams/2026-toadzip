@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -167,9 +168,10 @@ class UnconfirmedAnnouncementIntegrationTest {
 
         var request = request(id);
         request.put("publish", true);
-        var row = (ObjectNode) request.path("correction").path("rows").get(0);
         if (change.equals("excluded")) {
-            row.put("excluded", true);
+            // 공급표에서 주택형을 빼면 그 칸과 수량 묶음·임대조건도 함께 빠진다.
+            var sheet = (ObjectNode) request.path("correction").path("sheet");
+            for (var name : new String[] {"housingTypes", "cells", "quotas", "leaseTerms"}) { sheet.putArray(name); }
         }
         preview(id, request).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(containsString("단지에 연결")));
@@ -192,15 +194,17 @@ class UnconfirmedAnnouncementIntegrationTest {
         preview(id, rename).andExpect(status().isOk()).andExpect(jsonPath("$.data.publishes").value(false));
 
         var request = request(id);
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("housingComplexId", complex.getId());
+        firstType(request).put("housingComplexId", complex.getId());
         request.put("publish", true);
         preview(id, request).andExpect(status().isOk()).andExpect(jsonPath("$.data.publishes").value(true));
         apply(id, request).andExpect(status().isOk());
 
         assertThat(releaseStatus(id)).isEqualTo("PUBLISHED");
         assertThat(outboxCount(announcement.getSourceAnnouncementIdentifier())).isOne();
-        assertThat(jdbc.queryForObject("SELECT housing_complex_id FROM supply_rows WHERE announcement_id = ?",
-                Long.class, id)).isEqualTo(complex.getId());
+        assertThat(jdbc.queryForObject("""
+                SELECT ac.housing_complex_id FROM supply_rows r
+                JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id WHERE r.announcement_id = ?
+                """, Long.class, id)).isEqualTo(complex.getId());
     }
 
     @Test
@@ -214,13 +218,13 @@ class UnconfirmedAnnouncementIntegrationTest {
         long id = announcement.getId();
 
         var withoutValues = request(id);
-        ((ObjectNode) withoutValues.path("correction").path("rows").get(0)).put("housingComplexId", complex.getId());
+        firstType(withoutValues).put("housingComplexId", complex.getId());
         withoutValues.put("publish", true);
         preview(id, withoutValues).andExpect(status().isBadRequest());
         assertThat(releaseStatus(id)).isEqualTo("UNCONFIRMED");
 
         var request = request(id);
-        ((ObjectNode) request.path("correction").path("rows").get(0)).put("housingComplexId", complex.getId());
+        firstType(request).put("housingComplexId", complex.getId());
         request.withArray("fields").add("rentalType").add("recruitmentType").add("applicationStartDate")
                 .add("applicationEndDate").add("winnerAnnouncementDate");
         request.put("publish", true);
@@ -255,7 +259,7 @@ class UnconfirmedAnnouncementIntegrationTest {
         assertThat(audiences.visibleTitle(id)).isPresent();
 
         var supplyOnly = request(id);
-        ((ObjectNode) supplyOnly.path("correction").path("rows").get(0)).put("householdCount", 3);
+        ((ObjectNode) supplyOnly.path("correction").path("sheet").path("quotas").get(0)).put("count", 3);
         supplyOnly.put("publish", true);
         apply(id, supplyOnly).andExpect(status().isOk());
         assertThat(outboxCount(identifier)).isOne();
@@ -285,8 +289,12 @@ class UnconfirmedAnnouncementIntegrationTest {
         correction.put("reason", "공식 공고문에서 확인");
         correction.put("sourceUrl", "https://example.com/notice");
         correction.putNull("sourcePage");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
+        correction.set("sheet", SupplySheetInputs.json(state.path("supply").path("sheet")));
         return request;
+    }
+
+    private static ObjectNode firstType(ObjectNode request) {
+        return (ObjectNode) request.path("correction").path("sheet").path("housingTypes").get(0);
     }
 
     private ResultActions preview(long id, ObjectNode request) throws Exception {

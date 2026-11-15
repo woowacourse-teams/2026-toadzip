@@ -3,201 +3,242 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { expect, it, vi } from 'vitest'
 import { ReviewSupply } from './ReviewSupply'
-import { daegu, scenario, separateHansville } from './fixtures/workspace'
-import fixtures from './fixtures/scenarios.json'
+import { daegu, savedSheet, scenario } from './fixtures/workspace'
+import type { Extraction } from './extraction'
 import type { Review, ReviewFilter } from './review'
+import { groupsText, orderedGroups } from '../supply/targetGroups'
 
-function renderSupply(name: Parameters<typeof scenario>[0], prepare: (review: Review) => void, filter: ReviewFilter = 'all', savesHousingTypes = true, extraction?: unknown, warnings: string[] = []) {
-  const { review, workspace, housing } = scenario(name, extraction)
+const hansvilleLinked = (extracted: Extraction) => savedSheet(extracted, { id: 3055, name: '익산한스빌' })
+
+function renderSupply(found: ReturnType<typeof scenario>, prepare: (review: Review) => void = () => {}, { filter = 'all' as ReviewFilter, savesHousingTypes = true, warnings = [] as string[], selected = 0 } = {}) {
+  const { review, workspace, housing } = found
   prepare(review)
-  const changed = vi.fn<(review: Review) => void>()
+  const changed = vi.fn<(review: Review) => void>(), moved = vi.fn<(target: string) => void>()
   function Test() {
-    const [current, setCurrent] = useState(review)
-    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter={filter} savesHousingTypes={savesHousingTypes} warnings={warnings} empty="없음" onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} selected={0} onSelect={() => {}} />
+    const [current, setCurrent] = useState(review), [index, setIndex] = useState(selected)
+    return <><button type="button" onClick={() => setIndex(index === 0 ? 3 : 0)}>다른 단지 보기</button>
+      <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter={filter} savesHousingTypes={savesHousingTypes} warnings={warnings} empty="없음"
+        onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} selected={index} onSelect={setIndex} onJump={moved} /></>
   }
   render(<MemoryRouter><Test /></MemoryRouter>)
-  return changed
+  return { changed, moved }
 }
+const rowList = () => screen.getByRole('region', { name: '주택형 목록' })
 
 it('이전 PDF 보정에서 고른 주택타입 가격은 확인 필요 필터에서도 보이고, 지금 가격 유지를 고르면 확인을 마친다', () => {
-  const changed = renderSupply('hansville', review => {
-    const row = review.rows[0]
-    row.proposal = { ...row.proposal, candidates: row.proposal.candidates.map(type => type.id === 10353 ? { ...type, basicDeposit: 1_000_000, basicMonthlyRent: 10_000, rentalConditionSource: 'ANNOUNCEMENT' as const } : type) }
-    // 다른 확인 항목은 모두 마쳐, 이 행이 주택타입 가격 때문에만 확인 필요 필터에 남게 한다.
-    const reviewed = (cells: typeof row.cells) => cells.map(cell => ({ ...cell, reviewed: true }))
-    Object.assign(row, { reviewed: true, cells: reviewed(row.cells), targets: row.targets.map(target => ({ ...target, cells: reviewed(target.cells) })) })
-  }, 'pending')
-  const price = screen.getByRole('region', { name: '공급행 1 주택타입 가격' })
+  // 26A는 단지 주택타입 10353에 연결돼 있고, 그 가격은 이전 PDF 보정에서 고른 공고문 값이다.
+  const linkedType = (extracted: Extraction) => { const sheet = hansvilleLinked(extracted); sheet.housingTypes[0] = { ...sheet.housingTypes[0], housingTypeId: 10353 }; return sheet }
+  const { changed } = renderSupply(scenario('hansville', undefined, linkedType), review => {
+    review.rows[0].candidates = review.rows[0].candidates.map(type => type.id === 10353 ? { ...type, basicDeposit: 1_000_000, basicMonthlyRent: 10_000, rentalConditionSource: 'ANNOUNCEMENT' as const } : type)
+  }, { filter: 'pending' })
+  const price = screen.getByRole('region', { name: '주택형 1 주택타입 가격' })
   expect(within(price).getByText('확인 필요')).toBeInTheDocument()
-  expect(within(price).getByRole('combobox', { name: '공급행 1 주택타입 가격으로 쓸 대상' })).toHaveValue('')
-  fireEvent.click(within(price).getByRole('button', { name: '공급행 1 지금 가격 유지' }))
+  expect(within(price).getByRole('combobox', { name: '주택형 1 주택타입 가격으로 쓸 대상' })).toHaveValue('')
+  fireEvent.click(within(price).getByRole('button', { name: '주택형 1 지금 가격 유지' }))
   expect(changed.mock.lastCall![0].rows[0].priceTarget).toBeNull()
 })
 
 it('검토 화면에서 고른 가격 대상과 지금 값 유지를 저장할 선택으로 남긴다', () => {
-  const changed = renderSupply('hansville', () => {}, 'all', true, separateHansville())
-  const select = screen.getByRole('combobox', { name: '공급행 1 주택타입 가격으로 쓸 대상' })
-  fireEvent.change(select, { target: { value: '' } })
-  expect(changed.mock.lastCall![0].rows[0].priceTarget).toBeNull()
+  const { changed } = renderSupply(scenario('hansville', undefined, hansvilleLinked))
+  const select = screen.getByRole('combobox', { name: '주택형 1 주택타입 가격으로 쓸 대상' })
   fireEvent.change(select, { target: { value: '0' } })
   expect(changed.mock.lastCall![0].rows[0].priceTarget).toBe(0)
+  fireEvent.change(select, { target: { value: '' } })
+  expect(changed.mock.lastCall![0].rows[0].priceTarget).toBeNull()
 })
 
 it('PDF로 공급정보 편집표만 채울 때는 저장하지 않는 주택타입 가격 칸을 보이지 않는다', () => {
-  renderSupply('hansville', () => {}, 'all', false)
-  expect(screen.queryByRole('region', { name: '공급행 1 주택타입 가격' })).not.toBeInTheDocument()
-  expect(screen.queryByText(/연결한 단지 주택형 이름도 이 표기로 갱신합니다/)).not.toBeInTheDocument()
+  renderSupply(scenario('hansville', undefined, hansvilleLinked), undefined, { savesHousingTypes: false })
+  expect(screen.queryByRole('region', { name: '주택형 1 주택타입 가격' })).not.toBeInTheDocument()
 })
 
 it('AI 워커 경고는 필터와 관계없이 보이고, 화면 검산은 전체 보기에서만 보인다', () => {
-  renderSupply('hansville', review => { review.extraction.checks = ['화면 합계 검산 불일치'] }, 'pending', true, undefined, ['supplyRows[0]: 워커 경고'])
+  renderSupply(scenario('hansville'), review => { review.extraction.checks = ['화면 합계 검산 불일치'] }, { filter: 'pending', warnings: ['워커 경고'] })
   // 안내는 접힌 한 줄 요약으로 시작하고, 접혀 있어도 워커 경고 건수를 보인다.
   expect(screen.getByRole('list', { name: '안내 요약' })).toHaveTextContent('검산 확인 1건')
   expect(screen.queryByRole('note', { name: '검산 결과' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
   const note = screen.getByRole('note', { name: '검산 결과' })
-  expect(within(note).getByText('supplyRows[0]: 워커 경고')).toBeInTheDocument()
+  expect(within(note).getByText('워커 경고')).toBeInTheDocument()
   expect(within(note).queryByText('화면 합계 검산 불일치')).not.toBeInTheDocument()
 })
 
-it('단지가 다른 공급행끼리 함께 쓰는 공통 모집수는 공급행 모집수로 정하지 않는다고 알린다', () => {
-  const extraction = structuredClone(fixtures.gwangju.extraction) as unknown as { sharedCounts: unknown[] }
-  extraction.sharedCounts = [{ count: 80, paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[3].totalSupplyHouseholdCount'], page: 2, quote: '80' }]
-  const { review, workspace, housing } = scenario('gwangju', extraction)
-  render(<MemoryRouter><ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={1} onSelect={() => {}} /></MemoryRouter>)
-  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
-  expect(screen.getByText(/단지가 다른 공급행끼리 함께 쓰는 모집수라 공급행 모집수로 정하지 않습니다/)).toBeInTheDocument()
-})
-
-it('공급정보는 고른 행이 속한 단지의 행만 목록·편집 영역에 두고, 다른 단지 행을 고르면 편집 영역과 주택형 패널이 그 단지로 바뀌며 앞 행의 편집은 남는다', () => {
-  const { review, workspace, housing } = scenario('gwangju')
-  function Test() {
-    const [current, setCurrent] = useState(review), [selected, setSelected] = useState(0)
-    return <><button type="button" onClick={() => setSelected(selected === 0 ? 3 : 0)}>다른 단지 탭</button>
-      <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={setCurrent} onEvidence={() => {}} selected={selected} onSelect={setSelected} /></>
-  }
-  render(<MemoryRouter><Test /></MemoryRouter>)
-  const list = screen.getByRole('region', { name: '공급행 목록' })
-  const groups = () => [...list.querySelectorAll('th[scope=rowgroup]')].map(header => header.textContent)
+it('공급정보는 고른 주택형이 속한 PDF 단지의 주택형만 목록·편집 영역에 두고, 다른 단지 주택형을 고르면 그 단지로 바뀌며 앞 주택형의 편집은 남는다', () => {
+  renderSupply(scenario('gwangju'))
+  const groups = () => [...rowList().querySelectorAll('th[scope=rowgroup]')].map(header => header.textContent)
   expect(groups()).toHaveLength(1)
   expect(groups()[0]).toMatch(/^첨단H-1BL · 주택형 1개 · 모집 합/)
-  const first = within(screen.getByRole('region', { name: '공급행 1 검토' })).getByRole('group', { name: '공급행 1 이 공고의 주택형 표기 반영 방법' })
+  const first = within(screen.getByRole('region', { name: '주택형 1 검토' })).getByRole('group', { name: '주택형 1 주택형 반영 방법' })
   fireEvent.click(within(first).getByRole('button', { name: '직접 입력' }))
-  fireEvent.change(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' }), { target: { value: '39 관리자' } })
-  fireEvent.click(screen.getByRole('button', { name: '단지 주택타입 보기' }))
-  const panelTitle = () => screen.getByRole('button', { name: '주택타입 패널 닫기' }).closest('aside')!.getAttribute('aria-label')
-  const before = panelTitle()
-  fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
-  // 같은 면적 26형 두 PDF 행은 공급행 하나로 접혀 이 단지의 주택형은 셋이다.
-  expect(groups()[0]).toMatch(/^첨단H-3BL · 주택형 3개/)
-  expect(within(list).getAllByRole('button', { name: /^\d+\. / }).map(button => button.textContent?.split('.')[0])).toEqual(['4', '5', '6'])
+  fireEvent.change(screen.getByRole('textbox', { name: '주택형 1 주택형 수정' }), { target: { value: '39 관리자' } })
+  fireEvent.click(screen.getByRole('button', { name: '다른 단지 보기' }))
+  expect(groups()[0]).toMatch(/^첨단H-3BL · 주택형 4개/)
+  expect(within(rowList()).getAllByRole('button', { name: /^\d+\. / }).map(button => button.textContent?.split('.')[0])).toEqual(['4', '5', '6', '7'])
   expect(screen.getByRole('heading', { name: '4. 16(대학생,청년)' })).toBeVisible()
-  expect(panelTitle()).not.toBe(before)
-  fireEvent.click(screen.getByRole('button', { name: '다른 단지 탭' }))
-  expect(screen.getByRole('textbox', { name: '공급행 1 이 공고의 주택형 표기 수정' })).toHaveValue('39 관리자')
+  fireEvent.click(screen.getByRole('button', { name: '다른 단지 보기' }))
+  expect(screen.getByRole('textbox', { name: '주택형 1 주택형 수정' })).toHaveValue('39 관리자')
 })
 
-/** 대구 공고: 옛 LH 통합행 #747(240세대, 면적 없음)이 있는 단지를 PDF는 051.9800A 200 · 059.9100A 25 · 059.9300B 15로 적었다. */
-function renderDaegu() {
+it('지금 공급표와 이름이 다른 PDF 주택형은 새 주택형으로 보이고, PDF에 없는 지금 주택형은 저장하면 지운다고 알린다', () => {
   const { review, workspace, housing } = daegu()
-  const changed = vi.fn<(review: Review) => void>()
-  function Test() {
-    const [current, setCurrent] = useState(review), [selected, setSelected] = useState(0)
-    return <ReviewSupply review={current} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={next => { setCurrent(next); changed(next) }} onEvidence={() => {}} selected={selected} onSelect={setSelected} />
-  }
-  render(<MemoryRouter><Test /></MemoryRouter>)
-  const show = (row: number) => fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: new RegExp(`^${row}\\. `) }))
-  const placeOf = (row: number) => { show(row); return screen.getByLabelText(`공급행 ${row} 저장할 곳`).textContent }
-  return { changed, show, placeOf }
-}
-
-it('전용면적을 모르는 LH 통합행은 PDF 행과 맞추지 않아 PDF 행은 확인 없이 새 공급정보가 되고, 남는 통합행은 이번 보정에서 제외할 수 있다', () => {
-  const { changed, placeOf } = renderDaegu()
-  // LH 행을 나누거나 붙이는 단지 대응은 없다.
-  expect(screen.queryByRole('region', { name: 'LH·PDF 대응' })).not.toBeInTheDocument()
-  expect([1, 2, 3].map(placeOf)).toEqual(['대구테크노폴리스4에 새 공급정보로 추가합니다.', '대구테크노폴리스4에 새 공급정보로 추가합니다.', '대구테크노폴리스4에 새 공급정보로 추가합니다.'])
-  expect(screen.queryByText('저장할 곳이 맞는지 확인하세요.')).not.toBeInTheDocument()
-  expect(within(screen.getByRole('region', { name: '공급행 목록' })).getAllByRole('row').slice(2).map(row => row.children[3].textContent)).toEqual(['새로 추가', '새로 추가', '새로 추가'])
-  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('PDF에 없는 기존 공급행 1행')).toBeVisible()
+  renderSupply({ review, workspace, housing, extraction: review.extraction })
+  expect(within(rowList()).getAllByRole('row').slice(2).map(row => row.children[3].textContent)).toEqual(['새 주택형', '새 주택형', '새 주택형'])
+  // 공고문 PDF가 하나뿐이라 PDF에 없는 단지는 기본으로 지우고, 그 주택형은 단지 안내에서만 알린다.
+  const summary = within(screen.getByRole('list', { name: '안내 요약' }))
+  expect(summary.getByText('이 PDF에 없는 단지 1곳 삭제')).toBeVisible()
+  expect(summary.getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
-  const leftovers = screen.getByRole('note', { name: 'PDF에 없는 기존 공급행' })
-  // 다른 단지(#748)의 행은 이 단지의 남는 행이 아니다.
-  expect(within(leftovers).getAllByRole('listitem').map(item => item.firstChild?.textContent)).toEqual(['#747 공공임대 · 240세대 · 면적 미확인'])
-  fireEvent.click(within(leftovers).getByRole('button', { name: '#747 이번 보정에서 제외' }))
-  expect(changed.mock.lastCall![0].excludedRows).toEqual(['row:747'])
-  expect(within(leftovers).getByRole('button', { name: '#747 제외 취소' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(screen.getByRole('note', { name: 'PDF에 없는 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['대구테크노폴리스4 · 공공임대'])
+  expect(screen.getByRole('checkbox', { name: '다른 단지 주택형 1개 지우기' })).toBeChecked()
+  // 주택타입을 고르게 하지 않고 저장할 때 같은 이름·면적의 단지 주택타입에 연결한다고 미리 알린다.
+  expect(screen.getByRole('region', { name: '주택형 1 검토' })).toHaveTextContent("연결 주택타입: 저장하면 '51A'(전용 51.98㎡)에 연결합니다.")
 })
 
-it('주택형을 고르게 하지 않고 저장할 때 공고문 주택타입으로 정한 단지 주택타입에 연결한다고 미리 알린다', () => {
-  const { show } = renderDaegu()
-  show(1)
-  const row = screen.getByRole('region', { name: '공급행 1 검토' })
-  expect(row).toHaveTextContent("연결 주택타입: 저장하면 '51A'(전용 51.98㎡)에 연결합니다.")
-  expect(row).not.toHaveTextContent('맞는 주택형 없음')
-  expect(within(screen.getByRole('region', { name: '공급행 목록' })).getAllByRole('row').slice(2).map(item => item.children[4].textContent)).not.toContain('주택타입 미연결')
+it('공고문 PDF가 둘이면 이 PDF에 없는 단지는 그대로 둔다고 알리고, 단지마다 지우기를 고르면 지울 주택형에 더한다', () => {
+  const { review, workspace, housing } = daegu()
+  workspace.detail.attachments = [{ attachmentId: 1, fileName: '대구 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: '다른 단지 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }]
+  const { changed } = renderSupply({ review, workspace, housing, extraction: review.extraction })
+  const summary = within(screen.getByRole('list', { name: '안내 요약' }))
+  expect(summary.getByText('이 PDF에 없는 단지 1곳 그대로 둠')).toBeVisible()
+  expect(summary.getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
+  // 그대로 두는 단지 안내는 경고가 아닌 결정 상태로 보인다.
+  expect(screen.getByRole('group', { name: '이 PDF에 없는 단지' })).toHaveAttribute('data-tone', 'info')
+  fireEvent.click(within(screen.getByRole('group', { name: '이 PDF에 없는 단지' })).getByRole('checkbox', { name: '다른 단지 주택형 1개 지우기' }))
+  expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ removeComplexes: { 'n:다른 단지': true } }))
+  expect(summary.getByText('이 PDF에 없는 단지 1곳 삭제')).toBeVisible()
+  expect(screen.getByRole('group', { name: '이 PDF에 없는 단지' })).toHaveAttribute('data-tone', 'warning')
+  // 지우기로 고른 단지의 주택형은 PDF에서 빠진 주택형 안내에 겹쳐 세지 않는다.
+  expect(summary.getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
+  expect(within(screen.getByRole('note', { name: 'PDF에 없는 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['대구테크노폴리스4 · 공공임대'])
 })
 
-it('공급행에 붙은 LH 줄은 줄 수·합계를 검산 정보로만 보이고, 같은 주택형의 옛 공급행을 함께 제외한다고 알린다', () => {
-  const { review, workspace, housing } = scenario('gwangju')
-  const lh = (order: number, attachedRowKey: string, householdCount: number) => ({ rowIdentifier: `LH:P:SUPPLY:${order}`, complexLabel: '광주첨단H-3BL', typeName: '26', exclusiveArea: '26.97', householdCount, attachedRowKey, ambiguous: false })
-  const withLh = { ...workspace, supply: { ...workspace.supply, lhSupplyRows: [lh(1, 'row:26', 7), lh(2, 'row:27', 9)] } }
-  const index = review.rows.findIndex(row => row.proposal.destination === 'row:26')
-  render(<MemoryRouter><ReviewSupply review={review} workspace={withLh} housing={housing} complexes={{}} filter="all" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={index} onSelect={() => {}} /></MemoryRouter>)
-  const row = screen.getByRole('region', { name: `공급행 ${index + 1} 검토` })
-  expect(within(row).getByRole('note', { name: `공급행 ${index + 1} LH 검산` })).toHaveTextContent('LH 2줄 합 16세대 · PDF 모집수 20세대와 4세대 다릅니다. 공고문과 대조하세요(저장은 막지 않습니다).')
-  expect(row).toHaveTextContent("기존 공급행 '광주첨단H-3BL 26형(주거급여수급자) · 면적 미확인 · 모집 10세대 · #27'은 이 공급행에 합쳐지므로 저장하면 제외합니다")
-  expect(within(row).getByLabelText(`공급행 ${index + 1} 저장할 곳`)).toHaveTextContent(/^고칠 기존 공급정보: 광주첨단H-3BL 26형\(고령\(주거약자용\)\) · .* · #26$/)
-  expect(row).not.toHaveTextContent('저장할 곳이 맞는지 확인하세요.')
+it('공고문 PDF 하나에 신청서 양식·정정 공고 PDF가 더 있어도 공고문 PDF는 하나로 보고, 이 PDF에 없는 단지를 기본으로 지운다', () => {
+  const { review, workspace, housing } = daegu()
+  workspace.detail.attachments = [{ attachmentId: 1, fileName: '대구 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: '신청서 양식.pdf', fileType: 'REFERENCE', fileUrl: '' },
+    { attachmentId: 3, fileName: '정정 공고.pdf', fileType: 'CORRECTION', fileUrl: '' }]
+  renderSupply({ review, workspace, housing, extraction: review.extraction })
+  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('이 PDF에 없는 단지 1곳 삭제')).toBeVisible()
 })
 
-it('금액은 임대조건 표와 조건 대조 칸 모두 세 자리마다 쉼표를 넣어 보이고, 직접 입력 칸에는 쉼표 없는 원 단위 값을 둔다', () => {
-  renderSupply('gwangju', () => {})
-  const table = screen.getByRole('region', { name: '공급행 1 임대조건 표' })
+it('금액은 대상별 칸 표와 대조 칸 모두 세 자리마다 쉼표를 넣어 보이고, 직접 입력 칸에는 쉼표 없는 원 단위 값을 둔다', () => {
+  renderSupply(scenario('gwangju'))
+  const table = screen.getByRole('region', { name: '주택형 1 대상별 칸 표' })
   expect(within(table).getAllByText('41,848,000').length).toBeGreaterThan(0)
   expect(within(table).queryByText('41848000')).not.toBeInTheDocument()
-  expect(within(table).getAllByText('226,670').length).toBeGreaterThan(0)
-  fireEvent.click(within(table).getByRole('button', { name: '조건 1 대조·수정' }))
-  const condition = screen.getByRole('region', { name: '공급행 1 조건 1 수정' })
-  expect(within(condition).getAllByText('41,848,000').length).toBeGreaterThan(0)
-  fireEvent.click(within(within(condition).getByRole('group', { name: '공급행 1 조건 1 보증금 (원) 반영 방법' })).getByRole('button', { name: '직접 입력' }))
-  expect(within(condition).getByRole('textbox', { name: '공급행 1 조건 1 보증금 (원) 수정' })).toHaveValue('41848000')
+  fireEvent.click(within(table).getByRole('button', { name: '대상 1 대조·수정' }))
+  const target = screen.getByRole('region', { name: '주택형 1 대상 1 수정' })
+  expect(within(target).getAllByText('41,848,000').length).toBeGreaterThan(0)
+  fireEvent.click(within(within(target).getByRole('group', { name: '주택형 1 대상 1 보증금 (원) 반영 방법' })).getByRole('button', { name: '직접 입력' }))
+  expect(within(target).getByRole('textbox', { name: '주택형 1 대상 1 보증금 (원) 수정' })).toHaveValue('41848000')
 })
 
-it('단지를 정하지 않은 행의 상태 배지는 단지 정하기로 옮긴다', () => {
-  const { review, workspace, housing } = scenario('gwangju')
-  workspace.supply.rows.forEach(row => { row.housingComplexId = null })
-  const moved = vi.fn<(target: string) => void>()
-  // 확인 필요 필터에서도 단지 정하기는 숨기지 않는다(접는 안내가 아니라 단지 영역 맨 위에 늘 보인다).
-  render(<MemoryRouter><ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="pending" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={0} onSelect={() => {}} onJump={moved} /></MemoryRouter>)
+it('공급대상 이름을 읽지 못한 칸은 이름 없음으로 표시하고, 펼치면 이름을 넣어야 저장된다고 알린다', () => {
+  const found = scenario('hansville')
+  found.review.labels[0].cells = found.review.labels[0].cells.map(cell => cell.field === 'label' ? { ...cell, value: '', before: null, selected: true } : cell)
+  renderSupply(found)
+  const table = screen.getByRole('region', { name: '주택형 1 대상별 칸 표' })
+  expect(within(table).getByText('이름 없음')).toBeVisible()
+  fireEvent.click(within(table).getByRole('button', { name: '대상 1 대조·수정' }))
+  expect(screen.getByText('공급대상 이름을 원문에서 읽지 못했습니다. 이름을 넣어야 저장할 수 있습니다.')).toBeVisible()
+})
+
+it('지금 이름이 없는 공급대상은 아직 고르지 않은 PDF 이름을 확인 필요와 함께 보이고, 펼치면 대조해 고르라고 알린다', () => {
+  // 지금 공급표 대상과 짝이 안 지어지고 근거도 없어 확인을 기다리는 PDF 이름이다.
+  const found = scenario('hansville')
+  found.review.labels[0].cells = found.review.labels[0].cells.map(cell => cell.field === 'label' ? { ...cell, value: '신혼부부 한부모가족', before: null, selected: false, state: 'confirm' as const } : cell)
+  renderSupply(found)
+  const table = screen.getByRole('region', { name: '주택형 1 대상별 칸 표' })
+  expect(within(table).getByText('신혼부부 한부모가족')).toBeVisible()
+  expect(within(table).getByText('이름 확인 필요')).toBeVisible()
+  expect(within(table).queryByText('이름 없음')).not.toBeInTheDocument()
+  fireEvent.click(within(table).getByRole('button', { name: '대상 1 대조·수정' }))
+  expect(screen.getByText('PDF에서 읽은 공급대상 이름을 원문과 대조해 고르세요. 고르거나 직접 넣어야 저장할 수 있습니다.')).toBeVisible()
+})
+
+it('다른 주택형과 함께 쓰는 모집 수는 그 주택형 모두의 편집 영역에 같은 칸으로 보인다', () => {
+  renderSupply(scenario('hansville'))
+  const shared = () => within(screen.getByRole('region', { name: /^주택형 \d 검토$/ })).getByRole('group', { name: '26A·26B 일반 함께 모집 26A·26B 일반 함께 모집 반영 방법' })
+  expect(shared()).toBeInTheDocument()
+  fireEvent.click(within(rowList()).getByRole('button', { name: /^2\. / }))
+  expect(screen.getByRole('heading', { name: '2. 26B' })).toBeVisible()
+  expect(shared()).toBeInTheDocument()
+})
+
+it('단지를 정하지 않은 주택형의 상태 배지는 단지 정하기로 옮기고, 확인 필요 필터에서도 단지 정하기를 숨기지 않는다', () => {
+  const { moved } = renderSupply(scenario('gwangju'), undefined, { filter: 'pending' })
   expect(screen.getByRole('region', { name: 'PDF 단지 정하기' })).toBeVisible()
-  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: '공급행 1 확인 필요: 단지 정하기 확인하러 가기' }))
+  fireEvent.click(within(rowList()).getByRole('button', { name: /^주택형 1 확인 필요: 단지 정하기.* 확인하러 가기$/ }))
   expect(moved).toHaveBeenLastCalledWith('complex')
 })
 
 it('상태 배지는 남은 확인을 종류별 개수로 알리고, 누르면 편집 영역 순서로 첫 확인 항목(값 칸)으로 옮긴다', () => {
-  const { review, workspace, housing } = scenario('gwangju')
-  const row = review.rows[0]
-  row.reviewed = true
-  const [first, second] = row.cells.filter(cell => !cell.locked && cell.field !== 'housingTypeId')
-  for (const cell of [first, second]) { cell.mode = 'extracted'; cell.reviewed = false; cell.extracted = { ...cell.extracted, state: 'confirm' } }
-  const moved = vi.fn<(target: string) => void>()
-  render(<MemoryRouter><ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={0} onSelect={() => {}} onJump={moved} /></MemoryRouter>)
-  fireEvent.click(within(screen.getByRole('region', { name: '공급행 목록' })).getByRole('button', { name: '공급행 1 확인 필요: 값 2 확인하러 가기' }))
-  expect(moved).toHaveBeenLastCalledWith(`cell:${first.path}`)
+  let first = ''
+  const { moved } = renderSupply(scenario('hansville', undefined, hansvilleLinked), review => {
+    const cells = review.rows[0].cells.filter(cell => !cell.locked && ['name', 'exclusiveArea'].includes(cell.field))
+    for (const cell of cells) { cell.mode = 'extracted'; cell.reviewed = false; cell.state = 'confirm'; cell.extracted = { ...cell.extracted, state: 'confirm' } }
+    first = cells[0].path
+  })
+  fireEvent.click(within(rowList()).getByRole('button', { name: /^주택형 1 확인 필요: 값 2.* 확인하러 가기$/ }))
+  expect(moved).toHaveBeenLastCalledWith(`cell:${first}`)
 })
 
-it('공통 모집 안내는 지금 단지의 행이 든 묶음만 보인다', () => {
-  const extraction = structuredClone(fixtures.gwangju.extraction) as unknown as { sharedCounts: unknown[] }
-  // 단지가 다른 공급행끼리 함께 쓰는 모집수다(같은 단지의 행은 공급행 하나로 접힌다).
-  extraction.sharedCounts = [{ count: 80, paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[3].totalSupplyHouseholdCount'], page: 2, quote: '80' }]
-  const { review, workspace, housing } = scenario('gwangju', extraction)
-  function Test() {
-    const [selected, setSelected] = useState(0)
-    return <><button type="button" onClick={() => setSelected(1)}>첨단H-2BL 보기</button>
-      <ReviewSupply review={review} workspace={workspace} housing={housing} complexes={{}} filter="all" empty="없음" onChange={() => {}} onEvidence={() => {}} selected={selected} onSelect={setSelected} /></>
-  }
-  render(<MemoryRouter><Test /></MemoryRouter>)
-  expect(screen.queryByText('공통 모집 80세대')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '첨단H-2BL 보기' }))
-  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('공통 모집 80세대')).toBeVisible()
+it('단지 주택타입 여럿을 함께 모집하는 PDF 주택형은 목록 줄과 편집 영역에 묶은 주택타입을 보인다', () => {
+  renderSupply(scenario('hansville'), review => {
+    const [first, second] = review.extraction.sheet.housingTypes
+    first.houseTypes = [{ name: '26A·26C', exclusiveArea: 26.73, supplyArea: null }, { name: '26B', exclusiveArea: 26.81, supplyArea: null }]
+    // 주택형 표기와 같은 주택타입 하나뿐이면 묶은 것이 없다.
+    second.houseTypes = [{ name: second.name, exclusiveArea: second.exclusiveArea, supplyArea: null }]
+  })
+  const row = (number: number) => within(rowList()).getByRole('button', { name: new RegExp(`^${number}\\. `) }).closest('th')
+  expect(row(1)).toHaveTextContent('주택타입 26A·26C, 26B')
+  expect(row(2)).not.toHaveTextContent('주택타입')
+  expect(screen.getByText('함께 모집하는 단지 주택타입: 26A·26C(전용 26.73㎡), 26B(전용 26.81㎡)')).toBeVisible()
+  fireEvent.click(within(rowList()).getByRole('button', { name: /^2\. / }))
+  expect(screen.queryByText(/함께 모집하는 단지 주택타입/)).not.toBeInTheDocument()
+})
+
+it('공급대상 분류는 대조·수정 영역에서 여러 개 고르고, 고친 분류는 화면에서 고쳤다는 표시와 함께 검토에 남는다', () => {
+  const found = scenario('hansville')
+  const { changed } = renderSupply(found)
+  const before = found.review.labels[0].groups
+  fireEvent.click(within(screen.getByRole('region', { name: '주택형 1 대상별 칸 표' })).getByRole('button', { name: '대상 1 대조·수정' }))
+  const target = screen.getByRole('region', { name: '주택형 1 대상 1 수정' })
+  fireEvent.click(target.querySelector('summary')!)
+  const picker = within(target).getByRole('group', { name: '공급대상 1 분류' })
+  fireEvent.click(within(picker).getByRole('checkbox', { name: '주거약자용' }))
+  fireEvent.click(within(picker).getByRole('checkbox', { name: '청년' }))
+  const saved = changed.mock.lastCall![0].labels.find(label => label.target === 0)!
+  expect(saved.groups).toEqual(orderedGroups([...before, 'YOUTH', 'HOUSING_VULNERABLE']))
+  expect(saved.groupsEdited).toBe(true)
+  expect(target.querySelector('summary')).toHaveAccessibleName(`공급대상 1 분류: ${groupsText(saved.groups)}`)
+})
+
+it('다른 주택형과 함께 쓰는 모집 수만 있는 주택형은 모집수를 미확인이 아니라 함께 쓰는 수로 보이고, 단지 모집 합에는 그 수를 한 번만 더한다', () => {
+  renderSupply(scenario('hansville'))
+  const rows = within(rowList()).getAllByRole('row').filter(row => within(row).queryByRole('button', { name: /^\d\. 26[AB]$/ }))
+  expect(rows.map(row => within(row).getAllByRole('cell')[1].textContent)).toEqual(['함께 170', '함께 170'])
+  expect(within(rowList()).getByRole('rowheader', { name: /주택형 2개/ })).toHaveTextContent('주택형 2개 · 모집 합 170')
+})
+
+it('주택형 모집수와 함께 쓰는 수가 함께 있으면 둘 다 보이고, 단지 합에는 함께 쓰는 수를 한 번만 더한다', () => {
+  const counts = () => within(rowList()).getAllByRole('row').filter(row => within(row).queryByRole('button', { name: /^\d\. 26[AB]$/ }))
+    .map(row => within(row).getAllByRole('cell')[1].textContent)
+  const sum = () => within(rowList()).getByRole('rowheader', { name: /주택형 2개/ })
+  renderSupply(scenario('hansville'), review => {
+    Object.assign(review.rows[0].cells.find(cell => cell.field === 'count')!, { before: 12, selected: false })
+  })
+  expect(counts()).toEqual(['12 · 함께 170', '함께 170'])
+  expect(sum()).toHaveTextContent('주택형 2개 · 모집 합 182')
+})
+
+it('함께 쓰는 수를 읽지 못한 주택형은 자기 모집수가 있어도 모집수와 단지 합을 미확인으로 보인다', () => {
+  renderSupply(scenario('hansville'), review => {
+    Object.assign(review.rows[0].cells.find(cell => cell.field === 'count')!, { before: 12, selected: false })
+    for (const entry of review.shared) Object.assign(entry.cell, { before: null, value: null })
+  })
+  const counts = within(rowList()).getAllByRole('row').filter(row => within(row).queryByRole('button', { name: /^\d\. 26[AB]$/ }))
+    .map(row => within(row).getAllByRole('cell')[1].textContent)
+  expect(counts).toEqual(['미확인', '미확인'])
+  expect(within(rowList()).getByRole('rowheader', { name: /주택형 2개/ })).toHaveTextContent('주택형 2개 · 모집 합 미확인')
 })

@@ -2,7 +2,9 @@ package com.toadzip.backend.eligibility;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.eligibility.domain.EligibilityContent;
+import com.toadzip.backend.eligibility.domain.ExtractedEligibility;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft.Document;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibilityDraft.Source;
@@ -31,12 +33,17 @@ class ExtractionContractDraftTest {
     void 계약_예시의_신청자격은_소득_자산_나이_조건이_된다() throws Exception {
         JsonMapper json = JsonMapper.builder().build();
         String extraction = json.readTree(Files.readString(EXAMPLE)).path("json").asString();
+        ExtractedEligibility eligibility = new ExtractedEligibilityReader(json).read(extraction);
+        // 경로 분류는 이름이 공급대상과 맞지 않을 때 대상을 잇는 근거라, 계약 필드 이름이 바뀌면 여기서 잡는다.
+        assertThat(eligibility.routes()).extracting(ExtractedEligibility.Route::groups)
+                .containsExactly(List.of(SupplyTargetGroup.YOUTH), List.of(SupplyTargetGroup.ELDERLY));
 
         EligibilityContent content = ExtractedEligibilityDraft.build(new Source(LocalDate.of(2026, 9, 30),
                 new Document("notice.pdf", "https://apply.lh.or.kr/notice.pdf", 35, "a".repeat(64)),
-                List.of(new Unit(1, "인천부평", "16A", new BigDecimal("16.37"), null, null, "행복주택", List.of(),
-                        List.of(new Target("청년", 78)))),
-                new ExtractedEligibilityReader(json).read(extraction),
+                List.of(new Unit("1", "인천부평", "16A", new BigDecimal("16.37"), null, null, "행복주택", List.of(),
+                        // 공고문 보정을 적용하면 공고 공급표에 워커 공급표의 대상(표기, 신청 조건)이 그대로 남는다.
+                        List.of(new Target("청년", "무주택세대구성원인 만 19~39세 미혼 청년", 78)))),
+                eligibility,
                 Map.of("URBAN_WORKER_MONTHLY_INCOME:2025", 1L), name -> List.of())).content();
 
         List<ProfileRule> common = content.commonChecks().stream().map(EligibilityContent.ProfileCheck::rule).toList();

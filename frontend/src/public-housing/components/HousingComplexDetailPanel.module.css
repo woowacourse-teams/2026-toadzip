@@ -576,3 +576,17 @@
   }
 
 }
+
+/* 공고 목록 카드의 '공고문 확인 전' 표시와 같은 모양이다. */
+.unconfirmed {
+  color: var(--ds-color-muted);
+  font-size: inherit;
+  font-weight: 400;
+}
+
+.unconfirmedNote {
+  margin: 0 0 var(--ds-space-2);
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption);
+  overflow-wrap: anywhere;
+}

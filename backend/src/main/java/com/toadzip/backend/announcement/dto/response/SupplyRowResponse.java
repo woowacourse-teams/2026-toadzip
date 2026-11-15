@@ -7,6 +7,7 @@ import java.util.List;
 
 public record SupplyRowResponse(
         long supplyRowId,
+        // 공고문의 단지명(공고 단지 이름)과 신청형 이름. 원천 시절 이름 열을 지운 뒤로 응답 모양만 남겼다.
         String sourceComplexName,
         String sourceHousingTypeName,
         SupplyComplexResponse complex,
@@ -20,7 +21,7 @@ public record SupplyRowResponse(
         BigDecimal exclusiveArea,
         BigDecimal supplyArea,
         boolean corrected,
-        // 공고 표시명 → 단지 주택형명 → 원천 주택형명 순서로 정한 화면 표시 이름
+        // 화면 표시 이름: 공고 공급표의 신청형 이름
         String displayHousingTypeName
 ) {
 

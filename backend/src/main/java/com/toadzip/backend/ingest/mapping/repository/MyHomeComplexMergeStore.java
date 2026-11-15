@@ -11,9 +11,12 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class MyHomeComplexMergeStore {
 
-    /** 대표 단지로 옮기고 되돌릴 때 원래 단지로 돌려놓는 제품 테이블. 잠금·스냅숏·이전·복구가 이 목록을 함께 쓴다. */
+    /**
+     * 대표 단지로 옮기고 되돌릴 때 원래 단지로 돌려놓는 제품 테이블. 잠금·스냅숏·이전·복구가 이 목록을 함께 쓴다. 공고 공급행은 단지를
+     * 공고 단지로만 가리키므로 공고 단지를 옮기면 따라간다.
+     */
     private static final List<String> REFERENCE_TABLES = List.of(
-            "housing_types", "supply_rows", "favorite_housing_complexes", "announcement_application_schedules",
+            "housing_types", "favorite_housing_complexes", "announcement_application_schedules",
             "announcement_complexes"
     );
     /** 관리자가 단지에 남긴 기록. 있으면 일반 통합을 막고, 분할 단지 흡수에서는 대표 단지로 옮긴다. */
@@ -94,6 +97,7 @@ public class MyHomeComplexMergeStore {
     }
 
     public boolean sameState(String left, String right) {
+        right = withoutSupplyRowSnapshot(right);
         left = withCompatibleHousingTypeSnapshot(left, right);
         left = withCompatibleAnnouncementComplexSnapshot(left, right);
         if (!hasRentalPriceSnapshot(right)) {
@@ -109,17 +113,17 @@ public class MyHomeComplexMergeStore {
                 .param("left", left).param("right", right).query(Boolean.class).single();
     }
 
-    /**
-     * 공고 단지와 공급행의 공고 단지·LH 매칭 컬럼은 LH 공고 정제와 함께 생겼다. 그 전에 저장한 스냅숏과 비교할 때는 현재 상태에서도 뺀다.
-     */
+    /** 공급행이 단지를 직접 가리키던 때 저장한 스냅숏의 공급행은 지금 상태에 없으므로 비교에서 뺀다. */
+    private String withoutSupplyRowSnapshot(String expected) {
+        return jdbc.sql("SELECT (CAST(:state AS jsonb) - 'supply_rows')::text")
+                .param("state", expected).query(String.class).single();
+    }
+
+    /** 공고 단지는 LH 공고 정제와 함께 생겼다. 그 전에 저장한 스냅숏과 비교할 때는 현재 상태에서도 뺀다. */
     private String withCompatibleAnnouncementComplexSnapshot(String current, String expected) {
         return jdbc.sql("""
-                SELECT CASE WHEN jsonb_exists(CAST(:expected AS jsonb), 'announcement_complexes') THEN CAST(:current AS jsonb)
-                    ELSE jsonb_set(CAST(:current AS jsonb) - 'announcement_complexes', '{supply_rows}', COALESCE((
-                        SELECT jsonb_agg(supply_row - 'announcement_complex_id' - 'lh_exclusive_area'
-                            - 'lh_match_status' ORDER BY (supply_row->>'id')::bigint)
-                        FROM jsonb_array_elements(CAST(:current AS jsonb)->'supply_rows') supply_row
-                    ), '[]'::jsonb)) END
+                SELECT (CASE WHEN jsonb_exists(CAST(:expected AS jsonb), 'announcement_complexes') THEN CAST(:current AS jsonb)
+                    ELSE CAST(:current AS jsonb) - 'announcement_complexes' END)::text
                 """).param("current", current).param("expected", expected).query(String.class).single();
     }
 
@@ -171,9 +175,7 @@ public class MyHomeComplexMergeStore {
     }
 
     public long countAdminRecords(List<Long> ids) {
-        return jdbc.sql("""
-                SELECT (SELECT count(*) FROM announcement_supply_match_decisions WHERE complex_id IN (:ids))
-                """ + ADMIN_RECORD_TABLES.stream()
+        return jdbc.sql("SELECT 0" + ADMIN_RECORD_TABLES.stream()
                 .map(table -> " + (SELECT count(*) FROM " + table + " WHERE housing_complex_id IN (:ids))")
                 .collect(Collectors.joining())).param("ids", ids).query(Long.class).single();
     }
@@ -197,8 +199,6 @@ public class MyHomeComplexMergeStore {
             jdbc.sql("UPDATE " + table + " SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
                     .param("target", representativeId).param("donors", donorIds).update();
         }
-        jdbc.sql("UPDATE announcement_supply_match_decisions SET complex_id = :target WHERE complex_id IN (:donors)")
-                .param("target", representativeId).param("donors", donorIds).update();
         jdbc.sql("UPDATE myhome_complex_links SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")
                 .param("target", representativeId).param("donors", donorIds).update();
         jdbc.sql("UPDATE housing_complex_aliases SET housing_complex_id = :target WHERE housing_complex_id IN (:donors)")

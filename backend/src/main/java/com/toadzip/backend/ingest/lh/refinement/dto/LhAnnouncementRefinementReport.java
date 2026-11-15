@@ -14,12 +14,11 @@ public record LhAnnouncementRefinementReport(
         int updatedAnnouncementCount,
         Map<String, Integer> heldAnnouncementCounts,
         int failedAnnouncementCount,
-        int documentOwnedAnnouncementCount,
         int recheckRequiredAnnouncementCount,
         int linkedRevisionCount,
         int unlinkedRevisionCount,
         ComplexCounts announcementComplexes,
-        SupplyCounts supplyRows
+        SupplyCounts supplyLines
 ) implements IngestStepReport {
 
     @Override
@@ -27,11 +26,10 @@ public record LhAnnouncementRefinementReport(
         return failedAnnouncementCount;
     }
 
-    public record ComplexCounts(int created, int updated, int absent, int migrated, int inherited, int auto,
-            int unlinked) {
+    public record ComplexCounts(int created, int updated, int absent, int inherited, int auto, int unlinked) {
     }
 
-    public record SupplyCounts(int created, int updated, int deleted, int createdTargets, int updatedTargets,
-            int deletedTargets, int filledAnnouncementComplexes, Map<String, Integer> matchStatuses) {
+    /** 기관 준비 줄(agency_supply_lines)을 만든·고친·지운 수. 정제는 공고 공급표(정본)를 쓰지 않는다. */
+    public record SupplyCounts(int created, int updated, int deleted) {
     }
 }

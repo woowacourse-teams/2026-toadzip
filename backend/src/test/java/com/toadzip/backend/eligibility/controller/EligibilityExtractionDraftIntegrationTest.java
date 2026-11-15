@@ -104,8 +104,8 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     void 워커가_공급대상을_맞추지_못해도_자격_본문의_대상_이름으로_공급표_대상에_잇는다() throws Exception {
         // 공고문 공급표는 '신혼부부·한부모', 자격 본문은 '신혼부부·한부모가족'이라 워커가 supplyTargets를 비워 둔 추출(인천산곡 A1).
         long announcement = notice(true);
-        jdbc.update("UPDATE supply_targets SET target = '신혼부부·한부모' WHERE supply_row_id IN"
-                + " (SELECT id FROM supply_rows WHERE announcement_id = ?) AND display_order = 0", announcement);
+        jdbc.update("UPDATE announcement_supply_targets SET label = '신혼부부·한부모' WHERE announcement_id = ?"
+                + " AND display_order = 0", announcement);
         List<Map<String, Object>> targets = new java.util.ArrayList<>();
         for (String route : List.of("신혼부부", "예비신혼부부", "한부모가족")) {
             targets.add(Map.of("target", route, "supplyTarget", "신혼부부·한부모가족", "supplyTargets", List.of(),
@@ -128,6 +128,172 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         assertThat(texts(content.path("paths"), "label")).containsExactly("신혼부부", "예비신혼부부", "한부모가족");
         assertThat(texts(content.path("options"), "recruitmentStatus")).containsOnly("RECRUITING").hasSize(3);
         assertThat(texts(created.path("notices"))).noneMatch(notice -> notice.contains("잇지 못한"));
+    }
+
+    @Test
+    void 이름이_맞지_않는_공급대상은_저장된_분류로_경로를_잇고_주거약자용_경로는_주거약자용_대상에만_잇는다() throws Exception {
+        // 울산다운2 A-3블록: 공급표 표기 '신혼부부 예비신혼부부 한부모가족'은 경로 이름·소속 대상과 맞지 않고 워커가 대상 키도 비웠다.
+        long announcement = notice(true);
+        jdbc.update("""
+                UPDATE announcement_supply_targets
+                SET label = '신혼부부 예비신혼부부 한부모가족', target_groups = '["NEWLYWED", "PRE_NEWLYWED", "SINGLE_PARENT"]'
+                WHERE announcement_id = ? AND display_order = 0
+                """, announcement);
+        Long vulnerable = jdbc.queryForObject("""
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
+                    supply_category, exclusive_area)
+                SELECT ?, id, 1, '21AS', 'NEW_SUPPLY', 21.00 FROM announcement_complexes WHERE announcement_id = ?
+                RETURNING id
+                """, Long.class, announcement, announcement);
+        cell(announcement, vulnerable, "신혼부부 예비신혼부부 한부모가족(주거약자용)", 2, 3);
+        jdbc.update("""
+                UPDATE announcement_supply_targets
+                SET target_groups = '["NEWLYWED", "PRE_NEWLYWED", "SINGLE_PARENT", "HOUSING_VULNERABLE"]'
+                WHERE announcement_id = ? AND display_order = 2
+                """, announcement);
+        List<Map<String, Object>> routes = new ArrayList<>();
+        for (List<String> route : List.of(List.of("신혼부부", "NEWLYWED"), List.of("주거약자용 신혼부부", "NEWLYWED",
+                "HOUSING_VULNERABLE"))) {
+            routes.add(Map.of("target", route.getFirst(), "supplyTarget", "신혼부부·한부모가족", "supplyTargets", List.of(),
+                    "groups", route.subList(1, route.size()),
+                    "requirements", List.of(Map.of("kind", "OTHER", "asWritten", "입주 전까지 청약통장 가입")),
+                    "qualifications", List.of(), "summary", route.getFirst()));
+        }
+        replaceExtraction(announcement, Map.of("targets", routes), List.of());
+        long general = jdbc.queryForObject("SELECT id FROM supply_rows WHERE announcement_id = ? AND display_order = 0",
+                Long.class, announcement);
+
+        JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
+
+        JsonNode content = created.path("ruleSet").path("content");
+        assertThat(texts(content.path("paths"), "label")).containsExactly("신혼부부", "주거약자용 신혼부부");
+        assertThat(texts(content.path("options"), "pathId")).containsExactly("path-1", "path-2");
+        assertThat(texts(content.path("options"), "supplyUnitId")).containsExactly("unit-" + general, "unit-" + vulnerable);
+        assertThat(texts(created.path("notices"))).noneMatch(notice -> notice.contains("잇지 못한"));
+    }
+
+    @Test
+    void 같은_표기라도_신청_조건이_다른_대상은_처음_만들_때와_다시_만들_때_모두_각기_다른_경로에_잇는다() throws Exception {
+        long announcement = notice(true);
+        jdbc.update("UPDATE announcement_supply_targets SET application_condition = '소득 있음'"
+                + " WHERE announcement_id = ? AND label = '청년'", announcement);
+        Long second = jdbc.queryForObject("""
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
+                    supply_category, exclusive_area)
+                SELECT ?, id, 1, '36A', 'NEW_SUPPLY', 36.00 FROM announcement_complexes WHERE announcement_id = ?
+                RETURNING id
+                """, Long.class, announcement, announcement);
+        cell(announcement, second, "청년", "소득 없음", 2, 5);
+        List<Map<String, Object>> routes = List.of(
+                route("청년(소득 있음)", List.of("t0"), "eligibility.targets[0]"),
+                route("청년(소득 없음)", List.of("t1"), "eligibility.targets[1]"));
+        replaceExtraction(announcement, Map.of("targets", routes), List.of(
+                Map.of("key", "t0", "label", "청년", "applicationCondition", "소득 있음"),
+                Map.of("key", "t1", "label", "청년", "applicationCondition", "소득 없음")));
+        long first = jdbc.queryForObject("SELECT id FROM supply_rows WHERE announcement_id = ? AND display_order = 0",
+                Long.class, announcement);
+
+        JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()))
+                .path("ruleSet").path("content");
+        JsonNode recreated = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()))
+                .path("ruleSet").path("content");
+
+        for (JsonNode content : List.of(created, recreated)) {
+            assertThat(texts(content.path("paths"), "label")).containsExactly("청년(소득 있음)", "청년(소득 없음)");
+            assertThat(texts(content.path("options"), "supplyUnitId")).containsExactly("unit-" + first, "unit-" + second);
+            assertThat(texts(content.path("options"), "pathId")).containsExactly("path-1", "path-2");
+            assertThat(content.path("options").get(0).path("supplyTargets").get(0).path("applicationCondition")
+                    .asString()).isEqualTo("소득 있음");
+            assertThat(content.path("options").get(1).path("supplyTargets").get(0).path("applicationCondition")
+                    .asString()).isEqualTo("소득 없음");
+        }
+    }
+
+    @Test
+    void 정본을_확정하기_전_공고는_기관_준비_데이터의_공급행으로_신청_단위를_만든다() throws Exception {
+        long announcement = notice(true);
+        // 정본 없이 LH 준비 줄만 있는 확정 전 공고. 신청자격 경로가 없는 추출이라 공고 전체 경로 하나가 모든 대상에 이어진다.
+        jdbc.update("DELETE FROM supply_rows WHERE announcement_id = ?", announcement);
+        jdbc.update("UPDATE announcements SET supply_confirmed_at = NULL WHERE id = ?", announcement);
+        Long line = jdbc.queryForObject("""
+                INSERT INTO agency_supply_lines (announcement_id, agency, source_line_key, display_order, complex_name,
+                    housing_type_name, household_count, supply_category)
+                VALUES (?, 'LH', 'LH:1', 0, '행복단지', '26A(청년)', 5, 'NEW_SUPPLY') RETURNING id
+                """, Long.class, announcement);
+        jdbc.update("""
+                INSERT INTO agency_supply_lines (announcement_id, agency, source_line_key, display_order, complex_name,
+                    housing_type_name, household_count, supply_category)
+                VALUES (?, 'LH', 'LH:2', 1, '행복단지', '26A(고령자)', 3, 'NEW_SUPPLY')
+                """, announcement);
+        replaceExtraction(announcement, Map.of("targets", List.of()), List.of());
+
+        JsonNode content = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()))
+                .path("ruleSet").path("content");
+
+        assertThat(texts(content.path("supplyUnits"), "id")).containsExactly("unit-line-" + line);
+        assertThat(texts(content.path("supplyUnits"), "label")).containsExactly("행복단지 26A(청년) · 26A(고령자)");
+        assertThat(texts(content.path("options"), "recruitmentStatus")).containsExactly("RECRUITING");
+        assertThat(texts(content.path("options").get(0).path("supplyTargets"), "label")).containsExactly("청년", "고령자");
+    }
+
+    @Test
+    void 확정_전_준비_데이터에는_워커가_이은_대상_키가_없어도_대상_이름으로_경로를_잇는다() throws Exception {
+        long announcement = notice(true);
+        // 준비 데이터 대상의 신청 조건은 '공고문 참조'라, 공고문에서 읽은 조건이 붙은 키와는 같을 수 없다.
+        jdbc.update("DELETE FROM supply_rows WHERE announcement_id = ?", announcement);
+        jdbc.update("UPDATE announcements SET supply_confirmed_at = NULL WHERE id = ?", announcement);
+        Long line = jdbc.queryForObject("""
+                INSERT INTO agency_supply_lines (announcement_id, agency, source_line_key, display_order, complex_name,
+                    housing_type_name, household_count, supply_category)
+                VALUES (?, 'LH', 'LH:1', 0, '행복단지', '26A(청년)', 5, 'NEW_SUPPLY') RETURNING id
+                """, Long.class, announcement);
+        jdbc.update("""
+                INSERT INTO agency_supply_lines (announcement_id, agency, source_line_key, display_order, complex_name,
+                    housing_type_name, household_count, supply_category)
+                VALUES (?, 'LH', 'LH:2', 1, '행복단지', '26A(고령자)', 3, 'NEW_SUPPLY')
+                """, announcement);
+        replaceExtraction(announcement, Map.of("targets", List.of(route("청년", List.of("t0"), "eligibility.targets[0]"))),
+                List.of(Map.of("key", "t0", "label", "청년", "applicationCondition", "무주택 미혼 청년")));
+
+        JsonNode content = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()))
+                .path("ruleSet").path("content");
+
+        // 고령자는 이 경로가 가리키지 않아 공통 요건 경로를 따로 받는다.
+        assertThat(texts(content.path("paths"), "label")).containsExactly("청년", "고령자");
+        assertThat(texts(content.path("options"), "pathId")).containsExactly("path-1", "path-2");
+        assertThat(texts(content.path("options"), "supplyUnitId")).containsOnly("unit-line-" + line);
+        assertThat(content.path("options").get(0).path("supplyTargets")).hasSize(1);
+        assertThat(content.path("options").get(0).path("supplyTargets").get(0).path("label").asString())
+                .isEqualTo("청년");
+        assertThat(content.path("options").get(0).path("supplyTargets").get(0).path("applicationCondition")
+                .asString()).isEqualTo("공고문 참조");
+    }
+
+    @Test
+    void 그_칸만의_모집수가_0인_행은_다른_행과_함께_쓰는_모집수가_있어도_선택지에서_뺀다() throws Exception {
+        long announcement = notice(true);
+        long first = jdbc.queryForObject("SELECT id FROM supply_rows WHERE announcement_id = ? AND display_order = 0",
+                Long.class, announcement);
+        Long second = jdbc.queryForObject("""
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
+                    supply_category, exclusive_area)
+                SELECT ?, id, 1, '36A', 'NEW_SUPPLY', 36.00 FROM announcement_complexes WHERE announcement_id = ?
+                RETURNING id
+                """, Long.class, announcement, announcement);
+        // 두 행의 청년 칸이 함께 쓰는 수 5와, 둘째 행 청년 칸만의 수 0. 칸이 든 가장 작은 묶음(그 칸만의 0)을 따른다.
+        Long youth = jdbc.queryForObject("SELECT id FROM announcement_supply_targets WHERE announcement_id = ?"
+                + " AND label = '청년'", Long.class, announcement);
+        Long firstCell = jdbc.queryForObject("SELECT id FROM supply_row_targets WHERE supply_row_id = ?"
+                + " AND supply_target_id = ?", Long.class, first, youth);
+        Long secondCell = jdbc.queryForObject("INSERT INTO supply_row_targets (supply_row_id, supply_target_id,"
+                + " display_order) VALUES (?, ?, 0) RETURNING id", Long.class, second, youth);
+        quota(announcement, 0, secondCell);
+        quota(announcement, 5, firstCell, secondCell);
+
+        JsonNode content = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()))
+                .path("ruleSet").path("content");
+
+        assertThat(texts(content.path("options"), "supplyUnitId")).containsExactly("unit-" + first);
     }
 
     @Test
@@ -171,9 +337,9 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
         long olderWorker = notice(false);
         rejected(olderWorker, SHA, "이 추출 결과에는 신청자격이 없습니다");
 
-        // 관리자가 공급대상을 모두 뺀 공급행은 대상 구분이 없는 행이 아니다. 아무 경로도 잇지 않는다.
+        // 공급표에 칸이 하나도 없는 공급행은 대상 구분이 없는 행이 아니다. 아무 경로도 잇지 않는다.
         long allTargetsExcluded = notice(true);
-        jdbc.update("UPDATE supply_targets SET admin_excluded = true WHERE supply_row_id IN"
+        jdbc.update("DELETE FROM supply_row_targets WHERE supply_row_id IN"
                 + " (SELECT id FROM supply_rows WHERE announcement_id = ?)", allTargetsExcluded);
         rejected(allTargetsExcluded, SHA, "공급대상과 이어지는 신청자격 경로가 없어");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM basic_comparison_rule_sets WHERE announcement_id = ?",
@@ -189,9 +355,6 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     @Test
     void 적용_전_미리보기는_공급행_없이_변환_결과를_보이고_저장하지_않는다() throws Exception {
         long announcement = notice(true);
-        String rows = "(SELECT id FROM supply_rows WHERE announcement_id = ?)";
-        jdbc.update("DELETE FROM supply_targets WHERE supply_row_id IN " + rows, announcement);
-        jdbc.update("DELETE FROM supply_target_count_groups WHERE supply_row_id IN " + rows, announcement);
         jdbc.update("DELETE FROM supply_rows WHERE announcement_id = ?", announcement);
         jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id = ?", announcement);
 
@@ -235,24 +398,57 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                 .andExpect(jsonPath("$.message").value(containsString(message)));
     }
 
+    /** 공급표 칸 하나와 그 칸만의 당첨 수. */
+    private void cell(long announcement, long row, String label, int order, int winnerCount) {
+        cell(announcement, row, label, "", order, winnerCount);
+    }
+
+    private void cell(long announcement, long row, String label, String condition, int order, int winnerCount) {
+        Long target = jdbc.queryForObject("""
+                INSERT INTO announcement_supply_targets (announcement_id, label, application_condition, display_order,
+                    admin_modified) VALUES (?, ?, ?, ?, false) RETURNING id
+                """, Long.class, announcement, label, condition, order);
+        Long cell = jdbc.queryForObject("INSERT INTO supply_row_targets (supply_row_id, supply_target_id, display_order)"
+                + " VALUES (?, ?, ?) RETURNING id", Long.class, row, target, order);
+        Long quota = jdbc.queryForObject("""
+                INSERT INTO supply_quotas (announcement_id, kind, household_count, admin_modified)
+                VALUES (?, 'WINNER', ?, false) RETURNING id
+                """, Long.class, announcement, winnerCount);
+        jdbc.update("INSERT INTO supply_quota_members (supply_quota_id, supply_row_target_id) VALUES (?, ?)", quota, cell);
+    }
+
+    private void quota(long announcement, int winnerCount, Long... cells) {
+        Long quota = jdbc.queryForObject("""
+                INSERT INTO supply_quotas (announcement_id, kind, household_count, admin_modified)
+                VALUES (?, 'WINNER', ?, false) RETURNING id
+                """, Long.class, announcement, winnerCount);
+        for (Long cell : cells) {
+            jdbc.update("INSERT INTO supply_quota_members (supply_quota_id, supply_row_target_id) VALUES (?, ?)",
+                    quota, cell);
+        }
+    }
+
     /** 공고 하나: 공급행 1개(청년 10명, 고령자 대상), PDF 첨부, 신청자격이 든(또는 이전 워커라 없는) 성공 추출. */
     private long notice(boolean withEligibility) throws Exception {
         long announcement = announcement();
-        jdbc.update("UPDATE announcements SET posted_date = '2026-09-30' WHERE id = ?", announcement);
+        // 공고문 보정을 적용해 정본을 확정한 공고다. 신청 단위는 정본 공급표에서 읽는다.
+        jdbc.update("UPDATE announcements SET posted_date = '2026-09-30', supply_confirmed_at = now() WHERE id = ?",
+                announcement);
         jdbc.update("""
                 INSERT INTO announcement_attachments (announcement_id, display_order, file_name, file_type, file_url)
                 VALUES (?, 0, ?, 'ANNOUNCEMENT', 'https://apply.lh.or.kr/notice.pdf')
                 """, announcement, FILE);
+        Long complex = jdbc.queryForObject("""
+                INSERT INTO announcement_complexes (announcement_id, source_complex_name, present_in_source, created_at)
+                VALUES (?, '인천석남', true, CURRENT_TIMESTAMP) RETURNING id
+                """, Long.class, announcement);
         Long row = jdbc.queryForObject("""
-                INSERT INTO supply_rows (announcement_id, display_order, source_supply_row_identifier, source_complex_name,
-                    source_housing_type_name, supply_category, announcement_exclusive_area)
-                VALUES (?, 0, ?, '인천석남', '21A', 'NEW_SUPPLY', 21.00) RETURNING id
-                """, Long.class, announcement, "row-" + announcement);
-        Long group = jdbc.queryForObject("INSERT INTO supply_target_count_groups (supply_row_id, kind, household_count)"
-                + " VALUES (?, 'SUPPLY', 10) RETURNING id", Long.class, row);
-        jdbc.update("INSERT INTO supply_targets (supply_row_id, display_order, target, supply_household_count,"
-                + " supply_count_group_id, admin_excluded) VALUES (?, 0, '청년', NULL, ?, false),"
-                + " (?, 1, '고령자(주거약자용)', 0, NULL, false), (?, 2, '청년', 5, NULL, true)", row, group, row, row);
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
+                    supply_category, exclusive_area)
+                VALUES (?, ?, 0, '21A', 'NEW_SUPPLY', 21.00) RETURNING id
+                """, Long.class, announcement, complex);
+        cell(announcement, row, "청년", 0, 10);
+        cell(announcement, row, "고령자(주거약자용)", 1, 0);
         Map<String, Object> data = new LinkedHashMap<>(Map.of("announcement", Map.of("name", "인천석남 행복주택")));
         if (withEligibility) {
             data.put("eligibility", Map.of(
@@ -276,7 +472,33 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
                     result, created_at, completed_at)
                 VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', ?, 'ADMIN', 'SUCCEEDED', now(), ?, ?, ?::jsonb, now(), now())
                 """, announcement, FILE, SHA, result);
+        // SQL로 바꾼 확정 시각을 공고 엔티티가 읽게 영속성 컨텍스트를 비운다.
+        entities.clear();
         return announcement;
+    }
+
+    /** 신청자격 경로 하나: 워커가 이은 공급표 대상 키와 판정을 막지 않는 요건 하나. */
+    private static Map<String, Object> route(String name, List<String> keys, String path) {
+        return Map.of("target", name, "supplyTarget", "청년", "supplyTargets", List.of("청년"), "supplyTargetKeys", keys,
+                "requirements", List.of(Map.of("kind", "OTHER", "asWritten", "입주 전까지 청약통장 가입")),
+                "qualifications", List.of(), "summary", name);
+    }
+
+    /** 공고의 성공 추출을 이 신청자격 경로(eligibility 안의 칸)와 공급표 대상으로 바꾼다. 공통 요건은 무주택세대구성원이다. */
+    private void replaceExtraction(long announcement, Map<String, Object> eligibility, List<Map<String, Object>> targets)
+            throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>(Map.of("common", Map.of("requirements", List.of(Map.of(
+                        "kind", "NO_HOUSE", "scope", "HOUSEHOLD", "asWritten", "무주택세대구성원")),
+                "qualifications", List.of(), "summary", "무주택세대구성원"), "exclusions", List.of()));
+        body.putAll(eligibility);
+        String extraction = json.writeValueAsString(Map.of("data", Map.of(
+                        "announcement", Map.of("name", "인천석남 행복주택"), "eligibility", body,
+                        "supplySheet", Map.of("targets", targets)),
+                "evidence", List.of(Map.of("path", "eligibility.common.requirements[0]", "page", 3,
+                        "quote", "무주택세대구성원"))));
+        jdbc.update("UPDATE ai_jobs SET result = jsonb_set(result, '{json}', to_jsonb(?::text)) WHERE announcement_id = ?",
+                extraction, announcement);
+        entities.clear();
     }
 
     private ResultActions fromExtraction(long announcement, String sha, Long draftId, long revision) throws Exception {

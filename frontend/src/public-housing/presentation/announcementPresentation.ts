@@ -22,6 +22,7 @@ export function toHousingAnnouncementCardData(
     regionNames: announcement.regionNames,
     rentalTypeLabel: rentalTypeLabel(announcement.rentalType),
     supplyHouseholdCount: announcement.supplyHouseholdCount,
+    supplyConfirmed: announcement.supplyConfirmed,
     title: announcement.title,
     viewCount: announcement.viewCount,
   }

@@ -7,7 +7,7 @@ import {
   decodeComplexPageEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
-import { toAnnouncementPage } from './publicHousingMapper.ts'
+import { toAnnouncementDetail, toAnnouncementPage, toComplexDetail } from './publicHousingMapper.ts'
 import {
   createHttpPublicHousingRepository,
   PublicHousingHttpError,
@@ -1012,6 +1012,46 @@ describe('공공주택 응답 계약', () => {
       .items[0]?.winnerAnnouncementAt).toBeNull()
     expect(() => decodeAnnouncementPageEnvelope({ data: { ...page,
       items: [{ ...ANNOUNCEMENT_ITEM, winnerAnnouncementAt: '2027.02.24' }] } })).toThrow(PublicHousingContractError)
+  })
+
+  it('공고문 확인 여부를 목록·상세에서 읽고 이전 API처럼 없으면 확인된 것으로 둔다', () => {
+    const page = { nextCursor: null, hasNext: false }
+    const item = (changes: object) => toAnnouncementPage(decodeAnnouncementPageEnvelope({ data: { ...page,
+      items: [{ ...ANNOUNCEMENT_ITEM, ...changes }] } })).items[0]?.supplyConfirmed
+    expect(item({ supplyConfirmed: false })).toBe(false)
+    expect(item({ supplyConfirmed: true })).toBe(true)
+    expect(item({})).toBe(true)
+    expect(() => item({ supplyConfirmed: 'false' })).toThrow(PublicHousingContractError)
+
+    const detail = (changes: object) => toAnnouncementDetail(decodeAnnouncementDetailEnvelope({
+      data: { ...ANNOUNCEMENT_DETAIL, ...changes } })).supplyConfirmed
+    expect(detail({ supplyConfirmed: false })).toBe(false)
+    expect(detail({})).toBe(true)
+    expect(() => detail({ supplyConfirmed: null })).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({ path: '$.data.supplyConfirmed' }),
+    )
+  })
+
+  it('단지 상세의 공급조건·현재 공고에서 공고문 확인 여부를 읽고 없으면 확인된 것으로 둔다', () => {
+    const [housingType] = COMPLEX_DETAIL.housingTypes
+    const complex = (confirmed: { condition?: unknown; announcement?: unknown }) => {
+      const condition = 'condition' in confirmed ? { supplyConfirmed: confirmed.condition } : {}
+      const announcement = 'announcement' in confirmed ? { supplyConfirmed: confirmed.announcement } : {}
+      const detail = toComplexDetail(decodeComplexDetailEnvelope({ data: { ...COMPLEX_DETAIL,
+        housingTypes: [{ ...housingType, currentSupplyConditions: [{ ...housingType.currentSupplyConditions[0], ...condition }] }],
+        currentAnnouncements: [{ ...COMPLEX_DETAIL.currentAnnouncements[0], ...announcement }],
+      } }))
+      return [detail.housingTypes[0]?.currentSupplyConditions[0]?.supplyConfirmed, detail.currentAnnouncements[0]?.supplyConfirmed]
+    }
+    expect(complex({ condition: false, announcement: false })).toEqual([false, false])
+    expect(complex({ condition: true, announcement: true })).toEqual([true, true])
+    expect(complex({})).toEqual([true, true])
+    expect(() => complex({ condition: 'false' })).toThrowError(expect.objectContaining<Partial<PublicHousingContractError>>({
+      path: '$.data.housingTypes[0].currentSupplyConditions[0].supplyConfirmed',
+    }))
+    expect(() => complex({ announcement: null })).toThrowError(expect.objectContaining<Partial<PublicHousingContractError>>({
+      path: '$.data.currentAnnouncements[0].supplyConfirmed',
+    }))
   })
 
   it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {

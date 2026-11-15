@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
 import jakarta.persistence.EntityManager;
@@ -67,8 +68,8 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
         var correction = request.putObject("correction"); correction.put("operationId", UUID.randomUUID().toString());
         correction.put("snapshotToken", state.path("supply").path("snapshotToken").asText());
         correction.put("reason", "공고 원문 대조"); correction.put("sourceUrl", "https://example.com/notice");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
-        ((ObjectNode) correction.path("rows").get(0)).put("householdCount", 3);
+        correction.set("sheet", SupplySheetInputs.json(state.path("supply").path("sheet")));
+        ((ObjectNode) correction.path("sheet").path("quotas").get(0)).put("count", 3);
         var preview = json.readTree(mvc.perform(post(root + "/preview").with(user("admin").roles("ADMIN"))
                 .with(csrf()).contentType("application/json").content(request.toString()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
@@ -80,8 +81,8 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
                 .contentType("application/json").content(apply.toString())).andExpect(status().isInternalServerError());
         assertThat(jdbc.queryForObject("SELECT name FROM announcements WHERE id=?", String.class, announcementId))
                 .isEqualTo("관심 단지 새 공고");
-        assertThat(jdbc.queryForObject("SELECT total_supply_household_count FROM supply_rows WHERE announcement_id=?",
-                Integer.class, announcementId)).isEqualTo(10);
+        assertThat(jdbc.queryForList("SELECT household_count FROM supply_quotas WHERE announcement_id=? AND kind='WINNER'",
+                Integer.class, announcementId)).containsExactly(10);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_schedules WHERE announcement_id=?",
                 Long.class, announcementId)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM announcement_attachments WHERE announcement_id=?",
@@ -95,6 +96,10 @@ class AnnouncementJsonCorrectionRollbackIntegrationTest {
         if (announcementId == 0) { return; }
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             jdbc.update("DELETE FROM supply_rows WHERE announcement_id=?", announcementId);
+            jdbc.update("DELETE FROM announcement_complexes WHERE announcement_id=?", announcementId);
+            jdbc.update("DELETE FROM supply_quotas WHERE announcement_id=?", announcementId);
+            jdbc.update("DELETE FROM lease_terms WHERE announcement_id=?", announcementId);
+            jdbc.update("DELETE FROM announcement_supply_targets WHERE announcement_id=?", announcementId);
             jdbc.update("DELETE FROM announcements WHERE id=?", announcementId);
         });
     }

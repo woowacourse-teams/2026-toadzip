@@ -285,6 +285,7 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
                 supply_pages.append(number)
                 supply_parts.append(f"[첨부 {len(supply_pages)}쪽 / 원본 {number}쪽]")
             for table in found.supply_tables:
+                table = table.with_money_unit(_unit_above(page, found.table_boxes[table.number - 1]))
                 if table.continues_subtypes and supply_tables and supply_tables[-1].columns == table.columns:
                     # 쪽을 넘은 신청형은 앞 표에서 주택타입 일부만 읽혔다. 일부만 내면 화면이 N개 중 일부 타입만 잇는다.
                     supply_row_subtypes.pop(supply_tables[-1].last_housing_type_row_id(), None)
@@ -347,6 +348,15 @@ def prompt_pages(document: pymupdf.Document, pages: list[int], deadline: float) 
 def _text_above(page: pymupdf.Page, box: tuple[float, float, float, float]) -> str:
     """같은 쪽에서 표 위쪽(쪽 맨 위부터 표 윗변까지)의 글. 앞 표의 칸 글자도 들어간다."""
     return page.get_text("text", clip=pymupdf.Rect(page.rect.x0, page.rect.y0, page.rect.x1, box[1]), sort=True)
+
+
+_UNIT_CAPTION = re.compile(r"단위\s*[:：]?\s*(천원|만원|원)")
+
+
+def _unit_above(page: pymupdf.Page, box: tuple[float, float, float, float]) -> str | None:
+    """표 윗변 바로 위(두어 줄) 표 너비 안에 적은 금액 단위. 두 단 편집에서 옆 단의 글은 읽지 않는다."""
+    found = _UNIT_CAPTION.search(page.get_text("text", clip=pymupdf.Rect(box[0], box[1] - 30, box[2], box[1])))
+    return found.group(1) if found else None
 
 
 def _has_supply_table_text(text: str) -> bool:

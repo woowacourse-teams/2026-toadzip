@@ -117,6 +117,8 @@ export interface HousingAnnouncementDetailData {
   readonly applicationSchedules?: readonly AnnouncementApplicationSchedule[]
   readonly attachments: readonly HousingAnnouncementDetailAttachment[]
   readonly supplyRows: readonly HousingAnnouncementDetailSupplyRow[]
+  /** false면 공급정보는 공고문으로 확인하기 전 기관이 보낸 정보다. 없으면 확인한 정보로 본다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface HousingAnnouncementDetailPanelProps {
@@ -265,6 +267,7 @@ export function HousingAnnouncementDetailPanel({
             onToggleAreaUnit={toggleAreaUnit}
             groups={groups}
             supplyHouseholdCount={detail.supplyHouseholdCount}
+            supplyConfirmed={detail.supplyConfirmed !== false}
             onOpenComplex={onOpenComplex}
             onOpenFloorPlan={setFloorPlan}
           />
@@ -449,6 +452,12 @@ function NoticeIntro({
   )
 }
 
+/** 공고문으로 확인하기 전 세대수는 바뀔 수 있어 그렇다고 함께 적는다. 자세한 안내는 단지·주택형 영역에 있다. */
+function supplyCountLabel(detail: HousingAnnouncementDetailData) {
+  const count = formatNullableCount(detail.supplyHouseholdCount, '세대')
+  return detail.supplyConfirmed === false && detail.supplyHouseholdCount !== null ? `${count} · 공고문 확인 전` : count
+}
+
 function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) {
   const audiences = detail.targets.map((target) => target.trim()).filter(Boolean)
   return (
@@ -457,7 +466,7 @@ function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) 
         <DetailFact term="접수 시작" value={formatDate(detail.applicationStartAt)} />
         <DetailFact term="접수 마감" value={formatDate(detail.applicationEndAt)} />
         <DetailFact term="공급 단지" value={formatNullableCount(detail.supplyComplexCount, '개 단지')} />
-        <DetailFact term="공급 세대" value={formatNullableCount(detail.supplyHouseholdCount, '세대')} />
+        <DetailFact term="공급 세대" value={supplyCountLabel(detail)} />
         <DetailFact term="지역" value={regionLabel(detail.regionNames)} />
         <DetailFact term="공사" value={agencyLabel(detail)} />
         <DetailFact term="신청 대상" value={audiences.join(' · ') || MISSING_DATA_LABEL} wide />

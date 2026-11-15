@@ -1,12 +1,13 @@
 import { requestManagementApi } from '../management/api'
 import { isRecord } from '../management/managementContract'
 
+/** 검토 값의 항목 이름. row:{id}는 주택형 값, cell:{id}는 공급대상 칸의 모집·예비 수와 임대조건이다. 모르는 항목은 이름 그대로 보인다. */
 export const reviewFieldLabels: Record<string, string> = {
-  connection: '연결한 단지·주택형과 공통정보', names: '공고별 단지명·형명·지번', areas: '공고별 면적 (㎡)',
-  householdCount: '금회 모집수 (세대)', sharedRecruitment: '공통 모집 묶음·수량', moveInMonth: '입주예정월',
-  category: '공급구분', excluded: '공개 제외 여부', displayOrder: '표시 순서', targetCountsComparable: '대상별 수량 집계 범위',
-  target: '공급대상', supplyRank: '순위', reserveCount: '예비자수 (명)', deposit: '보증금 (원)', rent: '월세 (원)',
-  convertedDeposit: '전환보증금 (원)', condition: '신청조건', parentExcluded: '상위 공급행 제외 여부',
+  connection: '연결한 단지·주택형', housingComplexId: '연결 단지', housingTypeId: '연결 주택형', complexName: '공고의 단지명', name: '공고의 주택형 표기',
+  exclusiveArea: '공고별 전용면적 (㎡)', supplyArea: '공고별 공급면적 (㎡)', supplyPnu: '공급 PNU', expectedMoveInMonth: '입주 예정 연월',
+  category: '공급 구분', displayOrder: '표시 순서', householdCount: '주택형 모집수 (세대)',
+  label: '공급대상', target: '공급대상', applicationCondition: '신청조건', winnerCount: '모집 수 (세대)', reserveCount: '예비 수 (명)',
+  rentalDeposit: '보증금 (원)', monthlyRent: '월 임대료 (원)', convertedDeposit: '전환 보증금 (원)',
 }
 export type ReviewSourceScope = { category: string; sourceKey: string; fields: string[] }
 export type SupplyReviewInput = { snapshotToken: string; target: string; fields: string[]; outcome: 'VERIFIED' | 'ON_HOLD'; note: string; sourceUrl: string; sourcePage: string | null; sources: ReviewSourceScope[] }

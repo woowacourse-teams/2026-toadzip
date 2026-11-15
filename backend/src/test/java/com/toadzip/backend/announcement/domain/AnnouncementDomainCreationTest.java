@@ -10,7 +10,6 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -162,102 +161,6 @@ class AnnouncementDomainCreationTest {
         assertEquals("접수일 변경", announcement.getCorrectionCancellationReason());
         assertEquals(100L, announcement.getViewCount());
         assertEquals(List.of(receptionPlace), announcement.getReceptionPlaces());
-    }
-
-    @Test
-    void 매칭되지_않은_원천_공급행도_생성한다() {
-        Announcement announcement = new Announcement();
-        YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
-        Method createMethod = findCreateMethod(
-                SupplyRow.class,
-                Announcement.class,
-                HousingComplex.class,
-                HousingType.class,
-                String.class,
-                int.class,
-                String.class,
-                String.class,
-                String.class,
-                YearMonth.class,
-                SupplyCategory.class,
-                String.class,
-                Integer.class
-        );
-
-        SupplyRow supplyRow = invoke(
-                createMethod,
-                announcement,
-                null,
-                null,
-                "source-supply-row-id",
-                1,
-                "원천 단지명",
-                "36A",
-                "1114010100100010000",
-                expectedMoveInMonth,
-                SupplyCategory.NEW_SUPPLY,
-                "단지 식별자 불일치",
-                20
-        );
-
-        assertEquals(announcement, supplyRow.getAnnouncement());
-        assertNull(supplyRow.getHousingComplex());
-        assertNull(supplyRow.getHousingType());
-        assertEquals("source-supply-row-id", supplyRow.getSourceSupplyRowIdentifier());
-        assertEquals(1, supplyRow.getDisplayOrder());
-        assertEquals("원천 단지명", supplyRow.getSourceComplexName());
-        assertEquals("36A", supplyRow.getSourceHousingTypeName());
-        assertEquals("1114010100100010000", supplyRow.getSupplyPnu());
-        assertEquals(expectedMoveInMonth, supplyRow.getExpectedMoveInMonth());
-        assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory());
-        assertEquals("단지 식별자 불일치", supplyRow.getMatchingFailureReason());
-        assertEquals(20, supplyRow.getTotalSupplyHouseholdCount());
-    }
-
-    @Test
-    void 신청_대상별_공급정보를_생성한다() {
-        SupplyRow supplyRow = new SupplyRow();
-        BigDecimal rentalDeposit = new BigDecimal("50000000");
-        BigDecimal monthlyRent = new BigDecimal("250000");
-        BigDecimal convertedDeposit = new BigDecimal("70000000");
-        Method createMethod = findCreateMethod(
-                SupplyTarget.class,
-                SupplyRow.class,
-                String.class,
-                String.class,
-                Integer.class,
-                Integer.class,
-                BigDecimal.class,
-                BigDecimal.class,
-                BigDecimal.class,
-                String.class,
-                int.class
-        );
-
-        SupplyTarget supplyTarget = invoke(
-                createMethod,
-                supplyRow,
-                "청년",
-                "1순위",
-                10,
-                20,
-                rentalDeposit,
-                monthlyRent,
-                convertedDeposit,
-                "소득 기준 충족",
-                1
-        );
-
-        assertEquals(supplyRow, supplyTarget.getSupplyRow());
-        assertEquals("청년", supplyTarget.getTarget());
-        assertEquals("1순위", supplyTarget.getSupplyRank());
-        assertEquals(10, supplyTarget.getSupplyHouseholdCount());
-        assertEquals(20, supplyTarget.getReserveCount());
-        assertEquals(rentalDeposit, supplyTarget.getRentalDeposit());
-        assertEquals(monthlyRent, supplyTarget.getMonthlyRent());
-        assertEquals(convertedDeposit, supplyTarget.getConvertedDeposit());
-        assertEquals("소득 기준 충족", supplyTarget.getApplicationCondition());
-        assertEquals(1, supplyTarget.getDisplayOrder());
     }
 
     @Test

@@ -11,7 +11,9 @@ supply_assembly.assemble이 같은 검산을 거쳐 관리자 계약으로 조�
 import re
 from dataclasses import dataclass, field
 
-from ai_worker.tables import SupplyTable, increase_limit, source_row_id, table_column_headers
+from ai_worker.supply_assembly import Draft, DraftCell, SharedCount
+from ai_worker.tables import (SupplyTable, increase_limit, source_row_id, supply_type_qualifier, table_column_headers,
+                              with_supply_type_qualifier)
 
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
 _AREA_FIELDS = ("exclusiveArea", "commonArea", "supplyArea")
@@ -49,22 +51,27 @@ class _SourceRow:
     origin_ids: list[str]
     cells: dict[str, str | None]
     variant: str | None = None
+    # 공급형 칸의 괄호 구분(55 (주거약자용) → 주거약자용). 같은 공급대상 칸 아래라도 그 주택형의 모집은 따로 신청하는 대상이다.
+    qualifier: str | None = None
     continuation_ids: list[str] = field(default_factory=list)
     # 병합으로 위 행과 함께 쓰는 수량: 필드 → 값이 적힌 행
     shared_from: dict[str, "_SourceRow"] = field(default_factory=dict)
     # 병합된 면적 칸을 물려준 위 행. 원문 대조가 면적 값을 찾을 수 있게 rowIds에 넣는다.
     area_ids: list[str] = field(default_factory=list)
+    # 병합된 금액 칸을 물려준 위 행. 원문 대조가 금액 값을 찾을 수 있게 rowIds에 넣는다.
+    rent_ids: list[str] = field(default_factory=list)
     # 이어짐 줄에 다른 값이 있어 하나로 정할 수 없는 필드
     conflicts: set[str] = field(default_factory=set)
 
     @property
     def name(self) -> str:
-        return f"{self.target}({self.variant})" if self.variant else self.target
+        target = with_supply_type_qualifier(self.target, self.qualifier)
+        return f"{target}({self.variant})" if self.variant else target
 
 
 @dataclass(frozen=True)
 class Grouped:
-    compact: dict
+    draft: Draft
     row_values: dict[str, dict[str, str]]
     warnings: list[str]
     # 머리글이 있는 수량표마다 (표, 머리글 줄 수, 수량 필드 → 열). 열의 뜻은 호출하는 쪽(supply_sources)이 Jev로 확인한다.
@@ -116,26 +123,21 @@ def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
             parts = [(quantity.name, matches[0] if len(matches) == 1 else None)]
         indexes = []
         for name, rental in parts:
-            item = {"rowIds": _source_ids(quantity), "complexName": quantity.complex_name,
-                    "housingType": quantity.housing_type, "target": name, "unresolved": []}
+            item = DraftCell(_source_ids(quantity), quantity.complex_name, quantity.housing_type, name, True)
             _fill(item, quantity, (*_AREA_FIELDS, "constructedHouseholdCount", *_RENT_FIELDS), row_values)
             if rental is not None:
-                item["rowIds"] = _unique([*item["rowIds"], *_source_ids(rental)])
+                item.row_ids = _unique([*item.row_ids, *_source_ids(rental)])
                 _fill(item, rental, _RENT_FIELDS, row_values)
             elif len(matches) > 1:
-                item["unresolved"] += [{"field": field_name, "reason": "같은 대상의 임대조건이 여러 줄이라 하나로 정하지 못함"}
-                                       for field_name in _RENT_FIELDS[:2]]
+                item.unresolved += [(field_name, "같은 대상의 임대조건이 여러 줄이라 하나로 정하지 못함")
+                                    for field_name in _RENT_FIELDS[:2]]
             elif rentals:
-                item["unresolved"] += [{"field": field_name, "reason": "임대조건표에서 이 대상의 행을 찾지 못함"}
-                                       for field_name in _RENT_FIELDS[:2]]
+                item.unresolved += [(field_name, "임대조건표에서 이 대상의 행을 찾지 못함") for field_name in _RENT_FIELDS[:2]]
             indexes.append(len(rows))
             rows.append(item)
         item_indexes[id(quantity)] = indexes
 
     shared_counts = _assign_counts(quantities, rows, item_indexes)
-    for item in rows:
-        if not item["unresolved"]:
-            del item["unresolved"]
 
     quantity_pages = {table.page for table in quantity_tables}
     supply_pages = {table.page for table in tables}
@@ -157,10 +159,31 @@ def group(tables: list[SupplyTable], row_values: dict[str, dict[str, str]],
         if start > 0:  # 머리글 없는 이어짐 표는 앞 표와 같은 열이라 다시 묻지 않는다.
             count_columns.append((table, start, {name: table.columns[name] for name in _COUNT_FIELDS
                                                  if name in table.columns}))
-    return Grouped({"data": {"rows": rows}, "sharedCounts": shared_counts}, row_values, warnings, count_columns)
+    return Grouped(Draft(rows, shared_counts), row_values, warnings, count_columns)
 
 
-def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes: dict[int, list[int]]) -> list[dict]:
+def type_cells(tables: list[SupplyTable]) -> dict[str, dict[str, str]]:
+    """수량표 데이터 행마다 원문 표 행 ID와 주택형·주택타입 칸. 머리글 행, 수량 열이 없는 표(소득 기준표·임대조건표),
+    공급표인지 불확실한 표, 앞 표의 열 역할을 물려받았는데 제 머리글 줄이 있는 표(이어짐 표가 아니라 다른 표다)는 넣지 않는다.
+    공급 단계가 코드와 모델 중 어느 쪽이든 PDF 공급표에 있는 주택형을 같은 기준으로 센다."""
+    found: dict[str, dict[str, str]] = {}
+    for table in tables:
+        columns = table.columns
+        if table.ambiguous or "housingType" not in columns or not any(name in columns for name in _COUNT_FIELDS):
+            continue
+        start = _data_start(table.cells, columns)
+        if start > 0 and not table.header_found:
+            continue
+        for index in range(start, len(table.cells)):
+            cells = table.cells[index]
+            found[source_row_id(table.page, table.number, index + 1)] = {
+                name: cells[column] or "" for name in ("housingType", "houseType")
+                if (column := columns.get(name)) is not None and column < len(cells)}
+    return found
+
+
+def _assign_counts(quantities: list[_SourceRow], rows: list[DraftCell],
+                   item_indexes: dict[int, list[int]]) -> list[SharedCount]:
     """병합된 수량 칸은 덮은 대상들의 공통 수량으로 남기고 대상별로 복제하지 않는다."""
     shared_counts = []
     for field_name in _COUNT_FIELDS:
@@ -177,30 +200,27 @@ def _assign_counts(quantities: list[_SourceRow], rows: list[dict], item_indexes:
             if field_name in origin.conflicts or count is None:
                 reason = "이어지는 줄에 다른 값이 있어 하나로 정하지 못함" if field_name in origin.conflicts else _NOT_A_NUMBER
                 for index in indexes:
-                    rows[index]["unresolved"].append({"field": field_name, "reason": reason})
+                    rows[index].unresolved.append((field_name, reason))
                 continue
             if field_name == "supplyHouseholdCount":
                 count = _with_reserves(count, origin, members, quantities)
                 if count is None:
                     for index in indexes:
-                        rows[index]["unresolved"].append(
-                            {"field": field_name, "reason": "당첨자 칸과 예비자 칸이 덮는 행이 달라 모집수를 정하지 못함"})
+                        rows[index].unresolved.append((field_name, "당첨자 칸과 예비자 칸이 덮는 행이 달라 모집수를 정하지 못함"))
                     continue
             if field_name == "totalSupplyHouseholdCount":
                 # 공급행 전체 모집수는 한 칸이 그 주택형의 모든 대상을 덮을 때만이다. 대상마다 따로 적힌 수는 합계가 아니다.
                 keys = {_supply_key(member) for member in members}
                 covered = [quantity for quantity in quantities if _supply_key(quantity) in keys]
                 if len(keys) == 1 and len(covered) == len(members):
-                    rows[indexes[0]][field_name] = count
+                    rows[indexes[0]].values[field_name] = count
                 else:
                     for index in indexes:
-                        rows[index]["unresolved"].append(
-                            {"field": field_name, "reason": "모집수가 대상별로 나뉘어 공급행 전체 모집수로 정하지 못함"})
+                        rows[index].unresolved.append((field_name, "모집수가 대상별로 나뉘어 공급행 전체 모집수로 정하지 못함"))
             elif len(indexes) == 1:
-                rows[indexes[0]][field_name] = count
+                rows[indexes[0]].values[field_name] = count
             else:
-                shared_counts.append({"rowIndexes": indexes, "field": field_name, "count": count,
-                                      "rowIds": [origin.row_id]})
+                shared_counts.append(SharedCount(field_name, count, [rows[index] for index in indexes], [origin.row_id]))
     return shared_counts
 
 
@@ -223,7 +243,7 @@ def _with_reserves(winners: int, origin: _SourceRow, members: list[_SourceRow],
     return winners + reserve
 
 
-def _fill(item: dict, row: _SourceRow, names: tuple[str, ...], row_values: dict[str, dict[str, str]]) -> None:
+def _fill(item: DraftCell, row: _SourceRow, names: tuple[str, ...], row_values: dict[str, dict[str, str]]) -> None:
     for name in names:
         if name not in row.table.columns:
             continue
@@ -240,12 +260,13 @@ def _fill(item: dict, row: _SourceRow, names: tuple[str, ...], row_values: dict[
             reason = "금액 단위를 표에서 확인하지 못함"
         value = None if reason else _number(cell, name, unit)
         if value is None:
-            item["unresolved"].append({"field": name, "reason": reason or _NOT_A_NUMBER})
+            item.unresolved.append((name, reason or _NOT_A_NUMBER))
             continue
-        item[name] = value
+        item.values[name] = value
         if name in _RENT_FIELDS:
             # 머리글 없는 이어짐 표는 행 값에 단위가 없어 검산이 원 단위로 볼 수 있다.
-            row_values.setdefault(row.row_id, {})[f"{name}Unit"] = unit
+            for row_id in (row.row_id, *row.rent_ids):
+                row_values.setdefault(row_id, {})[f"{name}Unit"] = unit
 
 
 def _is_conversion_limit(row: _SourceRow) -> bool:
@@ -267,8 +288,9 @@ def _rental_applies(rental: _SourceRow, quantity: _SourceRow, quantities: list[_
 
 
 def _same_type(rental: _SourceRow, quantity: _SourceRow) -> bool:
-    return (_compact(quantity.housing_type) in _names(rental.housing_type, _HOUSING_TOKEN)
-            and _compact(quantity.target) in _names(rental.target, _TARGET_TOKEN))
+    """주택형·대상이 같은 행이다. 공급형 칸의 괄호 구분은 수량표에만 적혀도(울산다운2) 주택형이 같으면 같은 행이다."""
+    return _compact(quantity.target) in _names(rental.target, _TARGET_TOKEN) \
+        and _compact(quantity.housing_type) in _names(rental.housing_type, _HOUSING_TOKEN)
 
 
 def _names(cell: str, token: re.Pattern) -> set[str]:
@@ -284,7 +306,7 @@ def _read_rows(tables: list[SupplyTable]) -> list[_SourceRow]:
         columns = table.columns
         start = _data_start(table.cells, columns)
         if start > 0 or layout is None:
-            layout = _table_layout(table.cells[:start], columns, max(map(len, table.cells), default=0))
+            layout = _table_layout(table.cells[:start], columns, max(map(len, table.cells), default=0), table.money_unit)
         for index in range(start, len(table.cells)):
             cells = table.cells[index]
             value = {name: cells[column] if column < len(cells) else None for name, column in columns.items()}
@@ -329,13 +351,26 @@ def _read_rows(tables: list[SupplyTable]) -> list[_SourceRow]:
                     origin_ids.append(inherited[name][1])
             if "housingType" not in inherited or "target" not in inherited:
                 continue
+            qualifier = None
+            if "supplyType" not in columns:
+                inherited.pop("supplyType", None)
+            elif _present(value.get("supplyType")):
+                inherited["supplyType"] = (value["supplyType"], row_id)
+            elif value.get("supplyType") == "":
+                inherited.pop("supplyType", None)
+            if "supplyType" in inherited:
+                qualifier = supply_type_qualifier(inherited["supplyType"][0])
+                if qualifier:
+                    origin_ids.append(inherited["supplyType"][1])
             row = _SourceRow(table, layout, row_id, inherited.get("complexName", ("", ""))[0],
                              inherited["housingType"][0], inherited["target"][0], _unique(origin_ids), value,
-                             detail.strip() if _present(detail) else None)
+                             detail.strip() if _present(detail) else None, qualifier)
             previous = rows[-1] if rows and rows[-1].table.columns == columns else None
             if previous is not None:
                 _share_merged_counts(row, previous, columns)
                 _share_merged_areas(row, previous, columns, next_page=previous.table is not table and index == start == 0)
+                if previous.table is table:
+                    _share_merged_rents(row, previous, columns)
             rows.append(row)
     return rows
 
@@ -351,6 +386,26 @@ def _share_merged_counts(row: _SourceRow, previous: _SourceRow, columns: dict[st
     for name in _COUNT_FIELDS:
         if name in columns and row.cells.get(name) is None:
             row.shared_from[name] = previous.shared_from.get(name, previous)
+
+
+def _share_merged_rents(row: _SourceRow, previous: _SourceRow, columns: dict[str, int]) -> None:
+    """같은 표에서 병합된 금액 칸(None)은 위 행과 같은 임대조건이다(울산다운2 임대조건표: 55A·55B·55C·55AS가 보증금·월임대료 칸 하나).
+    보증금·월임대료가 위 행과 병합된 행은 전환 한도도 같은 보증금의 한도다. 그 행의 전환 한도 칸이 비었거나 감액(-) 줄뿐이면
+    (병합 칸의 둘째 줄이 그 행에 읽힘) 위 행의 증액 한도를 쓴다."""
+    names = [name for name in _RENT_FIELDS[:2] if name in columns]
+    merged = bool(names) and all(row.cells.get(name) is None for name in names)
+    shared = False
+    for name in _RENT_FIELDS:
+        if name not in columns or not _present(previous.cells.get(name)):
+            continue
+        cell = row.cells.get(name)
+        if cell is None or (merged and name == "convertedDeposit" and not _present(cell)):
+            row.cells[name] = previous.cells[name]
+            shared = True
+            if name in previous.conflicts:
+                row.conflicts.add(name)
+    if shared:
+        row.rent_ids = _unique([*previous.rent_ids, previous.row_id])
 
 
 def _share_merged_areas(row: _SourceRow, previous: _SourceRow, columns: dict[str, int], next_page: bool) -> None:
@@ -377,18 +432,20 @@ def _data_start(cells: list[list[str | None]], columns: dict[str, int]) -> int:
     return len(cells)
 
 
-def _table_layout(header_rows: list[list[str | None]], columns: dict[str, int], column_count: int) -> _Layout:
+def _table_layout(header_rows: list[list[str | None]], columns: dict[str, int], column_count: int,
+                  money_unit: str | None = None) -> _Layout:
+    """머리글의 금액 단위가 먼저고, 없으면 표 위에 적은 단위(money_unit)다."""
     headers = table_column_headers(header_rows, column_count)
     named = {name: headers[column] for name, column in columns.items() if column < len(headers)}
     units = {}
     for name in _RENT_FIELDS:
         unit = _UNIT.search(named.get(name, ""))
-        units[name] = unit.group() if unit else None
+        units[name] = unit.group() if unit else money_unit
     return _Layout(named, units)
 
 
 def _source_ids(row: _SourceRow) -> list[str]:
-    return _unique([row.row_id, *row.continuation_ids, *row.origin_ids, *row.area_ids])
+    return _unique([row.row_id, *row.continuation_ids, *row.origin_ids, *row.area_ids, *row.rent_ids])
 
 
 def _supply_key(row: _SourceRow) -> tuple[str, str]:

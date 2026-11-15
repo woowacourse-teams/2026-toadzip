@@ -1,26 +1,11 @@
 package com.toadzip.backend.ingest.mapping.dto;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 
 public final class AnnouncementSupplyMatching {
     private AnnouncementSupplyMatching() {
     }
-
-    public record Row(String rowIdentifier, String token, String sourceComplexName, String sourceHousingTypeName,
-            String pnu, BigDecimal exclusiveArea, BigDecimal supplyArea,
-            Long complexId, Long housingTypeId, String failure, SavedMatch savedMatch,
-            Integer totalSupplyHouseholdCount, SplitGroup splitGroup, boolean excluded) {
-    }
-
-    public record SavedMatch(Long complexId, Long housingTypeId, String sourceUrl, String reason,
-            String actor, Instant updatedAt, boolean reviewRequired) { }
-
-    public record SplitGroup(long id, Integer sharedHouseholdCount, String sourceUrl, String reason,
-            String actor, Instant updatedAt, boolean reviewRequired, List<SplitRow> rows) { }
-
-    public record SplitRow(long id, String name, Long complexId, Long housingTypeId) { }
 
     public record ComplexOption(long id, String name, String roadAddress, String supplyType, String pnu,
             Integer totalHouseholdCount, List<HousingTypeArea> housingTypes) {

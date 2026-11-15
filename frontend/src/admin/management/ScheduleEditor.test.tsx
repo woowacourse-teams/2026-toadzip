@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { ScheduleEditor } from './ScheduleEditor'
 import { getManagementDetail, requestManagementApi } from './api'
 import type { ManagementDetailData } from './managementContract'
+import { housingType } from '../supply/fixtures/sheet'
 
 const json = vi.hoisted(() => ({ loadJsonWorkspace: vi.fn() }))
 vi.mock('../announcement-json/api', () => json)
@@ -14,7 +15,7 @@ function detail(): ManagementDetailData {
   return {
     summary: { id: 7, name: '공고', subtitle: '', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
     sourceIdentifier: 'LH-7', data: { version: 0, applicationStartDate: '2026-10-01', applicationEndDate: '2026-10-02', originalUrl: 'https://example.com/notice' },
-    housingTypes: [], announcements: [], supplyRows: [], scheduleReviewed: false,
+    housingTypes: [], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, scheduleReviewed: false,
     schedules: [{ housingComplexId: null, supplyRank: '1순위', state: 'CONFIRMED', condition: null, startDate: '2026-10-01', endDate: '2026-10-02', startTime: null, endTime: null, sourceUrl: 'https://example.com/notice', sourcePage: 3, preserved: { count: 0, verified: false } }],
   }
 }
@@ -118,10 +119,10 @@ it('공고문 일정 문구를 줄마다 일정으로 채우고 근거 URL·페�
 })
 
 it('수집·PDF 접수 일정을 공고문 URL을 근거로 한 번에 확정하고, 확정 뒤에는 초안으로 다시 채운다', async () => {
-  const value = { ...detail(), schedules: [], supplyRows: [
-    { id: 1, housingComplexId: 11, housingComplexName: '판암4단지', housingTypeId: null, modified: false, sourceComplexName: '대전판암4', sourceHousingTypeName: '26', data: {} },
-    { id: 2, housingComplexId: 12, housingComplexName: '둔산1단지', housingTypeId: null, modified: false, sourceComplexName: '대전둔산1', sourceHousingTypeName: '26', data: {} },
-  ] } as unknown as ManagementDetailData
+  const value: ManagementDetailData = { ...detail(), schedules: [], supplySheet: { targets: [], cells: [], quotas: [], leaseTerms: [], housingTypes: [
+    housingType({ key: 'row:1', name: '26', complexName: '대전판암4', housingComplexId: 11, housingComplexName: '판암4단지' }),
+    housingType({ key: 'row:2', name: '26', complexName: '대전둔산1', housingComplexId: 12, housingComplexName: '둔산1단지', displayOrder: 1 }),
+  ] } }
   const event = (id: number, complexName: string, scheduleType: string, startAt: string, endAt: string) => ({ id, complexName, data: { scheduleType, name: '현장 접수', startAt, endAt } })
   json.loadJsonWorkspace.mockResolvedValue({ events: [
     event(1, '대전판암4 영구임대', 'APPLICATION', '2026-10-20T10:00:00', '2026-10-22T17:00:00'),

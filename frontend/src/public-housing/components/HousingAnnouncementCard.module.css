@@ -194,6 +194,11 @@
   color: var(--list-text, var(--ds-color-text));
 }
 
+.supplySummary .unconfirmed {
+  color: var(--list-muted, var(--ds-color-muted));
+  font-size: inherit;
+}
+
 .viewCount {
   flex: 0 0 auto;
   margin-left: auto;

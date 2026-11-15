@@ -60,6 +60,7 @@ class NotificationRegionBatchIntegrationTest {
             for (long id : announcements) {
                 jdbc.update("DELETE FROM notification_outbox_events WHERE announcement_id=?", id);
                 jdbc.update("DELETE FROM supply_rows WHERE announcement_id=?", id);
+                jdbc.update("DELETE FROM announcement_complexes WHERE announcement_id=?", id);
                 jdbc.update("DELETE FROM announcements WHERE id=?", id);
             }
             for (long id : complexes) jdbc.update("DELETE FROM housing_complexes WHERE id=?", id);

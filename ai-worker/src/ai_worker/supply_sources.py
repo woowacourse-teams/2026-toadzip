@@ -11,10 +11,11 @@ from concurrent.futures import Executor
 from dataclasses import dataclass, replace
 from typing import Protocol
 
-from ai_worker import checks, jev, pages, stage_prompts, supply_grouping
+from ai_worker import checks, jev, pages, stage_prompts, supply_answer, supply_grouping
 from ai_worker.openai import Reply
 from ai_worker.source_frame import SourceSupplyRow
 from ai_worker.supply_assembly import assemble
+from ai_worker.supply_sheet import SupplySheet
 
 log = logging.getLogger(__name__)
 
@@ -30,9 +31,10 @@ class ColumnJudge(Protocol):
 
 @dataclass(frozen=True)
 class Supply:
-    """공급 단계 결과. tree는 관리자 계약의 공급행·단지 부분이다."""
+    """공급 단계 결과. sheet는 공급표 모델, tree는 관리자 계약의 단지 부분(단지와 그 미확인·근거)이다."""
 
     tree: dict
+    sheet: SupplySheet
     # 코드가 표를 읽으며 남긴 경고나 공급 단계에 보낸 입력에 대한 안내, 그다음 원문 대조 검산 경고
     warnings: list[str]
     usage: list[dict]
@@ -52,8 +54,8 @@ class CodeSupply:
         """기다릴 모델 호출이 없다."""
 
     def read(self) -> Supply:
-        tree, source_warnings = assemble(self._grouped.compact, self._selected, self._source_names)
-        return Supply(tree, [*self._grouped.warnings, *source_warnings], [], "code")
+        tree, sheet, source_warnings = assemble(self._grouped.draft, self._selected, self._source_names)
+        return Supply(tree, sheet, [*self._grouped.warnings, *source_warnings], [], "code")
 
 
 class ModelSupply:
@@ -71,16 +73,16 @@ class ModelSupply:
 
     def read(self) -> Supply:
         reply = self._future.result()
-        compact = checks.first_json_object(reply.content, {"rows": list})
+        # 모델은 공고문 표의 칸 단위(공급표 모양)로 답한다. 조립·검산은 코드 경로와 같은 짧은 공급행 목록을 읽는다.
+        draft, warnings = supply_answer.draft(checks.first_json_object(reply.content, {"housingTypes": list}))
         selected = self._selected
         # 코드가 공급표를 읽으면 공급 단계 호출이 없어 이 두 안내는 사실이 아니므로 모델 경로에만 둔다.
-        warnings = []
         if selected.table_structure_fallback:
             warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
         if selected.ambiguous_supply_tables:
             warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
-        tree, source_warnings = assemble(compact, selected, self._source_names)
-        return Supply(tree, [*warnings, *source_warnings], [reply.usage], "model")
+        tree, sheet, source_warnings = assemble(draft, selected, self._source_names)
+        return Supply(tree, sheet, [*warnings, *source_warnings], [reply.usage], "model")
 
 
 class SupplyPlan:

@@ -1,5 +1,7 @@
 package com.toadzip.backend.eligibility.repository;
 
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
+import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyTarget;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Adjustment;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Exclusion;
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -25,6 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 public class ExtractedEligibilityReader {
+    private static final int MAX_TARGET_TEXT = 255;
     private final ObjectMapper json;
 
     public ExtractedEligibilityReader(ObjectMapper json) {
@@ -44,10 +48,14 @@ public class ExtractedEligibilityReader {
                     "이 추출 결과에는 신청자격이 없습니다. 신청자격 추출을 지원하는 워커로 PDF를 다시 추출해 주세요.");
         }
         List<Route> routes = new ArrayList<>();
+        Map<String, SupplyTarget> sheetTargets = sheetTargets(tree.path("data").path("supplySheet").path("targets"));
         JsonNode targets = eligibility.path("targets");
         for (int index = 0; index < targets.size(); index++) {
             JsonNode target = targets.get(index);
             routes.add(new Route(text(target, "target"), supplyTargets(target),
+                    texts(target.path("supplyTargetKeys")).stream().map(sheetTargets::get).filter(Objects::nonNull)
+                            .distinct().toList(),
+                    SupplyTargetGroup.known(texts(target.path("groups"))),
                     group(target, "eligibility.targets[" + index + "]")));
         }
         List<Exclusion> exclusions = new ArrayList<>();
@@ -133,6 +141,24 @@ public class ExtractedEligibilityReader {
         List<String> matched = texts(target.path("supplyTargets"));
         String written = text(target, "supplyTarget");
         return matched.isEmpty() && written != null ? List.of(written) : matched;
+    }
+
+    /**
+     * 추출 공급표의 대상 키 → (표기, 신청 조건). 신청 조건이 없으면 빈 조건이다. 표기가 없거나 255자를 넘는 대상은 공고 공급표에
+     * 저장될 수 없어 어느 공급대상과도 같을 수 없으므로 뺀다.
+     */
+    private static Map<String, SupplyTarget> sheetTargets(JsonNode targets) {
+        Map<String, SupplyTarget> result = new LinkedHashMap<>();
+        for (JsonNode target : targets) {
+            String key = text(target, "key");
+            String label = text(target, "label");
+            String condition = Optional.ofNullable(text(target, "applicationCondition")).orElse("");
+            if (key != null && label != null && label.length() <= MAX_TARGET_TEXT
+                    && condition.length() <= MAX_TARGET_TEXT) {
+                result.putIfAbsent(key, new SupplyTarget(label, condition));
+            }
+        }
+        return result;
     }
 
     private static String text(JsonNode node, String field) {

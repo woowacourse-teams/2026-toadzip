@@ -1,119 +1,100 @@
 import fixtures from './scenarios.json'
 import type { JsonWorkspace } from '../../announcement-json/api'
-import { blankRow } from '../../supply/supplyCorrectionApi'
-import { readExtraction } from '../extraction'
-import { createReview, validCellValue } from '../review'
+import type { SupplySheet } from '../../supply/supplySheet'
+import { readExtraction, type Extraction } from '../extraction'
+import { createReview, pdfSheet, validCellValue } from '../review'
+import type { HousingCandidates } from '../matching'
 
-/**
- * 한스빌 26B의 전환보증금만 다르게 한 추출 응답. 대상 조건이 달라 두 행을 하나로 접지 않고 공통 모집수 170으로 묶은 채 둔다.
- * 공통 모집 묶음과 행 여럿을 다루는 검토를 시험할 때 쓴다.
- */
-export function separateHansville() {
-  const extraction = structuredClone(fixtures.hansville.extraction)
-  extraction.data.supplyRows[1].targets[0].convertedDeposit = 2000000
-  return extraction
+export function extractionOf(value: unknown): Extraction {
+  const read = readExtraction(JSON.stringify(value))
+  if (!read.ok) throw new Error(read.error)
+  return read.value
 }
 
-export function scenario(name: keyof typeof fixtures, extraction: unknown = fixtures[name].extraction) {
-  const fixture = fixtures[name], extracted = readExtraction(JSON.stringify(extraction))
-  if (!extracted.ok) throw new Error(extracted.error)
-  const rows = fixture.rows.map(row => ({ ...blankRow(row.displayOrder), id: row.id, key: `row:${row.id}`,
-    complexName: row.sourceComplexName, typeName: row.housingTypeName, pnu: row.pnu, category: 'RESUPPLY' as const,
-    housingComplexId: row.complexId, housingTypeId: row.housingTypeId, householdCount: row.householdCount,
-    exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea }))
-  const workspace: JsonWorkspace = { snapshotToken: 'current', supply: { snapshotToken: 'supply', version: 1, rows, sources: [] },
-    events: fixture.events.map(event => ({ id: event.id, data: event, complexName: event.complexName })),
-    detail: { summary: { id: 29, name: '기존 공고', subtitle: '', provider: 'LH', rental: 'NATIONAL_RENTAL', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
+type FixtureRow = { id: number; displayOrder: number; sourceComplexName: string; housingTypeName: string; pnu: string | null; householdCount: number | null
+  exclusiveArea: number | null; supplyArea: number | null; complexId: number | null; housingTypeId: number | null }
+/** 지금 공급표. 시나리오의 저장된 행마다 주택형 하나, 공급대상 '일반' 칸 하나, 그 칸의 모집 묶음이다. */
+export function rowsSheet(rows: FixtureRow[], complexName = (row: FixtureRow) => row.sourceComplexName): SupplySheet {
+  const sheet: SupplySheet = { housingTypes: [], targets: [{ key: 'target:1', id: 1, label: '일반', applicationCondition: '', groups: ['GENERAL'], displayOrder: 0 }], cells: [], quotas: [], leaseTerms: [] }
+  rows.forEach((row, at) => {
+    const key = `row:${row.id}`, cell = `cell:${row.id}`
+    sheet.housingTypes.push({ key, id: row.id, announcementComplexId: null, complexName: row.sourceComplexName, housingComplexId: row.complexId, housingComplexName: row.complexId === null ? null : complexName(row),
+      housingTypeId: row.housingTypeId, name: row.housingTypeName, exclusiveArea: row.exclusiveArea, supplyArea: row.supplyArea, expectedMoveInMonth: null,
+      supplyPnu: row.pnu, category: 'RESUPPLY', displayOrder: at, adminModified: false })
+    sheet.cells.push({ key: cell, id: row.id, housingType: key, target: 'target:1', displayOrder: 0 })
+    if (row.householdCount !== null) sheet.quotas.push({ key: `quota:${row.id}`, id: row.id, kind: 'WINNER', count: row.householdCount, members: [cell], adminModified: false })
+  })
+  return sheet
+}
+
+/**
+ * 이 공고문을 이미 반영한 지금 공급표. PDF 공급표의 키(pdf:…)를 저장된 키(row:·target:·cell:)로 바꾸고 단지를 연결한다.
+ * 값을 바꿔 변경·보호 값을 시험한다.
+ */
+export function savedSheet(extraction: Extraction, complex: { id: number; name: string }): SupplySheet {
+  const pdf = pdfSheet(extraction), id = (key: string) => Number(/\d+$/.exec(key)![0]) + 1
+  const rename = (key: string) => key.replace(/^pdf:t(\d+)$/, (_, at) => `row:${Number(at) + 1}`).replace(/^pdf:g(\d+)$/, (_, at) => `target:${Number(at) + 1}`).replace(/^pdf:c(\d+)$/, (_, at) => `cell:${Number(at) + 1}`)
+  return {
+    housingTypes: pdf.housingTypes.map(type => ({ ...type, key: rename(type.key), id: id(type.key), housingComplexId: complex.id, housingComplexName: complex.name, supplyPnu: '1111010100', category: 'RESUPPLY' })),
+    targets: pdf.targets.map(target => ({ ...target, key: rename(target.key), id: id(target.key) })),
+    cells: pdf.cells.map(cell => ({ ...cell, key: rename(cell.key), id: id(cell.key), housingType: rename(cell.housingType), target: rename(cell.target) })),
+    quotas: pdf.quotas.map((quota, at) => ({ ...quota, key: `quota:${at + 1}`, id: at + 1, members: quota.members.map(rename) })),
+    leaseTerms: pdf.leaseTerms.map((lease, at) => ({ ...lease, key: `lease:${at + 1}`, id: at + 1, members: lease.members.map(rename) })),
+  }
+}
+
+export function workspaceOf(sheet: SupplySheet, { id = 29, events = [] as JsonWorkspace['events'] } = {}): JsonWorkspace {
+  return { snapshotToken: 'current', events,
+    supply: { snapshotToken: 'supply', stagingToken: null, supplyConfirmed: true, version: 1, sheet, announcementComplexes: [], applicationTypeNames: [], sourceReference: [], warnings: [] },
+    detail: { summary: { id, name: '기존 공고', subtitle: '', provider: 'LH', rental: 'NATIONAL_RENTAL', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
       data: { name: '기존 공고', rentalType: 'NATIONAL_RENTAL', recruitmentType: 'RESERVE', agencyCode: 'LH', originalUrl: 'https://example.com/notice' },
-      sourceIdentifier: 'current-source', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
-  const housing = Object.fromEntries(fixture.complexes.map(complex => [complex.id, complex.housingTypes]))
-  const review = createReview(extracted.value, workspace, housing)
+      sourceIdentifier: 'current-source', housingTypes: [], supplySheet: sheet, announcements: [], schedules: [], scheduleReviewed: false } }
+}
+
+/**
+ * 시나리오 공고. 지금 공급표는 시나리오의 저장된 행(rowsSheet)이고, sheet를 주면 그 공급표다.
+ * hansville: 26A·26B가 일반 모집 170을 함께 쓴다(다른 주택형과 함께 쓰는 수). 지금 공급표는 단지 이름 없는 '아파트' 170 하나다.
+ */
+export function scenario(name: keyof typeof fixtures, extraction: unknown = fixtures[name].extraction, sheet?: (extracted: Extraction) => SupplySheet) {
+  const fixture = fixtures[name], extracted = extractionOf(extraction)
+  const workspace = workspaceOf(sheet ? sheet(extracted) : rowsSheet(fixture.rows as FixtureRow[]), { events: fixture.events.map(event => ({ id: event.id, data: event, complexName: event.complexName })) })
+  const housing: HousingCandidates = Object.fromEntries(fixture.complexes.map(complex => [complex.id, complex.housingTypes]))
+  const review = createReview(extracted, workspace, housing)
   review.schedules.forEach(schedule => { schedule.include = schedule.cells.every(cell => validCellValue(cell.kind, cell.value) && !['notApplicable', 'unresolved'].includes(cell.state)) })
-  return { review, workspace, housing }
+  return { review, workspace, housing, extraction: extracted }
+}
+
+/** 워커 공급표 응답 하나. 주택형마다 공급대상 '일반' 칸 하나와 그 칸의 모집 수·임대조건이다. */
+export function sheetResponse(complexName: string, types: { name: string; area: number; count: number; deposit?: number; rent?: number }[], page = 3) {
+  const key = (at: number) => ({ housingType: `h${at}`, target: 't0' })
+  return { data: { announcement: {}, receptionPlace: {}, schedules: [], unresolvedFields: [],
+    supplySheet: {
+      housingTypes: types.map((type, at) => ({ key: `h${at}`, complexName, name: type.name, exclusiveArea: type.area, commonArea: null, supplyArea: null, constructedHouseholdCount: null, expectedMoveInMonth: null, houseTypes: [] })),
+      targets: [{ key: 't0', label: '일반', applicationCondition: null }],
+      cells: types.map((_, at) => key(at)),
+      quotas: types.map((type, at) => ({ kind: 'WINNER', count: type.count, members: [key(at)] })),
+      leaseTerms: types.map((type, at) => ({ rentalDeposit: type.deposit ?? 30000000, monthlyRent: type.rent ?? 200000, convertedDeposit: null, members: [key(at)] })),
+      unresolvedFields: [],
+      evidence: types.flatMap((type, at) => [{ path: `housingTypes[${at}]`, page, quote: `${type.name} ${type.area} ${type.count}` }, { path: `quotas[${at}].count`, page, quote: `${type.name} ${type.count}` },
+        { path: `leaseTerms[${at}]`, page, quote: `${type.deposit ?? 30000000} ${type.rent ?? 200000}` }]),
+    } },
+  notApplicable: [], evidence: [] }
 }
 
 /**
- * 대구테크노폴리스4: 옛 LH 통합 공급행(#747 '공공임대', 모집 240, 면적 미확인)이 있고 공고문은 051.9800A 200 · 059.9100A 25 · 059.9300B 15로 적었다.
- * 통합행은 전용면적을 몰라 PDF 행과 맞추지 못하므로 PDF 행은 새 공급행이 되고 통합행은 'PDF에 없는 기존 공급행'으로 남는다.
- * LH 공급 원본의 240 한 줄은 그 통합행에 붙어 있고, 84 줄(LH:P:SUPPLY:2)은 같은 면적 공급행이 없어 붙지 않았다.
- * unresolvedCount면 워커 이전 형식처럼 모집수를 '목록 모집수 240과 다름'으로 남긴다.
+ * 대구테크노폴리스4: 지금 공급표에는 옛 LH 통합 주택형('공공임대' 240, 면적 미확인)이 있고 공고문은 051.9800A 200 · 059.9100A 25 · 059.9300B 15로 적었다.
+ * 공고 단지가 단지 41에 연결돼 있다. 이름이 다르므로 PDF 주택형 셋은 새로 더하고 '공공임대'는 저장하면 지운다. 다른 단지의 주택형('39')도 PDF에 없어 지운다.
  */
-export function daegu({ unresolvedCount = false } = {}) {
-  const row = (name: string, area: number, count: number) => ({ complexReference: { sourceComplexName: '대구테크노폴리스4' }, sourceHousingTypeName: name,
-    expectedMoveInMonth: null, totalSupplyHouseholdCount: count, exclusiveArea: area, supplyArea: null, sourceRow: null,
-    targets: [{ target: '일반', supplyRank: null, supplyHouseholdCount: null, reserveCount: null, rentalDeposit: 30000000, monthlyRent: 200000, convertedDeposit: null }] })
-  const rows = [row('051.9800A', 51.98, 200), row('059.9100A', 59.91, 25), row('059.9300B', 59.93, 15)]
-  const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [],
-    unresolvedFields: unresolvedCount ? rows.map((_, index) => ({ path: `supplyRows[${index}].totalSupplyHouseholdCount`, reason: '목록 모집수 240과 다름' })) : [] },
-    sharedCounts: [], notApplicable: [], evidence: rows.map((item, index) => ({ path: `supplyRows[${index}]`, page: 3, quote: `${item.sourceHousingTypeName} 468 ${item.totalSupplyHouseholdCount}` })) }
-  const read = readExtraction(JSON.stringify(extraction))
-  if (!read.ok) throw new Error(read.error)
-  const merged = { ...blankRow(1), id: 747, key: 'row:747', complexName: '대구테크노폴리스4', typeName: '공공임대', pnu: '2771025000', category: 'RESUPPLY' as const,
-    housingComplexId: 41, housingComplexName: '대구테크노폴리스4', householdCount: 240, areaOverride: false }
-  const other = { ...merged, id: 748, key: 'row:748', complexName: '다른 단지', housingComplexId: 42, housingComplexName: '다른 단지', typeName: '39', householdCount: 10, exclusiveArea: 39, displayOrder: 2 }
-  const lhSupplyRows = [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '대구테크노폴리스4', typeName: '공공임대', exclusiveArea: null, householdCount: 240, attachedRowKey: 'row:747', ambiguous: false },
-    { rowIdentifier: 'LH:P:SUPPLY:2', complexLabel: '대구테크노폴리스4', typeName: '84', exclusiveArea: '84.0', householdCount: 5, attachedRowKey: null, ambiguous: false }]
-  const workspace: JsonWorkspace = { snapshotToken: 'current', events: [],
-    supply: { snapshotToken: 'supply', version: 1, rows: [merged, other], sources: [], lhSupplyRows, unattachedLhSupplyRows: lhSupplyRows.filter(lh => lh.attachedRowKey === null),
-      rowSources: [{ rowKey: 'row:747', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:1' }] },
-    detail: { summary: { id: 30, name: '대구 공고', subtitle: '', provider: 'LH', rental: 'PUBLIC_RENTAL', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
-      data: { name: '대구 공고', rentalType: 'PUBLIC_RENTAL', recruitmentType: 'RESERVE', agencyCode: 'LH', originalUrl: 'https://example.com/daegu' },
-      sourceIdentifier: 'daegu', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
-  const housing = { 41: [{ id: 501, name: '51A', exclusiveArea: 51.98, supplyArea: 72.1, householdCount: 468 }, { id: 502, name: '59A', exclusiveArea: 59.91, supplyArea: 80.2, householdCount: 120 },
+export function daegu() {
+  const extraction = extractionOf(sheetResponse('대구테크노폴리스4', [{ name: '051.9800A', area: 51.98, count: 200 }, { name: '059.9100A', area: 59.91, count: 25 }, { name: '059.9300B', area: 59.93, count: 15 }]))
+  const sheet = rowsSheet([
+    { id: 747, displayOrder: 0, sourceComplexName: '대구테크노폴리스4', housingTypeName: '공공임대', pnu: '2771025000', householdCount: 240, exclusiveArea: null, supplyArea: null, complexId: 41, housingTypeId: null },
+    { id: 748, displayOrder: 1, sourceComplexName: '다른 단지', housingTypeName: '39', pnu: null, householdCount: 10, exclusiveArea: 39, supplyArea: null, complexId: 42, housingTypeId: null }],
+  row => row.sourceComplexName)
+  const workspace = workspaceOf(sheet, { id: 30 })
+  // 공고 단지가 단지 41에 연결돼 있어 PDF 단지 이름으로 단지가 정해진다.
+  workspace.supply.announcementComplexes = [{ id: 7, name: '대구테크노폴리스4', roadAddress: null, housingComplexId: 41, housingComplexName: '대구테크노폴리스4', linkMethod: 'ADMIN', rowCount: 1 }]
+  const housing: HousingCandidates = { 41: [{ id: 501, name: '51A', exclusiveArea: 51.98, supplyArea: 72.1, householdCount: 468 }, { id: 502, name: '59A', exclusiveArea: 59.91, supplyArea: 80.2, householdCount: 120 },
     { id: 503, name: '59B', exclusiveArea: 59.93, supplyArea: 80.4, householdCount: 60 }], 42: [] }
-  return { review: createReview(read.value, workspace, housing), workspace, housing }
-}
-
-/**
- * GH 수원 광교 지구: 정제가 GH 주택형마다 공급행 틀(#901 '36A 청년', #902 '36C 신혼부부')을 만들었고 면적은 아직 없다.
- * 공고문은 36A 20 · 36C 10으로 적었다. 표기('36A' ↔ '36A 청년')와 면적으로는 틀 행을 고를 수 없다.
- * sourceRow면 추출 행이 워커가 맞춘 GH 틀 행 키를 가리킨다.
- */
-export function ghFrame({ sourceRow = false } = {}) {
-  const frame = (id: number, typeName: string, count: number) => ({ ...blankRow(id - 901), id, key: `row:${String(id)}`, complexName: '수원 광교', typeName, pnu: '4111710100',
-    category: 'RESUPPLY' as const, housingComplexId: 51, housingComplexName: '광교 행복주택', householdCount: count, areaOverride: false })
-  const row = (name: string, area: number, count: number, key: string) => ({ complexReference: { sourceComplexName: '수원 광교' }, sourceHousingTypeName: name,
-    expectedMoveInMonth: null, totalSupplyHouseholdCount: count, exclusiveArea: area, supplyArea: null, ...(sourceRow ? { sourceRow: key } : {}),
-    targets: [{ target: '청년', supplyRank: null, supplyHouseholdCount: null, reserveCount: null, rentalDeposit: 30000000, monthlyRent: 200000, convertedDeposit: null }] })
-  const rows = [row('36A', 36.7, 20, 'GH:801:수원 광교:36A'), row('36C', 36.83, 10, 'GH:801:수원 광교:36C')]
-  const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [], unresolvedFields: [] },
-    sharedCounts: [], notApplicable: [], evidence: rows.map((item, index) => ({ path: `supplyRows[${index}]`, page: 2, quote: `${item.sourceHousingTypeName} ${item.totalSupplyHouseholdCount}` })) }
-  const read = readExtraction(JSON.stringify(extraction))
-  if (!read.ok) throw new Error(read.error)
-  const workspace: JsonWorkspace = { snapshotToken: 'current', events: [],
-    supply: { snapshotToken: 'supply', version: 1, rows: [frame(901, '36A 청년', 20), frame(902, '36C 신혼부부', 10)], sources: [], lhSupplyRows: [], unattachedLhSupplyRows: [],
-      rowSources: [{ rowKey: 'row:901', category: 'GH_ANNOUNCEMENT', sourceKey: 'GH:801:수원 광교:36A' }, { rowKey: 'row:902', category: 'GH_ANNOUNCEMENT', sourceKey: 'GH:801:수원 광교:36C' }] },
-    detail: { summary: { id: 31, name: 'GH 공고', subtitle: '', provider: 'GH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
-      data: { name: 'GH 공고', rentalType: 'HAPPY_HOUSING', recruitmentType: 'RESERVE', agencyCode: 'GH', originalUrl: 'https://example.com/gh' },
-      sourceIdentifier: 'GH:801', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
-  const housing = { 51: [{ id: 601, name: '36A', exclusiveArea: 36.7, supplyArea: 50.1, householdCount: 100 }, { id: 602, name: '36C', exclusiveArea: 36.83, supplyArea: 50.3, householdCount: 80 }] }
-  return { read: read.value, review: createReview(read.value, workspace, housing), workspace, housing }
-}
-
-/**
- * GH 다산역 A2 지구: GH 정제가 청약구분·신청자마다 공급행을 나눠(#911 '24A,B,C 청년' 20 · #912 '24B 주거급여수급자' 3 · #913 '24C 고령자' 3)
- * 면적 없이 만들었다. 공고문은 세 청약구분을 같은 전용 24.97㎡로 적고 모집수는 대상별 예비자 수만 적었다.
- * 워커는 PDF 행마다 GH 틀 행을 하나씩 맞춘다(sourceRow).
- */
-/** GH 다산역A2의 같은 전용면적(24.97㎡) PDF 행 셋과 GH 틀 행 셋. names는 PDF 행의 주택형(신청형) 표기다. */
-export function ghSameArea(names: [string, string, string] = ['24ABC', '24B', '24C']) {
-  const frame = (id: number, typeName: string, count: number) => ({ ...blankRow(id - 911), id, key: `row:${String(id)}`, complexName: '남양주 다산역A2 경기행복주택', typeName,
-    pnu: '4136010100', category: 'RESUPPLY' as const, housingComplexId: 52, housingComplexName: '다산역A2', householdCount: count, areaOverride: false })
-  const row = (name: string, target: string, reserve: number, code: string) => ({ complexReference: { sourceComplexName: '다산역 A2' }, sourceHousingTypeName: name,
-    expectedMoveInMonth: null, totalSupplyHouseholdCount: null, exclusiveArea: 24.97, supplyArea: null, sourceRow: `GH:839:남양주 다산역A2 경기행복주택:${code}`,
-    targets: [{ target, supplyRank: null, supplyHouseholdCount: null, reserveCount: reserve, rentalDeposit: 46920000, monthlyRent: 178670, convertedDeposit: null }] })
-  const rows = [row(names[0], '청년', 20, '24A,B,C'), row(names[1], '주거급여 수급자', 3, '24B'), row(names[2], '고령자', 3, '24C')]
-  const extraction = { data: { announcement: {}, receptionPlace: {}, supplyRows: rows, schedules: [], unresolvedFields: [] },
-    sharedCounts: [], notApplicable: [], evidence: rows.map((item, index) => ({ path: `supplyRows[${index}]`, page: 4, quote: `${item.sourceHousingTypeName} ${item.targets[0].target}` })) }
-  const read = readExtraction(JSON.stringify(extraction))
-  if (!read.ok) throw new Error(read.error)
-  const frames = [frame(911, '24A,B,C 청년', 20), frame(912, '24B 주거급여수급자', 3), frame(913, '24C 고령자', 3)]
-  const workspace: JsonWorkspace = { snapshotToken: 'current', events: [],
-    supply: { snapshotToken: 'supply', version: 1, rows: frames, sources: [], lhSupplyRows: [], unattachedLhSupplyRows: [],
-      rowSources: [['row:911', '24A,B,C'], ['row:912', '24B'], ['row:913', '24C']].map(([rowKey, code]) => ({ rowKey, category: 'GH_ANNOUNCEMENT', sourceKey: `GH:839:남양주 다산역A2 경기행복주택:${code}` })) },
-    detail: { summary: { id: 57, name: 'GH 공고', subtitle: '', provider: 'GH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
-      data: { name: 'GH 공고', rentalType: 'HAPPY_HOUSING', recruitmentType: 'RESERVE', agencyCode: 'GH', originalUrl: 'https://example.com/gh' },
-      sourceIdentifier: 'GH:839', supplyRows: [], housingTypes: [], announcements: [], schedules: [], scheduleReviewed: false } }
-  const housing = { 52: [{ id: 611, name: '24A', exclusiveArea: 24.97, supplyArea: 40.34, householdCount: 300 }] }
-  return { read: read.value, review: createReview(read.value, workspace, housing), workspace, housing }
+  return { review: createReview(extraction, workspace, housing), workspace, housing, extraction }
 }

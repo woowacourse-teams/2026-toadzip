@@ -11,8 +11,12 @@ public final class AnnouncementAttentionSql {
                 """.formatted(alias);
     }
 
+    /** 보일 공급이 없다: 확정한 공고는 제외하지 않은 정본 공급행, 확정 전 공고는 기관 준비 줄이 없다. */
     public static String supplyMissing(String alias) {
-        return "NOT EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = " + alias
-                + ".id AND r.admin_excluded = false)";
+        return """
+                (CASE WHEN %1$s.supply_confirmed_at IS NOT NULL THEN NOT EXISTS (
+                    SELECT 1 FROM supply_rows r WHERE r.announcement_id = %1$s.id AND r.admin_excluded = false)
+                  ELSE NOT EXISTS (SELECT 1 FROM agency_supply_lines l WHERE l.announcement_id = %1$s.id) END)
+                """.formatted(alias);
     }
 }

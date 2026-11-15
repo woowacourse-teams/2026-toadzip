@@ -22,87 +22,6 @@
         "parkingCount": null
       }
     ],
-    "supplyRows": [
-      {
-        "complexReference": {
-          "sourceComplexName": "두꺼비"
-        },
-        "sourceHousingTypeName": "36A",
-        "expectedMoveInMonth": null,
-        "totalSupplyHouseholdCount": 40,
-        "exclusiveArea": 36.5,
-        "commonArea": 13.3,
-        "supplyArea": null,
-        "constructedHouseholdCount": 120,
-        "subtypes": [],
-        "targets": [
-          {
-            "target": "가군(생계·의료급여수급자 등)",
-            "supplyHouseholdCount": null,
-            "reserveCount": null,
-            "rentalDeposit": 2520000,
-            "monthlyRent": 50160,
-            "convertedDeposit": null,
-            "applicationCondition": "생계·의료급여 수급자, 소득 인정액이 수급자 기준 이하인 국가유공자 등"
-          },
-          {
-            "target": "나군(일반 등)",
-            "supplyHouseholdCount": null,
-            "reserveCount": null,
-            "rentalDeposit": 3522000,
-            "monthlyRent": 78340,
-            "convertedDeposit": null,
-            "applicationCondition": "가군 해당자 이외의 영구임대 입주 가능한 자"
-          }
-        ]
-      },
-      {
-        "complexReference": {
-          "sourceComplexName": "두꺼비"
-        },
-        "sourceHousingTypeName": "26A/B",
-        "expectedMoveInMonth": null,
-        "totalSupplyHouseholdCount": 77,
-        "exclusiveArea": null,
-        "commonArea": null,
-        "supplyArea": null,
-        "constructedHouseholdCount": null,
-        "subtypes": [
-          {
-            "name": "26A",
-            "exclusiveArea": 26.37,
-            "commonArea": 15.1,
-            "constructedHouseholdCount": 50
-          },
-          {
-            "name": "26B",
-            "exclusiveArea": 26.41,
-            "commonArea": 15.12,
-            "constructedHouseholdCount": 50
-          }
-        ],
-        "targets": [
-          {
-            "target": "대학생",
-            "supplyHouseholdCount": null,
-            "reserveCount": null,
-            "rentalDeposit": 9000000,
-            "monthlyRent": 180000,
-            "convertedDeposit": 5000000,
-            "applicationCondition": null
-          },
-          {
-            "target": "청년",
-            "supplyHouseholdCount": null,
-            "reserveCount": null,
-            "rentalDeposit": 10000000,
-            "monthlyRent": 200000,
-            "convertedDeposit": 5000000,
-            "applicationCondition": null
-          }
-        ]
-      }
-    ],
     "schedules": [
       {
         "scheduleType": "APPLICATION",
@@ -122,36 +41,196 @@
         "path": "complexes[0].parkingCount",
         "reason": "공고문에 주차대수가 없음"
       }
-    ]
-  },
-  "sharedCounts": [
-    {
-      "paths": [
-        "supplyRows[1].targets[0].supplyHouseholdCount",
-        "supplyRows[1].targets[1].supplyHouseholdCount"
+    ],
+    "supplySheet": {
+      "housingTypes": [
+        {
+          "key": "h0",
+          "complexName": "두꺼비",
+          "name": "36A",
+          "exclusiveArea": 36.5,
+          "commonArea": 13.3,
+          "supplyArea": null,
+          "constructedHouseholdCount": 120,
+          "expectedMoveInMonth": null,
+          "sourceRow": null,
+          "houseTypes": []
+        },
+        {
+          "key": "h1",
+          "complexName": "두꺼비",
+          "name": "26A/B",
+          "exclusiveArea": null,
+          "commonArea": null,
+          "supplyArea": null,
+          "constructedHouseholdCount": null,
+          "expectedMoveInMonth": null,
+          "sourceRow": null,
+          "houseTypes": [
+            {
+              "name": "26A",
+              "exclusiveArea": 26.37,
+              "commonArea": 15.1,
+              "supplyArea": null,
+              "constructedHouseholdCount": 50
+            },
+            {
+              "name": "26B",
+              "exclusiveArea": 26.41,
+              "commonArea": 15.12,
+              "supplyArea": null,
+              "constructedHouseholdCount": 50
+            }
+          ]
+        }
       ],
-      "count": 77,
-      "page": 3,
-      "quote": "대학생·청년 통합 77"
+      "targets": [
+        {
+          "key": "t0",
+          "label": "가군(생계·의료급여수급자 등)",
+          "applicationCondition": "생계·의료급여 수급자, 소득 인정액이 수급자 기준 이하인 국가유공자 등"
+        },
+        {
+          "key": "t1",
+          "label": "나군(일반 등)",
+          "applicationCondition": "가군 해당자 이외의 영구임대 입주 가능한 자"
+        },
+        {
+          "key": "t2",
+          "label": "대학생",
+          "applicationCondition": null
+        },
+        {
+          "key": "t3",
+          "label": "청년",
+          "applicationCondition": null
+        }
+      ],
+      "cells": [
+        {
+          "housingType": "h0",
+          "target": "t0"
+        },
+        {
+          "housingType": "h0",
+          "target": "t1"
+        },
+        {
+          "housingType": "h1",
+          "target": "t2"
+        },
+        {
+          "housingType": "h1",
+          "target": "t3"
+        }
+      ],
+      "quotas": [
+        {
+          "kind": "WINNER",
+          "count": 77,
+          "members": [
+            {
+              "housingType": "h1",
+              "target": "t2"
+            },
+            {
+              "housingType": "h1",
+              "target": "t3"
+            }
+          ]
+        },
+        {
+          "kind": "WINNER",
+          "count": 40,
+          "members": [
+            {
+              "housingType": "h0",
+              "target": "t0"
+            },
+            {
+              "housingType": "h0",
+              "target": "t1"
+            }
+          ]
+        }
+      ],
+      "leaseTerms": [
+        {
+          "rentalDeposit": 2520000,
+          "monthlyRent": 50160,
+          "convertedDeposit": null,
+          "members": [
+            {
+              "housingType": "h0",
+              "target": "t0"
+            }
+          ]
+        },
+        {
+          "rentalDeposit": 3522000,
+          "monthlyRent": 78340,
+          "convertedDeposit": null,
+          "members": [
+            {
+              "housingType": "h0",
+              "target": "t1"
+            }
+          ]
+        },
+        {
+          "rentalDeposit": 9000000,
+          "monthlyRent": 180000,
+          "convertedDeposit": 5000000,
+          "members": [
+            {
+              "housingType": "h1",
+              "target": "t2"
+            }
+          ]
+        },
+        {
+          "rentalDeposit": 10000000,
+          "monthlyRent": 200000,
+          "convertedDeposit": 5000000,
+          "members": [
+            {
+              "housingType": "h1",
+              "target": "t3"
+            }
+          ]
+        }
+      ],
+      "unresolvedFields": [],
+      "evidence": [
+        {
+          "path": "housingTypes[0]",
+          "page": 3,
+          "quote": "36A 36.5000 13.3000 120 40"
+        },
+        {
+          "path": "cells[0]",
+          "page": 4,
+          "quote": "2,520,000 126,000 2,394,000 50,160"
+        },
+        {
+          "path": "quotas[1]",
+          "page": 3,
+          "quote": "36A 36.5000 13.3000 120 40"
+        },
+        {
+          "path": "leaseTerms[0]",
+          "page": 4,
+          "quote": "2,520,000 126,000 2,394,000 50,160"
+        },
+        {
+          "path": "quotas[0]",
+          "page": 3,
+          "quote": "대학생·청년 통합 77"
+        }
+      ]
     }
-  ],
+  },
   "notApplicable": [
-    {
-      "path": "supplyRows[0].targets[*].supplyHouseholdCount",
-      "reason": "모집수를 주택형별로만 안내하고 가군·나군별 수는 없음"
-    },
-    {
-      "path": "supplyRows[0].targets[*].convertedDeposit",
-      "reason": "가군·나군 임대보증금 전환 제도를 안내하지 않음"
-    },
-    {
-      "path": "supplyRows[*].targets[*].reserveCount",
-      "reason": "대기 중인 예비자수 항목이 없음"
-    },
-    {
-      "path": "supplyRows[*].expectedMoveInMonth",
-      "reason": "기존 주택이라 입주예정월을 안내하지 않음"
-    },
     {
       "path": "schedules",
       "reason": "계약 일정은 예비입주자 순번에 따라 개별안내"
@@ -182,16 +261,6 @@
       "path": "announcement.winnerAnnouncementDate",
       "page": 5,
       "quote": "2026.10.01(목) 14:00 이후"
-    },
-    {
-      "path": "supplyRows[0]",
-      "page": 3,
-      "quote": "36A 36.5000 13.3000 120 40"
-    },
-    {
-      "path": "supplyRows[0].targets[0]",
-      "page": 4,
-      "quote": "2,520,000 126,000 2,394,000 50,160"
     }
   ]
 }

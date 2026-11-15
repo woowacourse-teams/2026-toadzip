@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.hamcrest.Matchers.contains;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,6 +30,7 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +83,7 @@ class AdminAnnouncementRegistrationIntegrationTest {
     void cleanDatabase() {
         notificationJdbc.update("DELETE FROM notification_outbox_events");
         supplyRowRepository.deleteAll();
+        notificationJdbc.update("DELETE FROM announcement_complexes");
         announcementRepository.deleteAll();
         housingComplexRepository.deleteAll();
         housingComplexRepository.flush();
@@ -111,8 +115,55 @@ class AdminAnnouncementRegistrationIntegrationTest {
         SupplyRow supplyRow = supplyRowRepository.findById(supplyRowId).orElseThrow();
         assertAnnouncement(announcement);
         assertSupplyRow(supplyRow, announcementId, housingComplex.getId());
+        // 대상 구분 없는 모집수(20)는 공급표의 '전체' 칸 하나가 갖는다. 등록이 공급표를 직접 쓴다.
+        assertEquals(java.util.List.of("전체:WINNER:20"), notificationJdbc.queryForList("""
+                SELECT t.label || ':' || q.kind || ':' || q.household_count
+                FROM supply_rows r
+                JOIN supply_row_targets c ON c.supply_row_id = r.id
+                JOIN announcement_supply_targets t ON t.id = c.supply_target_id
+                JOIN supply_quota_members m ON m.supply_row_target_id = c.id
+                JOIN supply_quotas q ON q.id = m.supply_quota_id
+                WHERE r.announcement_id = ?""", String.class, announcementId));
         assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
                 Integer.class));
+    }
+
+    @Test
+    @Transactional
+    void 등록한_공고는_공고_단지로_고른_단지에_이어져_지도와_단지_상세_공고_목록에_보인다() throws Exception {
+        HousingComplex housingComplex = housingComplexRepository.save(createHousingComplex());
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        String request = validRequest(housingComplex.getId())
+                .replace("2026-08-10", today.minusDays(1).toString())
+                .replace("2026-08-14", today.plusDays(3).toString());
+
+        MvcResult result = mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isCreated()).andReturn();
+        long announcementId = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("announcementId").asLong();
+        entityManager.flush();
+        entityManager.clear();
+
+        // 등록 요청에는 공고 단지가 없다. 행의 단지명으로 공고 단지를 만들고 관리자가 고른 단지에 잇는다.
+        assertEquals(java.util.List.of("원문 두꺼비 행복주택:" + housingComplex.getId() + ":ADMIN:admin"),
+                notificationJdbc.queryForList("""
+                        SELECT ac.source_complex_name || ':' || ac.housing_complex_id || ':' || ac.link_method || ':'
+                            || ac.linked_by
+                        FROM announcement_complexes ac
+                        JOIN supply_rows r ON r.announcement_complex_id = ac.id
+                        WHERE ac.announcement_id = ?""", String.class, announcementId));
+        mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "18.00")
+                        .param("southWestLat", "37.500000").param("southWestLng", "126.900000")
+                        .param("northEastLat", "37.600000").param("northEastLng", "127.000000")
+                        .param("hasActiveAnnouncement", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nodes[*].complexId", contains(housingComplex.getId().intValue())))
+                .andExpect(jsonPath("$.data.nodes[0].applicationStatus").value("APPLYING"));
+        mockMvc.perform(get("/api/v1/complexes/{id}", housingComplex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentAnnouncements[*].announcementId",
+                        contains((int) announcementId)));
     }
 
     @Test
@@ -231,17 +282,20 @@ class AdminAnnouncementRegistrationIntegrationTest {
 
     private void assertSupplyRow(SupplyRow supplyRow, long announcementId, long housingComplexId) {
         assertAll(
-                () -> assertIdentifier(supplyRow.getSourceSupplyRowIdentifier(), "ADMIN_ENTRY-SUPPLY-ROW-"),
                 () -> assertEquals(announcementId, supplyRow.getAnnouncement().getId()),
-                () -> assertEquals(housingComplexId, supplyRow.getHousingComplex().getId()),
+                () -> assertEquals(housingComplexId, supplyRow.getAnnouncementComplex().getHousingComplex().getId()),
                 () -> assertNull(supplyRow.getHousingType()),
                 () -> assertEquals(0, supplyRow.getDisplayOrder()),
-                () -> assertEquals("원문 두꺼비 행복주택", supplyRow.getSourceComplexName()),
-                () -> assertEquals("36A", supplyRow.getSourceHousingTypeName()),
+                () -> assertEquals("원문 두꺼비 행복주택", supplyRow.getAnnouncementComplex().getSourceComplexName()),
+                () -> assertEquals("36A", supplyRow.getHousingTypeName()),
                 () -> assertEquals("1114010100100010000", supplyRow.getSupplyPnu()),
                 () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory()),
-                () -> assertNull(supplyRow.getMatchingFailureReason()),
-                () -> assertEquals(20, supplyRow.getTotalSupplyHouseholdCount())
+                // 대상 구분이 없는 등록의 모집수는 공급표의 '전체' 칸이 갖는다.
+                () -> assertEquals(20, notificationJdbc.queryForObject("""
+                        SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND q.id IN (
+                            SELECT m.supply_quota_id FROM supply_quota_members m
+                            JOIN supply_row_targets c ON c.id = m.supply_row_target_id WHERE c.supply_row_id = ?)
+                        """, Integer.class, supplyRow.getId()))
         );
     }
 

@@ -16,9 +16,75 @@ def test_split_table_headers_map_reserve_count_to_its_own_column():
 
     values = tables.SupplyTable.of(4, 1, rows, None, False).rows[3].values
 
-    assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
+    assert values == {"complexName": "Test", "supplyType": "26", "housingType": "26A", "target": "청년", "reserveCount": "20",
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}
 
+
+
+def test_winner_column_is_read_beside_reserve_winner_column():
+    # 경주·영천 국민임대 공고문은 '당첨자'와 '예비당첨자'를 나란히 둔다. 예비당첨자 열이 당첨자 열 후보로 겹쳐 당첨자 수가 빠졌다.
+    rows = [
+        ["단지명", "주택형", "세대당 계약면적(㎡)", None, "건설 호수", "당첨자", "예비당첨자"],
+        [None, None, "주거 전용", "주거 공용", None, None, None],
+        ["경주건천", "33", "33.48", "16.0127", "172", "12", "6"],
+    ]
+
+    values = tables.SupplyTable.of(3, 1, rows, None, False).rows[2].values
+
+    assert values["supplyHouseholdCount"] == "12"
+    assert values["reserveCount"] == "6"
+
+
+def test_reserve_column_is_not_the_target_column_naming_prospective_newlyweds():
+    # 울산다운2 A-9블록 공급·임대조건표. 공급대상 칸의 '예비신혼부부'가 예비자 열 머리글로 읽혀 예비자 수가 빠지거나 공급대상 열에 붙었다.
+    supply = [
+        ["공급형", "주택 형", "공급대상", "금회 공급호수", None, "세대당 계약면적(㎡)", None],
+        [None, None, None, None, None, "주거 전용", "주거 공용"],
+        [None, None, None, "당첨자 (122)", "예비자 (110)", None, None],
+        ["55", "55A", "신혼부부 예비신혼부부 한부모가족", "103", "100", "55.93", "24.1361"],
+    ]
+    rent = [
+        ["공급형", "주택형", "공급대상", "임대조건", None, None, None],
+        [None, None, None, "임대보증금", None, None, "월임대료 (원)"],
+        [None, None, None, "계", "계약금(5%)", "잔금(95%)", None],
+        ["55", "55A", "신혼부부 예비신혼부부 한부모가족", "66,000", "3,300", "62,700", "302,500"],
+    ]
+
+    supply_columns = tables.SupplyTable.of(2, 1, supply, None, False).columns
+    rent_columns = tables.SupplyTable.of(2, 2, rent, None, False).columns
+
+    assert supply_columns["supplyHouseholdCount"] == 3
+    assert supply_columns["reserveCount"] == 4
+    assert supply_columns["target"] == 2
+    assert "reserveCount" not in rent_columns
+
+
+def test_house_type_column_stays_the_housing_type_under_a_supply_type_cell_with_one_merged_count():
+    # 울산다운2 A-9블록: 공급형 55 아래 주택형 55A·55B가 당첨자·예비자 칸 하나를 함께 쓴다. 병합된 수량 칸은 함께 모집하는 수이고
+    # 주택형이 아니다. 공고문이 '주택형'이라 적은 55A·55B가 공고 주택형이고 공급형으로 바꿔 읽지 않는다(사용자 교정).
+    rows = [
+        ["공급형", "주택형", "공급대상", "당첨자", "예비자", "주거전용", "주거공용"],
+        ["55", "55A", "신혼부부", "103", "100", "55.93", "24.1361"],
+        [None, "55B", None, None, None, "55.97", "24.1534"],
+        ["55 (주거약자용)", "55AS", None, "19", "10", "55.93", "24.1361"],
+    ]
+
+    table = tables.SupplyTable.of(2, 1, rows, None, False)
+
+    assert [row.values.get("housingType") for row in table.rows[1:]] == ["55A", "55B", "55AS"]
+    assert all(not row.subtypes for row in table.rows[1:])
+
+
+def test_house_types_with_their_own_counts_stay_application_types_under_a_supply_type_cell():
+    rows = [
+        ["공급형", "주택형", "공급대상", "당첨자", "주거전용"],
+        ["36", "36A1", "청년", "10", "36.59"],
+        [None, "36A2", "청년", "8", "36.59"],
+    ]
+
+    table = tables.SupplyTable.of(2, 1, rows, None, False)
+
+    assert [row.values.get("housingType") for row in table.rows[1:]] == ["36A1", "36A2"]
 
 def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
     rows = [
@@ -118,7 +184,7 @@ def test_continued_table_page_reuses_the_previous_page_header_columns():
     inherited = tables.SupplyTable.of(4, 1, headers, None, False).columns
     values = tables.SupplyTable.of(5, 1, continuation_rows, inherited, False).rows[0].values
 
-    assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
+    assert values == {"complexName": "Test", "supplyType": "26", "housingType": "26A", "target": "청년", "reserveCount": "20",
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}
 
 
@@ -373,20 +439,31 @@ def subtypes_by_housing_type(table):
             for row in table.rows if row.subtypes}
 
 
-def test_house_type_rows_under_a_merged_housing_type_cell_become_one_subtype_per_exclusive_area():
+def test_house_type_rows_under_a_merged_housing_type_cell_become_one_subtype_per_house_type_name():
     table = tables.SupplyTable.of(3, 1, HOUSE_TYPE_ROWS, None, False)
 
     assert subtypes_by_housing_type(table) == {
         "049.7600A": [("49A", 49.76, 17.8623)],
-        "059.9000A": [("59A·59A1·59C", 59.98, 21.5309), ("59A2·59D", 59.99, 21.5345)],
+        # 면적이 같아도 공고문이 이름을 나눈 주택타입은 따로다(면적으로 묶지 않음, docs/features/admin/guide.md).
+        "059.9000A": [("59A", 59.98, 21.5309), ("59A1", 59.98, 21.5309), ("59C", 59.98, 21.5309),
+                      ("59A2", 59.99, 21.5345), ("59D", 59.99, 21.5345)],
         "059.9000B": [("59B", 59.93, 21.513), ("59B1", 59.92, 21.5094)],
-        "084.0000A": [("84A·84B", 84.67, 30.3939), ("84A1", 84.96, 30.498)],
+        "084.0000A": [("84A", 84.67, 30.3939), ("84B", 84.67, 30.3939), ("84A1", 84.96, 30.498)],
     }
     # 공급행 값은 지금처럼 신청형 행의 칸이다(첫 면적).
     assert table.rows[4].values["exclusiveArea"] == "59.98"
 
 
-def test_subtype_common_and_supply_areas_come_from_its_area_rows_only_when_they_agree():
+def test_house_type_read_twice_keeps_its_first_values_and_the_notice_order():
+    subtypes = [tables.TableSubtype("55A", 55.93, None, None), tables.TableSubtype("55B", 55.97, None, None),
+                tables.TableSubtype("55A", 55.99, None, None), tables.TableSubtype("55C", 55.93, None, None)]
+
+    assert tables.unique_subtypes(subtypes) == (tables.TableSubtype("55A", 55.93, None, None),
+                                                tables.TableSubtype("55B", 55.97, None, None),
+                                                tables.TableSubtype("55C", 55.93, None, None))
+
+
+def test_subtype_common_and_supply_areas_come_from_its_own_area_row():
     rows = [
         ["주택형", "주택타입", "주거전용", "주거공용", "공급면적", "예비자"],
         ["059.9000A", "59A", "59.98", "21.5309", "81.5109", "10"],
@@ -397,7 +474,9 @@ def test_subtype_common_and_supply_areas_come_from_its_area_rows_only_when_they_
 
     table = tables.SupplyTable.of(3, 1, rows, None, False)
 
-    assert table.rows[1].subtypes == (tables.TableSubtype("59A·59A1·59C", 59.98, None, None),)
+    assert table.rows[1].subtypes == (tables.TableSubtype("59A", 59.98, 21.5309, 81.5109),
+                                      tables.TableSubtype("59A1", 59.98, 21.54, 81.52),
+                                      tables.TableSubtype("59C", 59.98, 21.54, 81.52))
     assert table.rows[4].subtypes == (tables.TableSubtype("74A", 74.97, 26.9119, 101.8819),)
 
 
@@ -434,3 +513,46 @@ def test_single_cell_entrant_recruitment_header_is_the_recruitment_column():
     split = _table_field_columns([["단지명", "주택형", "모집호수", None, None], [None, None, "계", "입주자", "예비자"],
                                   ["A", "59", "13", "0", "13"]])
     assert (split["totalSupplyHouseholdCount"], split["supplyHouseholdCount"], split["reserveCount"]) == (2, 3, 4)
+
+
+def test_ruled_supply_table_is_read_even_when_layout_analysis_calls_it_a_picture(monkeypatch):
+    # 울산다운2 A-9블록 공고문은 레이아웃 분석이 선으로 그린 공급표를 그림으로 보고, 표 인식이 표를 0개로 돌려줘 추출이 멈췄다.
+    import pymupdf
+    from conftest import grid_page
+
+    def picture_only(page):
+        page.layout_information = [(*page.rect, "picture")]
+
+    monkeypatch.setattr(pymupdf.Page, "get_layout", picture_only)
+    document = pymupdf.open()
+    page = grid_page(document, [
+        ["공급형", "주택형", "공급대상", "당첨자", "주거전용", "주거공용"],
+        ["55", "55A", "신혼부부", "103", "55.93", "24.1361"],
+    ])
+
+    detected, failed = tables.detected_tables(page)
+
+    assert not failed
+    assert len(detected) == 1
+    assert detected[0].cells[1][1] == "55A"
+
+
+def test_tables_found_only_without_layout_analysis_are_kept_only_when_they_look_like_supply_tables(monkeypatch):
+    # 자산 기준표는 셀 문장 속 '임대보증금' 때문에 공급표로 분류된다. 레이아웃 분석이 버린 쪽에서 다시 찾을 때는 받지 않는다.
+    import pymupdf
+    from conftest import grid_page
+
+    monkeypatch.setattr(pymupdf.Page, "get_layout",
+                        lambda page: setattr(page, "layout_information", [(*page.rect, "picture")]))
+    asset_rules = grid_page(pymupdf.open(), [
+        ["구분", "산정 기준", "비고"],
+        ["부채", "임대보증금 및 대출금", "차감"],
+    ])
+    schedule = grid_page(pymupdf.open(), [
+        ["단지명", "동호지정일정", "접수장소"],
+        ["경주건천", "2026.11.24.", "지사"],
+        ["경주안강", "2026.11.25.", "지사"],
+    ])
+
+    assert tables.detected_tables(asset_rules) == ([], False)
+    assert tables.detected_tables(schedule) == ([], False)

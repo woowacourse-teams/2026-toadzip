@@ -5,6 +5,8 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -40,9 +42,13 @@ public record NotificationFixtures(EntityManager entities, JdbcTemplate jdbc) {
         return complex;
     }
 
+    /** 공고문의 단지(공고 단지) 하나로 공고를 단지에 잇고(단지가 없으면 잇지 않은 채) 모집 10세대 공급행을 둔다. */
     public void link(Announcement announcement, HousingComplex complex) {
-        entities.persist(SupplyRow.create(announcement, complex, null, UUID.randomUUID().toString(), 0,
-                "알림 테스트 단지", "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10));
+        String name = complex == null ? "알림 테스트 단지" : "알림 테스트 단지 " + complex.getId();
+        SupplyRow row = SupplyRowSeed.create(entities, announcement, complex, null, 0, name, "36A",
+                "1114010100100010000", null, SupplyCategory.NEW_SUPPLY);
+        entities.persist(row);
+        new SupplySheetSeed(entities).row(row, 10);
         entities.flush();
     }
 

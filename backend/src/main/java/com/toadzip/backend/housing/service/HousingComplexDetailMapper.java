@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 import com.toadzip.backend.housing.dto.response.CurrentAnnouncementResponse;
@@ -44,6 +45,7 @@ public class HousingComplexDetailMapper {
             List<CurrentSupplyConditionRow> supplyConditions,
             List<CurrentAnnouncementRow> announcements,
             List<CurrentAnnouncementTargetRow> announcementTargets,
+            Set<Long> unconfirmedAnnouncementIds,
             LocalDate today
     ) {
         Map<Long, List<CurrentSupplyConditionResponse>> conditionsByHousingType = groupSupplyConditions(
@@ -71,7 +73,7 @@ public class HousingComplexDetailMapper {
                 toImages(complex.imageUrl()),
                 null,
                 toHousingTypes(housingTypes, conditionsByHousingType),
-                toAnnouncements(announcements, targetsByAnnouncement, today)
+                toAnnouncements(announcements, targetsByAnnouncement, unconfirmedAnnouncementIds, today)
         );
     }
 
@@ -92,7 +94,8 @@ public class HousingComplexDetailMapper {
                 toLongExact(row.deposit()),
                 toLongExact(row.monthlyRent()),
                 toLongExact(row.convertibleDeposit()),
-                row.postedDate()
+                row.postedDate(),
+                row.supplyConfirmed()
         );
     }
 
@@ -174,16 +177,19 @@ public class HousingComplexDetailMapper {
     private List<CurrentAnnouncementResponse> toAnnouncements(
             List<CurrentAnnouncementRow> rows,
             Map<Long, List<String>> targetsByAnnouncement,
+            Set<Long> unconfirmedAnnouncementIds,
             LocalDate today
     ) {
         return rows.stream()
-                .map(row -> toAnnouncement(row, targetsByAnnouncement, today))
+                .map(row -> toAnnouncement(row, targetsByAnnouncement,
+                        !unconfirmedAnnouncementIds.contains(row.announcementId()), today))
                 .toList();
     }
 
     private CurrentAnnouncementResponse toAnnouncement(
             CurrentAnnouncementRow row,
             Map<Long, List<String>> targetsByAnnouncement,
+            boolean supplyConfirmed,
             LocalDate today
     ) {
         return new CurrentAnnouncementResponse(
@@ -195,7 +201,8 @@ public class HousingComplexDetailMapper {
                 row.applicationStartAt(),
                 row.applicationEndAt(),
                 dDay(row, today),
-                row.actualCompetitionRate()
+                row.actualCompetitionRate(),
+                supplyConfirmed
         );
     }
 

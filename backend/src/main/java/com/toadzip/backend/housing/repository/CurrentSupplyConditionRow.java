@@ -12,6 +12,7 @@ public record CurrentSupplyConditionRow(
         BigDecimal deposit,
         BigDecimal monthlyRent,
         BigDecimal convertibleDeposit,
-        LocalDate postedDate
+        LocalDate postedDate,
+        boolean supplyConfirmed
 ) {
 }

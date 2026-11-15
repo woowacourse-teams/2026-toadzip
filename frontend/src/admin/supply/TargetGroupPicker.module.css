@@ -1,0 +1,7 @@
+.picker { min-width: 10rem; }
+.picker > summary { cursor: pointer; overflow-wrap: anywhere; }
+.picker > summary small { display: block; color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); }
+.options { margin: var(--ds-space-2) 0 0; padding: 0; border: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: var(--ds-space-1) var(--ds-space-3); }
+.options label { display: flex; flex-direction: row; align-items: center; gap: var(--ds-space-2); font-size: var(--ds-text-body); line-height: 1.5; }
+.options input[type=checkbox] { width: auto; min-height: auto; flex: none; margin: 0; }
+.picker :is(summary, input):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }

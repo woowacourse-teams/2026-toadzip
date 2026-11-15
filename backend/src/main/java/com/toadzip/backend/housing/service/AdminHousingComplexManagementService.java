@@ -8,6 +8,8 @@ import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementHousingComplexRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -27,7 +29,6 @@ import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingComplexReviewRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -49,29 +50,31 @@ public class AdminHousingComplexManagementService {
     private final HousingComplexRepository complexes;
     private final HousingTypeRepository types;
     private final SupplyRowRepository rows;
+    private final AnnouncementHousingComplexRepository links;
+    private final AnnouncementComplexRepository announcementComplexes;
     private final AdminDataChangeRepository changes;
     private final RegionCodeResolver regions;
     private final ObjectMapper json;
     private final HousingComplexReviewRepository reviews;
     private final HousingTypeImpactService typeImpacts;
-    private final AnnouncementSupplyMatchDecisionRepository matchDecisions;
 
     public AdminHousingComplexManagementService(HousingComplexRepository complexes, HousingTypeRepository types,
             SupplyRowRepository rows, AdminDataChangeRepository changes, RegionCodeResolver regions,
             ObjectMapper json, HousingComplexReviewRepository reviews, HousingTypeImpactService typeImpacts,
-            AnnouncementSupplyMatchDecisionRepository matchDecisions,
-            ComplexSummaryQueryRepository adminQueries, Clock clock) {
+            ComplexSummaryQueryRepository adminQueries, Clock clock, AnnouncementHousingComplexRepository links,
+            AnnouncementComplexRepository announcementComplexes) {
         this.complexes = complexes;
         this.adminQueries = adminQueries;
         this.clock = clock;
         this.types = types;
         this.rows = rows;
+        this.links = links;
+        this.announcementComplexes = announcementComplexes;
         this.changes = changes;
         this.regions = regions;
         this.json = json;
         this.reviews = reviews;
         this.typeImpacts = typeImpacts;
-        this.matchDecisions = matchDecisions;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search) {
@@ -104,8 +107,9 @@ public class AdminHousingComplexManagementService {
         var complex = find(id);
         var housingTypes = types.findAllIncludingTrashByHousingComplexId(id).stream()
                 .map(this::housingTypeData).toList();
-        var announcements = rows.findAllByHousingComplexId(id).stream().map(row -> row.getAnnouncement())
-                .distinct().map(announcement -> new AdminDataSummary(announcement.getId(), announcement.getName(),
+        var announcements = links.findAllByHousingComplexIdOrderByAnnouncementIdAsc(id).stream()
+                .map(link -> link.getAnnouncement())
+                .map(announcement -> new AdminDataSummary(announcement.getId(), announcement.getName(),
                         announcement.getPostedDate().toString(), announcement.getProvider().name(),
                         enumName(announcement.getSupplyType()), announcement.isAdminDeleted(),
                         announcement.isAdminModified(), announcement.isSourceReviewRequired(),
@@ -114,7 +118,7 @@ public class AdminHousingComplexManagementService {
                                 enumName(announcement.getRecruitmentType()), announcement.getPostedDate(),
                                 announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
                                 announcement.getWinnerAnnouncementDate(), announcement.getStatus().name(),
-                                announcement.origin().name(), announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()))).toList();
+                                announcement.origin().name(), announcement.isSupplyConfirmed(), announcement.getReleaseStatus().name()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }
@@ -146,7 +150,7 @@ public class AdminHousingComplexManagementService {
     public void trash(long id, long version, boolean restore, String actor) {
         var complex = complexes.findByIdForUpdate(id).orElseThrow(AdminHousingComplexNotFoundException::new);
         checkVersion(complex, version);
-        if (!restore && rows.existsByHousingComplexIdAndAnnouncementAdminDeletedFalse(id)) {
+        if (!restore && announcementComplexes.existsByHousingComplexIdAndAnnouncementAdminDeletedFalse(id)) {
             throw new AdminDataConflictException("연결된 공고가 있습니다. 공고 연결을 변경하거나 공고를 먼저 삭제해 주세요.");
         }
         String before = json.writeValueAsString(summary(complex));
@@ -222,8 +226,8 @@ public class AdminHousingComplexManagementService {
         var type = types.findIncludingTrashById(typeId)
                 .filter(found -> found.getHousingComplex().getId() == id)
                 .orElseThrow(() -> new AdminDataConflictException("이 단지에 속한 주택형이 없습니다. 새로 조회해 주세요."));
-        // 휴지통 주택형은 공개·후보 조회에서 빠지므로 공급행·매칭 판단이 가리키면 연결이 끊긴다.
-        if (!restore && (rows.existsByHousingType(type) || matchDecisions.existsByHousingTypeId(typeId))) {
+        // 휴지통 주택형은 공개·후보 조회에서 빠지므로 공급행이 가리키면 연결이 끊긴다.
+        if (!restore && rows.existsByHousingType(type)) {
             throw new AdminDataConflictException("이 주택형에 연결된 공급정보가 있습니다. 공고의 공급정보에서 연결을 바꾼 뒤 삭제해 주세요.");
         }
         if (restore && types.findAllIncludingTrashByHousingComplexId(id).stream().anyMatch(other -> !other.isAdminDeleted()

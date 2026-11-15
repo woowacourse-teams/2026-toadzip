@@ -1,168 +1,167 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { rememberApply } from './supplyApplyRecovery'
 import { ManagementError } from '../management/api'
 import { SupplyCorrectionWorkbench } from './SupplyCorrectionWorkbench'
-import { applySupply, loadSupplyWorkspace, previewSupply, type CorrectionRow, type SupplyPreview } from './supplyCorrectionApi'
+import { applySupply, loadSupplyWorkspace, previewSupply, startSupplyFromAgency, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { sampleSheet } from './fixtures/sheet'
+import { addHousingType, removeHousingType, updateHousingType } from './sheetEdits'
+import { toSheetInput, type SupplySheet } from './supplySheet'
 
-vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: ({ evidence, pending, onReviewed }: { evidence: { note: string; sourceUrl: string; sourcePage: string | null } | null; pending: string[]; onReviewed: () => void }) =>
-  <div data-testid="review-panel">{evidence ? `${evidence.note}|${evidence.sourceUrl}|${evidence.sourcePage ?? ''}` : ''}<output aria-label="검토할 바뀐 항목">{pending.join(',')}</output><button type="button" onClick={onReviewed}>모의 검토 기록</button></div> }))
-vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn() }))
-const row: CorrectionRow = {
-  id: 1, key: 'row:1', housingComplexId: 7, housingComplexName: '한스빌', housingTypeId: 8, newHousingType: null,
-  groupId: null, sharedHouseholdCount: null, protectedValues: false, excluded: false, displayOrder: 0,
-  complexName: '한스빌', typeName: '26', pnu: '1114010100100010000', moveInMonth: null, category: 'NEW_SUPPLY',
-  householdCount: 10, areaOverride: false, exclusiveArea: 26.4673, supplyArea: null, targetCountsComparable: false,
-  targets: [{ id: 2, key: 'target:2', excluded: false, protectedValues: false, displayOrder: 0, target: '일반', supplyRank: null,
-    householdCount: 10, reserveCount: null, deposit: '100000000', rent: '200000', convertedDeposit: null, condition: '공고문 확인' }],
-}
-const workspace = { snapshotToken: 'before', version: 1, rows: [row], sources: [] }
-const preview: SupplyPreview = { confirmationToken: 'confirmed', before: [row], after: [{ ...row, typeName: '26A' }], warnings: ['연결 상태 확인 필요'] }
+vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: ({ evidence, pending }: { evidence: { note: string } | null; pending: string[] }) =>
+  <div data-testid="review-panel">{evidence?.note}<output aria-label="검토할 바뀐 항목">{pending.join(',')}</output></div> }))
+// PDF 보정 화면은 공급표를 돌려주는 쪽만 흉내 낸다.
+const pdf = vi.hoisted(() => ({ sheet: null as SupplySheet | null }))
+vi.mock('../announcement-pdf/PdfCorrectionPage', () => ({ PdfCorrectionWorkspace: ({ supplyDraft }: { supplyDraft: (sheet: SupplySheet) => void }) =>
+  <button type="button" onClick={() => supplyDraft(pdf.sheet!)}>모의 PDF 공급표 넘기기</button> }))
+vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), previewSupply: vi.fn(), applySupply: vi.fn(), startSupplyFromAgency: vi.fn() }))
+
+const workspace: SupplyWorkspace = { snapshotToken: 'before', stagingToken: null, supplyConfirmed: true, version: 1, sheet: sampleSheet(), announcementComplexes: [], applicationTypeNames: [],
+  sourceReference: [{ complexLabel: '두꺼비', typeName: '46', exclusiveArea: 46.5, householdCount: 10 }], warnings: [] }
+const renamed = updateHousingType(sampleSheet(), 'row:1', { name: '46A(신혼)' })
+const preview: SupplyPreview = { confirmationToken: 'confirmed', before: sampleSheet(), after: renamed, warnings: ['연결 상태 확인 필요'] }
 beforeEach(() => {
   vi.resetAllMocks()
   sessionStorage.clear()
   vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(workspace))
   vi.mocked(previewSupply).mockResolvedValue(structuredClone(preview))
-  vi.mocked(applySupply).mockResolvedValue({ changeId: 3, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', version: 2, rows: preview.after } })
+  vi.mocked(applySupply).mockResolvedValue({ changeId: 3, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', version: 2, sheet: renamed } })
 })
+afterEach(() => vi.restoreAllMocks())
 async function setup(edit = true) {
   const onChanged = vi.fn()
   render(<MemoryRouter><SupplyCorrectionWorkbench id="21" sourceUrl="https://example.com/notice.pdf" onChanged={onChanged} onBusyChange={vi.fn()} onDirtyChange={vi.fn()} /></MemoryRouter>)
   await screen.findByRole('table', { name: '공급정보 표' })
-  if (edit) fireEvent.click(screen.getByRole('button', { name: '한스빌 26 편집' }))
+  if (edit) fireEvent.click(screen.getByRole('button', { name: '두꺼비 단지 46A 편집' }))
   return onChanged
 }
-function editAndSave() {
-  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기'), { target: { value: '26A' } })
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '공식 공고의 A형 확인' } })
+function save(reason = '공식 공고의 신혼 표기 확인') {
+  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: reason } })
   fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
 }
-it('표를 먼저 보여주고 필요한 행만 펼친다. 별도 JSON 입력과 5단계는 없다', async () => {
+function editAndSave() {
+  fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기'), { target: { value: '46A(신혼)' } })
+  save()
+}
+
+it('주택형별 표를 먼저 보여 주고 필요한 주택형만 펼치며, LH·GH 원천은 접힌 참고로만 둔다', async () => {
   await setup(false)
-  expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('한스빌')
+  const table = screen.getByRole('table', { name: '공급정보 표' })
+  expect(within(table).getAllByRole('row').slice(1).map(row => row.textContent)).toEqual([
+    expect.stringContaining('두꺼비 단지46A10'), expect.stringContaining('두꺼비 단지59B7')])
   expect(screen.queryByLabelText('이 공고의 주택형 표기')).not.toBeInTheDocument()
-  expect(screen.queryByText(/구조화한 공급정보|보정 진행 단계/)).not.toBeInTheDocument()
-  expect(screen.queryByRole('textbox', { name: /JSON/ })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'PDF로 채우기' })).toBeEnabled()
-  expect(screen.getByRole('button', { name: '직접 추가' })).toBeEnabled()
+  const reference = screen.getByText('LH·GH 원천 참고 1개').closest('details')!
+  expect(reference).not.toHaveAttribute('open')
+  expect(within(reference).getByRole('table', { name: 'LH·GH 원천 참고 표' })).toHaveTextContent('두꺼비4646.510')
+  expect(screen.getByText('아직 변경한 공급정보가 없습니다.')).toBeVisible()
 })
-it('서버 검증 후 동일한 입력과 토큰으로 한 번 저장하고 하위 조건을 보존한다', async () => {
+
+it('고친 공급표를 서버가 확인한 뒤 같은 입력과 확인 토큰으로 한 번 저장하고, 바뀐 주택형을 검토 대상으로 넘긴다', async () => {
   const changed = await setup()
   editAndSave()
   await screen.findByText('공급정보를 저장했습니다.')
   expect(changed).toHaveBeenCalledOnce()
-  expect(previewSupply).toHaveBeenCalledWith('21', expect.objectContaining({ snapshotToken: 'before', rows: [expect.objectContaining({ typeName: '26A', targets: row.targets })] }))
-  expect(applySupply).toHaveBeenCalledExactlyOnceWith('21', vi.mocked(previewSupply).mock.calls[0][1], 'confirmed')
+  const input = vi.mocked(previewSupply).mock.calls[0][1]
+  expect(input).toMatchObject({ snapshotToken: 'before', reason: '공식 공고의 신혼 표기 확인', sourceUrl: 'https://example.com/notice.pdf', sourcePage: null })
+  // 손대지 않은 공급대상·수량·임대조건도 함께 보낸다. 빠진 것은 서버가 지우기 때문이다.
+  expect(input.sheet).toEqual(toSheetInput(renamed))
+  expect(applySupply).toHaveBeenCalledExactlyOnceWith('21', input, 'confirmed')
   expect(screen.getByLabelText('검토할 바뀐 항목')).toHaveTextContent('row:1')
+  expect(screen.getByText('저장 후 확인할 항목 1개')).toBeInTheDocument()
 })
-it('제외·복구와 순서 변경은 하위 임대조건을 지우지 않는다', async () => {
-  await setup()
-  fireEvent.click(screen.getByRole('button', { name: '공급행 제외' }))
-  expect(screen.getByLabelText('보증금 (원)')).toHaveValue('100000000')
-  fireEvent.click(screen.getByRole('button', { name: '공급행 복구' }))
-  fireEvent.click(screen.getByRole('button', { name: '직접 추가' }))
-  fireEvent.change(screen.getByLabelText('공고의 단지명'), { target: { value: '새 단지' } })
-  fireEvent.click(screen.getByRole('button', { name: '위로' }))
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 26 편집' }))
-  expect(screen.getByLabelText('보증금 (원)')).toHaveValue('100000000')
-})
-it('공통 모집수를 쓰는 대상을 제외하면 그 묶음을 풀어 보내 서버가 거절하지 않는다', async () => {
-  const shared = { key: 'group:5', count: 20 }
-  const grouped = { ...row, targets: [
-    { ...row.targets[0], id: 2, key: 'target:2', target: '청년(소득 없음)', householdCount: null, reserveCountGroup: shared },
-    { ...row.targets[0], id: 3, key: 'target:3', target: '청년(소득 있음)', displayOrder: 1, householdCount: null, reserveCountGroup: shared }] }
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone({ ...workspace, rows: [grouped] }))
-  await setup()
-  expect(screen.getAllByText(/함께 쓰는 수\(공통 모집수\)/)).toHaveLength(2)
-  fireEvent.click(screen.getAllByRole('button', { name: '대상 제외' })[1])
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '소득 있음 대상 중복' } })
-  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
-  await waitFor(() => expect(previewSupply).toHaveBeenCalled())
-  const sent = vi.mocked(previewSupply).mock.calls[0][1].rows[0].targets
-  expect(sent.map(target => [target.excluded, target.reserveCountGroup ?? null])).toEqual([[false, null], [true, null]])
-})
-it('관리자가 추가한 저장 행만 삭제할 수 있고, 삭제 예정 행은 요청 행에서 빼고 deletedRowKeys로 보낸다', async () => {
-  const manual = { ...row, id: 5, key: 'row:5', complexName: '한스빌', typeName: '36', targets: [] }
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [row, manual], deletableRowKeys: ['row:5'] })
-  vi.mocked(previewSupply).mockResolvedValue({ confirmationToken: 'confirmed', before: [row, manual], after: [row], warnings: [] })
-  vi.mocked(applySupply).mockResolvedValue({ changeId: 3, alreadyApplied: false, workspace: { ...workspace, snapshotToken: 'after', rows: [row], deletableRowKeys: [] } })
-  await setup()
-  // 원천행에는 제외만 있다.
-  expect(screen.getByRole('button', { name: '공급행 제외' })).toBeVisible()
-  expect(screen.queryByRole('button', { name: '공급행 삭제' })).not.toBeInTheDocument()
-  // 표에서도 원천행은 제외, 관리자가 추가한 저장 행은 삭제만 보인다.
-  expect(screen.getByRole('button', { name: '한스빌 26 제외' })).toBeVisible()
-  expect(screen.getByRole('button', { name: '한스빌 36 삭제' })).toBeVisible()
-  expect(screen.queryByRole('button', { name: '한스빌 36 제외' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 36 편집' }))
-  fireEvent.click(screen.getByRole('button', { name: '공급행 삭제' }))
-  expect(screen.getByText('적용하면 관리자가 추가한 이 행과 하위 조건을 지웁니다. 복구할 수 없고 변경 이력에만 남습니다.')).toBeVisible()
-  expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('삭제 예정')
-  fireEvent.click(screen.getByRole('button', { name: '삭제 취소' }))
-  expect(screen.getByRole('table', { name: '공급정보 표' })).not.toHaveTextContent('삭제 예정')
-  fireEvent.click(screen.getByRole('button', { name: '공급행 삭제' }))
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '중복으로 추가한 행 삭제' } })
-  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
-  await screen.findByText('공급정보를 저장했습니다.')
-  expect(previewSupply).toHaveBeenCalledWith('21', expect.objectContaining({ rows: [expect.objectContaining({ key: 'row:1' })], deletedRowKeys: ['row:5'] }))
-})
-it('표에서 행을 펼치지 않고 공급행을 제외해 같은 근거 입력으로 저장한다', async () => {
+
+it('저장된 주택형을 지우면 확인을 받고, 그 칸이 든 수량·임대조건을 정리한 공급표를 보낸다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
   await setup(false)
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 26 제외' }))
-  expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('제외 예정')
-  expect(screen.queryByLabelText('이 공고의 주택형 표기')).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '중복 공급행 정리' } })
-  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
-  await screen.findByText('공급정보를 저장했습니다.')
-  expect(previewSupply).toHaveBeenCalledWith('21', expect.objectContaining({ reason: '중복 공급행 정리', rows: [expect.objectContaining({ id: 1, excluded: true, targets: row.targets })] }))
+  fireEvent.click(screen.getByRole('button', { name: '두꺼비 단지 59B 지우기' }))
+  expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('59B')
+  fireEvent.click(screen.getByRole('button', { name: '두꺼비 단지 59B 지우기' }))
+  expect(confirm.mock.calls[1][0]).toContain('저장하면 되돌릴 수 없고')
+  expect(screen.getByRole('table', { name: '공급정보 표' })).not.toHaveTextContent('59B')
+  save('중복 주택형 정리')
+  await waitFor(() => expect(previewSupply).toHaveBeenCalled())
+  const sheet = vi.mocked(previewSupply).mock.calls[0][1].sheet
+  expect(sheet.housingTypes.map(type => type.key)).toEqual(['row:1'])
+  expect(sheet.cells.map(cell => cell.key)).toEqual(['cell:1', 'cell:2'])
+  expect(sheet.quotas).toEqual([{ kind: 'WINNER', count: 10, members: ['cell:1', 'cell:2'] }, { kind: 'RESERVE', count: 5, members: ['cell:1'] },
+    { kind: 'RESERVE', count: 8, members: ['cell:2'] }])
+  expect(sheet.leaseTerms.map(lease => lease.members)).toEqual([['cell:1', 'cell:2']])
 })
-it('공급행이 없는 공고에 첫 행과 임대조건을 직접 작성해 같은 저장 API로 생성한다', async () => {
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [] })
+
+it('공급정보가 없는 공고에 첫 주택형과 공급대상을 직접 만들어 새 키로 보낸다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] } })
   await setup(false)
   expect(screen.getByText('등록된 공급정보가 없습니다.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '직접 추가' }))
   fireEvent.change(screen.getByLabelText('공고의 단지명'), { target: { value: '첫 단지' } })
   fireEvent.change(screen.getByLabelText('이 공고의 주택형 표기'), { target: { value: '46A' } })
-  fireEvent.change(screen.getByLabelText('공급 PNU'), { target: { value: '1114010100100010000' } })
   fireEvent.click(screen.getByRole('button', { name: '공급대상 추가' }))
-  fireEvent.change(screen.getByLabelText('공급대상'), { target: { value: '일반' } })
-  fireEvent.change(screen.getByLabelText('보증금 (원)'), { target: { value: '9007199254740993' } })
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: '공식 공고의 첫 공급행' } })
-  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
+  // 이름 없는 공급대상은 저장하지 않는다.
+  expect(screen.getByRole('button', { name: '공급정보 저장' })).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('공급대상 1 이름'), { target: { value: '일반' } })
+  fireEvent.change(screen.getByLabelText('공급대상 1 모집 수'), { target: { value: '12' } })
+  fireEvent.change(screen.getByLabelText('공급대상 1 보증금 (원)'), { target: { value: '9007199254740993' } })
+  save('공식 공고의 첫 주택형')
   await waitFor(() => expect(applySupply).toHaveBeenCalledOnce())
-  expect(vi.mocked(applySupply).mock.calls[0][1].rows).toEqual([expect.objectContaining({ id: null, typeName: '46A', targets: [expect.objectContaining({ id: null, target: '일반', deposit: '9007199254740993' })] })])
+  const sheet = vi.mocked(applySupply).mock.calls[0][1].sheet
+  expect(sheet.housingTypes).toEqual([expect.objectContaining({ key: expect.stringMatching(/^new:/), id: null, complexName: '첫 단지', name: '46A' })])
+  expect(sheet.targets).toEqual([expect.objectContaining({ key: expect.stringMatching(/^new:/), label: '일반' })])
+  expect(sheet.quotas).toEqual([{ kind: 'WINNER', count: 12, members: [sheet.cells[0].key] }])
+  expect(sheet.leaseTerms).toEqual([{ rentalDeposit: '9007199254740993', monthlyRent: null, convertedDeposit: null, members: [sheet.cells[0].key] }])
 })
+
+it('PDF로 채우면 받은 공급표로 편집표를 바꾸고, 저장하면 지워질 기존 주택형 수를 알린다', async () => {
+  pdf.sheet = addHousingType(removeHousingType(sampleSheet(), 'row:2'), { name: '84C', complexName: '두꺼비' }).sheet
+  await setup(false)
+  fireEvent.click(screen.getByRole('button', { name: 'PDF로 채우기' }))
+  fireEvent.click(screen.getByRole('button', { name: '모의 PDF 공급표 넘기기' }))
+  const table = await screen.findByRole('table', { name: '공급정보 표' })
+  expect(within(table).getAllByRole('row').slice(1).map(row => (row as HTMLTableRowElement).cells[1].textContent)).toEqual(['46A', '84C'])
+  expect(screen.getByText(/PDF에 없는 저장된 주택형 1개는 저장하면 지워집니다\./)).toBeVisible()
+  save('PDF 공급표 반영')
+  await waitFor(() => expect(previewSupply).toHaveBeenCalled())
+  expect(vi.mocked(previewSupply).mock.calls[0][1].sheet).toEqual(toSheetInput(pdf.sheet))
+})
+
 it('검증 오류에서는 저장하지 않고 입력을 보존한다', async () => {
   vi.mocked(previewSupply).mockRejectedValue(new Error('잘못된 주택형 소속'))
   await setup(); editAndSave()
   expect(await screen.findByRole('alert')).toHaveTextContent('잘못된 주택형 소속')
   expect(applySupply).not.toHaveBeenCalled()
-  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('26A')
+  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('46A(신혼)')
 })
-it('동시 수정은 최신값을 가져와 겹친 필드만 선택하게 한다', async () => {
+
+it('동시 수정은 최신값을 가져와 겹친 항목만 고르게 하고 나머지는 최신값으로 맞춘다', async () => {
   vi.mocked(applySupply).mockRejectedValue(new ManagementError('원천이 변경됨', 409, {}, 'ADMIN_DATA_STALE'))
   await setup(); editAndSave()
   expect(await screen.findByRole('alert')).toHaveTextContent('저장하는 사이 등록값이나 원천이 바뀌어 저장하지 않았습니다.')
   expect(screen.getAllByRole('alert')).toHaveLength(1)
   expect(screen.queryByText('원천이 변경됨')).not.toBeInTheDocument()
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, snapshotToken: 'latest', rows: [{ ...row, typeName: '다른 관리자 형명', householdCount: 20 }] })
+  const latest = updateHousingType(sampleSheet(), 'row:1', { name: '다른 관리자 형명', supplyPnu: '1111' })
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, snapshotToken: 'latest', sheet: latest })
   fireEvent.click(screen.getByRole('button', { name: '입력을 유지하고 최신값 비교' }))
   await screen.findByText('겹치는 변경을 선택하세요')
+  expect(screen.getByText('현재 저장값: 다른 관리자 형명 / 내 입력: 46A(신혼)')).toBeVisible()
   expect(screen.getByRole('button', { name: '공급정보 저장' })).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: '내 입력 사용' }))
-  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('26A')
-  expect(screen.getByLabelText('금회 모집수 (세대)')).toHaveValue(20)
+  expect(screen.getByLabelText('이 공고의 주택형 표기')).toHaveValue('46A(신혼)')
+  expect(screen.getByLabelText('공급 PNU')).toHaveValue('1111')
+  save()
+  await waitFor(() => expect(previewSupply).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(previewSupply).mock.calls[1][1].snapshotToken).toBe('latest')
 })
+
 it('다시 조회해도 풀리지 않는 409는 서버가 알려 준 이유를 그대로 보여 주고 최신값 비교를 권하지 않는다', async () => {
-  vi.mocked(previewSupply).mockRejectedValue(new ManagementError('제외·연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요.', 409, {}, 'ADMIN_DATA_CONFLICT'))
+  vi.mocked(previewSupply).mockRejectedValue(new ManagementError('연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요.', 409, {}, 'ADMIN_DATA_CONFLICT'))
   await setup(); editAndSave()
-  expect(await screen.findByRole('alert')).toHaveTextContent('제외·연결 변경할 단지에 접수 일정이 있습니다. 일정 적용 단지를 먼저 수정하세요.')
-  expect(screen.queryByText(/저장하는 사이 등록값이나 원천이 바뀌어/)).not.toBeInTheDocument()
+  expect(await screen.findByRole('alert')).toHaveTextContent('연결 변경할 단지에 접수 일정이 있습니다.')
   expect(screen.queryByRole('button', { name: '입력을 유지하고 최신값 비교' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '공급정보 저장' })).toBeEnabled()
   expect(applySupply).not.toHaveBeenCalled()
 })
+
 it('응답 유실은 입력을 잠그고 동일한 작업 ID로 재확인한다', async () => {
   vi.mocked(applySupply).mockRejectedValueOnce(new TypeError('network'))
   await setup(); editAndSave()
@@ -170,8 +169,9 @@ it('응답 유실은 입력을 잠그고 동일한 작업 ID로 재확인한다'
   await screen.findByText('공급정보를 저장했습니다.')
   expect(vi.mocked(applySupply).mock.calls[0]).toEqual(vi.mocked(applySupply).mock.calls[1])
 })
+
 it('새로고침해도 응답 유실 작업을 복원하고 새 작업을 만들지 않는다', async () => {
-  const input = { operationId: 'pending-id', snapshotToken: 'before', reason: '근거 확인', sourceUrl: 'https://example.com/notice.pdf', sourcePage: null, rows: preview.after }
+  const input = { operationId: 'pending-id', snapshotToken: 'before', reason: '근거 확인', sourceUrl: 'https://example.com/notice.pdf', sourcePage: null, sheet: toSheetInput(renamed) }
   rememberApply('21', { input, result: preview })
   await setup(false)
   fireEvent.click(screen.getByRole('button', { name: '같은 작업으로 적용 결과 확인' }))
@@ -181,59 +181,87 @@ it('새로고침해도 응답 유실 작업을 복원하고 새 작업을 만들
   expect(sessionStorage.getItem('admin:pending-supply-apply:21')).toBeNull()
 })
 
-it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단지가 다른 단지처럼 보이지 않는다', async () => {
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [row, { ...row, id: 2, key: 'row:2', complexName: '익산 한스빌 국민임대', typeName: '36' }] })
-  render(<MemoryRouter><SupplyCorrectionWorkbench id="21" sourceUrl="https://example.com/notice.pdf" onChanged={vi.fn()} onBusyChange={vi.fn()} onDirtyChange={vi.fn()} /></MemoryRouter>)
-  const table = await screen.findByRole('table', { name: '공급정보 표' })
-  expect(within(table).getAllByRole('rowheader').map(cell => cell.textContent)).toEqual(['한스빌', '한스빌'])
-  expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 익산 한스빌 국민임대')
-})
-
-it('같은 전용면적 공급행이 없어 붙지 않은 LH 공급 원본 행은 직접 추가를 막지 않는 참고 정보로 알린다', async () => {
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(workspace), unattachedLhSupplyRows: [{ rowIdentifier: 'LH:P:SUPPLY:1', complexLabel: '한스빌', typeName: '26B', exclusiveArea: null }] })
+it('이전 공급행 형식으로 남은 적용 대기 기록은 버리고 편집을 잠그지 않는다', async () => {
+  sessionStorage.setItem('admin:pending-supply-apply:21', JSON.stringify({ input: { operationId: 'old', snapshotToken: 'before', reason: '근거', sourceUrl: 'https://example.com',
+    sourcePage: null, rows: [{ key: 'row:1' }] }, result: { confirmationToken: 'old', before: [], after: [], warnings: [] } }))
   await setup(false)
+  expect(screen.queryByRole('button', { name: '같은 작업으로 적용 결과 확인' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '직접 추가' })).toBeEnabled()
-  expect(screen.getByRole('note')).toHaveTextContent('LH 공급 원본 1행(한스빌 · 26B)과 전용면적이 같은 공급행이 없습니다. LH 행은 세대수 검산용 참고 정보라 저장을 막지 않습니다.')
-  expect(screen.getByRole('note')).not.toHaveTextContent('LH 행 연결')
+  expect(sessionStorage.getItem('admin:pending-supply-apply:21')).toBeNull()
 })
 
-it('LH 원본과 중복 가능한 행을 같은 주택형의 펼침 행으로 합치면 조건과 표기를 옮기고 직접 추가 행은 지운다', async () => {
-  const expanded = { ...row, id: 264, key: 'row:264', typeName: '39', householdCount: 100, targets: [] }
-  const manual = { ...row, id: 205, key: 'row:205', typeName: '39A', householdCount: null }
-  const other = { ...row, id: 91, key: 'row:91', typeName: '27', housingTypeId: 99, targets: [] }
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [other, expanded, manual], deletableRowKeys: ['row:205'],
-    rowSources: [{ rowKey: 'row:91', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:0' }, { rowKey: 'row:264', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:1' }] })
+it('공급대상 분류가 생기기 전에 남은 적용 대기 기록도 버려, 분류 없는 요청을 같은 작업으로 다시 보내지 않는다', async () => {
+  const sheet = toSheetInput(renamed)
+  const targets = sheet.targets.map(target => { const copy: Record<string, unknown> = { ...target }; delete copy.groups; return copy })
+  const input = { operationId: 'pending-id', snapshotToken: 'before', reason: '근거 확인', sourceUrl: 'https://example.com/notice.pdf', sourcePage: null, sheet: { ...sheet, targets } }
+  sessionStorage.setItem('admin:pending-supply-apply:21', JSON.stringify({ input, result: preview }))
   await setup(false)
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 편집' }))
-  const panel = screen.getByRole('region', { name: 'LH 펼친 행으로 합치기' })
-  expect(within(panel).getByLabelText('합칠 LH 펼침 행')).toHaveValue('row:264')
-  fireEvent.click(within(panel).getByRole('button', { name: '펼친 행으로 합치기' }))
-  expect(screen.getByText('합쳐서 삭제 예정')).toBeVisible()
-
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 합치기 취소' }))
-  expect(screen.queryByText('합쳐서 삭제 예정')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 편집' }))
-  fireEvent.click(within(screen.getByRole('region', { name: 'LH 펼친 행으로 합치기' })).getByRole('button', { name: '펼친 행으로 합치기' }))
-  fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: 'LH 펼침 행과 중복' } })
-  fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
-
-  await waitFor(() => expect(previewSupply).toHaveBeenCalled())
-  const input = vi.mocked(previewSupply).mock.calls[0][1]
-  expect(input.deletedRowKeys).toEqual(['row:205'])
-  expect(input.rows.map(item => item.key)).toEqual(['row:91', 'row:264'])
-  expect(input.rows[1]).toMatchObject({ typeName: '39A', householdCount: 100, targets: [expect.objectContaining({ id: null, rent: '200000' })] })
+  expect(screen.queryByRole('button', { name: '같은 작업으로 적용 결과 확인' })).not.toBeInTheDocument()
+  expect(sessionStorage.getItem('admin:pending-supply-apply:21')).toBeNull()
 })
 
-it('펼침 행에 이미 임대조건이 있으면 합치지 않고 두 조건을 보여 준다', async () => {
-  const expanded = { ...row, id: 264, key: 'row:264', typeName: '39', targets: [{ ...row.targets[0], id: 30, key: 'target:30', rent: '85310' }] }
-  const manual = { ...row, id: 205, key: 'row:205', typeName: '39A' }
-  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, rows: [expanded, manual], deletableRowKeys: ['row:205'],
-    rowSources: [{ rowKey: 'row:264', category: 'LH_ANNOUNCEMENT_SUPPLY', sourceKey: 'LH:P:SUPPLY:1' }] })
+it('공고 표기가 달라도 연결한 단지 이름으로 보여 같은 단지가 다른 단지처럼 보이지 않는다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...workspace, sheet: updateHousingType(sampleSheet(), 'row:2', { complexName: '두꺼비 국민임대' }) })
   await setup(false)
-  fireEvent.click(screen.getByRole('button', { name: '한스빌 39A 편집' }))
-  const panel = screen.getByRole('region', { name: 'LH 펼친 행으로 합치기' })
-  expect(within(panel).getByRole('button', { name: '펼친 행으로 합치기' })).toBeDisabled()
-  expect(within(panel).getByRole('note')).toHaveTextContent('월 85310')
-  expect(within(panel).getByRole('note')).toHaveTextContent('월 200000')
+  const table = screen.getByRole('table', { name: '공급정보 표' })
+  expect(within(table).getAllByRole('rowheader').map(cell => cell.textContent)).toEqual(['두꺼비 단지', '두꺼비 단지'])
+  expect(within(table).getAllByRole('rowheader')[1]).toHaveAttribute('title', '공고 표기: 두꺼비 국민임대')
 })
 
+/** 공고문으로 확인한 공급표가 아직 없는 공고. 표는 비어 있고 기관이 보낸 공급정보로 시작할 수 있다. */
+const agencyOnly: SupplyWorkspace = { ...workspace, snapshotToken: 'agency', stagingToken: 'staging', supplyConfirmed: false, sheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] } }
+const started: SupplyWorkspace = { ...workspace, snapshotToken: 'started', version: 2 }
+
+it('공급표가 확정된 공고에는 확인 전 안내를 보이지 않고, 기관 공급정보가 없는 확인 전 공고에는 안내만 보인다', async () => {
+  await setup(false)
+  expect(screen.queryByRole('region', { name: '공고문 확인 전 공급정보' })).not.toBeInTheDocument()
+  cleanup()
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...agencyOnly, stagingToken: null })
+  await setup(false)
+  const notice = await screen.findByRole('region', { name: '공고문 확인 전 공급정보' })
+  expect(notice).toHaveTextContent('아직 공고문으로 확인한 공급표가 없습니다.')
+  expect(screen.queryByRole('button', { name: '기관 제공 정보로 공급표 시작' })).not.toBeInTheDocument()
+})
+
+it('확인 전 공고는 확인을 받은 뒤 작업실 두 토큰으로 기관 공급정보에서 공급표를 시작하고, 돌려받은 공급표를 보인다', async () => {
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(agencyOnly))
+  vi.mocked(startSupplyFromAgency).mockResolvedValue(structuredClone(started))
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  const changed = await setup(false)
+  expect(screen.getByRole('region', { name: '공고문 확인 전 공급정보' })).toHaveTextContent('기관(LH·GH)이 보낸 공급정보를 ‘공고문 확인 전 정보’로 보여 줍니다')
+  fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  expect(startSupplyFromAgency).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  await screen.findByText('기관 제공 정보로 공급표를 만들었습니다. 공고문과 다른 값이 있으면 아래 표에서 고치세요.')
+  expect(confirm).toHaveBeenCalledTimes(2)
+  expect(startSupplyFromAgency).toHaveBeenCalledExactlyOnceWith('21', { snapshotToken: 'agency', stagingToken: 'staging' })
+  expect(changed).toHaveBeenCalledOnce()
+  expect(within(screen.getByRole('table', { name: '공급정보 표' })).getAllByRole('rowheader')).toHaveLength(2)
+  expect(screen.queryByRole('region', { name: '공고문 확인 전 공급정보' })).not.toBeInTheDocument()
+})
+
+it('시작이 거절되면 운영자 문구로 알리고, 충돌(409)이면 최신 작업실을 다시 불러온다', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(agencyOnly))
+  vi.mocked(startSupplyFromAgency).mockRejectedValueOnce(new ManagementError('공급정보가 바뀌었습니다. 최신 값을 다시 불러온 뒤 시작하세요.', 409, {}, 'ADMIN_DATA_STALE'))
+    .mockRejectedValueOnce(new ManagementError('이미 공고 공급표가 있습니다. 공급정보 보정으로 고치세요.', 409, {}, 'ADMIN_DATA_CONFLICT'))
+    .mockRejectedValueOnce(new ManagementError('준비 데이터가 없는 공고입니다. 공급정보를 직접 입력하세요.', 400))
+  await setup(false)
+  const start = () => fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+
+  vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(agencyOnly), snapshotToken: 'agency-2', stagingToken: 'staging-2' })
+  start()
+  expect(await screen.findByRole('alert')).toHaveTextContent('보는 사이 공급정보가 바뀌었습니다. 최신 공급정보를 불러왔으니 확인한 뒤 다시 시작하세요.')
+  expect(loadSupplyWorkspace).toHaveBeenCalledTimes(2)
+  await waitFor(() => expect(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' })).toBeEnabled())
+  start()
+  await waitFor(() => expect(startSupplyFromAgency).toHaveBeenLastCalledWith('21', { snapshotToken: 'agency-2', stagingToken: 'staging-2' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('이미 공급표가 있는 공고입니다. 최신 공급정보를 불러왔으니 아래 표에서 고치세요.')
+  expect(loadSupplyWorkspace).toHaveBeenCalledTimes(3)
+
+  await waitFor(() => expect(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' })).toBeEnabled())
+  start()
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('기관이 보낸 공급정보가 없어 시작할 수 없습니다. PDF로 채우거나 직접 추가하세요.'))
+  expect(loadSupplyWorkspace).toHaveBeenCalledTimes(3)
+  expect(screen.queryByText(/준비 데이터/)).not.toBeInTheDocument()
+})

@@ -15,8 +15,6 @@ public record LhAnnouncementQualityResponse(
         List<UnlinkedLhCandidate> unlinkedLhCandidates,
         long preservedSourceRequestCount,
         Map<String, Long> preservedReasons,
-        long preservedAmountTargetCount,
-        Map<String, Long> preservedAmountReasons,
         List<HeldRequest> heldRequests
 ) {
 

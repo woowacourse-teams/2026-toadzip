@@ -13,7 +13,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementAttachmentReposit
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -55,10 +54,10 @@ class AdminAnnouncementImportIntegrationTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
-    private SupplyTargetRepository supplyTargetRepository;
+    private AnnouncementScheduleRepository scheduleRepository;
 
     @Autowired
-    private AnnouncementScheduleRepository scheduleRepository;
+    private com.toadzip.backend.announcement.service.AnnouncementQueryService announcementQueries;
 
     @Autowired
     private AnnouncementAttachmentRepository attachmentRepository;
@@ -78,10 +77,10 @@ class AdminAnnouncementImportIntegrationTest {
     void cleanDatabase() {
         notificationJdbc.update("DELETE FROM notification_outbox_events");
         importRepository.deleteAll();
-        supplyTargetRepository.deleteAll();
         attachmentRepository.deleteAll();
         scheduleRepository.deleteAll();
         supplyRowRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM announcement_complexes");
         announcementRepository.deleteAll();
         housingComplexRepository.deleteAll();
     }
@@ -123,16 +122,32 @@ class AdminAnnouncementImportIntegrationTest {
 
         assertEquals(1, announcementRepository.count());
         assertEquals(1, supplyRowRepository.count());
-        assertEquals(1, supplyTargetRepository.count());
         assertEquals(1, scheduleRepository.count());
         assertEquals(1, attachmentRepository.count());
         assertEquals(1, importRepository.count());
+        // 공급행은 (공고, 단지명) 공고 단지에 들고, 그 공고 단지는 관리자가 고른 단지에 관리자 연결된다.
+        assertEquals(List.of("두꺼비 행복주택:" + complex.getId() + ":ADMIN:admin"), jdbcTemplate.queryForList("""
+                SELECT ac.source_complex_name || ':' || ac.housing_complex_id || ':' || ac.link_method || ':'
+                    || ac.linked_by
+                FROM supply_rows r JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id
+                """, String.class));
         assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
                 Integer.class));
         // 접수처를 한 곳만 받던 예전 JSON의 receptionPlace는 첫 접수처로 저장한다.
         assertEquals(java.util.List.of("0|LH 청약플러스|ONLINE|1600-1004"), notificationJdbc.queryForList(
                 "SELECT display_order || '|' || name || '|' || method || '|' || contact FROM announcement_reception_places",
                 String.class));
+        // 대상 모집수(10)가 공급행 모집수(20)보다 적으면 나머지 10은 공급행의 칸('청년'과 더한 '전체')이 함께 쓴다.
+        long announcementId = announcementRepository.findAll().getFirst().getId();
+        var detail = announcementQueries.getAnnouncement(announcementId);
+        assertEquals(20, detail.supplyRows().getFirst().totalSupplyHouseholdCount());
+        // '전체' 칸은 대상이 아니라 보이지 않고, 나머지 10은 청년 몫으로 읽히지 않고 공급행 모집수(20)에만 든다.
+        assertEquals(java.util.List.of("청년|공고문 참조|10|5|10000000|200000|null"),
+                detail.supplyRows().getFirst().targets().stream().map(target -> String.join("|", target.target(),
+                        target.applicationCondition(), String.valueOf(target.supplyHouseholdCount()),
+                        String.valueOf(target.waitlistCount()), String.valueOf(target.deposit()),
+                        String.valueOf(target.monthlyRent()), String.valueOf(target.sharedSupplyHouseholdCount())))
+                        .toList());
     }
 
     @Test
@@ -148,8 +163,44 @@ class AdminAnnouncementImportIntegrationTest {
                 .andExpect(status().isCreated());
 
         var stored = supplyRowRepository.findAll().getFirst();
-        assertEquals(0, stored.getAnnouncementExclusiveArea().compareTo(new BigDecimal("36.5")));
-        assertEquals(0, stored.getAnnouncementSupplyArea().compareTo(new BigDecimal("49.8")));
+        assertEquals(0, stored.getExclusiveArea().compareTo(new BigDecimal("36.5")));
+        assertEquals(0, stored.getSupplyArea().compareTo(new BigDecimal("49.8")));
+    }
+
+    @Test
+    void 같은_단지명의_공급행은_한_단지로만_등록하고_서로_다른_단지를_고르면_막는다() throws Exception {
+        HousingComplex first = housingComplexRepository.save(createHousingComplex());
+        HousingComplex second = housingComplexRepository.save(createHousingComplex(
+                "두꺼비 행복주택", "ADMIN-IMPORT-TEST-COMPLEX-SAME-NAME", "1114010100100010000"));
+        ObjectNode document = (ObjectNode) objectMapper.readTree(importJson());
+        ArrayNode supplyRows = (ArrayNode) document.get("supplyRows");
+        supplyRows.add(((ObjectNode) supplyRows.get(0).deepCopy()).put("sourceHousingTypeName", "46A"));
+        String importData = objectMapper.writeValueAsString(document);
+        // 같은 PNU라 두 단지 모두 두 행의 후보다. 거절이 후보 검사가 아니라 같은 이름 검사에서 나는지 보려는 전제다.
+        mockMvc.perform(post(ENDPOINT + "/validate").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(importData))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyRows[0].candidates[*].housingComplexId",
+                        org.hamcrest.Matchers.hasItems(first.getId().intValue(), second.getId().intValue())))
+                .andExpect(jsonPath("$.data.supplyRows[1].candidates[*].housingComplexId",
+                        org.hamcrest.Matchers.hasItems(first.getId().intValue(), second.getId().intValue())));
+
+        mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registrationJson(importData, selections(first.getId(), second.getId()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ANNOUNCEMENT_IMPORT_INVALID"));
+        assertEquals(0, announcementRepository.count());
+
+        mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registrationJson(importData, selections(second.getId(), second.getId()))))
+                .andExpect(status().isCreated());
+        assertEquals(List.of(second.getId() + ":2"), jdbcTemplate.queryForList("""
+                SELECT ac.housing_complex_id || ':' || count(r.id)
+                FROM announcement_complexes ac JOIN supply_rows r ON r.announcement_complex_id = ac.id
+                GROUP BY ac.id, ac.housing_complex_id
+                """, String.class));
     }
 
     @Test

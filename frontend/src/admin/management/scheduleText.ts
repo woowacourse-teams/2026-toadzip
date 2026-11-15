@@ -30,7 +30,7 @@ function split(value: unknown) {
 
 /**
  * 수집·PDF로 저장된 접수(APPLICATION) 일정을 확정 접수 일정 초안으로 바꾼다.
- * 모든 단지의 기간이 같으면 '공고 전체' 한 줄로, 다르면 단지별로 만든다. 단지는 공급행 단지명과 맞을 때만 연결한다.
+ * 모든 단지의 기간이 같으면 '공고 전체' 한 줄로, 다르면 단지별로 만든다. 단지는 공급표 주택형의 단지명과 맞을 때만 연결한다.
  */
 export function confirmedSchedulesFromEvents(events: CollectedEvent[], supplyRows: ComplexRow[]) {
   const applications = events.filter(event => event.data.scheduleType === 'APPLICATION').map(event => {

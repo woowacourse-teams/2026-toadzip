@@ -28,14 +28,14 @@ public class LhAnnouncementQualityStore {
         this.jdbc = jdbc;
     }
 
-    public LhAnnouncementQualityResponse snapshot(Instant observedAt, CollectionCoverage supplyCollectionCoverage,
-            CollectionCoverage detailCollectionCoverage, Set<String> unlinkedCatalogSourceKeys,
-            Set<String> currentSourceKeys) {
-        Map<String, Long> amountReasons = preservedAmountReasons(currentSourceKeys);
+    /** connection·amounts는 공급 읽기 입구로 센 공고 공급행 값이다(정본 또는 준비 데이터). */
+    public LhAnnouncementQualityResponse snapshot(Instant observedAt, Connection connection, Coverage amounts,
+            CollectionCoverage supplyCollectionCoverage, CollectionCoverage detailCollectionCoverage,
+            Set<String> unlinkedCatalogSourceKeys) {
         return new LhAnnouncementQualityResponse(
                 observedAt,
-                connection(),
-                amounts(),
+                connection,
+                amounts,
                 schedules(),
                 supplyCollectionCoverage,
                 detailCollectionCoverage,
@@ -43,53 +43,8 @@ public class LhAnnouncementQualityStore {
                 unlinkedLhCandidates(unlinkedCatalogSourceKeys),
                 preservedSourceRequestCount(),
                 preservedReasons(),
-                amountReasons.values().stream().mapToLong(Long::longValue).sum(),
-                amountReasons,
                 heldRequests()
         );
-    }
-
-    private Connection connection() {
-        Connection counts = jdbc.sql("""
-                SELECT COUNT(*) AS total,
-                       COUNT(*) FILTER (WHERE row.housing_complex_id IS NOT NULL) AS complex_linked,
-                       COUNT(*) FILTER (WHERE row.housing_type_id IS NOT NULL) AS type_linked
-                FROM supply_rows row
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                """).query((result, index) -> new Connection(
-                result.getLong("total"), result.getLong("complex_linked"), result.getLong("type_linked"), Map.of()
-        )).single();
-        Map<String, Long> reasons = new LinkedHashMap<>();
-        jdbc.sql("""
-                SELECT COALESCE(NULLIF(row.matching_failure_reason, ''), '미연결 사유 없음') AS reason,
-                       COUNT(*) AS row_count
-                FROM supply_rows row
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                  AND (row.housing_complex_id IS NULL OR row.housing_type_id IS NULL)
-                GROUP BY 1 ORDER BY row_count DESC, reason
-                """).query((result, index) -> {
-            reasons.put(result.getString("reason"), result.getLong("row_count"));
-            return true;
-        }).list();
-        return new Connection(counts.total(), counts.complexLinked(), counts.housingTypeLinked(), reasons);
-    }
-
-    private Coverage amounts() {
-        return jdbc.sql("""
-                SELECT COUNT(*) AS total,
-                       COUNT(*) FILTER (WHERE EXISTS (
-                           SELECT 1 FROM supply_targets target
-                           WHERE target.supply_row_id = row.id
-                             AND target.rental_deposit IS NOT NULL AND target.monthly_rent IS NOT NULL
-                       )) AS fulfilled
-                FROM supply_rows row
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                """).query((result, index) -> new Coverage(
-                result.getLong("total"), result.getLong("fulfilled")
-        )).single();
     }
 
     private Schedule schedules() {
@@ -140,58 +95,6 @@ public class LhAnnouncementQualityStore {
                 GROUP BY failure.error_type ORDER BY failure.error_type
                 """).param("errorTypes", HeldLhSupplyReplacement.errorTypes()).query((result, index) -> {
             reasons.put(result.getString("error_type"), result.getLong("request_count"));
-            return true;
-        }).list();
-        return reasons;
-    }
-
-    private Map<String, Long> preservedAmountReasons(Set<String> currentSourceKeys) {
-        Map<String, Long> reasons = new LinkedHashMap<>();
-        // 표시 순서와 독립적으로 보관한 원천 소유 관계를 사용한다.
-        String currentSources = currentSourceKeys.isEmpty() ? "NULL" : ":currentSourceKeys";
-        var query = jdbc.sql("""
-                WITH current_sources AS (
-                    SELECT unnest(ARRAY[%s]::text[]) AS source_key
-                ), preserved AS (
-                    SELECT CASE
-                        WHEN EXISTS (
-                            SELECT 1 FROM myhome_announcement_mapping_failures failure
-                            WHERE failure.source_announcement_identifier = announcement.source_announcement_identifier
-                              AND source_group.source_key IN (SELECT source_key FROM current_sources)
-                              AND failure.source_key IN (SELECT source_key FROM current_sources)
-                              AND failure.status = 'PENDING'
-                              AND failure.reason NOT IN ('COMPLEX_NOT_FOUND', 'AMBIGUOUS_COMPLEX',
-                                                         'HOUSING_TYPE_NOT_FOUND', 'AMBIGUOUS_HOUSING_TYPE')
-                        ) THEN 'MYHOME_MAPPING_REJECTED'
-                        WHEN EXISTS (
-                            SELECT 1 FROM lh_announcement_enrichment_failures failure
-                            WHERE failure.source_announcement_identifier = announcement.source_announcement_identifier
-                              AND source_group.source_key IN (SELECT source_key FROM current_sources)
-                              AND failure.source_key IN (SELECT source_key FROM current_sources)
-                              AND failure.status = 'PENDING' AND failure.source_key NOT LIKE 'LH:%%'
-                        ) THEN 'LH_ENRICHMENT_REJECTED'
-                        ELSE target.lh_amount_preserved_reason END AS reason
-                    FROM supply_targets target
-                    JOIN supply_rows row ON row.id = target.supply_row_id
-                    JOIN announcements announcement ON announcement.id = row.announcement_id
-                    LEFT JOIN LATERAL (
-                        SELECT COALESCE(row.myhome_source_row_identifier,
-                          CASE WHEN NOT starts_with(row.source_supply_row_identifier,
-                              announcement.source_announcement_identifier || ':LH:')
-                            THEN row.source_supply_row_identifier END) AS source_key
-                    ) source_group ON true
-                    WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                      AND target.source_supply_target_identifier LIKE 'LH:%%'
-                      AND target.rental_deposit IS NOT NULL AND target.monthly_rent IS NOT NULL
-                )
-                SELECT reason, COUNT(*) AS target_count FROM preserved
-                WHERE reason IS NOT NULL GROUP BY reason ORDER BY reason
-                """.formatted(currentSources));
-        if (!currentSourceKeys.isEmpty()) {
-            query = query.param("currentSourceKeys", currentSourceKeys);
-        }
-        query.query((result, index) -> {
-            reasons.put(result.getString("reason"), result.getLong("target_count"));
             return true;
         }).list();
         return reasons;

@@ -5,7 +5,7 @@ import type { ManagementDetailData } from './managementContract'
 vi.mock('../../public-housing/components/AnnouncementAttachments', () => ({ AttachmentDialog: ({ announcementId, attachments, onClose }: { announcementId: string; attachments: { fileName: string }[]; onClose: () => void }) => <div role="dialog" aria-label={`공고 ${announcementId} 첨부파일`}><p>{attachments[0].fileName}</p><button onClick={onClose}>닫기</button></div> }))
 const detail: ManagementDetailData = {
   summary: { id: 7, name: '한스빌', subtitle: '', rental: 'HAPPY_HOUSING', provider: 'LH', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
-  data: { version: 1, originalUrl: 'https://example.com/notice' }, sourceIdentifier: 'LH-7', housingTypes: [], supplyRows: [], announcements: [], schedules: [], scheduleReviewed: false,
+  data: { version: 1, originalUrl: 'https://example.com/notice' }, sourceIdentifier: 'LH-7', housingTypes: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, announcements: [], schedules: [], scheduleReviewed: false,
   attachments: [{ attachmentId: 9, fileName: '연결된 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/notice.pdf' }],
 }
 it('연결된 첨부파일을 기존 뷰어로 열고 닫는다', () => {

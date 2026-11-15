@@ -1,168 +1,111 @@
-"""공급행 값을 원문 표 칸과 대조한다(원문 대조 검산).
+"""공급표 모델의 모집 단위·공급대상 값을 원문 표 칸과 대조한다(원문 대조 검산).
 
-행 근거(sourceRows)의 행 ID와 인용이 원문 표 행에서 확인되면 단지명·주택형·공급대상은 같은 의미의 원문 칸과,
-수치는 같은 의미의 머리글 열과 비교한다. 확인되지 않은 값은 비우고 미확인(unresolved)과 경고로 남긴다.
+단위·대상의 근거(원문 행 ID·인용·쪽)가 원문 표 행에서 확인되면 단지명·주택형·공급대상 표기는 같은 의미의 원문 칸과,
+수치는 같은 의미의 머리글 열과 비교한다. 확인되지 않은 값은 비우고 그 단위·대상의 미확인(Finding)으로 남긴다.
 """
 
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
-from ai_worker import checks
+from ai_worker import pages, tables
+from ai_worker.supply_sheet import AMOUNT_FIELDS, AREA_FIELDS, TOTAL, Cite, Entry, Finding, Unit
+
+_UNIT_NUMBERS = (TOTAL, *AREA_FIELDS)
+_ENTRY_NUMBERS = ("supplyHouseholdCount", "reserveCount", *AMOUNT_FIELDS)
+# 대조하는 표기: (속성, 같은 의미의 원문 칸, 미확인 필드, 확인하지 못했을 때 둘 값)
+_UNIT_TEXTS = (("name", "housingType", "name", None), ("complex_name", "complexName", "complexName", ""))
+_ENTRY_TEXTS = (("label", "target", "label", ""),)
 
 
-def source_row_map(source_rows: object) -> dict[str, set[str]]:
-    result: dict[str, set[str]] = {}
-    for item in checks.objects(source_rows):
-        path, row_ids = item.get("path"), item.get("rowIds")
-        if not isinstance(path, str) or not isinstance(row_ids, list):
-            continue
-        result.setdefault(path, set()).update(row_id for row_id in row_ids if isinstance(row_id, str))
-    return result
+def check_source(owner: Unit | Entry, row_ids: set[str], cite: Cite | None, selected: pages.PromptPages,
+                 headings: "Headings | None", confirmed: dict) -> tuple[list[Finding], str | None]:
+    """모집 단위나 공급대상 하나를 원문과 대조한다. row_ids는 그 값들이 적힌 원문 표 행, cite는 그 전체의 첫 근거다.
+    근거(행 ID·인용·쪽)를 원문 표 행에서 확인하면 값을 같은 의미의 원문 칸과 대조하고, 확인하지 못하면 모든 값을 비운다.
+    confirmed는 원문 칸 하나에는 없지만 코드가 원문 칸들에서 정한 값(주택타입 행 수량의 합, 병합 모집 단위의 공통 형명)이다.
+    그 필드는 원문 칸 대신 이 값과 대조하고, None이면 어떤 값도 확인하지 못한다.
+    headings는 단지명 열이 없는 표의 단지명을 표 위 가장 가까운 제목과 대조할 때 쓴다(Headings).
+    확인하지 못한 값은 비우고 미확인으로 돌려준다. 근거를 확인하지 못하면 그 사유도 돌려준다(조립이 경고로 알린다)."""
+    findings: list[Finding] = []
+    reason = _unsupported(row_ids, cite, selected.supply_row_text)
+    if reason is None:
+        _check_texts(owner, row_ids, selected, headings, confirmed, findings)
+        _check_numbers(owner, row_ids, selected, confirmed, findings)
+        return findings, None
+    findings.append(Finding(owner, "", reason))
+    for attribute, _, name, empty in _texts(owner):
+        value = getattr(owner, attribute)
+        if isinstance(value, str) and value:
+            setattr(owner, attribute, empty)
+            findings.append(Finding(owner, name, f"{reason}; 문자열 원문을 확인하지 못함"))
+    for name in _numbers(owner):
+        if owner.values.get(name) is not None:
+            owner.values[name] = None
+            findings.append(Finding(owner, name, f"{reason}; 수치 원문을 확인하지 못함"))
+    return findings, reason
 
 
-def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]], source_row_text: dict[str, str],
-                      evidence: list[dict], unresolved: list[dict],
-                      source_row_values: dict[str, dict[str, str]] | None = None,
-                      target_values: dict[str, dict[str, dict[str, str]]] | None = None,
-                      block_counts: dict[str, dict[str, int]] | None = None,
-                      headings: "Headings | None" = None) -> list[str]:
-    """headings는 단지명 열이 없는 표의 단지명을 표 위 가장 가까운 제목과 대조할 때 쓴다(Headings).
-    block_counts는 주택타입 여럿을 묶은 주택형 공급행의 경로별 수량 합이다. 그 수량은 행 칸 대신 이 합과 대조한다.
-    공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
-    target_values는 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표의 행별 묶음 칸이다(target_cells).
-    확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 경고는 근거를 확인하지 못한 경로마다 한 줄이고,
-    값마다의 사유는 unresolved에만 있다."""
-    warnings = []
-    expected = []
-    for index, row in enumerate(supply_rows):
-        path = f"supplyRows[{index}]"
-        expected.append(path)
-        for target_index, _ in enumerate(checks.objects(row.get("targets"))):
-            expected.append(f"{path}.targets[{target_index}]")
-    for path in expected:
-        row_ids = source_rows.get(path, set())
-        unknown = row_ids - source_row_text.keys()
-        matching_evidence = next((item for item in evidence if item.get("path") == path), None)
-        quote = matching_evidence.get("quote") if isinstance(matching_evidence, dict) else None
-        quote_text = re.sub(r"\s+", "", quote) if isinstance(quote, str) else ""
-        cited_rows = "".join(source_row_text[row_id] for row_id in row_ids if row_id in source_row_text)
-        cited_text = re.sub(r"\s+", "", cited_rows)
-        source_pages = {int(match.group(1)) for row_id in row_ids
-                        if (match := re.match(r"P(\d+):T\d+:R\d+", row_id))}
-        evidence_page = matching_evidence.get("page") if isinstance(matching_evidence, dict) else None
-        supported = bool(row_ids) and not unknown and bool(quote_text) and all(
-            token in cited_text for token in re.split(r"\s+", quote) if token
-        )
-        if supported and (not source_pages or evidence_page in source_pages):
-            values = source_row_values or {}
-            _check_string_source_values(path, supply_rows, row_ids, values, unresolved, target_values, headings,
-                                        (block_counts or {}).get(path, {}))
-            _check_numeric_source_values(path, supply_rows, row_ids, values, unresolved, target_values,
-                                         (block_counts or {}).get(path, {}))
-            continue
-        if not row_ids:
-            reason = "원문 표 행 ID를 확인하지 못함"
-        elif unknown:
-            reason = "응답의 원문 표 행 ID가 입력 표와 일치하지 않음"
-        elif not matching_evidence or not quote_text or not all(
-            token in cited_text for token in re.split(r"\s+", quote) if token
-        ):
-            reason = "근거 인용을 지정한 원문 표 행에서 확인하지 못함"
-        else:
-            reason = "근거 쪽과 원문 표 행 ID의 쪽이 일치하지 않음"
-        unresolved.append({"path": path, "reason": reason})
-        warnings.append(f"{path}: {reason}")
-        _clear_unverified_string_values(path, supply_rows, unresolved, reason)
-        _clear_unverified_numeric_values(path, supply_rows, unresolved, reason)
-    return warnings
+def _unsupported(row_ids: set[str], cite: Cite | None, row_text: dict[str, str]) -> str | None:
+    """근거를 원문 표 행에서 확인하지 못한 사유. 확인하면 None이다."""
+    unknown = row_ids - row_text.keys()
+    quote = cite.quote if cite is not None else None
+    quote_text = re.sub(r"\s+", "", quote) if isinstance(quote, str) else ""
+    cited_text = re.sub(r"\s+", "", "".join(row_text[row_id] for row_id in sorted(row_ids) if row_id in row_text))
+    quoted = bool(quote_text) and all(token in cited_text for token in re.split(r"\s+", quote) if token)
+    source_pages = {int(match.group(1)) for row_id in row_ids if (match := re.match(r"P(\d+):T\d+:R\d+", row_id))}
+    if row_ids and not unknown and quoted and (not source_pages or cite.page in source_pages):
+        return None
+    if not row_ids:
+        return "원문 표 행 ID를 확인하지 못함"
+    if unknown:
+        return "응답의 원문 표 행 ID가 입력 표와 일치하지 않음"
+    if not quoted:
+        return "근거 인용을 지정한 원문 표 행에서 확인하지 못함"
+    return "근거 쪽과 원문 표 행 ID의 쪽이 일치하지 않음"
 
 
-def _check_numeric_source_values(path: str, rows: list[dict], row_ids: set[str],
-                                 source_row_values: dict[str, dict[str, str]],
-                                 unresolved: list[dict],
-                                 target_values: dict[str, dict[str, dict[str, str]]] | None,
-                                 block_counts: dict[str, int]) -> None:
-    """표 근거가 같은 의미의 머리글 열을 지지하지 않으면 수치 값을 미확인으로 낮춘다.
-    주택형 공급행의 수량 합(block_counts)이 있는 필드는 그 합과 같아야 한다. 주택타입 한 행의 수는 그 공급행의 수가 아니다."""
-    match = re.fullmatch(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?", path)
-    if not match:
-        return
-    values, numeric_fields = _supply_values_at_path(path, rows)
-    if values is None:
-        return
-    for field in numeric_fields:
-        value = values.get(field)
-        if value is None:
-            continue
-        cells = [target_cells(values.get("target"), row_id, source_row_values, target_values) for row_id in row_ids]
-        if field in block_counts:
-            # 주택형 공급행의 수량은 주택타입 행 수의 합이다. 합을 정하지 못했으면(None) 어떤 값도 확인하지 못한다.
-            if block_counts[field] is not None and value == block_counts[field]:
-                continue
-        elif any(source_cell_matches(value, cell, field) for cell in cells):
-            continue
-        values[field] = None
-        field_path = f"{path}.{field}"
-        reason = "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"
-        unresolved.append({"path": field_path, "reason": reason})
+def _texts(owner: Unit | Entry) -> tuple[tuple[str, str, str, str | None], ...]:
+    return _UNIT_TEXTS if isinstance(owner, Unit) else _ENTRY_TEXTS
 
 
-def _check_string_source_values(path: str, rows: list[dict], row_ids: set[str],
-                                source_row_values: dict[str, dict[str, str]],
-                                unresolved: list[dict],
-                                target_values: dict[str, dict[str, dict[str, str]]] | None,
-                                headings: "Headings | None", derived: dict | None = None) -> None:
-    """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다. 단지명 칸이 없는 행의 단지명은 표 위 가장 가까운 제목과 비교한다.
-    derived는 코드가 원문 칸들에서 만든 값(병합 모집 단위의 공통 형명)이라 그 값과 같으면 확인된 것으로 본다."""
-    for values, field, source_field in _supply_string_fields_at_path(path, rows):
-        value = values.get(field)
-        if not isinstance(value, str) or not value:
-            continue
-        if (derived or {}).get(field) == value:
+def _numbers(owner: Unit | Entry) -> tuple[str, ...]:
+    return _UNIT_NUMBERS if isinstance(owner, Unit) else _ENTRY_NUMBERS
+
+
+def _check_texts(owner: Unit | Entry, row_ids: set[str], selected: pages.PromptPages, headings: "Headings | None",
+                 confirmed: dict, findings: list[Finding]) -> None:
+    """단지명·주택형·공급대상은 해당 의미의 원문 셀과 비교한다. 단지명 칸이 없는 행의 단지명은 표 위 가장 가까운 제목과 비교한다."""
+    values = selected.supply_row_values
+    for attribute, source_field, name, empty in _texts(owner):
+        value = getattr(owner, attribute)
+        if not isinstance(value, str) or not value or confirmed.get(name) == value:
             continue
         if any(normalize_source_text(cell) == normalize_source_text(value)
-               for cell in source_texts(source_field, row_ids, source_row_values, target_values)):
+               for cell in source_texts(source_field, row_ids, values, selected.supply_row_target_values)):
             continue
-        if source_field == "complexName" and headings is not None and headings.confirms(value, row_ids, source_row_values):
+        if source_field == "complexName" and headings is not None and headings.confirms(value, row_ids, values):
             continue
-        values[field] = None if field == "sourceHousingTypeName" else ""
-        field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"
-        reason = "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"
-        unresolved.append({"path": field_path, "reason": reason})
+        setattr(owner, attribute, empty)
+        findings.append(Finding(owner, name, "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"))
 
 
-def _clear_unverified_string_values(path: str, rows: list[dict], unresolved: list[dict],
-                                    reason: str) -> None:
-    for values, field, _ in _supply_string_fields_at_path(path, rows):
-        value = values.get(field)
-        if not isinstance(value, str) or not value:
+def _check_numbers(owner: Unit | Entry, row_ids: set[str], selected: pages.PromptPages, confirmed: dict,
+                   findings: list[Finding]) -> None:
+    """수치는 같은 의미의 머리글 열 칸과 같아야 한다. 대상은 그 대상의 신청자 묶음 열 칸과 대조한다(target_cells)."""
+    label = owner.label if isinstance(owner, Entry) else None
+    for name in _numbers(owner):
+        value = owner.values.get(name)
+        if value is None:
             continue
-        values[field] = None if field == "sourceHousingTypeName" else ""
-        field_path = f"{path}.complexReference.sourceComplexName" if field == "sourceComplexName" else f"{path}.{field}"
-        field_reason = f"{reason}; 문자열 원문을 확인하지 못함"
-        unresolved.append({"path": field_path, "reason": field_reason})
-
-
-def _supply_string_fields_at_path(path: str, rows: list[dict]) -> list[tuple[dict, str, str]]:
-    match = re.fullmatch(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?", path)
-    if not match:
-        return []
-    row_index = int(match.group(1))
-    if row_index >= len(rows):
-        return []
-    row = rows[row_index]
-    if match.group(2) is None:
-        result = [(row, "sourceHousingTypeName", "housingType")]
-        reference = row.get("complexReference")
-        if isinstance(reference, dict):
-            result.append((reference, "sourceComplexName", "complexName"))
-        return result
-    target_index = int(match.group(2))
-    targets = checks.objects(row.get("targets"))
-    if target_index >= len(targets):
-        return []
-    return [(targets[target_index], "target", "target")]
+        if name in confirmed:
+            if confirmed[name] is not None and value == confirmed[name]:
+                continue
+        elif any(source_cell_matches(value, target_cells(label, row_id, selected.supply_row_values,
+                                                         selected.supply_row_target_values), name)
+                 for row_id in row_ids):
+            continue
+        owner.values[name] = None
+        findings.append(Finding(owner, name, "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"))
 
 
 @dataclass(frozen=True)
@@ -209,39 +152,6 @@ def nearest_heading(name: str, heading: str, names) -> bool:
 def normalize_source_text(value: str) -> str:
     value = value.replace("「", "").replace("」", "")
     return re.sub(r"[\s,，、․·]+", "", value)
-
-
-def _clear_unverified_numeric_values(path: str, rows: list[dict], unresolved: list[dict],
-                                     reason: str) -> None:
-    values, fields = _supply_values_at_path(path, rows)
-    if values is None:
-        return
-    for field in fields:
-        if values.get(field) is None:
-            continue
-        values[field] = None
-        field_path = f"{path}.{field}"
-        field_reason = f"{reason}; 수치 원문을 확인하지 못함"
-        unresolved.append({"path": field_path, "reason": field_reason})
-
-
-def _supply_values_at_path(path: str, rows: list[dict]) -> tuple[dict | None, tuple[str, ...]]:
-    match = re.fullmatch(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?", path)
-    if not match:
-        return None, ()
-    row_index = int(match.group(1))
-    if row_index >= len(rows):
-        return None, ()
-    row = rows[row_index]
-    if match.group(2) is None:
-        return row, ("totalSupplyHouseholdCount", "exclusiveArea", "commonArea", "supplyArea",
-                     "constructedHouseholdCount")
-    target_index = int(match.group(2))
-    targets = checks.objects(row.get("targets"))
-    if target_index >= len(targets):
-        return None, ()
-    return targets[target_index], ("supplyHouseholdCount", "reserveCount", "rentalDeposit", "monthlyRent",
-                                    "convertedDeposit")
 
 
 def numeric_cell_matches(value: object, cell: str, field: str, unit: str | None = None) -> bool:
@@ -321,6 +231,8 @@ def source_texts(field: str, row_ids, row_values: dict[str, dict[str, str]],
             texts += sorted(house_types)
     if field == "target":
         details = [row_values.get(row_id, {}).get("targetDetail") for row_id in row_ids]
+        # '공급형 | 주택형' 표의 공급형 칸 괄호 구분(55 (주거약자용))은 그 행 공급대상의 구분이다(supply_grouping).
+        details += [tables.supply_type_qualifier(row_values.get(row_id, {}).get("supplyType")) for row_id in row_ids]
         texts += [f"{text}({detail})" for text in list(texts) for detail in details if detail]
         texts += [name for row_id in row_ids for label in (target_values or {}).get(row_id, {})
                   for name in _group_names(label)]

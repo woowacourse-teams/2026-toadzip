@@ -1,4 +1,5 @@
 from ai_worker.source_frame import SourceFrame, SourceSupplyRow
+from ai_worker.supply_sheet import HousingType, SupplySheet, Unit
 from conftest import contract_example
 
 
@@ -7,16 +8,16 @@ def gh_row(identifier, complex_label, type_name, exclusive_area=""):
             "exclusiveArea": exclusive_area, "supplyArea": "", "suppliedUnitCount": "", "totalUnitCount": ""}
 
 
-def supply_row(complex_name, housing_type, exclusive_area=None, source_row=None, subtypes=()):
-    return {"complexReference": {"sourceComplexName": complex_name}, "sourceHousingTypeName": housing_type,
-            "exclusiveArea": exclusive_area, "sourceRow": source_row,
-            "subtypes": [{"name": name, "exclusiveArea": area} for name, area in subtypes], "targets": []}
+def supply_row(complex_name, housing_type, exclusive_area=None, subtypes=(), parts=()):
+    """공급표 모집 단위. subtypes는 주택형 하나가 묶은 주택타입, parts는 모집 칸을 함께 쓰는 주택형 (이름, 전용면적)이다."""
+    return Unit(complex_name, housing_type, {"exclusiveArea": exclusive_area},
+                house_types=[{"name": name, "exclusiveArea": area} for name, area in subtypes],
+                parts=[HousingType(name, {"exclusiveArea": area}) for name, area in parts])
 
 
 def link(frame_rows, supply_rows):
-    tree = {"data": {"supplyRows": supply_rows}}
-    warnings = SourceFrame.read({"sourceSupplyRows": frame_rows}).link(tree)
-    return [row["sourceRow"] for row in supply_rows], warnings
+    warnings = SourceFrame.read({"sourceSupplyRows": frame_rows}).link(SupplySheet(supply_rows))
+    return [row.source_row for row in supply_rows], warnings
 
 
 def test_input_example_gives_only_lh_rows_to_the_model_and_matches_gh_rows_by_code():
@@ -28,8 +29,8 @@ def test_input_example_gives_only_lh_rows_to_the_model_and_matches_gh_rows_by_co
                         "27.6384", "78"),
     ]
     rows = [supply_row("다산 센트럴파크6단지", "36A", 36.8)]
-    assert frame.link({"data": {"supplyRows": rows}}) == []
-    assert rows[0]["sourceRow"] == "GH:801:다산 센트럴파크6단지:36A"
+    assert frame.link(SupplySheet(rows)) == []
+    assert rows[0].source_row == "GH:801:다산 센트럴파크6단지:36A"
 
 
 def test_gh_rows_are_not_given_to_the_model():
@@ -68,7 +69,7 @@ def test_gh_rows_that_cannot_be_told_apart_are_left_for_the_admin():
     rows, warnings = link(frame_rows, [supply_row("광교", "36A", 36.7)])
 
     assert rows == [None]
-    assert warnings[0] == "supplyRows[0].sourceRow: GH 공급행 틀에 같은 지구·주택형 행이 2개라 하나로 정하지 못함(광교 36A)"
+    assert warnings[0] == "광교 36A: GH 공급행 틀에 같은 지구·주택형 행이 2개라 하나로 정하지 못함"
 
 
 def test_gh_rows_whose_area_does_not_settle_the_type_are_left_for_the_admin():
@@ -77,7 +78,7 @@ def test_gh_rows_whose_area_does_not_settle_the_type_are_left_for_the_admin():
     rows, warnings = link(frame_rows, [supply_row("광교", "36A", 40.0)])
 
     assert rows == [None]
-    assert warnings[0] == "supplyRows[0].sourceRow: GH 공급행 틀에 같은 지구·주택형 행이 2개라 하나로 정하지 못함(광교 36A)"
+    assert warnings[0] == "광교 36A: GH 공급행 틀에 같은 지구·주택형 행이 2개라 하나로 정하지 못함"
 
 
 def test_pdf_rows_and_frame_rows_left_unmatched_are_summarized_in_one_line_each():
@@ -124,7 +125,7 @@ def test_gh_frame_row_matched_by_several_pdf_rows_is_left_for_the_admin():
     frame_rows = [gh_row("GH:1:광교:36A", "광교", "36A 청년")]
 
     assert link(frame_rows, [supply_row("광교", "36A", 36.7), supply_row("광교", "36A 청년", 36.9)]) == ([None, None], [
-        "supplyRows[0], supplyRows[1]: 같은 GH 공급행 틀(광교 36A 청년)에 맞아 하나로 정하지 못함",
+        "광교 36A, 광교 36A 청년: 같은 GH 공급행 틀(광교 36A 청년)에 맞아 하나로 정하지 못함",
     ])
 
 
@@ -206,11 +207,11 @@ def test_one_subtype_entry_naming_several_house_types_is_not_linked_by_area():
     assert rows == [f"GH:808:{DASAN}:72A", None, f"GH:808:{DASAN}:84B"]
 
 
-def test_gh_type_written_with_hyeong_matches_the_joined_supply_row():
-    # 탑석센트럴자이 GH 원천은 "49형" 한 줄이고, 공고문 표의 49A·49B·49C는 모집수 하나를 함께 써 공급행 "49"로 묶인다.
+def test_gh_type_written_with_hyeong_matches_the_unit_of_types_sharing_one_count():
+    # 탑석센트럴자이 GH 원천은 "49형" 한 줄이고, 공고문 표의 49A·49B·49C는 모집수 하나를 함께 써 모집 단위 "49" 하나다.
     frame_rows = [gh_row("GH:845:탑석센트럴자이:49형", "탑석센트럴자이", "49형")]
 
-    rows, warnings = link(frame_rows, [supply_row("탑석 센트럴 자이", "49", subtypes=[("49A", 49.9285), ("49B", 49.9091)])])
+    rows, warnings = link(frame_rows, [supply_row("탑석 센트럴 자이", "49", parts=[("49A", 49.9285), ("49B", 49.9091)])])
 
     assert rows == ["GH:845:탑석센트럴자이:49형"]
     assert warnings == []

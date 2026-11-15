@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import fixtures from './fixtures/scenarios.json'
 import { daegu } from './fixtures/workspace'
 import managerExample from './fixtures/manager-extraction-example.json'
-import { evidenceContext, evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText, type Extraction } from './extraction'
+import { evidenceContext, evidenceFor, evidenceQuery, noteFor, pathCovers, readExtraction, searchText } from './extraction'
 
 describe('AI 추출 응답 읽기', () => {
   it('PDF에서 강조할 문구는 금액 칸이면 그 금액 표기를 낱말 단위로, 글자면 인용문에 있는 값을 고른다', () => {
@@ -48,7 +48,7 @@ describe('AI 추출 응답 읽기', () => {
     const result = readExtraction(JSON.stringify(fixture.extraction))
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.error)
-    expect(result.value.supplyRows).toHaveLength(fixture.rows.length === 1 && fixture.rows[0].id === 90 ? 2 : fixture.rows.length)
+    expect(result.value.sheet.housingTypes).toHaveLength(fixture.extraction.data.supplySheet.housingTypes.length)
     expect(result.value.schedules).toHaveLength(fixture.extraction.data.schedules.length)
   })
 
@@ -58,7 +58,7 @@ describe('AI 추출 응답 읽기', () => {
     const result = readExtraction(`\uFEFF\x60\x60\x60json\n${body}\n\x60\x60\x60`)
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.error)
-    expect(result.value.supplyRows[0].targets[0].rentalDeposit).toBe('123456789012345678')
+    expect(result.value.sheet.leaseTerms[0].rentalDeposit).toBe('123456789012345678')
     expect(result.value.schedules[0].name).toBe('현장 ~ 신청:접수*')
     expect(result.repairs).toHaveLength(4)
   })
@@ -86,63 +86,31 @@ describe('AI 추출 응답 읽기', () => {
     expect(readExtraction(JSON.stringify(input))).toMatchObject({ ok: false, error: expect.stringContaining('unresolvedFields') })
   })
 
-  it('공통 모집수의 행이 없거나 겹치면 거절한다', () => {
-    const input = structuredClone(fixtures.hansville.extraction)
-    input.sharedCounts[0].paths[1] = 'supplyRows[99].totalSupplyHouseholdCount'
-    expect(readExtraction(JSON.stringify(input))).toMatchObject({ ok: false, error: 'sharedCounts[0].paths의 supplyRows[99]가 없습니다. 공급행은 2개(0~1번)입니다.' })
+  it('공급표의 칸·수량 묶음·임대조건 멤버(주택형·공급대상 키 쌍)를 칸 순번으로 읽고, 공급표 안의 근거·미확인도 읽는다', () => {
+    const result = readExtraction(JSON.stringify(fixtures.hansville.extraction))
+    if (!result.ok) throw new Error(result.error)
+    const { sheet } = result.value
+    expect(sheet.housingTypes.map(type => [type.complexName, type.name, type.exclusiveArea])).toEqual([['익산한스빌', '26A', 26.5195], ['익산한스빌', '26B', 26.4673]])
+    expect(sheet.targets.map(target => target.label)).toEqual(['일반'])
+    expect(sheet.cells).toEqual([{ housingType: 0, target: 0 }, { housingType: 1, target: 0 }])
+    expect(sheet.quotas).toEqual([{ kind: 'WINNER', count: 170, members: [0, 1] }])
+    expect(sheet.leaseTerms.map(lease => [lease.rentalDeposit, lease.members])).toEqual([['4076000', [0]], ['4076000', [1]]])
+    expect(evidenceFor(result.value.evidence, 'housingTypes[1].exclusiveArea')).toMatchObject({ path: 'housingTypes[1]' })
   })
 
-  it.each([
-    ['쪽 번호가 없으면', (item: Record<string, unknown>) => { item.page = null }, 'sharedCounts[0].page는 1 이상의 쪽 번호여야 합니다. 현재 값: null'],
-    ['모집수가 문자열이면', (item: Record<string, unknown>) => { item.count = '170' }, 'sharedCounts[0].count는 0 이상의 정수여야 합니다. 현재 값: "170"'],
-    ['공급행이 하나뿐이면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].totalSupplyHouseholdCount'] }, 'sharedCounts[0].paths에는 모집수를 함께 쓰는 공급행이 2개 이상 있어야 합니다.'],
-    ['공급행과 대상을 섞으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].totalSupplyHouseholdCount', 'supplyRows[0].targets[0].supplyHouseholdCount'] }, '공급행 모집수와 대상별 모집수가 섞여 있습니다.'],
-    ['당첨자 수와 예비자 수를 섞으면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[0].reserveCount'] }, '서로 다른 수량 필드가 섞여 있습니다.'],
-    ['없는 대상을 가리키면', (item: Record<string, unknown>) => { item.paths = ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[5].supplyHouseholdCount'] }, 'supplyRows[0].targets[5]가 없습니다. 이 공급행의 대상은 1개입니다.'],
-  ])('공통 모집수의 %s 어느 항목이 왜 틀렸는지 알린다', (_name, change, message) => {
-    const input = structuredClone(fixtures.hansville.extraction) as unknown as { sharedCounts: Record<string, unknown>[] }
-    change(input.sharedCounts[0])
-    expect(readExtraction(JSON.stringify(input))).toMatchObject({ ok: false, error: expect.stringContaining(message) })
-  })
-
-  it('한 공급행 안의 대상들이 함께 쓰는 모집수(대학생·청년 통합)를 읽는다', () => {
-    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
-    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년' })
-    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'], count: 39, page: 3, quote: '대학생 청년 39' }]
-    const result = readExtraction(JSON.stringify(input))
-    expect(result).toMatchObject({ ok: true })
-    if (result.ok) expect(result.value.sharedCounts).toEqual([expect.objectContaining({ count: 39, paths: ['supplyRows[0].targets[0].supplyHouseholdCount', 'supplyRows[0].targets[1].supplyHouseholdCount'] })])
-  })
-
-  it('한 공급행 안의 대상들이 함께 쓰는 이번 예비자 모집수를 읽는다', () => {
-    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
-    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년' })
-    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'], count: 20, page: 3, quote: '대학생 청년 예비자 20' }]
-    const result = readExtraction(JSON.stringify(input))
-    expect(result).toMatchObject({ ok: true })
-    if (result.ok) expect(result.value.sharedCounts).toEqual([expect.objectContaining({ count: 20, paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[0].targets[1].reserveCount'] })])
-  })
-
-  it('여러 공급행의 대상들이 함께 쓰는 같은 종류의 수량을 읽는다', () => {
-    const input = structuredClone(fixtures.hansville.extraction)
-    input.sharedCounts = [{ paths: ['supplyRows[0].targets[0].reserveCount', 'supplyRows[1].targets[0].reserveCount'], count: 20, page: 3, quote: '두 주택형 예비자 통합 20' }]
-    const result = readExtraction(JSON.stringify(input))
-    expect(result).toMatchObject({ ok: true })
-    if (result.ok) expect(result.value.sharedCounts[0].paths).toHaveLength(2)
-  })
-
-  it.each(['supplyHouseholdCount', 'reserveCount'] as const)('공통 %s가 대상별 칸에도 반복되면 그 칸을 비우고 미확인으로 남긴다', field => {
-    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: { targets: Record<string, unknown>[] }[] }; sharedCounts: unknown[] }
-    input.data.supplyRows[0].targets.push({ ...input.data.supplyRows[0].targets[0], target: '청년' })
-    input.data.supplyRows[0].targets.forEach(target => { target[field] = 20 })
-    input.sharedCounts = [{ paths: [`supplyRows[0].targets[0].${field}`, `supplyRows[0].targets[1].${field}`], count: 20, page: 3, quote: '대학생 청년 통합 20' }]
-    const result = readExtraction(JSON.stringify(input))
-    expect(result).toMatchObject({ ok: true })
-    if (result.ok) {
-      expect(result.value.supplyRows[0].targets.map(target => target[field])).toEqual([null, null])
-      expect(result.value.unresolved.map(note => note.path)).toEqual([`supplyRows[0].targets[0].${field}`, `supplyRows[0].targets[1].${field}`])
-      expect(result.value.sharedCounts[0].count).toBe(20)
-    }
+  it('예전 공급행 응답(supplySheet 없음)은 다시 추출하게 하고, 공급표 칸·묶음이 없는 주택형·칸을 가리키면 거절한다', () => {
+    const legacy = structuredClone(fixtures.hansville.extraction) as unknown as { data: Record<string, unknown> }
+    delete legacy.data.supplySheet
+    expect(readExtraction(JSON.stringify(legacy))).toMatchObject({ ok: false, error: expect.stringContaining('이전 형식') })
+    const strayCell = structuredClone(fixtures.hansville.extraction)
+    strayCell.data.supplySheet.cells[0].housingType = 'h9'
+    expect(readExtraction(JSON.stringify(strayCell))).toMatchObject({ ok: false, error: expect.stringContaining('없는 주택형이나 공급대상') })
+    const strayMember = structuredClone(fixtures.hansville.extraction)
+    strayMember.data.supplySheet.quotas[0].members[1] = { housingType: 'h1', target: 't9' }
+    expect(readExtraction(JSON.stringify(strayMember))).toMatchObject({ ok: false, error: expect.stringContaining('수량 묶음') })
+    const badKind = structuredClone(fixtures.hansville.extraction)
+    badKind.data.supplySheet.quotas[0].kind = 'TOTAL'
+    expect(readExtraction(JSON.stringify(badKind))).toMatchObject({ ok: false })
   })
 
   it('v1 응답은 새 프롬프트로 다시 요청하도록 안내한다', () => {
@@ -150,117 +118,53 @@ describe('AI 추출 응답 읽기', () => {
   })
 
   it('와일드카드 미확인은 해당 경로와 하위 항목에만 적용한다', () => {
-    expect(pathCovers('supplyRows[*].targets[*].rentalDeposit', 'supplyRows[10].targets[2].rentalDeposit')).toBe(true)
-    expect(pathCovers('supplyRows[1]', 'supplyRows[10].targets')).toBe(false)
-    expect(pathCovers('supplyRows[0].targets', 'supplyRows[0].targets[1].target')).toBe(true)
-    expect(noteFor([{ path: 'supplyRows[*].supplyArea', reason: '동별 값이 다름' }], 'supplyRows[0].supplyArea')?.reason).toBe('동별 값이 다름')
+    expect(pathCovers('housingTypes[*].cells[*].rentalDeposit', 'housingTypes[10].cells[2].rentalDeposit')).toBe(true)
+    expect(pathCovers('housingTypes[1]', 'housingTypes[10].cells')).toBe(false)
+    expect(pathCovers('housingTypes[0].cells', 'housingTypes[0].cells[1].winner')).toBe(true)
+    expect(noteFor([{ path: 'housingTypes[*].supplyArea', reason: '동별 값이 다름' }], 'housingTypes[0].supplyArea')?.reason).toBe('동별 값이 다름')
   })
 
   it('행 근거보다 필드 근거를 우선한다', () => {
-    const row = { path: 'supplyRows[0]', page: 4, quote: '26A' }
-    const field = { path: 'supplyRows[0].exclusiveArea', page: 5, quote: '26.5195' }
+    const row = { path: 'housingTypes[0]', page: 4, quote: '26A' }
+    const field = { path: 'housingTypes[0].exclusiveArea', page: 5, quote: '26.5195' }
     expect(evidenceFor([row, field], field.path)).toEqual(field)
-    expect(evidenceFor([row, field], 'supplyRows[0].supplyArea')).toEqual(row)
+    expect(evidenceFor([row, field], 'housingTypes[0].supplyArea')).toEqual(row)
   })
-
-  it('관리자 형식의 응답 예제를 읽고 세부 타입 묶음은 한 행으로 둔다', () => {
+  it('관리자 형식의 응답 예제를 읽고, 공급면적은 전용 + 공용으로 계산하며 근거는 공급표 경로대로 찾는다', () => {
     const result = readExtraction(JSON.stringify(managerExample))
     if (!result.ok) throw new Error(result.error)
-    expect(result.value.supplyRows.map(row => [row.typeName, row.values.supplyArea, row.subtypes.map(subtype => [subtype.name, subtype.supplyArea])])).toEqual([
-      ['36A', 49.8, []], ['26A/B', null, [['26A', 41.47], ['26B', 41.53]]]])
-    // 가군·나군처럼 임대조건만 다른 대상은 공통 모집수가 아니라 notApplicable이고, 대학생·청년 통합 모집만 묶는다.
-    expect(result.value.sharedCounts.map(group => group.count)).toEqual([77])
+    expect(result.value.sheet.housingTypes.map(type => [type.name, type.houseTypes.map(house => [house.name, house.supplyArea])])).toEqual([['36A', []], ['26A/B', [['26A', 41.47], ['26B', 41.53]]]])
+    expect(result.value.sheet.quotas.map(quota => quota.count)).toEqual([77, 40])
     expect(result.value.checks).toEqual([])
     // 임대조건 근거는 공급 표(3쪽)가 아니라 임대조건 표(4쪽)를 가리킨다.
-    expect(evidenceFor(result.value.evidence, 'supplyRows[0].targets[0].rentalDeposit')?.page).toBe(4)
-    expect(evidenceFor(result.value.evidence, 'supplyRows[0].supplyArea')?.page).toBe(3)
+    expect(evidenceFor(result.value.evidence, 'leaseTerms[0].rentalDeposit')?.page).toBe(4)
+    expect(evidenceFor(result.value.evidence, 'housingTypes[0].supplyArea')?.page).toBe(3)
   })
 
-  describe('세부 타입 묶음과 검산', () => {
-    const target = (name: string, count: number | null) => ({ target: name, supplyRank: null, supplyHouseholdCount: count, reserveCount: null, rentalDeposit: 31994000, monthlyRent: 138640, convertedDeposit: null, applicationCondition: null })
-    const row = (name: string, values: Record<string, unknown>, targets = [target('청년', 10), target('신혼부부', 4)]) => ({
-      complexReference: { sourceComplexName: '인천부평' }, sourceHousingTypeName: name, expectedMoveInMonth: '2027-03', totalSupplyHouseholdCount: null,
-      exclusiveArea: null, commonArea: null, supplyArea: null, constructedHouseholdCount: null, targets, ...values })
-    function read(overrides: Record<string, unknown> = {}) {
-      const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: Record<string, unknown> } & Record<string, unknown>
-      input.data.complexes = [{ sourceComplexName: '인천부평', address: '인천광역시 부평구 부평동 65-17', totalHouseholdCount: 350, parkingCount: 112 }]
-      input.data.supplyRows = [
-        row('16A', { exclusiveArea: 16.37, commonArea: 11.2684, constructedHouseholdCount: 100 }),
-        row('26A/B/C', { totalSupplyHouseholdCount: 77, targets: [target('청년', null), target('신혼부부', null)], subtypes: [
-          { name: '26A', exclusiveArea: 26.37, commonArea: 15.1, constructedHouseholdCount: 50 },
-          { name: '26B', exclusiveArea: 26.41, commonArea: 15.12, constructedHouseholdCount: 50 },
-          { name: '26C', exclusiveArea: 26.5, commonArea: null, supplyArea: 41.7, constructedHouseholdCount: 30 }] }),
-        row('36A', { exclusiveArea: 36.5, commonArea: 13.5, supplyArea: 50, constructedHouseholdCount: 50, totalSupplyHouseholdCount: 15 }),
-      ]
-      input.data.unresolvedFields = [{ path: 'supplyRows[1].subtypes[2].commonArea', reason: '공용면적 표기 없음' }]
-      input.notApplicable = [{ path: 'supplyRows[*].targets[*].supplyRank', reason: '순위 없음' }]
-      input.sharedCounts = [{ paths: ['supplyRows[1].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[1].supplyHouseholdCount'], count: 20, page: 3, quote: '통합 20' }]
-      input.evidence = [{ path: 'supplyRows[1]', page: 3, quote: '26A/B/C 77' }, { path: 'supplyRows[2]', page: 4, quote: '36A 15' }]
-      Object.assign(input, overrides)
-      const result = readExtraction(JSON.stringify(input))
-      if (!result.ok) throw new Error(result.error)
-      return result.value as Extraction
-    }
-
-    it('묶인 세부 타입은 한 행으로 두고 그 행이 모집수·대상을 가지며 공통 모집수를 만들지 않는다', () => {
-      const value = read()
-      expect(value.supplyRows.map(item => item.typeName)).toEqual(['16A', '26A/B/C', '36A'])
-      expect(value.supplyRows[1].values.totalSupplyHouseholdCount).toBe(77)
-      expect(value.supplyRows[1].subtypes).toEqual([
-        { name: '26A', exclusiveArea: 26.37, supplyArea: 41.47, constructedHouseholdCount: 50 },
-        { name: '26B', exclusiveArea: 26.41, supplyArea: 41.53, constructedHouseholdCount: 50 },
-        { name: '26C', exclusiveArea: 26.5, supplyArea: 41.7, constructedHouseholdCount: 30 }])
-      expect(value.supplyRows.map(item => item.subtypes.length)).toEqual([0, 3, 0])
-      expect(value.supplyRows[1].targets.map(item => [item.target, item.rentalDeposit, item.supplyHouseholdCount])).toEqual([['청년', '31994000', null], ['신혼부부', '31994000', null]])
-      // 그 행 안의 대상별 공통 모집수는 다른 행과 같이 그대로 둔다. 세부 타입 묶음 모집수를 공통 모집수로 옮기지 않는다.
-      expect(value.sharedCounts).toEqual([{ paths: ['supplyRows[1].targets[0].supplyHouseholdCount', 'supplyRows[1].targets[1].supplyHouseholdCount'], count: 20, page: 3, quote: '통합 20' }])
-    })
-
-    it('공급면적은 전용 + 공용으로 계산하고, 세부 타입 경로의 메모·근거는 세부 타입에 남긴다', () => {
-      const value = read()
-      expect(value.supplyRows.map(item => item.values.supplyArea)).toEqual([27.6384, null, 50])
-      expect(noteFor(value.unresolved, 'supplyRows[1].subtypes[2].supplyArea')?.reason).toBe('공용면적 표기 없음')
-      expect(noteFor(value.notApplicable, 'supplyRows[1].exclusiveArea')?.reason).toContain('대표 주택타입')
-      expect(noteFor(value.notApplicable, 'supplyRows[2].targets[0].supplyRank')?.reason).toBe('순위 없음')
-      expect(evidenceFor(value.evidence, 'supplyRows[1].subtypes[1].exclusiveArea')).toEqual({ path: 'supplyRows[1]', page: 3, quote: '26A/B/C 77' })
-      expect(evidenceFor(value.evidence, 'supplyRows[2].exclusiveArea')?.page).toBe(4)
-    })
-
-    it('여러 공급행 공통 모집수에 든 세부 타입 묶음 행은 그 행 하나로 묶음에 남는다', () => {
-      const value = read({ sharedCounts: [{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 92, page: 3, quote: '26·36 92' }] })
-      expect(value.sharedCounts).toEqual([{ paths: ['supplyRows[1].totalSupplyHouseholdCount', 'supplyRows[2].totalSupplyHouseholdCount'], count: 92, page: 3, quote: '26·36 92' }])
-    })
-
-    it('세부 타입이 하나뿐이면 그 면적을 행 값으로 쓰되 공고 표기는 신청형 그대로 두고 주택타입 이름은 houseTypeName에 둔다', () => {
-      const value = read({ data: { ...structuredClone(fixtures.hansville.extraction).data, supplyRows: [row('26', { subtypes: [{ name: '26A', exclusiveArea: 26.37, commonArea: 15.1, constructedHouseholdCount: 50 }] })] }, sharedCounts: [], evidence: [] })
-      expect(value.supplyRows.map(item => [item.typeName, item.values.houseTypeName, item.values.exclusiveArea, item.values.supplyArea, item.values.constructedHouseholdCount, item.subtypes])).toEqual([['26', '26A', 26.37, 41.47, 50, []]])
-    })
-
-    it('건설호수·대상별 모집수 합계와 공급면적이 맞지 않으면 확인할 내용으로 알린다', () => {
-      expect(read().checks).toEqual([
-        '인천부평: 공급 표 건설호수 합계 280세대가 단지 전체 세대수 350세대와 다릅니다. 공급 표에 없는 주택형이 있는지 확인하세요.',
-        '36A: 대상별 모집수 합계 14세대가 모집수 15세대와 다릅니다.',
-      ])
-      const wrongArea = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] } }
-      Object.assign(wrongArea.data.supplyRows[0], { exclusiveArea: 26.37, commonArea: 15.1, supplyArea: 42 })
-      const result = readExtraction(JSON.stringify(wrongArea))
-      expect(result.ok && result.value.checks.some(item => item.includes('공급면적 42㎡가 전용 + 공용 41.47㎡와 달라 계산값을 씁니다.'))).toBe(true)
-    })
-
-    it('세부 타입 목록 형식이 틀리면 그 행 번호로 다시 요청하게 한다', () => {
-      const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { supplyRows: Record<string, unknown>[] } }
-      input.data.supplyRows[0].subtypes = [{ exclusiveArea: 26.37 }]
-      expect(readExtraction(JSON.stringify(input))).toEqual(expect.objectContaining({ ok: false, error: expect.stringContaining('supplyRows[0].subtypes') }))
-    })
+  it('건설호수 합계와 공급면적이 맞지 않으면 확인할 내용으로 알린다', () => {
+    const input = structuredClone(fixtures.hansville.extraction) as unknown as { data: { complexes?: unknown[]; supplySheet: { housingTypes: Record<string, unknown>[] } } }
+    input.data.complexes = [{ sourceComplexName: '익산한스빌', address: '익산시', totalHouseholdCount: 350, parkingCount: null }]
+    Object.assign(input.data.supplySheet.housingTypes[0], { exclusiveArea: 26.37, commonArea: 15.1, supplyArea: 42, constructedHouseholdCount: 100 })
+    Object.assign(input.data.supplySheet.housingTypes[1], { constructedHouseholdCount: 180 })
+    const result = readExtraction(JSON.stringify(input))
+    if (!result.ok) throw new Error(result.error)
+    expect(result.value.checks).toEqual([
+      '익산한스빌: 공급 표 건설호수 합계 280세대가 단지 전체 세대수 350세대와 다릅니다. 공급 표에 없는 주택형이 있는지 확인하세요.',
+      '26A: 공급면적 42㎡가 전용 + 공용 41.47㎡와 다릅니다. 공고문과 대조하세요.',
+    ])
   })
 })
 
-it('공급행 칸의 근거는 그 행의 주택형 표기·전용면적을 문맥으로 두고, 세 자리 이하 값도 인용문의 다른 숫자 대신 그 값을 찾는다', () => {
+it('주택형 칸의 근거는 그 주택형 표기·전용면적을 문맥으로 두고, 대상별 칸·수량 묶음은 문맥 없이 찾으며, 세 자리 이하 값도 인용문의 다른 숫자 대신 그 값을 찾는다', () => {
   const { review } = daegu()
-  expect(evidenceContext(review.extraction, 'supplyRows[0].totalSupplyHouseholdCount')).toEqual(['051.9800A', '51.98'])
-  expect(evidenceContext(review.extraction, 'supplyRows[0].targets[0].rentalDeposit')).toEqual([])
+  expect(evidenceContext(review.extraction, 'housingTypes[0].count')).toEqual(['051.9800A', '51.98'])
+  expect(evidenceContext(review.extraction, 'housingTypes[0]')).toEqual(['051.9800A', '51.98'])
+  expect(evidenceContext(review.extraction, 'housingTypes[0].cells[0].rentalDeposit')).toEqual([])
+  expect(evidenceContext(review.extraction, 'quotas[0].count')).toEqual([])
   expect(evidenceContext(review.extraction, 'schedules[0].startAt')).toEqual([])
   // 문맥이 없으면 예전처럼 인용문에서 가장 긴 숫자를 쓰고, 문맥이 있으면 모집수 200을 같은 줄에서 찾는다.
   expect(evidenceQuery('051.9800A 468 200', 200)).toBe('051.9800')
   expect(evidenceQuery('051.9800A 468 200', 200, false, ['051.9800A'])).toEqual(['200'])
+  // 수량 묶음 칸은 그 묶음의 근거(공급표 경로)를 찾는다.
+  expect(evidenceFor(review.extraction.evidence, 'quotas[1].count')).toMatchObject({ path: 'quotas[1].count', page: 3 })
 })

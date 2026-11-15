@@ -8,20 +8,44 @@ import { SupplyReviewPanel, type ReviewEvidence } from './SupplyReviewPanel'
 import { changedReviewTargets } from './changedReviewTargets'
 import { SupplyRowDraft } from './SupplyRowDraft'
 import { rebaseCorrection, resolveConflict, type CorrectionConflict } from './rebaseCorrection'
-import { applySupply, blankRow, dropLoneGroups, loadSupplyWorkspace, nextDisplayOrder, previewSupply, type CorrectionRow, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
-import { mergeInto, possibleLhDuplicates, unattachedLhNotice, unattachedLhRows } from './lhSupplyOwnership'
-import { SupplyMergePanel } from './SupplyMergePanel'
+import { applySupply, loadSupplyWorkspace, previewSupply, startSupplyFromAgency, type SupplyCorrectionInput, type SupplyPreview, type SupplyWorkspace } from './supplyCorrectionApi'
+import { cellsOf, housingTypeCount, leaseOf, ownCount, sharedQuotas, toSheetInput, type SheetHousingType, type SupplySheet } from './supplySheet'
+import { addHousingType, cellValues, emptySheet, moveHousingType, removeHousingType, wholeTypeQuota } from './sheetEdits'
 import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
 import styles from './SupplyCorrection.module.css'
 
 // 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
 function isStaleConflict(cause: unknown) { return cause instanceof ManagementError && cause.code === 'ADMIN_DATA_STALE' }
 
+/** 표의 '확인할 항목'. 공개 결과에 남을 주택형에서 연결·이름·수량이 빠진 것을 알린다. */
+function gaps(sheet: SupplySheet, type: SheetHousingType) {
+  const cells = cellsOf(sheet, type.key)
+  return [!type.housingComplexId && '단지 연결', !type.housingTypeId && !type.newHousingType && '주택형 연결', !type.name.trim() && '주택형 표기 없음',
+    !cells.length && '공급대상 없음', cells.some(cell => !cellValues(sheet, cell).label.trim()) && '공급대상 이름 없음',
+    cells.length > 0 && !cells.some(cell => leaseOf(sheet, cell.key)) && '임대조건 없음',
+    // 주택형 모집수는 그 안 묶음의 합이라 대상별 모집 수와 함께 있으면 두 번 센다.
+    wholeTypeQuota(sheet, type.key) && cells.length > 1 && cells.some(cell => ownCount(sheet, cell.key, 'WINNER') !== null) && '모집수 중복 확인',
+  ].filter((gap): gap is string => Boolean(gap))
+}
+/** '기관 제공 정보로 공급표 시작'이 거절된 까닭. 서버 문구에는 내부 용어가 섞여 있어 운영자 문구로 바꾼다. */
+function startRejection(cause: unknown) {
+  if (!(cause instanceof ManagementError)) return '기관 제공 정보로 공급표를 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'
+  if (cause.code === 'ADMIN_DATA_CONFLICT') return '이미 공급표가 있는 공고입니다. 최신 공급정보를 불러왔으니 아래 표에서 고치세요.'
+  if (cause.code === 'ADMIN_DATA_STALE') return '보는 사이 공급정보가 바뀌었습니다. 최신 공급정보를 불러왔으니 확인한 뒤 다시 시작하세요.'
+  if (cause.status === 400) return '기관이 보낸 공급정보가 없어 시작할 수 없습니다. PDF로 채우거나 직접 추가하세요.'
+  return cause.message
+}
+function blocker(sheet: SupplySheet) {
+  if (sheet.housingTypes.some(type => !type.name.trim()) || sheet.targets.some(target => !target.label.trim())) return '이름이 빈 주택형이나 공급대상이 있습니다. 표기를 먼저 채우세요.'
+  if (sheet.housingTypes.some(type => type.newHousingType && (!type.newHousingType.name.trim() || !(type.newHousingType.exclusiveArea > 0)))) return '새로 만들 주택형의 이름과 전용면적을 채우세요.'
+  return ''
+}
+
 export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChange, onDirtyChange }: {
   id: string; sourceUrl: string; onChanged: () => void; onBusyChange: (value: boolean) => void; onDirtyChange: (value: boolean) => void
 }) {
   const [workspace, setWorkspace] = useState<SupplyWorkspace | null>(null)
-  const [rows, setRows] = useState<CorrectionRow[]>([])
+  const [sheet, setSheet] = useState<SupplySheet>(emptySheet)
   const [reason, setReason] = useState(''); const [url, setUrl] = useState(sourceUrl); const [page, setPage] = useState('')
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0); const [stale, setStale] = useState(false)
@@ -30,18 +54,15 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [uncertain, setUncertain] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [deleted, setDeleted] = useState<string[]>([])
-  // 합친 직접 추가 행 → 합치기 전 펼침 행. 합치기를 취소하면 펼침 행을 되돌린다.
-  const [merges, setMerges] = useState<Record<string, CorrectionRow>>({})
   const [reviewDirty, setReviewDirty] = useState(false)
   const [appliedWarnings, setAppliedWarnings] = useState<string[]>([])
   const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence; changed: string[] } | null>(null)
-  const rowsDirty = workspace !== null && (JSON.stringify(rows) !== JSON.stringify(workspace.rows) || conflicts.length > 0 || deleted.length > 0)
+  const sheetDirty = workspace !== null && (JSON.stringify(sheet) !== JSON.stringify(workspace.sheet) || conflicts.length > 0)
   const blockerId = useId()
   const previewBlocker = stale ? '저장하는 사이 등록값이나 원천이 바뀌어 저장하지 않았습니다. 내 입력은 그대로 있으니 ‘입력을 유지하고 최신값 비교’로 맞춘 뒤 다시 저장하세요.'
     : conflicts.length > 0 ? `겹치는 변경 ${conflicts.length}개에서 사용할 값을 먼저 고르세요.`
-      : !rowsDirty ? '아직 변경한 공급정보가 없습니다.' : ''
-  const dirty = rowsDirty || reviewDirty || pdfOpen || uncertain || reason.length > 0 || page.length > 0 || url !== sourceUrl
+      : !sheetDirty ? '아직 변경한 공급정보가 없습니다.' : blocker(sheet)
+  const dirty = sheetDirty || reviewDirty || pdfOpen || uncertain || reason.length > 0 || page.length > 0 || url !== sourceUrl
   useUnsavedChanges(dirty)
   useEffect(() => { onBusyChange(busy); return () => onBusyChange(false) }, [busy, onBusyChange])
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [dirty, onDirtyChange])
@@ -49,27 +70,23 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     const controller = new AbortController(); setError('')
     void loadSupplyWorkspace(id, controller.signal).then(value => {
       if (!controller.signal.aborted) {
-        setWorkspace(value); setRows(value.rows)
+        setWorkspace(value); setSheet(value.sheet)
         const pending = pendingApply(id)
         if (pending) {
-          setPreview(pending); setRows(pending.input.rows); setReason(pending.input.reason); setUrl(pending.input.sourceUrl)
-          setPage(pending.input.sourcePage ?? ''); setDeleted(pending.input.deletedRowKeys ?? []); setUncertain(true)
+          setPreview(pending); setSheet(pending.result.after); setReason(pending.input.reason); setUrl(pending.input.sourceUrl)
+          setPage(pending.input.sourcePage ?? ''); setUncertain(true)
           setNotice('응답을 확인하지 못한 적용 작업이 있습니다. 같은 작업으로 결과를 먼저 확인하세요.')
         }
       }
     }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '공급정보를 불러오지 못했습니다.') })
     return () => controller.abort()
   }, [id, attempt])
-  function edit(update: (rows: CorrectionRow[]) => CorrectionRow[]) { setRows(update); setPreview(null); setNotice('') }
+  function edit(next: SupplySheet) { setSheet(next); setPreview(null); setNotice('') }
   async function inspect() {
     if (!workspace || busy || uncertain || previewBlocker || !reason.trim() || !url.trim()) return
     setBusy(true); setError(''); setNotice('')
-    // 삭제 예정 행은 요청 행에서 빼고 deletedRowKeys로 보낸다. 서버는 관리자가 추가한 행만 지운다.
-    const input: SupplyCorrectionInput = { operationId: crypto.randomUUID(), snapshotToken: workspace.snapshotToken, reason: reason.trim(), sourceUrl: url.trim(), sourcePage: page.trim() || null,
-      rows: rows.filter(row => !deleted.includes(row.key)).map(row => {
-        // 공통 모집수를 쓰는 대상을 제외하거나 지우면 그 묶음을 풀어 서버가 거절하지 않게 한다.
-        const targets = row.targets.map(target => ({ ...target })); dropLoneGroups(targets); return { ...row, targets }
-      }), ...(deleted.length ? { deletedRowKeys: deleted } : {}) }
+    const input: SupplyCorrectionInput = { operationId: crypto.randomUUID(), snapshotToken: workspace.snapshotToken, reason: reason.trim(),
+      sourceUrl: url.trim(), sourcePage: page.trim() || null, sheet: toSheetInput(sheet) }
     try {
       const result = await previewSupply(id, input)
       const checked = { input, result }; setPreview(checked); setStale(false)
@@ -87,10 +104,10 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     try {
       const result = await applySupply(id, preview.input, preview.result.confirmationToken)
       forgetApply(id)
-      const changed = changedReviewTargets(preview.result.before, result.workspace.rows)
-      setWorkspace(result.workspace); setRows(result.workspace.rows); setAppliedWarnings(preview.result.warnings); setPreview(null)
-      setApplied({ changeId: result.changeId, changed, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } }); setDeleted([]); setMerges({})
-      setReason(''); setPage(''); setStale(false); setUncertain(false); onChanged()
+      const changed = changedReviewTargets(preview.result.before, result.workspace.sheet)
+      setWorkspace(result.workspace); setSheet(result.workspace.sheet); setAppliedWarnings(preview.result.warnings); setPreview(null)
+      setApplied({ changeId: result.changeId, changed, evidence: { note: preview.input.reason, sourceUrl: preview.input.sourceUrl, sourcePage: preview.input.sourcePage } })
+      setReason(''); setPage(''); setStale(false); setUncertain(false); setExpanded(null); onChanged()
       setNotice(result.alreadyApplied ? '이미 적용한 작업입니다. 현재 저장값을 불러왔습니다.' : '공급정보를 저장했습니다.')
     } catch (cause) {
       const rejected = cause instanceof ManagementError && cause.status >= 400 && cause.status < 500
@@ -101,95 +118,114 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     }
     finally { setBusy(false) }
   }
+  /** 공고문 PDF가 없는 공고에서 기관이 보낸 공급정보를 그대로 공급표로 만들고 확정한다. 거절되면 최신 작업실을 다시 불러온다. */
+  async function startFromAgency() {
+    if (!workspace?.stagingToken || busy || uncertain || sheetDirty) return
+    if (!window.confirm('기관이 보낸 공급정보로 공급표를 만들고 확정할까요? 확정하면 사용자 화면의 ‘공고문 확인 전 정보’ 표시가 사라집니다.')) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const next = await startSupplyFromAgency(id, { snapshotToken: workspace.snapshotToken, stagingToken: workspace.stagingToken })
+      setWorkspace(next); setSheet(next.sheet); setPreview(null); setExpanded(null); onChanged()
+      setNotice('기관 제공 정보로 공급표를 만들었습니다. 공고문과 다른 값이 있으면 아래 표에서 고치세요.')
+    } catch (cause) {
+      const message = startRejection(cause)
+      if (cause instanceof ManagementError && cause.status === 409) {
+        try { const latest = await loadSupplyWorkspace(id); setWorkspace(latest); setSheet(latest.sheet); setPreview(null); onChanged() }
+        catch { setError(`${message} 최신 공급정보를 불러오지 못했으니 다시 불러오세요.`); return }
+      }
+      setError(message)
+    }
+    finally { setBusy(false) }
+  }
   async function refreshKeepingDraft() {
     if (!workspace) return
     setBusy(true); setError('')
     try {
       const latest = await loadSupplyWorkspace(id)
-      const merged = rebaseCorrection(workspace.rows, rows, latest.rows)
-      setRows(merged.rows); setConflicts(merged.conflicts); setWorkspace(latest); setPreview(null); setStale(false)
-      setDeleted(current => current.filter(key => latest.deletableRowKeys?.includes(key))); setMerges({})
+      const merged = rebaseCorrection(workspace.sheet, sheet, latest.sheet)
+      setSheet(merged.sheet); setConflicts(merged.conflicts); setWorkspace(latest); setPreview(null); setStale(false)
       setNotice('내가 수정하지 않은 항목은 최신값으로 갱신했습니다. 겹치는 변경은 값을 선택한 뒤 다시 저장하세요.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : '최신값을 불러오지 못했습니다.') }
     finally { setBusy(false) }
   }
   if (!workspace) return <div>{error ? <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></p> : <p role="status">공급정보와 원천을 불러오는 중…</p>}</div>
-  if (pdfOpen) return <PdfCorrectionWorkspace id={id} supplyDraft={{ rows, onCancel: () => setPdfOpen(false), onFill: input => {
-    // PDF 보정이 같은 주택형의 옛 공급행을 지우기로 한 행은 삭제 예정으로 둔다.
-    edit(() => [...input.rows, ...rows.filter(row => input.deletedRowKeys?.includes(row.key))]); setDeleted(current => [...new Set([...current, ...input.deletedRowKeys ?? []])]); setReason(input.reason); setUrl(input.sourceUrl); setPage(input.sourcePage ?? '')
-    setExpanded(null); setPdfOpen(false); setNotice('PDF에서 확인한 값을 편집표에 채웠습니다. 필요한 항목을 수정하고 저장하세요.')
-  } }} />
-  const unattached = unattachedLhRows(workspace).length > 0, duplicateKeys = new Set(possibleLhDuplicates(workspace).map(row => row.key))
-  function merge(duplicate: CorrectionRow, target: CorrectionRow) {
-    edit(current => current.map(item => item.key === target.key ? mergeInto(item, duplicate) : item))
-    setMerges(current => ({ ...current, [duplicate.key]: target }))
-    setDeleted(current => current.includes(duplicate.key) ? current : [...current, duplicate.key])
-    setExpanded(target.key)
-    setNotice(`${duplicate.typeName || '직접 추가'} 행을 LH 펼침 행(${target.typeName})으로 합쳤습니다. 공급정보 저장을 눌러야 반영됩니다.`)
+  if (pdfOpen) return <section aria-label="PDF로 공급표 채우기">
+    <div className={styles.actions}><button type="button" onClick={() => setPdfOpen(false)}>PDF로 채우기 닫기</button></div>
+    <PdfCorrectionWorkspace id={id} supplyDraft={(next: SupplySheet) => {
+      // PDF 공급표가 편집표 전체를 대신한다. 저장된 주택형 중 PDF에 없는 것은 저장하면 지워지므로 알려 둔다.
+      const dropped = workspace.sheet.housingTypes.filter(type => !next.housingTypes.some(item => item.key === type.key)).length
+      edit(next); setExpanded(null); setPdfOpen(false)
+      setNotice(`PDF에서 확인한 공급표를 편집표에 채웠습니다.${dropped ? ` PDF에 없는 저장된 주택형 ${dropped}개는 저장하면 지워집니다.` : ''} 필요한 항목을 고치고 근거를 적어 저장하세요.`)
+    }} />
+  </section>
+  const types = [...sheet.housingTypes].sort((a, b) => a.displayOrder - b.displayOrder)
+  function addType() {
+    const complex = workspace!.announcementComplexes[0]
+    const added = addHousingType(sheet, complex ? { announcementComplexId: complex.id, complexName: complex.name,
+      housingComplexId: complex.housingComplexId, housingComplexName: complex.housingComplexName } : {})
+    edit(added.sheet); setExpanded(added.key)
   }
-  function addRow() {
-    const row = blankRow(nextDisplayOrder(rows))
-    edit(current => [...current, row]); setExpanded(row.key)
+  function removeType(type: SheetHousingType) {
+    if (type.id !== null && !window.confirm(`'${type.name || '이름 없는 주택형'}'과 그 공급대상·수량·임대조건을 지울까요? 저장하면 되돌릴 수 없고 변경 이력에만 남습니다.`)) return
+    edit(removeHousingType(sheet, type.key)); if (expanded === type.key) setExpanded(null)
   }
   return <section className={styles.workspace} aria-label="공급정보 편집">
     <div className={styles.toolbar}><p>단지·주택형별 모집수와 임대조건을 확인하고 채우세요.</p><div className={styles.actions}>
       <button type="button" disabled={busy || uncertain} onClick={() => setPdfOpen(true)}>PDF로 채우기</button>
-      <button type="button" disabled={busy || uncertain} onClick={addRow}>직접 추가</button>
+      <button type="button" disabled={busy || uncertain} onClick={addType}>직접 추가</button>
     </div></div>
     {notice && <p role="status">{notice}</p>}
-    {unattached && <p role="note">{unattachedLhNotice(workspace)}</p>}
-    <AnnouncementComplexLinks id={id} workspace={workspace} disabled={rowsDirty || busy || uncertain} onBusyChange={setBusy}
-      onLinked={(next, message) => { setWorkspace(next); setRows(next.rows); setPreview(null); setNotice(message); onChanged() }} />
+    {!workspace.supplyConfirmed && <section className={styles.unconfirmed} aria-label="공고문 확인 전 공급정보">
+      <p><strong>아직 공고문으로 확인한 공급표가 없습니다.</strong> 사용자 화면에는 기관(LH·GH)이 보낸 공급정보를 ‘공고문 확인 전 정보’로 보여 줍니다. PDF로 채우거나 직접 추가해 저장하면 공급표가 확정됩니다.</p>
+      {workspace.stagingToken && <>
+        <p className={styles.hint}>공고문 PDF가 없는 공고라 기관이 보낸 공급정보를 그대로 공급표로 시작할 수 있습니다.</p>
+        <div className={styles.actions}><button type="button" disabled={busy || uncertain || sheetDirty} onClick={() => void startFromAgency()}>기관 제공 정보로 공급표 시작</button></div>
+        {sheetDirty && <p className={styles.hint}>편집 중인 공급정보를 저장하거나 취소한 뒤 시작할 수 있습니다.</p>}
+      </>}
+    </section>}
+    {workspace.warnings.length > 0 && <ul aria-label="공급정보 확인 안내">{workspace.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+    <AnnouncementComplexLinks id={id} workspace={workspace} disabled={sheetDirty || busy || uncertain} onBusyChange={setBusy}
+      onLinked={(next, message) => { setWorkspace(next); setSheet(next.sheet); setPreview(null); setNotice(message); onChanged() }} />
+    {workspace.sourceReference.length > 0 && <details className={styles.row}><summary>LH·GH 원천 참고 {workspace.sourceReference.length}개</summary><div className={styles.reviewBody}>
+      <p className={styles.hint}>LH·GH가 보낸 공급 원본입니다. 공급표 모집수를 검산할 때만 참고하고 저장하지 않습니다.</p>
+      <div className={styles.tableScroll}><table aria-label="LH·GH 원천 참고 표"><thead><tr><th scope="col">단지</th><th scope="col">주택형</th><th scope="col">전용면적 (㎡)</th><th scope="col">공급 세대수</th></tr></thead><tbody>
+        {workspace.sourceReference.map((item, index) => <tr key={index}><th scope="row">{item.complexLabel || '미확인'}</th><td>{item.typeName || '미확인'}</td><td>{item.exclusiveArea ?? '미확인'}</td><td>{item.householdCount ?? '미확인'}</td></tr>)}
+      </tbody></table></div></div></details>}
     <form onSubmit={event => { event.preventDefault(); void inspect() }}>
       <fieldset disabled={busy || uncertain} className={styles.editor}><legend className={styles.srOnly}>공고별 공급정보 편집</legend>
         <div className={styles.tableScroll}><table aria-label="공급정보 표"><thead><tr><th scope="col">단지</th><th scope="col">주택형</th><th scope="col">모집수</th><th scope="col">임대조건</th><th scope="col">확인할 항목</th><th scope="col">편집</th></tr></thead><tbody>
-          {!rows.length && <tr><td colSpan={6}><div className={styles.empty}><strong>등록된 공급정보가 없습니다.</strong><p>PDF로 채우거나 직접 추가해 첫 공급행을 만드세요.</p></div></td></tr>}
-          {rows.map((row, index) => {
-            const targets = row.targets.filter(target => !target.excluded)
-            const deletable = workspace.deletableRowKeys?.includes(row.key) ?? false
-            const toggleDelete = () => {
-              const mergedInto = merges[row.key]
-              // 합친 행의 삭제를 취소하면 옮겨 둔 값도 펼침 행에서 되돌린다.
-              if (mergedInto && deleted.includes(row.key)) {
-                edit(current => current.map(item => item.key === mergedInto.key ? mergedInto : item))
-                setMerges(current => { const next = { ...current }; delete next[row.key]; return next })
-              }
-              setDeleted(current => current.includes(row.key) ? current.filter(key => key !== row.key) : [...current, row.key]); setPreview(null); setNotice('')
-            }
-            const gaps = deleted.includes(row.key) ? [merges[row.key] ? '합쳐서 삭제 예정' : '삭제 예정'] : row.excluded ? ['제외 예정'] : [!row.housingComplexId && '단지 연결', !row.housingTypeId && !row.newHousingType && '주택형 연결', !targets.length && '임대조건 없음', duplicateKeys.has(row.key) && 'LH 원본과 중복 가능'].filter(Boolean)
-            return <Fragment key={row.key}><tr data-excluded={row.excluded || deleted.includes(row.key) || undefined}>
-              <th scope="row" title={row.housingComplexName && row.complexName && row.housingComplexName !== row.complexName ? `공고 표기: ${row.complexName}` : undefined}>{row.housingComplexName || row.complexName || '새 공급행'}</th><td>{row.typeName || '미입력'}</td>
-              <td>{row.groupId ? `공통 ${row.sharedHouseholdCount ?? '미확인'}` : row.householdCount ?? '미확인'}</td>
-              <td>{targets.length ? `${targets.length}개` : '없음'}</td><td>{gaps.join(' · ') || '—'}</td>
-              <td><div className={styles.rowActions}><button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 편집`} aria-expanded={expanded === row.key} onClick={() => setExpanded(expanded === row.key ? null : row.key)}>{expanded === row.key ? '닫기' : '편집'}</button>
-                {/* 관리자가 추가한 저장 행은 삭제, 원천행은 기록을 남기는 제외, 저장 전 추가 행은 바로 지운다. */}
-                {deletable ? <button type="button" aria-label={`${row.complexName} ${row.typeName} ${deleted.includes(row.key) ? (merges[row.key] ? '합치기 취소' : '삭제 취소') : '삭제'}`} onClick={toggleDelete}>{deleted.includes(row.key) ? (merges[row.key] ? '합치기 취소' : '삭제 취소') : '삭제'}</button>
-                  : row.id ? <button type="button" aria-label={`${row.complexName} ${row.typeName} ${row.excluded ? '제외 취소' : '제외'}`}
-                    onClick={() => edit(current => current.map(item => item.key === row.key ? { ...item, excluded: !item.excluded } : item))}>{row.excluded ? '제외 취소' : '제외'}</button>
-                  : <button type="button" aria-label={`${row.complexName || '새 공급행'} ${row.typeName || ''} 지우기`}
-                    onClick={() => { edit(current => current.filter(item => item.key !== row.key)); if (expanded === row.key) setExpanded(null) }}>지우기</button>}</div></td>
-            </tr>{expanded === row.key && <tr><td colSpan={6} className={styles.expandedCell}>{duplicateKeys.has(row.key) && !deleted.includes(row.key) && <SupplyMergePanel workspace={workspace} rows={rows} duplicate={row} onMerge={target => merge(row, target)} />}<SupplyRowDraft value={row} inline first={index === 0} last={index === rows.length - 1}
-              onChange={next => edit(current => current.map(item => item.key === next.key ? next : item))}
-              onRemove={() => { edit(current => current.filter(item => item.key !== row.key)); setExpanded(null) }}
-              deleted={deleted.includes(row.key)} onDelete={deletable ? toggleDelete : undefined}
-              onMove={delta => edit(current => { const next = [...current]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; return next.map((item, order) => ({ ...item, displayOrder: order })) })} /></td></tr>}</Fragment>
+          {!types.length && <tr><td colSpan={6}><div className={styles.empty}><strong>등록된 공급정보가 없습니다.</strong><p>PDF로 채우거나 직접 추가해 첫 주택형을 만드세요.</p></div></td></tr>}
+          {types.map((type, index) => {
+            const cells = cellsOf(sheet, type.key)
+            const across = sharedQuotas(sheet, type.key).filter(item => item.acrossTypes && item.quota.kind === 'WINNER')
+            const count = housingTypeCount(sheet, type.key)
+            const name = `${type.housingComplexName || type.complexName || '새 주택형'} ${type.name}`.trim()
+            return <Fragment key={type.key}><tr>
+              <th scope="row" title={type.housingComplexName && type.complexName && type.housingComplexName !== type.complexName ? `공고 표기: ${type.complexName}` : undefined}>{type.housingComplexName || type.complexName || '새 주택형'}</th><td>{type.name || '미입력'}</td>
+              <td>{[count ?? (across.length ? null : '미확인'), ...across.map(item => `함께 ${item.quota.count}`)].filter(item => item !== null).join(' · ')}</td>
+              <td>{cells.filter(cell => leaseOf(sheet, cell.key)).length ? `${cells.filter(cell => leaseOf(sheet, cell.key)).length}개` : '없음'}</td><td>{gaps(sheet, type).join(' · ') || '—'}</td>
+              <td><div className={styles.rowActions}><button type="button" aria-label={`${name} 편집`} aria-expanded={expanded === type.key} onClick={() => setExpanded(expanded === type.key ? null : type.key)}>{expanded === type.key ? '닫기' : '편집'}</button>
+                <button type="button" aria-label={`${name} 지우기`} onClick={() => removeType(type)}>지우기</button></div></td>
+            </tr>{expanded === type.key && <tr><td colSpan={6} className={styles.expandedCell}><SupplyRowDraft sheet={sheet} typeKey={type.key} complexes={workspace.announcementComplexes}
+              first={index === 0} last={index === types.length - 1} onChange={edit} onRemove={() => removeType(type)}
+              onMove={delta => edit(moveHousingType(sheet, type.key, delta))} /></td></tr>}</Fragment>
           })}
         </tbody></table></div>
-        {rowsDirty && <>
+        {sheetDirty && <>
         <fieldset className={styles.evidence}><legend>공식 근거와 변경 이유</legend>
           <label>보정 이유<textarea required maxLength={2000} rows={3} value={reason} onChange={event => { setReason(event.target.value); setPreview(null) }} /></label>
           <label>공식 근거 URL<input required type="url" maxLength={2048} value={url} onChange={event => { setUrl(event.target.value); setPreview(null) }} /></label>
           <label>페이지·표 위치 (알 때만)<input maxLength={100} value={page} onChange={event => { setPage(event.target.value); setPreview(null) }} /></label>
         </fieldset>
-        {conflicts.length > 0 && <section><h3>겹치는 변경을 선택하세요</h3>{conflicts.map((conflict, index) => <div key={`${conflict.rowKey}:${conflict.targetKey}:${conflict.field}`} className={styles.conflict}>
-          <p>{rows.find(row => row.key === conflict.rowKey)?.typeName} · {conflict.targetKey ? '대상 조건 · ' : ''}{conflict.field === '__missing' ? '서버에서 사라진 항목' : conflict.field}</p>
-          <p>현재 저장값: {JSON.stringify(conflict.current) ?? '미확인'} / 내 입력: {JSON.stringify(conflict.mine) ?? '미확인'}</p>
-          <button type="button" onClick={() => { setRows(current => resolveConflict(current, conflict, false)); setConflicts(current => current.filter((_, i) => i !== index)) }}>{conflict.field === '__missing' ? '이 항목 입력 버리기' : '현재 저장값 사용'}</button>
-          <button type="button" onClick={() => { setRows(current => resolveConflict(current, conflict, true)); setConflicts(current => current.filter((_, i) => i !== index)) }}>{conflict.field === '__missing' ? '새 항목으로 입력 복사' : '내 입력 사용'}</button>
+        {conflicts.length > 0 && <section><h3>겹치는 변경을 선택하세요</h3>{conflicts.map(conflict => <div key={conflict.id} className={styles.conflict}>
+          <p>{conflict.scope} · {conflict.field}</p>
+          <p>현재 저장값: {conflict.current} / 내 입력: {conflict.mine}</p>
+          <button type="button" onClick={() => { setConflicts(current => current.filter(item => item !== conflict)) }}>{conflict.missing ? '이 항목 입력 버리기' : '현재 저장값 사용'}</button>
+          {conflict.keepMine && <button type="button" onClick={() => { setSheet(current => resolveConflict(current, conflict, true)); setConflicts(current => current.filter(item => item !== conflict)) }}>{conflict.missing ? '내 입력으로 다시 만들기' : '내 입력 사용'}</button>}
         </div>)}</section>}
         </>}
         <div className={styles.actions}><button className="admin-primary" type="submit" disabled={!!previewBlocker} aria-describedby={previewBlocker ? blockerId : undefined}>{busy ? '저장 중…' : '공급정보 저장'}</button>
-          {rowsDirty && <button type="button" onClick={() => { if (window.confirm('저장하지 않은 공급정보 변경을 취소할까요?')) { setRows(workspace.rows); setDeleted([]); setMerges({}); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
+          {sheetDirty && <button type="button" onClick={() => { if (window.confirm('저장하지 않은 공급정보 변경을 취소할까요?')) { setSheet(workspace.sheet); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
           {stale && <button type="button" onClick={() => void refreshKeepingDraft()}>입력을 유지하고 최신값 비교</button>}</div>
         {previewBlocker && <p id={blockerId} role={stale ? 'alert' : undefined} className={stale ? styles.stale : styles.hint}>{previewBlocker}</p>}
       </fieldset>
@@ -198,7 +234,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     {error && !stale && <p role="alert" className="registration-error">{error}</p>}
     {uncertain && <button type="button" className="admin-primary" disabled={busy} onClick={() => void apply()}>같은 작업으로 적용 결과 확인</button>}
     {appliedWarnings.length > 0 && <details><summary>저장 후 확인할 항목 {appliedWarnings.length}개</summary><ul>{appliedWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
-    <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={rowsDirty || busy || uncertain}
+    <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={sheetDirty || busy || uncertain}
       onBusyChange={setBusy} onDirtyChange={setReviewDirty} evidence={applied?.evidence ?? null} pending={applied?.changed ?? []} />
     <nav className={styles.actions} aria-label="공급정보 확인"><Link to={`/admin/announcements/${id}?section=history`}>출처·수정 이력</Link><Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">사용자 공고 화면 확인 ↗</Link></nav>
   </section>

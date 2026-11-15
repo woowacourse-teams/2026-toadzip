@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.repository;
 
+import com.toadzip.backend.announcement.repository.AnnouncementComplexLinkSql;
 import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 
 import java.sql.ResultSet;
@@ -82,38 +83,6 @@ public class ComplexDetailQueryRepository {
             )
             """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"));
 
-    /**
-     * 공급행은 대표와 함께 모집하는 주택형(supply_row_housing_types, 대표 포함) 모두의 공급조건으로 보인다.
-     * 연결 표의 기본 키가 (공급행, 주택형)이라 한 주택형 아래 같은 공급행은 한 번만 나온다.
-     */
-    private static final String FIND_CURRENT_SUPPLY_CONDITIONS = CURRENT_LEAF_CTE + """
-            SELECT announcement.id AS announcement_id,
-                   supply_row.id AS supply_row_id,
-                   housing_type.id AS housing_type_id,
-                   supply_target.id AS target_id,
-                   supply_target.target,
-                   supply_target.rental_deposit AS deposit,
-                   supply_target.monthly_rent,
-                   supply_target.converted_deposit AS convertible_deposit,
-                   announcement.posted_date
-            FROM current_leaf announcement
-            JOIN supply_rows supply_row
-              ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
-             AND supply_row.housing_complex_id = :complexId
-            JOIN supply_row_housing_types linked_type ON linked_type.supply_row_id = supply_row.id
-            JOIN housing_types housing_type
-              ON housing_type.id = linked_type.housing_type_id
-             AND housing_type.housing_complex_id = :complexId
-            JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
-            ORDER BY announcement.posted_date DESC,
-                     announcement.id DESC,
-                     supply_row.display_order,
-                     supply_row.id,
-                     supply_target.display_order,
-                     supply_target.id,
-                     housing_type.id
-            """;
-
     private static final String FIND_CURRENT_ANNOUNCEMENTS = CURRENT_LEAF_CTE + """
             SELECT announcement.id AS announcement_id,
                    announcement.name AS title,
@@ -124,52 +93,12 @@ public class ComplexDetailQueryRepository {
                    %s
             FROM current_leaf announcement
             %s
-            WHERE EXISTS (
-                SELECT 1
-                FROM supply_rows supply_row
-                WHERE supply_row.admin_excluded = false AND supply_row.announcement_id = announcement.id
-                  AND supply_row.housing_complex_id = :complexId
-            )
+            WHERE %s
             ORDER BY announcement.posted_date DESC, announcement.id DESC
             """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"),
                     ApplicationScheduleSql.displayPeriodColumns("announcement"),
-                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"));
-
-    private static final String FIND_CURRENT_ANNOUNCEMENT_TARGETS = CURRENT_LEAF_CTE + """
-            , ranked_target AS (
-                SELECT announcement.id AS announcement_id,
-                       announcement.posted_date,
-                       supply_row.id AS supply_row_id,
-                       supply_row.display_order AS supply_row_display_order,
-                       supply_target.id AS target_id,
-                       supply_target.target,
-                       supply_target.display_order AS target_display_order,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY announcement.id, supply_target.target
-                           ORDER BY supply_row.display_order,
-                                    supply_row.id,
-                                    supply_target.display_order,
-                                    supply_target.id
-                       ) AS target_rank
-                FROM current_leaf announcement
-                JOIN supply_rows supply_row
-                  ON supply_row.announcement_id = announcement.id AND supply_row.admin_excluded = false
-                 AND supply_row.housing_complex_id = :complexId
-                JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id AND supply_target.admin_excluded = false
-            )
-            SELECT announcement_id,
-                   supply_row_id,
-                   target_id,
-                   target
-            FROM ranked_target
-            WHERE target_rank = 1
-            ORDER BY posted_date DESC,
-                     announcement_id DESC,
-                     supply_row_display_order,
-                     supply_row_id,
-                     target_display_order,
-                     target_id
-            """;
+                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"),
+                    AnnouncementComplexLinkSql.linked("announcement.id", ":complexId"));
 
     private final JdbcClient jdbcClient;
 
@@ -191,27 +120,11 @@ public class ComplexDetailQueryRepository {
                 .list();
     }
 
-    public List<CurrentSupplyConditionRow> findCurrentSupplyConditions(long complexId, LocalDate today) {
-        return jdbcClient.sql(FIND_CURRENT_SUPPLY_CONDITIONS)
-                .param("complexId", complexId)
-                .param("today", today)
-                .query(this::mapSupplyCondition)
-                .list();
-    }
-
     public List<CurrentAnnouncementRow> findCurrentAnnouncements(long complexId, LocalDate today) {
         return jdbcClient.sql(FIND_CURRENT_ANNOUNCEMENTS)
                 .param("complexId", complexId)
                 .param("today", today)
                 .query(this::mapAnnouncement)
-                .list();
-    }
-
-    public List<CurrentAnnouncementTargetRow> findCurrentAnnouncementTargets(long complexId, LocalDate today) {
-        return jdbcClient.sql(FIND_CURRENT_ANNOUNCEMENT_TARGETS)
-                .param("complexId", complexId)
-                .param("today", today)
-                .query(this::mapAnnouncementTarget)
                 .list();
     }
 
@@ -268,21 +181,6 @@ public class ComplexDetailQueryRepository {
         return timestamp.toInstant();
     }
 
-    private CurrentSupplyConditionRow mapSupplyCondition(ResultSet resultSet, int rowNumber)
-            throws SQLException {
-        return new CurrentSupplyConditionRow(
-                resultSet.getLong("announcement_id"),
-                resultSet.getLong("supply_row_id"),
-                resultSet.getLong("housing_type_id"),
-                resultSet.getLong("target_id"),
-                resultSet.getString("target"),
-                resultSet.getBigDecimal("deposit"),
-                resultSet.getBigDecimal("monthly_rent"),
-                resultSet.getBigDecimal("convertible_deposit"),
-                resultSet.getObject("posted_date", LocalDate.class)
-        );
-    }
-
     private CurrentAnnouncementRow mapAnnouncement(ResultSet resultSet, int rowNumber) throws SQLException {
         return new CurrentAnnouncementRow(
                 resultSet.getLong("announcement_id"),
@@ -297,13 +195,4 @@ public class ComplexDetailQueryRepository {
         );
     }
 
-    private CurrentAnnouncementTargetRow mapAnnouncementTarget(ResultSet resultSet, int rowNumber)
-            throws SQLException {
-        return new CurrentAnnouncementTargetRow(
-                resultSet.getLong("announcement_id"),
-                resultSet.getLong("supply_row_id"),
-                resultSet.getLong("target_id"),
-                resultSet.getString("target")
-        );
-    }
 }

@@ -91,8 +91,6 @@ export type LhAnnouncementQuality = {
   unlinkedLhCandidates: readonly { panId: string; sourceKey: string; changedAt: string }[]
   preservedSourceRequestCount: number
   preservedReasons: Record<string, number>
-  preservedAmountTargetCount: number
-  preservedAmountReasons: Record<string, number>
   heldRequests: readonly {
     requestDescription: string
     reason: string
@@ -151,8 +149,7 @@ function isLhAnnouncementQuality(value: unknown): value is LhAnnouncementQuality
     && value.unlinkedLhCandidates.every((candidate) => isRecord(candidate)
       && typeof candidate.panId === 'string' && typeof candidate.sourceKey === 'string'
       && typeof candidate.changedAt === 'string')
-    && counts(value.preservedReasons) && count(value.preservedAmountTargetCount)
-    && counts(value.preservedAmountReasons)
+    && counts(value.preservedReasons)
     && value.heldRequests.every((held) => isRecord(held)
       && typeof held.requestDescription === 'string' && typeof held.reason === 'string'
       && typeof held.lastOccurredAt === 'string'

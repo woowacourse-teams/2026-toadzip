@@ -13,7 +13,8 @@ public record CurrentAnnouncementResponse(
         LocalDate applicationStartAt,
         LocalDate applicationEndAt,
         Integer dDay,
-        BigDecimal actualCompetitionRate
+        BigDecimal actualCompetitionRate,
+        boolean supplyConfirmed
 ) {
 
     public CurrentAnnouncementResponse {

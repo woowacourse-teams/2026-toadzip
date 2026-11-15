@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+/** supplyConfirmed가 false면 단지 수·모집수는 공고문으로 확인하기 전의 기관 준비 데이터다. */
 public record AnnouncementListItemResponse(
         long announcementId,
         AnnouncementPublicationType publicationType,
@@ -28,7 +29,8 @@ public record AnnouncementListItemResponse(
         BigDecimal actualCompetitionRate,
         BigDecimal predictedCompetitionRate,
         String thumbnailImageUrl,
-        List<ApplicationScheduleResponse> applicationSchedules
+        List<ApplicationScheduleResponse> applicationSchedules,
+        boolean supplyConfirmed
 ) {
 
     public AnnouncementListItemResponse {

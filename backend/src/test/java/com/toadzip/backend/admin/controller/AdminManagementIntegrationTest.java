@@ -10,9 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AttachmentType;
-import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -269,7 +267,7 @@ class AdminManagementIntegrationTest {
 
 
     @Test
-    void 공고_수정과_공급행_수정은_재정제에도_유지되고_단지_삭제를_막는다() throws Exception {
+    void 공고_수정은_재정제에도_유지되고_상세는_공급표를_보이며_공급표가_가리키는_단지_삭제를_막는다() throws Exception {
         long complexId = createComplex();
         long announcementId = createAnnouncement(complexId);
         String path = "/api/admin/announcements/" + announcementId;
@@ -278,36 +276,23 @@ class AdminManagementIntegrationTest {
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(values.toString()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.summary.name").value("검토한 모집 공고"));
-        var current = getData(path);
-        long version = current.get("data").get("version").asLong();
-        var supply = current.get("supplyRows").get(0);
-        var supplyValues = (ObjectNode) supply.get("data");
-        supplyValues.put("totalSupplyHouseholdCount", 17);
-        supplyValues.put("announcementHousingTypeName", "공고 표기 59A(신혼부부)");
-        String sourceTypeName = supply.get("sourceHousingTypeName").asText();
-        String request = "{\"version\":" + version + ",\"housingComplexId\":" + complexId
-                + ",\"supplyRow\":" + supplyValues + "}";
-        mvc.perform(put(path + "/supply-rows/" + supply.get("id").asLong())
-                        .with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(request))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.supplyRows[0].modified").value(true))
-                .andExpect(jsonPath("$.data.supplyRows[0].data.totalSupplyHouseholdCount").value(17))
-                .andExpect(jsonPath("$.data.supplyRows[0].data.announcementHousingTypeName")
-                        .value("공고 표기 59A(신혼부부)"))
-                .andExpect(jsonPath("$.data.supplyRows[0].sourceHousingTypeName").value(sourceTypeName));
+        // 관리자 상세의 공급정보는 공고 공급표다. 옛 공급행·공급대상 목록은 없다.
+        var detail = getData(path);
+        assertThat(detail.has("supplyRows")).isFalse();
+        assertThat(detail.has("supplyTargets")).isFalse();
+        var type = detail.get("supplySheet").get("housingTypes").get(0);
+        long rowId = type.get("id").asLong();
+        assertThat(type.get("key").asText()).isEqualTo("row:" + rowId);
+        assertThat(type.get("name").asText()).isEqualTo("36A");
+        assertThat(type.get("housingComplexId").asLong()).isEqualTo(complexId);
+        var cell = detail.get("supplySheet").get("cells").get(0);
+        assertThat(cell.get("key").asText()).isEqualTo("cell:" + cell.get("id").asLong());
+        assertThat(cell.get("housingType").asText()).isEqualTo("row:" + rowId);
+        assertThat(detail.get("supplySheet").get("quotas").get(0).get("count").asInt()).isEqualTo(5);
         mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
                         .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
-        var row = entityManager.find(SupplyRow.class,
-                supply.get("id").asLong());
-        var announcement = row.getAnnouncement();
+        var announcement = entityManager.find(SupplyRow.class, rowId).getAnnouncement();
         assertThat(announcement.enrichFromLh("new-pan", "수집 이유", null)).isFalse();
-        // 재정제는 원천 이름만 갱신하고 관리자가 정한 값은 유지한다. 이름 갱신은 공고 변경으로 세지 않는다.
-        assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111",
-                SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
-        assertThat(row.getSourceHousingTypeName()).isEqualTo("주택형");
-        assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("공고 표기 59A(신혼부부)");
-        assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(17);
-        assertThat(row.getHousingComplex().getId()).isEqualTo(complexId);
     }
 
     @Test
@@ -327,6 +312,27 @@ class AdminManagementIntegrationTest {
         mvc.perform(post(path + "/restore").param("version", "1")
                 .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isNoContent());
         mvc.perform(get("/api/v1/announcements/" + id)).andExpect(status().isOk());
+    }
+
+    @Test
+    void 공급행을_모두_제외해_공개_연결에서_빠진_단지도_휴지통과_복구_순서를_보호한다() throws Exception {
+        long complexId = createComplex();
+        long id = createAnnouncement(complexId);
+        entityManager.flush();
+        entityManager.createNativeQuery(
+                "UPDATE supply_rows SET admin_excluded = true WHERE announcement_id = :id")
+                .setParameter("id", id).executeUpdate();
+        // 공고 단지가 이 단지를 가리키는 한 공개 화면에 안 보여도 단지를 휴지통에 넣을 수 없다.
+        mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+
+        String path = "/api/admin/announcements/" + id;
+        mvc.perform(delete(path).param("version", "0").with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isNoContent());
+        mvc.perform(delete("/api/admin/housing-complexes/" + complexId).param("version", "0")
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(post(path + "/restore").param("version", "1")
+                .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
     }
 
     @Test
@@ -641,90 +647,6 @@ class AdminManagementIntegrationTest {
         assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
     }
 
-    @Test
-    void 함께_모집하는_주택형으로만_연결된_주택형도_휴지통으로_옮기지_않는다() throws Exception {
-        long id = createComplex();
-        long typeId = createHousingType(id);
-        long announcementId = createAnnouncement(id);
-        entityManager.createNativeQuery("""
-                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
-                        SELECT id, :typeId FROM supply_rows WHERE announcement_id = :id
-                        """).setParameter("typeId", typeId).setParameter("id", announcementId).executeUpdate();
-        String path = "/api/admin/housing-complexes/" + id;
-        long version = getData(path).get("data").get("version").asLong();
-        mvc.perform(delete(path + "/housing-types/" + typeId).param("version", String.valueOf(version))
-                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
-        assertThat(getData(path).get("housingTypes").get(0).get("deleted").asBoolean()).isFalse();
-    }
-
-    @Test
-    void 공급행_대표를_바꾸면_함께_모집하던_주택형을_변경_전_이력에_남긴다() throws Exception {
-        long complexId = createComplex();
-        long representativeId = createHousingType(complexId);
-        var joint = HousingType.createFromMyHome(complexes.findById(complexId).orElseThrow(), "JOINT-" + complexId,
-                "59A", new BigDecimal("59.9"), null);
-        entityManager.persist(joint); entityManager.flush();
-        long id = createAnnouncement(complexId);
-        entityManager.createNativeQuery("UPDATE supply_rows SET housing_type_id = :typeId WHERE announcement_id = :id")
-                .setParameter("typeId", representativeId).setParameter("id", id).executeUpdate();
-        entityManager.createNativeQuery("""
-                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
-                        SELECT id, unnest(ARRAY[:representative, :joint]) FROM supply_rows WHERE announcement_id = :id
-                        """).setParameter("representative", representativeId).setParameter("joint", joint.getId())
-                .setParameter("id", id).executeUpdate();
-        entityManager.clear();
-        String path = "/api/admin/announcements/" + id;
-        var current = getData(path);
-        long rowId = current.get("supplyRows").get(0).get("id").asLong();
-
-        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
-                                + ",\"housingComplexId\":" + complexId + ",\"supplyRow\":" + current.get("supplyRows").get(0).get("data") + "}"))
-                .andExpect(status().isOk());
-        entityManager.flush();
-
-        var change = (Object[]) entityManager.createNativeQuery("SELECT before_value, after_value FROM admin_data_changes "
-                + "WHERE resource_id = :id AND action = 'UPDATE_SUPPLY'").setParameter("id", id).getSingleResult();
-        assertThat(json.readTree((String) change[0]).get("housingTypeIds").toString())
-                .isEqualTo("[" + Math.min(representativeId, joint.getId()) + "," + Math.max(representativeId, joint.getId()) + "]");
-        assertThat(json.readTree((String) change[1]).get("housingTypeIds").toString()).isEqualTo("[]");
-    }
-
-    @Test
-    void 공급행_대표를_다른_주택형으로_바꾸면_이력의_변경_후_연결은_새_대표만_남긴다() throws Exception {
-        long complexId = createComplex();
-        long representativeId = createHousingType(complexId);
-        var complex = complexes.findById(complexId).orElseThrow();
-        var joint = HousingType.createFromMyHome(complex, "JOINT-" + complexId, "59A", new BigDecimal("59.9"), null);
-        var replacement = HousingType.createFromMyHome(complex, "NEXT-" + complexId, "74A", new BigDecimal("74.9"), null);
-        entityManager.persist(joint); entityManager.persist(replacement); entityManager.flush();
-        long id = createAnnouncement(complexId);
-        entityManager.createNativeQuery("UPDATE supply_rows SET housing_type_id = :typeId WHERE announcement_id = :id")
-                .setParameter("typeId", representativeId).setParameter("id", id).executeUpdate();
-        entityManager.createNativeQuery("""
-                        INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
-                        SELECT id, unnest(ARRAY[:representative, :joint]) FROM supply_rows WHERE announcement_id = :id
-                        """).setParameter("representative", representativeId).setParameter("joint", joint.getId())
-                .setParameter("id", id).executeUpdate();
-        entityManager.clear();
-        String path = "/api/admin/announcements/" + id;
-        var current = getData(path);
-        long rowId = current.get("supplyRows").get(0).get("id").asLong();
-
-        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
-                                + ",\"housingComplexId\":" + complexId + ",\"housingTypeId\":" + replacement.getId()
-                                + ",\"supplyRow\":" + current.get("supplyRows").get(0).get("data") + "}"))
-                .andExpect(status().isOk());
-        entityManager.flush();
-
-        var change = (Object[]) entityManager.createNativeQuery("SELECT before_value, after_value FROM admin_data_changes "
-                + "WHERE resource_id = :id AND action = 'UPDATE_SUPPLY'").setParameter("id", id).getSingleResult();
-        assertThat(json.readTree((String) change[0]).get("housingTypeIds").toString())
-                .isEqualTo("[" + Math.min(representativeId, joint.getId()) + "," + Math.max(representativeId, joint.getId()) + "]");
-        assertThat(json.readTree((String) change[1]).get("housingTypeIds").toString()).isEqualTo("[" + replacement.getId() + "]");
-    }
-
     private long createHousingType(long complexId) {
         var type = HousingType.createFromMyHome(
                 complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,
@@ -840,164 +762,6 @@ class AdminManagementIntegrationTest {
         }
         assertThat(getData(path).get("data").toString()).isEqualTo(before);
         assertThat(getData(path + "/changes").size()).isZero();
-    }
-
-    @Test
-    void 공급행이나_공급대상을_고치면_원천_소유_공고가_공고문_소유가_된다() throws Exception {
-        long complexId = createComplex();
-        long id = createAnnouncement(complexId);
-        String path = "/api/admin/announcements/" + id;
-        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var target = SupplyTarget.createFromSource(entityManager.find(SupplyRow.class, rowId),
-                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"), new BigDecimal("200000"), 0);
-        entityManager.persist(target);
-        long targetId = target.getId();
-        // 직접 등록 공고는 처음부터 공고문 소유라 정제가 만든 공고처럼 원천 소유로 되돌려 둔다.
-        useSourceOwner(id);
-        var current = getData(path);
-        var supplyValues = (ObjectNode) current.get("supplyRows").get(0).get("data");
-        mvc.perform(put(path + "/supply-rows/" + rowId).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + current.get("data").get("version").asLong()
-                                + ",\"housingComplexId\":" + complexId + ",\"supplyRow\":" + supplyValues + "}"))
-                .andExpect(status().isOk());
-        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
-
-        useSourceOwner(id);
-        String body = """
-                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
-                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
-                 "applicationCondition":"공고문 참조","documentEvidence":%s}
-                """.formatted(getData(path).get("data").get("version").asLong(),
-                documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
-        mvc.perform(put(path + "/supply-targets/" + targetId).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(withExpectedTargetValues(path, body)))
-                .andExpect(status().isOk());
-        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
-    }
-
-    private void useSourceOwner(long id) {
-        entityManager.flush();
-        entityManager.createNativeQuery("UPDATE announcements SET supply_owner = 'LH_SOURCE' WHERE id = ?1")
-                .setParameter(1, id).executeUpdate();
-        entityManager.clear();
-        assertThat(supplyOwner(id)).isEqualTo("LH_SOURCE");
-    }
-
-    private String supplyOwner(long id) {
-        entityManager.flush();
-        return (String) entityManager.createNativeQuery("SELECT supply_owner FROM announcements WHERE id = ?1")
-                .setParameter(1, id).getSingleResult();
-    }
-
-    @Test
-    void 공급대상_금액은_근거와_함께_수정하고_원천_덮어쓰기를_막는다() throws Exception {
-        long id = createAnnouncement(createComplex());
-        String path = "/api/admin/announcements/" + id;
-        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(SupplyRow.class, rowId);
-        var target = SupplyTarget.createFromSource(row,
-                "LH:TEST", "청년", "1순위", 5, new BigDecimal("10000000"),
-                new BigDecimal("200000"), 0);
-        entityManager.persist(target);
-        entityManager.flush();
-        long version = getData(path).get("data").get("version").asLong();
-        String body = """
-                {"version":%d,"target":"청년","supplyRank":"1순위","supplyHouseholdCount":5,
-                 "reserveCount":null,"rentalDeposit":"12000000","monthlyRent":"0", "convertedDeposit":null,
-                 "applicationCondition":"공고문 참조","documentEvidence":%s}
-                """.formatted(version, documentEvidence().replace("\"field\":\"name\"", "\"field\":\"rentalDeposit\""));
-        body = withExpectedTargetValues(path, body);
-        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("12000000"))
-                .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").value("0"));
-        assertThat(row.isAdminModified()).isTrue();
-        assertThat(target.updateFromSource("청년", "1순위", 9, BigDecimal.ONE,
-                BigDecimal.ONE, 0)).isFalse();
-        assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
-        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
-        var history = json.readTree(getData(path + "/changes").get(0).get("afterValue").asText());
-        assertThat(history.get("documentEvidence").get("citations").get(0).get("field").asText())
-                .isEqualTo("rentalDeposit");
-    }
-
-    @Test
-    void 공급대상_수정은_소속과_권한과_원단위_입력을_검증한다() throws Exception {
-        long id = createAnnouncement(createComplex());
-        long otherId = createAnnouncement(createComplex());
-        String path = "/api/admin/announcements/" + id;
-        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(SupplyRow.class, rowId);
-        var target = SupplyTarget.createFromSource(row,
-                "LH:VALIDATION", "청년", null, null, null, null, 0);
-        entityManager.persist(target);
-        entityManager.flush();
-        assertThat(target.isAdminModified()).isFalse();
-        long version = getData(path).get("data").get("version").asLong();
-        String body = """
-                {"version":%d,"target":"청년","rentalDeposit":"999999999999999999","monthlyRent":null}
-                """.formatted(version);
-        body = withExpectedTargetValues(path, body);
-        String endpoint = path + "/supply-targets/" + target.getId();
-        mvc.perform(put(endpoint).with(user(memberId()).roles("USER")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
-        mvc.perform(put(endpoint).with(user("admin").roles("ADMIN"))
-                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
-        mvc.perform(put("/api/admin/announcements/" + otherId + "/supply-targets/" + target.getId())
-                        .with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
-        for (String invalid : List.of(body.replace("999999999999999999", "-1"),
-                body.replace("999999999999999999", "1.5"),
-                body.replace("999999999999999999", "1000000000000000000"), body.replace("청년", " "),
-                body.replace("\"expectedValues\":{", "\"unusedValues\":{"))) {
-            mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
-        }
-        assertThat(getData(path + "/changes").size()).isZero();
-        mvc.perform(put(endpoint).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.supplyTargets[0].data.rentalDeposit").value("999999999999999999"))
-                .andExpect(jsonPath("$.data.supplyTargets[0].data.monthlyRent").isEmpty());
-    }
-
-    @Test
-    void 공고_버전이_같아도_수집으로_바뀐_임대조건은_이전_수정안으로_덮어쓰지_않는다() throws Exception {
-        long id = createAnnouncement(createComplex());
-        String path = "/api/admin/announcements/" + id;
-        long rowId = getData(path).get("supplyRows").get(0).get("id").asLong();
-        var row = entityManager.find(SupplyRow.class, rowId);
-        var target = SupplyTarget.createFromSource(row,
-                "LH:CONCURRENT", "청년", "1순위", 5, new BigDecimal("10000000"),
-                new BigDecimal("200000"), 0);
-        entityManager.persist(target);
-        entityManager.flush();
-        var detail = getData(path);
-        long version = detail.get("data").get("version").asLong();
-        var body = (ObjectNode) detail.get("supplyTargets").get(0).get("data").deepCopy();
-        body.set("expectedValues", body.deepCopy());
-        body.put("version", version);
-        body.put("rentalDeposit", "12000000");
-        target.updateFromSource("청년", "1순위", 5, new BigDecimal("10000000"),
-                new BigDecimal("250000"), 0);
-        entityManager.flush();
-        assertThat(getData(path).get("data").get("version").asLong()).isEqualTo(version);
-
-        mvc.perform(put(path + "/supply-targets/" + target.getId()).with(user("admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
-                .andExpect(status().isConflict());
-
-        assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
-        assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
-        assertThat(target.isAdminModified()).isFalse();
-        assertThat(getData(path + "/changes").size()).isZero();
-    }
-
-    private String withExpectedTargetValues(String path, String body) throws Exception {
-        var values = (ObjectNode) json.readTree(body);
-        values.set("expectedValues", getData(path).get("supplyTargets").get(0).get("data"));
-        return values.toString();
     }
 
     private String documentEvidence() {

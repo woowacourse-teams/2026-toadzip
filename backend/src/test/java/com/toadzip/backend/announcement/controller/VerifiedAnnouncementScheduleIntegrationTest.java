@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.SupplyOwner;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
@@ -16,6 +15,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest.Schedule;
 import com.toadzip.backend.announcement.dto.request.VerifiedLhRevisionRequest;
@@ -105,10 +105,9 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                                    "sourceUrl":"https://apply.lh.or.kr/lhapply/lhFile.do?fileid=68429633"}]}
                                 """))
                 .andExpect(status().isNoContent());
-        // 접수 일정은 공급정보가 아니어서 확정해도 정제가 공급행을 계속 원천 값으로 만든다.
+        // 접수 일정은 공급정보가 아니어서 확정해도 공급표는 확정하지 않고 준비 데이터를 계속 보인다.
         entityManager.flush(); entityManager.clear();
-        assertThat(entityManager.find(Announcement.class, announcement.getId()).getSupplyOwner())
-                .isEqualTo(SupplyOwner.LH_SOURCE);
+        assertThat(entityManager.find(Announcement.class, announcement.getId()).isSupplyConfirmed()).isFalse();
         mvc.perform(get("/api/v1/announcements/{id}", announcement.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.applicationSchedules[0].sourcePage").isEmpty());
@@ -391,8 +390,9 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                         new BigDecimal("37.5"), new BigDecimal("127.0")),
                 100, "LH", LocalDate.of(2020, 1, 1), "개별난방", "아파트", "계단식", true, 80, null, null);
         entityManager.persist(complex);
-        entityManager.persist(SupplyRow.create(announcement, complex, null, "review:" + regionCode, 0,
-                complex.getName(), "주택형", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY, null, 10));
+        entityManager.persist(SupplyRowSeed.create(entityManager, announcement, complex,
+                null, 0, complex.getName(), "주택형", "1114010100100010000", null,
+                SupplyCategory.NEW_SUPPLY));
         entityManager.flush();
         return complex;
     }

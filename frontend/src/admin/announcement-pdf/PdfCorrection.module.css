@@ -17,6 +17,8 @@
 .page :is(input,textarea) { caret-color:var(--ds-color-action); }
 .page ::selection { background:var(--ds-color-action-soft); color:var(--ds-color-text); }
 .heading { display:flex; gap:var(--ds-space-5); justify-content:space-between; align-items:center; padding-bottom:var(--ds-space-5); flex-wrap:wrap; }
+/* 관리자 공통 머리는 한 줄(36px)로 고정한다. 이 화면 머리는 공고 이름·검토 진행 줄이 더 있어 높이를 내용에 맞춘다. */
+.page[class] > .heading[class] { height:auto; }
 .heading > div { min-width:0; flex:1 1 330px; }
 .page .heading h1 { font-size:24px; margin:var(--ds-space-3) 0 var(--ds-space-1); letter-spacing:-.03em; }
 .heading p { font-size:var(--ds-text-caption); color:var(--ds-color-muted-base); margin:0; }
@@ -106,6 +108,9 @@
 .pending { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--ds-space-3); padding:var(--ds-space-3) var(--ds-space-4); margin-block:var(--ds-space-3); border-left:3px solid var(--ds-color-deadline); background:var(--ds-color-surface-subtle); font-size:var(--ds-text-caption); }
 .page .pending p { margin:0; flex:1 1 240px; }
 .pending strong, .targetTable .pendingLabel { color:var(--pdf-alert-text); }
+.pending[data-tone=info] { border-left-color:var(--ds-color-divider); }
+.pending[data-tone=info] strong { color:inherit; }
+.footer .removalNote { display:inline; color:var(--pdf-alert-text); font-weight:600; }
 .pendingLabel { display:block; margin-top:var(--ds-space-1); font-size:11px; }
 .cell[data-pending=true] .cellLabel small { color:var(--pdf-alert-text); }
 [data-review-id]:focus { outline:2px solid var(--ds-color-action); outline-offset:2px; }
@@ -213,6 +218,7 @@
 .targetTable small { display:block; color:var(--ds-color-muted-base); font-size:12px; font-weight:400; margin-top:var(--ds-space-1); }
 .targetTable tr[data-excluded=true] { color:var(--ds-color-muted-base); background:var(--ds-color-surface-subtle); }
 .target { background:var(--ds-color-surface-subtle); padding:var(--ds-space-4); border:1px solid var(--ds-color-divider); }
+.groups { display:grid; gap:var(--ds-space-2); margin-block:var(--ds-space-3); }
 .conditions { font-size:var(--ds-text-caption); margin-bottom:var(--ds-space-4); }
 .conditions li { line-height:1.7; margin-block:var(--ds-space-3); }
 .filePicker { position:relative; min-width:0; }
@@ -282,7 +288,7 @@
 .supplyLayout[data-panel=true] { grid-template-columns:minmax(0,1fr) minmax(240px,320px); }
 .supplyLayout[data-panel=true] > .rowListScroll { grid-column:1 / -1; }
 @container(max-width:700px) { .supplyLayout[data-panel=true] { grid-template-columns:minmax(0,1fr); } }
-.rowListScroll { max-height:32vh; overflow:auto; border:1px solid var(--ds-color-divider); scrollbar-width:thin; }
+.rowListScroll { max-height:min(32vh, 12rem); overflow:auto; border:1px solid var(--ds-color-divider); scrollbar-width:thin; }
 .rowList { width:100%; border-collapse:collapse; font-size:var(--ds-text-caption); font-variant-numeric:tabular-nums; }
 .rowList thead th { position:sticky; top:0; z-index:1; background:var(--ds-color-table-heading, var(--ds-color-surface-subtle)); text-align:left; font-weight:500; color:var(--ds-color-label); }
 .rowList :is(th,td) { padding:var(--ds-space-1) var(--ds-space-2); border-bottom:1px solid var(--ds-color-table-line, var(--ds-color-divider)); vertical-align:top; overflow-wrap:anywhere; }
@@ -292,6 +298,7 @@
 .rowList tr[data-excluded] { color:var(--pdf-quiet-text); }
 .page .rowListButton { all:unset; cursor:pointer; color:var(--ds-color-action); font-weight:500; overflow-wrap:anywhere; }
 .page .rowListButton:focus-visible { outline:2px solid var(--ds-color-action); outline-offset:2px; }
+.rowHouseTypes { display:block; font-size:12px; font-weight:400; color:var(--ds-color-label); overflow-wrap:anywhere; }
 .statusBadge { display:inline-block; padding:0 var(--ds-space-2); border-radius:var(--ds-status-badge-radius, 999px); border:1px solid currentColor; font-size:12px; line-height:1.7; white-space:nowrap; }
 /* 남은 확인으로 옮기는 상태 배지. 배지 모양을 유지하되 누를 수 있음을 손가락 커서와 밑줄로 알린다. */
 button.statusBadge { background:transparent; font:inherit; font-size:12px; line-height:1.7; cursor:pointer; text-align:left; }
@@ -370,3 +377,7 @@ button.statusBadge::after { content:' ›'; }
 .placementOptions button[aria-pressed=true] { background:var(--ds-color-action-soft); color:var(--ds-color-action); font-weight:600; }
 .placementOptions small { color:var(--ds-color-action); }
 .placementOptions .hint { padding:var(--ds-space-2) var(--ds-space-3); }
+.otherComplexes { display:grid; gap:var(--ds-space-1); flex:1 1 100%; margin:0; padding:0; list-style:none; }
+.otherComplexes li { display:flex; flex-wrap:wrap; align-items:center; gap:var(--ds-space-1) var(--ds-space-3); }
+.otherComplexes label { display:inline-flex; align-items:center; gap:var(--ds-space-1); font-weight:600; }
+.otherComplexes span { color:var(--ds-color-muted-base); }

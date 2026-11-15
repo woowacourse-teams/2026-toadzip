@@ -7,7 +7,7 @@ import fixtures from './fixtures/scenarios.json'
 
 const attachments = [{ attachmentId: 1, fileName: '공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: 'https://example.com/1.pdf' }]
 const json = JSON.stringify(fixtures.hansville.extraction)
-const done: ExtractionState = { status: 'done', result: { json, pages: [1, 2, 10], totalPages: 35, warnings: ['supplyRows[0].targets[0].target: 표기 규칙 위반(「가」군)'], usage: { promptTokens: 7291, outputTokens: 1766, thinkingTokens: null } } }
+const done: ExtractionState = { status: 'done', result: { json, pages: [1, 2, 10], totalPages: 35, warnings: ['targets[0].label: 표기 규칙 위반(「가」군)'], usage: { promptTokens: 7291, outputTokens: 1766, thinkingTokens: null } } }
 function props(extraction: ExtractionState = done) {
   return { announcementName: '익산한스빌 예비입주자 모집', pdf: { url: 'blob:notice', name: '공고문.pdf' }, extraction, onExtract: vi.fn(), onCancel: vi.fn(),
     parsed: readExtraction(extraction.status === 'done' ? json : ''), checks: [], saved: null, samePdf: false, onLoadSaved: vi.fn() }
@@ -43,7 +43,7 @@ it('추출하는 동안 로딩바와 경과 시간을 보여준다', () => {
 
 it('추출이 끝나면 추출 수·읽은 쪽·토큰·확인할 점을 보여준다', () => {
   render(<RequestPreparation {...props()} />)
-  expect(screen.getByText(/공급행 2개 · 임대조건 2개 · 일정 3개/)).toBeVisible()
+  expect(screen.getByText(/주택형 2개 · 대상별 칸 2개 · 일정 3개/)).toBeVisible()
   expect(screen.getByText(/전체 35쪽 중 1, 2, 10쪽을 읽었습니다\. 토큰 입력 7,291 · 출력 1,766/)).toBeVisible()
   expect(screen.getByRole('region', { name: '확인할 점 1개' })).toHaveTextContent('표기 규칙 위반(「가」군)')
 })

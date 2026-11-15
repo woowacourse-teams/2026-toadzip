@@ -3,6 +3,23 @@
   color: var(--ds-color-muted);
 }
 
+.unconfirmed {
+  display: grid;
+  gap: var(--ds-space-1);
+  margin: 0 0 var(--ds-space-3);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-status-upcoming-surface);
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  overflow-wrap: anywhere;
+}
+
+.unconfirmed strong {
+  color: var(--ds-color-status-upcoming);
+  font-weight: 700;
+}
+
 .chips {
   display: grid;
   gap: var(--ds-space-2);

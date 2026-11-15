@@ -1,22 +1,30 @@
 import { expect, it } from 'vitest'
-import { blankRow, type CorrectionRow } from '../supply/supplyCorrectionApi'
 import { correctionReflected, documentReflected } from './applySummary'
 
-const row = (id: number | null, key: string, typeName: string, householdCount: number, housingTypeId: number | null): CorrectionRow =>
-  ({ ...blankRow(0), id, key, typeName, householdCount, housingTypeId, housingComplexId: 41, housingComplexName: '대구테크노폴리스4', complexName: '대구테크노폴리스4' })
+type Type = { key: string; name: string; count: number; housingTypeId: number | null; exclusiveArea?: number | null }
+/** 주택형마다 칸 하나와 그 칸의 모집 수만 둔 공급표 */
+const sheetOf = (types: Type[]) => ({
+  housingTypes: types.map(type => ({ key: type.key, housingComplexId: 41, name: type.name, exclusiveArea: type.exclusiveArea ?? null, housingTypeId: type.housingTypeId })),
+  cells: types.map(type => ({ key: `${type.key}:c`, housingType: type.key })),
+  quotas: types.map(type => ({ kind: 'WINNER' as const, count: type.count, members: [`${type.key}:c`] })),
+})
+const latest = (types: Type[]) => ({ sheet: { ...sheetOf(types), targets: [], leaseTerms: [] } }) as unknown as Parameters<typeof correctionReflected>[1]
 
-it('보내려던 공급행이 최신 공급행에 모두 있으면 이미 반영된 것으로 본다. 새 행은 키가 달라도 값으로 대응한다', () => {
-  const intended = [row(747, 'row:747', '051.9800A', 200, 501), row(null, 'temp', '059.9100A', 25, 502)]
-  expect(correctionReflected(intended, { rows: [row(747, 'row:747', '051.9800A', 200, 501), row(900, 'row:900', '059.9100A', 25, 502)] })).toBe(true)
-  expect(correctionReflected(intended, { rows: [row(747, 'row:747', '공공임대', 240, null)] })).toBe(false)
+it('보내려던 주택형이 최신 공급표에 모두 있으면 이미 반영된 것으로 본다. 새 주택형은 키가 달라도 값으로 대응한다', () => {
+  const intended = sheetOf([{ key: 'row:747', name: '051.9800A', count: 200, housingTypeId: 501 }, { key: 'new:t1', name: '059.9100A', count: 25, housingTypeId: 502 }])
+  expect(correctionReflected(intended, latest([{ key: 'row:747', name: '051.9800A', count: 200, housingTypeId: 501 }, { key: 'row:900', name: '059.9100A', count: 25, housingTypeId: 502 }]))).toBe(true)
+  expect(correctionReflected(intended, latest([{ key: 'row:747', name: '공공임대', count: 240, housingTypeId: null }]))).toBe(false)
+  // 지울 주택형이 남아 있으면 반영되지 않은 것이다.
+  expect(correctionReflected(intended, latest([{ key: 'row:747', name: '051.9800A', count: 200, housingTypeId: 501 }, { key: 'row:900', name: '059.9100A', count: 25, housingTypeId: 502 },
+    { key: 'row:748', name: '39', count: 10, housingTypeId: null }]))).toBe(false)
 })
 
-it('주택형을 비워 보낸 행은 서버가 전용면적으로 정한 주택형과 관계없이 값으로 반영 여부를 본다', () => {
-  const intended = [row(null, 'temp', '059.9100A', 25, null)]
-  expect(correctionReflected(intended, { rows: [row(900, 'row:900', '059.9100A', 25, 502)] })).toBe(true)
-  expect(correctionReflected(intended, { rows: [row(900, 'row:900', '059.9100A', 26, 502)] })).toBe(false)
-  // 주택형을 직접 고른 행은 그 주택형이어야 한다.
-  expect(correctionReflected([row(null, 'temp', '059.9100A', 25, 503)], { rows: [row(900, 'row:900', '059.9100A', 25, 502)] })).toBe(false)
+it('주택타입을 비워 보낸 주택형은 서버가 정한 주택타입과 관계없이 값으로 반영 여부를 본다', () => {
+  const intended = sheetOf([{ key: 'new:t0', name: '059.9100A', count: 25, housingTypeId: null }])
+  expect(correctionReflected(intended, latest([{ key: 'row:900', name: '059.9100A', count: 25, housingTypeId: 502 }]))).toBe(true)
+  expect(correctionReflected(intended, latest([{ key: 'row:900', name: '059.9100A', count: 26, housingTypeId: 502 }]))).toBe(false)
+  // 주택타입을 직접 고른 주택형은 그 주택타입이어야 한다.
+  expect(correctionReflected(sheetOf([{ key: 'new:t0', name: '059.9100A', count: 25, housingTypeId: 503 }]), latest([{ key: 'row:900', name: '059.9100A', count: 25, housingTypeId: 502 }]))).toBe(false)
 })
 
 it('이미 처리했다는 응답에서 기본정보는 같아도 고른 일정이 최신값에 없으면 반영되지 않은 것으로 본다', () => {

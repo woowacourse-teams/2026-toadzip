@@ -231,6 +231,9 @@ function decodeAnnouncementDetail(
       recordField(detail, 'competition', path),
       `${path}.competition`,
     ),
+    ...(detail.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(detail.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 
@@ -842,6 +845,9 @@ function decodeComplexSupplyCondition(
     postedDate: Object.hasOwn(condition, 'postedDate')
       ? nullableDateStringAt(condition.postedDate, `${path}.postedDate`)
       : null,
+    ...(condition.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(condition.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 
@@ -897,6 +903,9 @@ function decodeComplexCurrentAnnouncement(
       recordField(announcement, 'actualCompetitionRate', path),
       `${path}.actualCompetitionRate`,
     ),
+    ...(announcement.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(announcement.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 
@@ -1041,6 +1050,9 @@ function decodeAnnouncementListItem(
       recordField(item, 'thumbnailImageUrl', path),
       `${path}.thumbnailImageUrl`,
     ),
+    ...(item.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(item.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 

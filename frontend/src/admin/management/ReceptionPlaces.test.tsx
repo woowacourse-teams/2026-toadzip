@@ -14,7 +14,7 @@ function fixture(receptionPlaces: ManagementValues[] = [online, visit]): Managem
   return { summary: { id: 7, name: '두꺼비 공고', subtitle: 'LH', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
     sourceIdentifier: 'TEST-7', data: { version: 2, name: '두꺼비 공고', rentalType: 'HAPPY_HOUSING', agencyCode: 'LH', recruitmentType: 'NEW', originalUrl: 'https://example.com/notice',
       postedDate: '2026-08-01', applicationStartDate: '2026-08-10', applicationEndDate: '2026-08-14', winnerAnnouncementDate: '2026-09-01', receptionPlaces },
-    housingTypes: [], announcements: [], supplyRows: [], scheduleReviewed: false, schedules: [] }
+    housingTypes: [], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, scheduleReviewed: false, schedules: [] }
 }
 function renderDetail() {
   render(<MemoryRouter initialEntries={['/admin/announcements/7']}><Routes><Route path="/admin/announcements/:id" element={<ManagementDetail resource="announcements" />} /></Routes></MemoryRouter>)

@@ -243,7 +243,7 @@ class SeoPageServiceTest {
                 LocalDate.of(2020, 1, 1), "아파트", true, "개별난방", "계단식", 3, 100, 80,
                 null, null, null, null, List.of(), null, List.of(),
                 List.of(new CurrentAnnouncementResponse(171, "남동구 국민임대", "ORIGINAL", "APPLYING", List.of(),
-                        LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 17), 6, null)));
+                        LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 17), 6, null, true)));
     }
 
     private static HousingComplexListItemResponse listItem(long complexId, String name) {
@@ -260,6 +260,6 @@ class SeoPageServiceTest {
                 new com.toadzip.backend.announcement.dto.response.AgencyResponse(AgencyCode.LH, "한국토지주택공사"),
                 LocalDate.of(2026, 11, 9), LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 17), 6,
                 LocalDate.of(2027, 1, 20), 0, List.of(), 1, 60, "https://apply.lh.or.kr/171", List.of(), List.of(),
-                List.of(), List.of(row), null, List.of(), null);
+                List.of(), List.of(row), null, List.of(), null, true);
     }
 }

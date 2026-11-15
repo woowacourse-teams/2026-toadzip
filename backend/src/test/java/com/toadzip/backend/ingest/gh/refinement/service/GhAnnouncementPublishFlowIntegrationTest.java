@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -93,14 +94,15 @@ class GhAnnouncementPublishFlowIntegrationTest {
     }
 
     @Test
-    void 관리자가_고쳐_연결하고_공개를_요청한_GH_공고만_공개되고_그_뒤_재정제는_관리자_작업을_덮지_않는다() throws Exception {
+    void 관리자가_고쳐_연결하고_정본을_시작해_공개를_요청한_GH_공고만_공개되고_그_뒤_재정제는_정본을_덮지_않는다() throws Exception {
         long wrong = complex("잘못 고른 다산 단지");
         collect(ROW);
         owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         long id = announcementId();
-        assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(wrong);
-        assertThat(rows(id)).extracting(row -> row.get("announcement_complex_id")).containsOnly(dasanComplexId(id));
-        assertThat(rows(id)).extracting(row -> row.get("supply_category")).containsOnly("RESUPPLY");
+        assertThat(lines(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(wrong);
+        assertThat(lines(id)).extracting(row -> row.get("announcement_complex_id")).containsOnly(dasanComplexId(id));
+        assertThat(lines(id)).extracting(row -> row.get("supply_category")).containsOnly("RESUPPLY");
+        assertThat(canonical(id)).isEmpty();
 
         long right = complex("관리자가 고른 다산 단지");
         var workspace = data("/api/admin/announcements/" + id + "/supply-corrections");
@@ -110,15 +112,25 @@ class GhAnnouncementPublishFlowIntegrationTest {
                         + dasanComplexId(id) + "/link").with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(link.toString()))
                 .andExpect(status().isOk());
-        assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
+        assertThat(lines(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
 
-        owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
+        // 확정 전에는 원천이 바뀌어도 준비 줄이 원천을 따르고 재확인 대상이 아니다.
+        changeSourceSupplyCount("120", "90");
+        assertThat(owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources)).supplyRecheckRequired()).isZero();
+        assertThat(lines(id)).extracting(row -> row.get("household_count")).containsExactly(90, 60);
+        assertThat(lines(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(supplyRecheckRequired(id)).isFalse();
-        changeSourceSupplyCount();
-        assertThat(owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources)).supplyRecheckRequired()).isOne();
-        assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
-        assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
-        assertThat(supplyRecheckRequired(id)).isTrue();
+
+        // 준비 데이터로 정본 시작은 공고문 PDF가 없는 공고만 한다(PDF가 있으면 PDF로 보정한다).
+        jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id = ?", id);
+        var started = data("/api/admin/announcements/" + id + "/supply-corrections");
+        mvc.perform(post("/api/admin/announcements/" + id + "/supply-corrections/start-from-staging")
+                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode().put("snapshotToken", started.path("snapshotToken").asText())
+                                .put("stagingToken", started.path("stagingToken").asText()).toString()))
+                .andExpect(status().isOk());
+        assertThat(canonical(id)).extracting(row -> row.get("winner_count")).containsExactly(90, 60);
+        assertThat(canonical(id)).extracting(row -> row.get("announcement_complex_id")).containsOnly(dasanComplexId(id));
 
         var correction = request(id);
         correction.withArray("fields").add("rentalType").add("recruitmentType").add("applicationStartDate")
@@ -131,33 +143,38 @@ class GhAnnouncementPublishFlowIntegrationTest {
                 Long.class)).isOne();
 
         collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
-        changeSourceSupplyCount();
+        // 다시 수집하면 지구 원천이 수집 응답(120)으로 돌아온다. 그 값을 바꿔 확정한 정본과 다르게 한다.
+        changeSourceSupplyCount("120", "80");
         owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         assertThat(jdbc.queryForObject("SELECT name FROM announcements WHERE id = ?", String.class, id))
                 .isEqualTo(ROW.title());
         assertThat(jdbc.queryForObject("SELECT source_review_required FROM announcements WHERE id = ?",
                 Boolean.class, id)).isTrue();
-        assertThat(rows(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
-        assertThat(rows(id)).extracting(row -> row.get("total_supply_household_count")).containsExactly(120, 60);
-        assertThat(supplyRecheckRequired(id)).isFalse();
+        assertThat(canonical(id)).extracting(row -> row.get("winner_count")).containsExactly(90, 60);
+        assertThat(lines(id)).extracting(row -> row.get("household_count")).containsExactly(80, 60);
+        assertThat(supplyRecheckRequired(id)).isTrue();
     }
 
     @Test
-    void GH_공급행_틀은_작업실에_GH_원천_행_키를_함께_내보낸다() throws Exception {
+    void GH_공고_작업실은_수집한_단지별_주택형_줄을_검산_참고로_내보낸다() throws Exception {
         collect(ROW);
         owned(ownership, () -> GhRefinementTestSupport.refineAll(refinement, sources));
         long id = announcementId();
 
         var workspace = data("/api/admin/announcements/" + id + "/supply-corrections");
 
-        var keys = new ArrayList<String>();
-        workspace.path("rows").forEach(row -> keys.add(row.path("key").asText()));
-        var sources = new ArrayList<List<String>>();
-        workspace.path("rowSources").forEach(source -> sources.add(List.of(source.path("rowKey").asText(),
-                source.path("category").asText(), source.path("sourceKey").asText())));
-        assertThat(sources).containsExactly(
-                List.of(keys.get(0), "GH_ANNOUNCEMENT", "GH:801:다산 센트럴파크6단지:33A"),
-                List.of(keys.get(1), "GH_ANNOUNCEMENT", "GH:801:다산 센트럴파크6단지:36A"));
+        // 작업실은 정본에서 시작한다. 확정 전 공고는 정본이 비어 있고 준비 줄은 검산 참고로만 보인다.
+        assertThat(workspace.path("supplyConfirmed").asBoolean()).isFalse();
+        assertThat(workspace.path("sheet").path("housingTypes")).isEmpty();
+        var references = new ArrayList<List<String>>();
+        workspace.path("sourceReference").forEach(reference -> references.add(List.of(
+                reference.path("complexLabel").asText(), reference.path("typeName").asText(),
+                reference.path("exclusiveArea").asText(), reference.path("householdCount").asText())));
+        assertThat(references).hasSize(2);
+        assertThat(references.get(0)).containsExactly("다산 센트럴파크6단지", references.get(0).get(1), "33.71", "120");
+        assertThat(references.get(0).get(1)).contains("33A");
+        assertThat(references.get(1)).containsExactly("다산 센트럴파크6단지", references.get(1).get(1), "36.8", "60");
+        assertThat(references.get(1).get(1)).contains("36A");
     }
 
     private long complex(String name) {
@@ -174,11 +191,13 @@ class GhAnnouncementPublishFlowIntegrationTest {
         owned(ownership, collection::collect);
     }
 
-    private void changeSourceSupplyCount() {
-        jdbc.update("""
-                UPDATE gh_announcement_source SET districts = replace(districts, '"supplyCount":"120"',
-                    '"supplyCount":"90"') WHERE pbanc_no = '801'
-                """);
+    private void changeSourceSupplyCount(String from, String to) {
+        int changed = jdbc.update("""
+                UPDATE gh_announcement_source SET districts = replace(districts, ?, ?)
+                WHERE pbanc_no = '801' AND strpos(districts, ?) > 0
+                """, "\"supplyCount\":\"" + from + "\"", "\"supplyCount\":\"" + to + "\"",
+                "\"supplyCount\":\"" + from + "\"");
+        assertThat(changed).isOne();
     }
 
     private long announcementId() {
@@ -192,10 +211,23 @@ class GhAnnouncementPublishFlowIntegrationTest {
                 """, Long.class, id);
     }
 
-    private List<Map<String, Object>> rows(long id) {
+    /** 공고 공급표(정본) 공급행. */
+    private List<Map<String, Object>> canonical(long id) {
         return jdbc.queryForList("""
-                SELECT housing_complex_id, announcement_complex_id, total_supply_household_count, supply_category
-                FROM supply_rows WHERE announcement_id = ? ORDER BY display_order
+                SELECT r.announcement_complex_id,
+                    (SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND EXISTS (
+                        SELECT 1 FROM supply_quota_members m JOIN supply_row_targets c ON c.id = m.supply_row_target_id
+                        WHERE m.supply_quota_id = q.id AND c.supply_row_id = r.id))::int AS winner_count
+                FROM supply_rows r WHERE r.announcement_id = ? ORDER BY r.display_order
+                """, id);
+    }
+
+    /** 기관 준비 줄. 단지는 줄의 공고 단지가 고른 제품 단지다. */
+    private List<Map<String, Object>> lines(long id) {
+        return jdbc.queryForList("""
+                SELECT c.housing_complex_id, l.announcement_complex_id, l.household_count, l.supply_category
+                FROM agency_supply_lines l LEFT JOIN announcement_complexes c ON c.id = l.announcement_complex_id
+                WHERE l.announcement_id = ? ORDER BY l.display_order
                 """, id);
     }
 
@@ -223,7 +255,7 @@ class GhAnnouncementPublishFlowIntegrationTest {
         correction.put("reason", "공식 공고문에서 확인");
         correction.put("sourceUrl", "https://example.com/notice");
         correction.putNull("sourcePage");
-        correction.set("rows", state.path("supply").path("rows").deepCopy());
+        correction.set("sheet", SupplySheetInputs.json(state.path("supply").path("sheet")));
         return request;
     }
 

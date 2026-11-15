@@ -130,7 +130,7 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
     }
     finally { setBusy(false) }
   }
-  return <fieldset className={styles.newComplex} disabled={busy} aria-label={`공급행 ${index + 1} 새 단지 등록`}>
+  return <fieldset className={styles.newComplex} disabled={busy} aria-label={`주택형 ${index + 1} 새 단지 등록`}>
     <legend>새 단지로 등록</legend>
     <p className={styles.hint}>주소를 확인한 뒤 등록하세요. 전체 세대수·주차대수·준공일은 몰라도 등록할 수 있습니다.</p>
     <label>단지명<input value={values.name} maxLength={255} onChange={set('name')} /></label>

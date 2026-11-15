@@ -1,26 +1,36 @@
 import { isRecord } from '../management/managementContract'
 import type { JsonObject } from '../announcement-json/api'
-import { readSubtypes, subtypesOf, supplyArea } from './subtypes'
+import { extractedGroups, type TargetGroup } from '../supply/targetGroups'
 
 export type ExtractionNote = { path: string; reason: string }
-export type SharedCount = { paths: string[]; count: number | null; page: number | null; quote: string }
 export type Evidence = { path: string; page: number; quote: string }
 /** 공고문 단지 개요. 단지를 찾거나 새로 등록할 때 쓰며, 없거나 형식이 틀리면 비워 둔다. */
 export type ExtractedComplex = { name: string; address: string | null; totalHouseholdCount: number | null; parkingCount: number | null }
-/** 세부 타입 묶음 행(26A/B/C)의 세부 타입 하나. 공급면적은 전용 + 공용으로 계산한 값이다. */
-export type Subtype = { name: string; exclusiveArea: number | null; supplyArea: number | null; constructedHouseholdCount: number | null }
-/** subtypes는 공급행 하나가 여러 전용면적을 모집수 하나로 함께 모집할 때만 둘 이상이고, 그 밖에는 비어 있다. */
-export type ExtractedRow = { complexName: string | null; typeName: string | null; values: JsonObject; targets: JsonObject[]; subtypes: Subtype[] }
+/**
+ * 공고문 공급표의 주택형(신청형). houseTypes는 이 주택형 하나가 단지 주택타입 여럿을 함께 모집할 때(84 = 84A·84B)의 주택타입 목록이다.
+ * 공급면적은 공고문 값, 없으면 전용 + 공용이다. givenSupplyArea는 공고문에 적힌 공급면적이다.
+ */
+export type SheetSourceType = { key: string; complexName: string | null; name: string | null; exclusiveArea: number | null; commonArea: number | null
+  supplyArea: number | null; givenSupplyArea: number | null; constructedHouseholdCount: number | null; expectedMoveInMonth: string | null
+  houseTypes: { name: string | null; exclusiveArea: number | null; supplyArea: number | null }[] }
+/** 공급대상. 표기를 원문에서 확인하지 못하면 label이 빈 문자열이다. 신청 조건이 없으면 빈 문자열이다. groups는 AI 워커가 표기에서 읽은 분류다. */
+export type SheetSourceTarget = { key: string; label: string; applicationCondition: string; groups: TargetGroup[] }
+/** 칸은 주택형 × 공급대상이다. 경로 cells[n]의 n이 이 목록의 순번이다. */
+export type SheetSourceCell = { housingType: number; target: number }
+/** members는 칸 순번이다. 칸 하나만이면 그 대상만의 수, 여럿이면 함께 쓰는 수다. */
+export type SheetSourceQuota = { kind: 'WINNER' | 'RESERVE'; count: number; members: number[] }
+export type SheetSourceLease = { rentalDeposit: string | null; monthlyRent: string | null; convertedDeposit: string | null; members: number[] }
+export type ExtractedSheet = { housingTypes: SheetSourceType[]; targets: SheetSourceTarget[]; cells: SheetSourceCell[]; quotas: SheetSourceQuota[]; leaseTerms: SheetSourceLease[] }
 export type Extraction = {
   announcement: JsonObject
   /** 공고문 순서의 접수처(인터넷 접수, 현장 접수처 여러 곳). 접수처를 한 곳만 내던 예전 응답은 한 곳으로 읽는다. */
   receptionPlaces: JsonObject[]
   complexes: ExtractedComplex[]
-  supplyRows: ExtractedRow[]
+  /** 공고 공급표. 미확인·근거 경로는 공급표 경로(quotas[2].count, cells[3].reserve 등)다. */
+  sheet: ExtractedSheet
   schedules: JsonObject[]
   unresolved: ExtractionNote[]
   notApplicable: ExtractionNote[]
-  sharedCounts: SharedCount[]
   evidence: Evidence[]
   /** 합계·면적 검산에서 다르게 나온 항목. 저장을 막지 않고 확인할 내용으로 보여 준다. */
   checks: string[]
@@ -100,105 +110,117 @@ function extraction(value: unknown): Extraction | string {
   }
   const data = value.data
   if (!isRecord(data.announcement)) return 'data.announcement 객체가 필요합니다.'
-  // 접수처 형식이 틀려도 공급행까지 버리지 않는다. 객체가 아닌 접수처는 빈 접수처로 두어 순번을 지키고 20곳까지만 읽는다(receptionPlacesOf).
+  // 접수처 형식이 틀려도 공급표까지 버리지 않는다. 객체가 아닌 접수처는 빈 접수처로 두어 순번을 지키고 20곳까지만 읽는다(receptionPlacesOf).
   if (data.receptionPlaces !== undefined && data.receptionPlaces !== null && !Array.isArray(data.receptionPlaces)) return 'data.receptionPlaces는 접수처 객체 배열이어야 합니다.'
-  if (!Array.isArray(data.supplyRows) || !data.supplyRows.every(isRecord) || !Array.isArray(data.schedules) || !data.schedules.every(isRecord)) {
-    return 'data.supplyRows와 data.schedules는 객체 배열이어야 합니다.'
-  }
-  if (data.supplyRows.length > 200 || data.schedules.length > 100) return '공급행은 200개, 일정은 100개까지 읽을 수 있습니다.'
-  for (const [key, entries] of [['unresolvedFields', data.unresolvedFields], ['notApplicable', value.notApplicable]] as const) {
+  if (!isRecord(data.supplySheet)) return '이 추출 결과는 이전 형식이라 다시 추출해 주세요.'
+  if (!Array.isArray(data.schedules) || !data.schedules.every(isRecord)) return 'data.schedules는 객체 배열이어야 합니다.'
+  if (data.schedules.length > 100) return '일정은 100개까지 읽을 수 있습니다.'
+  const sheet = supplySheet(data.supplySheet)
+  if (typeof sheet === 'string') return sheet
+  const sheetSource = data.supplySheet
+  for (const [key, entries] of [['unresolvedFields', data.unresolvedFields], ['notApplicable', value.notApplicable], ['supplySheet.unresolvedFields', sheetSource.unresolvedFields ?? []]] as const) {
     if (!Array.isArray(entries) || entries.length > 1000 || !entries.every(item => isRecord(item)
       && typeof item.path === 'string' && validPath(normalizePath(item.path)) && typeof item.reason === 'string')) {
       return `${key}에는 path와 reason을 가진 목록이 필요합니다. 미확인 정보를 생략하고 가져올 수 없습니다.`
     }
   }
-  if (!Array.isArray(value.evidence) || value.evidence.length > 5000 || !value.evidence.every(item => isRecord(item)
-    && typeof item.path === 'string' && validPath(normalizePath(item.path)) && page(item.page) !== null && typeof item.quote === 'string')) {
-    return 'evidence의 경로, 쪽 번호(1 이상), 인용문을 확인해 주세요.'
-  }
-  const sharedProblem = sharedCountProblem(value.sharedCounts, data.supplyRows.map(row => Array.isArray(row.targets) ? row.targets.length : 0))
-  if (sharedProblem) return sharedProblem
-  const sharedPaths = (value.sharedCounts as { paths: string[] }[]).flatMap(item => item.paths.map(normalizePath))
-  if (new Set(sharedPaths).size !== sharedPaths.length) return '한 공급행을 여러 공통 모집수에 넣을 수 없습니다.'
-  const sharedValueNotes: ExtractionNote[] = []
-  for (const [groupIndex, group] of (value.sharedCounts as { paths: string[] }[]).entries()) {
-    for (const path of group.paths) {
-      const match = /^supplyRows\[(\d+)\]\.targets\[(\d+)\]\.(supplyHouseholdCount|reserveCount)$/.exec(normalizePath(path))
-      if (!match) continue
-      const row = data.supplyRows[Number(match[1])]
-      const target = isRecord(row) && Array.isArray(row.targets) ? row.targets[Number(match[2])] : undefined
-      if (!isRecord(target) || target[match[3]] == null) continue
-      target[match[3]] = null
-      sharedValueNotes.push({ path: normalizePath(path), reason: `공통 수량 묶음 sharedCounts[${groupIndex}]의 값과 대상별 수량이 함께 있어 대상별 수량은 미확인으로 남겼습니다.` })
-    }
-  }
-  for (const [index, row] of data.supplyRows.entries()) {
-    if (!Array.isArray(row.targets) || !row.targets.every(isRecord) || row.targets.length > 100) return '공급행마다 targets 객체 배열이 필요합니다.'
-    if (row.subtypes != null && (!Array.isArray(row.subtypes) || !row.subtypes.every(item => isRecord(item) && text(item.name)))) {
-      return `supplyRows[${index}].subtypes는 name이 있는 세부 타입 객체 목록이어야 합니다. 세부 타입이 없으면 빈 목록 []로 두세요.`
+  for (const entries of [value.evidence, sheetSource.evidence ?? []]) {
+    if (!Array.isArray(entries) || entries.length > 5000 || !entries.every(item => isRecord(item)
+      && typeof item.path === 'string' && validPath(normalizePath(item.path)) && page(item.page) !== null && typeof item.quote === 'string')) {
+      return 'evidence의 경로, 쪽 번호(1 이상), 인용문을 확인해 주세요.'
     }
   }
   const complexes = Array.isArray(data.complexes) ? data.complexes.filter(isRecord).flatMap(item => {
     const name = text(item.sourceComplexName)
     return name ? [{ name, address: text(item.address), totalHouseholdCount: count(item.totalHouseholdCount), parkingCount: count(item.parkingCount) }] : []
   }) : []
-  const parsed = {
-    sharedCounts: (value.sharedCounts as Record<string, unknown>[]).map(item => ({
-      paths: (item.paths as string[]).map(normalizePath), count: count(item.count), page: page(item.page), quote: text(item.quote) ?? '',
-    })),
-    unresolved: [...notes(data.unresolvedFields), ...sharedValueNotes].reduce((result, item) => {
+  // 공급행 경로(supplyRows[…])는 워커가 공급표 경로로 옮겨 supplySheet 안에 다시 적었다. 지금 워커는 겉에 남기지 않지만, 앞서 저장된 결과의 겉 공급행 경로는 가리킬 값이 없어 읽지 않는다.
+  const outside = <T extends { path: string }>(items: T[]) => items.filter(item => !/^supplyRows(?:$|[.[])/.test(item.path))
+  const evidence = [...outside((value.evidence as Record<string, unknown>[]).map(evidenceItem)), ...(sheetSource.evidence as Record<string, unknown>[] ?? []).map(evidenceItem)]
+  return {
+    announcement: data.announcement,
+    receptionPlaces: receptionPlacesOf(data),
+    complexes,
+    sheet,
+    schedules: data.schedules,
+    unresolved: [...outside(notes(data.unresolvedFields)), ...notes(sheetSource.unresolvedFields)].reduce((result, item) => {
       const existing = result.find(note => note.path === item.path)
       if (existing) existing.reason += ` ${item.reason}`
       else result.push(item)
       return result
     }, [] as ExtractionNote[]),
-    // 공통 수량으로 지정된 경로에는 “이 공고에 이 필드가 없음”이라는 넓은 notApplicable 안내가 맞지 않는다.
-    // 겹치는 안내를 걷어 개별 대상 수량은 비어 있는 값(미확인)으로 검토하게 한다.
-    notApplicable: notes(value.notApplicable).filter(note => note.path !== 'schedules' && !sharedPaths.some(path => pathCovers(note.path, path))),
-    evidence: (value.evidence as Record<string, unknown>[]).map(item => ({ path: normalizePath(item.path as string), page: page(item.page)!, quote: text(item.quote) ?? '' })),
-  }
-  const read = readSubtypes(data.supplyRows, parsed)
-  return {
-    announcement: data.announcement,
-    receptionPlaces: receptionPlacesOf(data),
-    complexes,
-    supplyRows: read.rows,
-    schedules: data.schedules,
-    unresolved: read.unresolved,
-    notApplicable: read.notApplicable,
-    sharedCounts: read.sharedCounts,
-    evidence: read.evidence,
-    checks: checks(data.supplyRows, complexes, parsed.sharedCounts),
+    notApplicable: outside(notes(value.notApplicable)).filter(note => note.path !== 'schedules'),
+    evidence,
+    checks: checks(sheet, complexes),
     undatedSchedules: notes(value.notApplicable).filter(note => note.path === 'schedules' && note.reason).map(note => note.reason),
   }
 }
+function evidenceItem(item: Record<string, unknown>): Evidence {
+  return { path: normalizePath(item.path as string), page: page(item.page)!, quote: text(item.quote) ?? '' }
+}
 
-/** 모델 실수를 잡는 검산. 응답의 행 기준으로 계산하며, 다르면 검토 화면에 확인할 내용으로 보여 준다. */
-function checks(source: JsonObject[], complexes: ExtractedComplex[], shared: SharedCount[]) {
-  const result: string[] = [], sharedPaths = new Set(shared.flatMap(group => group.paths))
-  const constructed = (row: JsonObject) => count(row.constructedHouseholdCount) ?? (subtypesOf(row).length && subtypesOf(row).every(item => count(item.constructedHouseholdCount) !== null)
-    ? subtypesOf(row).reduce((sum, item) => sum + count(item.constructedHouseholdCount)!, 0) : null)
+/**
+ * 워커의 공고 공급표(data.supplySheet)를 읽는다. 칸·묶음 멤버는 주택형·공급대상 키 쌍이라 칸 순번으로 바꾸고,
+ * 가리키는 칸이 없으면 거절한다. 금액은 원 단위 숫자 문자열(readExtractionDocument가 숫자를 문자열로 바꿨다)이고, 형식 검사는 검토 칸이 한다.
+ */
+function supplySheet(source: Record<string, unknown>): ExtractedSheet | string {
+  const lists = ['housingTypes', 'targets', 'cells', 'quotas', 'leaseTerms'] as const
+  if (!lists.every(key => Array.isArray(source[key]) && (source[key] as unknown[]).every(isRecord))) return '공급표(supplySheet)의 주택형·공급대상·칸·수량·임대조건은 객체 목록이어야 합니다. 다시 추출해 주세요.'
+  const [types, targets, cells, quotas, leases] = lists.map(key => source[key] as Record<string, unknown>[])
+  if (types.length > 200 || cells.length > 5000 || quotas.length > 5000 || leases.length > 5000) return '공급표가 너무 큽니다. 주택형은 200개까지 읽을 수 있습니다.'
+  const area = (item: unknown) => typeof item === 'number' && Number.isFinite(item) && item >= 0 ? item : null
+  const money = (item: unknown) => typeof item === 'string' || typeof item === 'number' ? String(item) : null
+  const housingTypes = types.map((item): SheetSourceType => {
+    const exclusiveArea = area(item.exclusiveArea), commonArea = area(item.commonArea)
+    return { key: String(item.key), complexName: text(item.complexName), name: text(item.name), exclusiveArea, commonArea,
+      supplyArea: area(item.supplyArea) ?? summedArea(exclusiveArea, commonArea), givenSupplyArea: area(item.supplyArea),
+      constructedHouseholdCount: count(item.constructedHouseholdCount), expectedMoveInMonth: text(item.expectedMoveInMonth),
+      houseTypes: Array.isArray(item.houseTypes) ? item.houseTypes.filter(isRecord).map(house => ({ name: text(house.name), exclusiveArea: area(house.exclusiveArea),
+        supplyArea: area(house.supplyArea) ?? summedArea(area(house.exclusiveArea), area(house.commonArea)) })) : [] }
+  })
+  const sheetTargets = targets.map(item => ({ key: String(item.key), label: typeof item.label === 'string' ? item.label.trim() : '',
+    applicationCondition: typeof item.applicationCondition === 'string' ? item.applicationCondition.trim() : '', groups: extractedGroups(item.groups) }))
+  const typeAt = new Map(housingTypes.map((item, at) => [item.key, at])), targetAt = new Map(sheetTargets.map((item, at) => [item.key, at]))
+  const sheetCells = cells.map(item => ({ housingType: typeAt.get(String(item.housingType)) ?? -1, target: targetAt.get(String(item.target)) ?? -1 }))
+  if (sheetCells.some(cell => cell.housingType < 0 || cell.target < 0)) return '공급표의 칸이 없는 주택형이나 공급대상을 가리킵니다. 다시 추출해 주세요.'
+  const members = (value: unknown) => Array.isArray(value) && value.length ? value.map(member => isRecord(member)
+    ? sheetCells.findIndex(cell => cell.housingType === typeAt.get(String(member.housingType)) && cell.target === targetAt.get(String(member.target))) : -1) : null
+  const sheetQuotas: SheetSourceQuota[] = [], sheetLeases: SheetSourceLease[] = []
+  for (const item of quotas) {
+    const cellsOf = members(item.members)
+    if (!cellsOf || cellsOf.includes(-1) || !['WINNER', 'RESERVE'].includes(item.kind as string) || count(item.count) === null) return '공급표의 수량 묶음에 종류·수·칸이 필요합니다. 다시 추출해 주세요.'
+    sheetQuotas.push({ kind: item.kind as SheetSourceQuota['kind'], count: count(item.count)!, members: cellsOf })
+  }
+  for (const item of leases) {
+    const cellsOf = members(item.members)
+    if (!cellsOf || cellsOf.includes(-1)) return '공급표의 임대조건에 칸이 필요합니다. 다시 추출해 주세요.'
+    sheetLeases.push({ rentalDeposit: money(item.rentalDeposit), monthlyRent: money(item.monthlyRent), convertedDeposit: money(item.convertedDeposit), members: cellsOf })
+  }
+  return { housingTypes, targets: sheetTargets, cells: sheetCells, quotas: sheetQuotas, leaseTerms: sheetLeases }
+}
+
+/** 공급면적이 없으면 전용 + 공용으로 계산한다. 소수 자릿수는 두 값 중 긴 쪽에 맞춘다. */
+function summedArea(exclusive: number | null, common: number | null) {
+  if (exclusive === null || common === null) return null
+  const digits = Math.max(...[exclusive, common].map(value => String(value).split('.')[1]?.length ?? 0))
+  return Number((exclusive + common).toFixed(digits))
+}
+
+/** 모델 실수를 잡는 검산. 다르면 검토 화면에 확인할 내용으로 보여 준다. */
+function checks(sheet: ExtractedSheet, complexes: ExtractedComplex[]) {
+  const result: string[] = []
+  const constructed = (type: SheetSourceType) => type.constructedHouseholdCount
   for (const complex of complexes) {
-    const rows = source.filter(row => isRecord(row.complexReference) && text(row.complexReference.sourceComplexName) === complex.name)
-    const counts = rows.map(constructed)
-    if (complex.totalHouseholdCount === null || !rows.length || counts.some(value => value === null)) continue
+    const types = sheet.housingTypes.filter(type => type.complexName === complex.name)
+    const counts = types.map(constructed)
+    if (complex.totalHouseholdCount === null || !types.length || counts.some(value => value === null)) continue
     const sum = counts.reduce((total, value) => total! + value!, 0)!
     if (sum !== complex.totalHouseholdCount) result.push(`${complex.name}: 공급 표 건설호수 합계 ${sum}세대가 단지 전체 세대수 ${complex.totalHouseholdCount}세대와 다릅니다. 공급 표에 없는 주택형이 있는지 확인하세요.`)
   }
-  for (const [index, row] of source.entries()) {
-    const name = text(row.sourceHousingTypeName) ?? '형명 없음', total = count(row.totalSupplyHouseholdCount)
-    const targets = (row.targets as JsonObject[]).map(target => count(target.supplyHouseholdCount))
-    const sharedTargets = targets.some((_, at) => sharedPaths.has(`supplyRows[${index}].targets[${at}].supplyHouseholdCount`))
-    if (total !== null && targets.length && !sharedTargets && targets.every(value => value !== null)) {
-      const sum = targets.reduce((value, item) => value! + item!, 0)
-      if (sum !== total) result.push(`${name}: 대상별 모집수 합계 ${sum}세대가 모집수 ${total}세대와 다릅니다.`)
-    }
-    for (const area of subtypesOf(row).length ? subtypesOf(row) : [row]) {
-      const given = area.supplyArea
-      const computed = supplyArea({ ...area, supplyArea: null })
-      if (typeof given === 'number' && typeof computed === 'number' && Math.abs(given - computed) > 0.00005) {
-        result.push(`${text(area.name) ?? name}: 공급면적 ${given}㎡가 전용 + 공용 ${computed}㎡와 달라 계산값을 씁니다.`)
-      }
+  for (const type of sheet.housingTypes) {
+    const computed = summedArea(type.exclusiveArea, type.commonArea)
+    if (type.givenSupplyArea !== null && computed !== null && Math.abs(type.givenSupplyArea - computed) > 0.00005) {
+      result.push(`${type.name ?? '형명 없음'}: 공급면적 ${type.givenSupplyArea}㎡가 전용 + 공용 ${computed}㎡와 다릅니다. 공고문과 대조하세요.`)
     }
   }
   return result
@@ -207,59 +229,6 @@ function checks(source: JsonObject[], complexes: ExtractedComplex[], shared: Sha
 function notes(value: unknown): ExtractionNote[] {
   return Array.isArray(value) ? value.filter(isRecord).flatMap(item => typeof item.path === 'string'
     ? [{ path: normalizePath(item.path), reason: text(item.reason) ?? '' }] : []) : []
-}
-/** 교정 화면에 모든 잘못된 묶음을 표시한다. 개별 검사와 경로 중복 규칙은 엄격한 읽기와 같다. */
-export function sharedCountIssues(document: JsonObject): { index: number; message: string }[] {
-  if (!isRecord(document.data) || !Array.isArray(document.data.supplyRows) || !Array.isArray(document.sharedCounts)
-    || document.sharedCounts.length > 200) return []
-  const targets = document.data.supplyRows.map(row => isRecord(row) && Array.isArray(row.targets) ? row.targets.length : 0)
-  const seen = new Set<string>()
-  return document.sharedCounts.flatMap((item, index) => {
-    let message = sharedCountProblem([item], targets)?.replace('sharedCounts[0]', `sharedCounts[${index}]`) ?? null
-    if (isRecord(item) && Array.isArray(item.paths)) {
-      for (const path of item.paths) {
-        if (typeof path !== 'string') continue
-        const normalized = normalizePath(path)
-        if (seen.has(normalized)) message ??= `sharedCounts[${index}]: 한 공급행을 여러 공통 모집수에 넣을 수 없습니다.`
-        seen.add(normalized)
-      }
-    }
-    return message ? [{ index, message }] : []
-  })
-}
-
-/** sharedCounts에서 처음 걸린 항목과 이유를 돌려준다. 값은 고치지 않고 다시 추출할 수 있게 위치를 알린다. */
-/**
- * 공통 모집수는 여러 공급행의 행 합계, 또는 여러 공급행에 걸친 대상들의 같은 당첨자 수·예비자 수다.
- * 한 묶음에는 한 종류만 넣을 수 있다.
- */
-function sharedCountProblem(items: unknown, targetCounts: number[]): string | null {
-  const rowCount = targetCounts.length
-  if (!Array.isArray(items)) return 'sharedCounts는 목록이어야 합니다. 공통 모집수가 없으면 빈 목록 []로 두세요.'
-  if (items.length > 200) return 'sharedCounts는 200개까지 읽을 수 있습니다.'
-  for (const [index, item] of items.entries()) {
-    const at = `sharedCounts[${index}]`
-    if (!isRecord(item)) return `${at}는 paths·count·page·quote를 가진 객체여야 합니다.`
-    if (!Array.isArray(item.paths) || item.paths.length < 2) return `${at}.paths에는 모집수를 함께 쓰는 공급행이 2개 이상 있어야 합니다.`
-    if (new Set(item.paths).size !== item.paths.length) return `${at}.paths에 같은 공급행이 두 번 들어 있습니다.`
-    const locations = new Set<string>(), fields = new Set<string>()
-    for (const path of item.paths) {
-      const normalized = typeof path === 'string' ? normalizePath(path) : ''
-      const match = /^supplyRows\[(\d+)\]\.(?:totalSupplyHouseholdCount|targets\[(\d+)\]\.(supplyHouseholdCount|reserveCount))$/.exec(normalized)
-      if (!match) return `${at}.paths의 "${String(path)}"는 supplyRows[번호].totalSupplyHouseholdCount 또는 supplyRows[번호].targets[번호].supplyHouseholdCount/reserveCount 형식이어야 합니다.`
-      const row = Number(match[1])
-      if (row >= rowCount) return `${at}.paths의 supplyRows[${row}]가 없습니다. 공급행은 ${rowCount}개(0~${rowCount - 1}번)입니다.`
-      if (match[2] !== undefined && Number(match[2]) >= targetCounts[row]) return `${at}.paths의 supplyRows[${row}].targets[${match[2]}]가 없습니다. 이 공급행의 대상은 ${targetCounts[row]}개입니다.`
-      locations.add(match[2] === undefined ? 'row' : 'target')
-      fields.add(match[2] === undefined ? 'totalSupplyHouseholdCount' : match[3])
-    }
-    if (locations.size > 1) return `${at}.paths에 공급행 모집수와 대상별 모집수가 섞여 있습니다. 한 묶음에는 한 종류만 넣어 주세요.`
-    if (fields.size > 1) return `${at}.paths에 서로 다른 수량 필드가 섞여 있습니다. 당첨자 수와 예비자 수를 한 묶음에 넣지 마세요.`
-    if (typeof item.count !== 'number' || !Number.isSafeInteger(item.count) || item.count < 0) return `${at}.count는 0 이상의 정수여야 합니다. 현재 값: ${JSON.stringify(item.count) ?? '없음'}`
-    if (page(item.page) === null) return `${at}.page는 1 이상의 쪽 번호여야 합니다. 현재 값: ${JSON.stringify(item.page) ?? '없음'}`
-    if (typeof item.quote !== 'string') return `${at}.quote에는 공고문에서 옮긴 근거 문구가 필요합니다.`
-  }
-  return null
 }
 function count(value: unknown) { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null }
 function page(value: unknown) { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null }
@@ -311,16 +280,15 @@ export function evidenceQuery(quote: string, value?: unknown, money = false, con
 }
 
 /**
- * 공급행 칸(대상별 임대조건 제외)의 근거를 찾을 때 같은 줄에 있어야 하는 표기. 공고문 주택형 표기와 전용면적(051.9800A · 51.98)이다.
- * 공급행 밖의 칸은 문맥 없이 찾는다.
+ * 주택형 칸의 근거를 찾을 때 같은 줄에 있어야 하는 표기. 공고문 주택형 표기와 전용면적(051.9800A · 51.98)이다.
+ * 공급대상별 칸(모집·예비·임대조건)과 주택형 밖의 칸은 문맥 없이 찾는다.
  */
-export function evidenceContext(extraction: Pick<Extraction, 'supplyRows'>, path: string): string[] {
-  const match = /^supplyRows\[(\d+)\](?:\.(?!targets)[A-Za-z]+)?$/.exec(path)
-  const row = match ? extraction.supplyRows[Number(match[1])] : undefined
-  if (!row) return []
-  const area = row.values.exclusiveArea
-  // 접은 행의 표기(26A·26B)는 공고문에 표기마다 따로 있다.
-  return [...new Set([...row.typeName?.split('·') ?? [], ...row.subtypes.flatMap(subtype => subtype.name.split('·')), typeof area === 'number' ? String(area) : null].filter((item): item is string => Boolean(item?.trim())))]
+export function evidenceContext(extraction: Pick<Extraction, 'sheet'>, path: string): string[] {
+  const match = /^housingTypes\[(\d+)\](?:\.[A-Za-z]+)?$/.exec(path)
+  const type = match ? extraction.sheet.housingTypes[Number(match[1])] : undefined
+  if (!type) return []
+  return [...new Set([...type.name?.split('·') ?? [], ...type.houseTypes.flatMap(house => house.name?.split('·') ?? []),
+    type.exclusiveArea !== null ? String(type.exclusiveArea) : null].filter((item): item is string => Boolean(item?.trim())))]
 }
 
 /** 같은 경로 → 가까운 상위 경로 → 첫 하위 경로 순으로 근거를 찾는다. */

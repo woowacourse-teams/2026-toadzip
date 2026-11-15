@@ -197,6 +197,15 @@ describe('HousingAnnouncementCard', () => {
     expect(footer).not.toHaveTextContent(/모집 호수|모집 예비자 수/)
   })
 
+  it('공고문으로 확인하기 전 공급 세대수에는 확인 전임을 덧붙인다', () => {
+    const unconfirmed = renderCard(announcementWith({ supplyConfirmed: false, supplyHouseholdCount: 12 }))
+    expect(requiredRow(unconfirmed.card, 'footer')).toHaveTextContent('공급 12세대 · 공고문 확인 전')
+    unconfirmed.unmount()
+
+    const confirmed = renderCard(announcementWith({ supplyConfirmed: true, supplyHouseholdCount: 12 }))
+    expect(requiredRow(confirmed.card, 'footer')).not.toHaveTextContent('공고문 확인 전')
+  })
+
   it('nullable 핵심 속성은 공고문 확인으로 표시하고 nullable 조회수는 숨긴다', () => {
     const { card } = renderCard(announcementWith({
       title: null,

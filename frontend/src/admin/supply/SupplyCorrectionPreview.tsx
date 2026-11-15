@@ -1,63 +1,83 @@
 import { display } from '../management/fields'
-import type { CorrectionRow, CorrectionTarget, LinkedHousingType, NewHousingType, SupplyPreview } from './supplyCorrectionApi'
+import { cellsOf, type SheetHousingType, type SupplySheet } from './supplySheet'
+import { cellName, cellValues } from './sheetEdits'
+import { groupsText } from './targetGroups'
+import type { SupplyPreview } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
 
-const rowLabels: Partial<Record<keyof CorrectionRow, string>> = {
-  housingComplexId: '연결 단지 ID', housingComplexName: '연결 단지', housingTypeId: '공통 주택형 ID', newHousingType: '새 공통 주택형', linkedHousingTypes: '함께 모집하는 주택형',
-  excluded: '공개 제외', displayOrder: '표시 순서', complexName: '원천 단지명', typeName: '이 공고의 주택형 표기',
-  pnu: 'PNU', moveInMonth: '입주 예정 연월', category: '공급 구분', householdCount: '금회 모집수 (세대)',
-  areaOverride: '공고별 면적 보호', exclusiveArea: '전용면적 (㎡)', supplyArea: '공급면적 (㎡)',
-  targetCountsComparable: '수량 합계 검증 범위 확인',
+type Change = { scope: string; field: string; before: string; after: string }
+const typeLabels: Partial<Record<keyof SheetHousingType, string>> = {
+  complexName: '공고 단지', housingComplexName: '연결 단지', housingTypeId: '연결 주택형', newHousingType: '새 단지 주택형',
+  name: '주택형 표기', exclusiveArea: '전용면적 (㎡)', supplyArea: '공급면적 (㎡)', expectedMoveInMonth: '입주 예정 연월',
+  supplyPnu: '공급 PNU', category: '공급 구분', displayOrder: '표시 순서',
 }
-const targetLabels: Partial<Record<keyof CorrectionTarget, string>> = {
-  excluded: '공개 제외', target: '공급대상', supplyRank: '공급순위', householdCount: '모집수 (세대)',
-  reserveCount: '예비자수 (명)', deposit: '보증금 (원)', rent: '월 임대료 (원)', convertedDeposit: '전환 보증금 (원)', condition: '신청조건',
-}
-function newTypeText(type: NewHousingType) {
-  return `${type.name} · 전용 ${type.exclusiveArea}㎡ · 공급 ${type.supplyArea ?? '미확인'}㎡`
-}
+const cellLabels = { label: '공급대상', applicationCondition: '신청조건', groups: '공급대상 분류', winner: '모집 수', reserve: '예비 수',
+  rentalDeposit: '보증금 (원)', monthlyRent: '월 임대료 (원)', convertedDeposit: '전환 보증금 (원)' } as const
+const kindLabel = { WINNER: '모집', RESERVE: '예비' } as const
 function text(value: unknown) {
-  if (typeof value === 'boolean') return value ? '예' : '아니오'
-  if (Array.isArray(value)) return value.length ? (value as LinkedHousingType[]).map(link => link.newHousingType ? `새 주택형 ${newTypeText(link.newHousingType)}` : `주택형 #${link.housingTypeId}`).join(', ') : '대표만'
-  if (value && typeof value === 'object' && 'name' in value) return newTypeText(value as NewHousingType)
+  if (value && typeof value === 'object' && 'name' in value) {
+    const type = value as { name: string; exclusiveArea: number; supplyArea: number | null }
+    return `${type.name} · 전용 ${type.exclusiveArea}㎡ · 공급 ${type.supplyArea ?? '미확인'}㎡`
+  }
+  if (Array.isArray(value)) return groupsText(value)
   return display(value as string | number | null | undefined)
 }
-// 새로 추가한 행·조건은 실제로 입력한 값만 보여 준다. 기본값(미확인·아니오)과 대상 이름에 이미 나온 항목은 변경으로 세지 않는다.
-function newValueWorthShowing(key: string, value: unknown, shownInScope: string[]) {
-  return !shownInScope.includes(key) && value !== null && value !== undefined && value !== '' && value !== false && !(Array.isArray(value) && !value.length)
+// 새로 추가한 항목은 실제로 입력한 값만 보여 준다. 빈 값과 범위 이름에 이미 나온 항목은 변경으로 세지 않는다.
+const worthShowing = (value: unknown) => value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && !value.length)
+const typeName = (type: SheetHousingType) => `${type.complexName} · ${type.name || '이름 없는 주택형'}`
+// 칸 여럿이 함께 쓰는 수(주택형 모집수 포함)를 종류와 멤버 칸으로 맞춘다. 칸 하나의 수는 칸 변경에서 보여 준다.
+function sharedCounts(sheet: SupplySheet) {
+  return new Map(sheet.quotas.filter(quota => quota.members.length > 1)
+    .map(quota => [`${quota.kind}|${[...quota.members].sort().join(',')}`, quota]))
 }
-function supplyDifferences(before: CorrectionRow[], after: CorrectionRow[], labels = rowLabels) {
-  const changes: { scope: string; field: string; before: string; after: string }[] = []
-  for (const removed of before.filter(row => !after.some(next => next.id === row.id))) {
-    changes.push({ scope: `${removed.complexName} · ${removed.typeName}`, field: '공급행', before: `대상 ${removed.targets.length}개`, after: '삭제' })
+
+function supplyDifferences(before: SupplySheet, after: SupplySheet): Change[] {
+  const changes: Change[] = []
+  for (const removed of before.housingTypes.filter(type => !after.housingTypes.some(next => next.key === type.key))) {
+    changes.push({ scope: typeName(removed), field: '주택형', before: `공급대상 ${cellsOf(before, removed.key).length}개`, after: '삭제' })
   }
-  for (const next of after) {
-    const previous = before.find(row => row.id !== null && row.id === next.id)
-    const scope = `${next.complexName} · ${next.typeName}`
-    if (!previous) changes.push({ scope, field: '공급행', before: '없음', after: '새 행 추가' })
-    for (const key of Object.keys(labels) as (keyof CorrectionRow)[]) {
-      if (!previous && !newValueWorthShowing(key, next[key], ['complexName', 'typeName', 'displayOrder'])) continue
-      // 함께 모집하는 주택형은 생략과 빈 목록이 모두 대표만 연결한 상태다.
-      const was = key === 'linkedHousingTypes' ? previous && (previous[key] ?? []) : previous?.[key]
-      const now = key === 'linkedHousingTypes' ? next[key] ?? [] : next[key]
-      if (JSON.stringify(was) !== JSON.stringify(now)) changes.push({ scope, field: labels[key]!, before: previous ? text(was) : '없음', after: text(now) })
+  for (const next of [...after.housingTypes].sort((a, b) => a.displayOrder - b.displayOrder)) {
+    const previous = before.housingTypes.find(type => type.key === next.key)
+    const scope = typeName(next)
+    if (!previous) changes.push({ scope, field: '주택형', before: '없음', after: '새 주택형 추가' })
+    for (const key of Object.keys(typeLabels) as (keyof SheetHousingType)[]) {
+      if (!previous && (!worthShowing(next[key]) || ['complexName', 'name', 'displayOrder'].includes(key))) continue
+      if (JSON.stringify(previous?.[key] ?? null) !== JSON.stringify(next[key] ?? null)) {
+        changes.push({ scope, field: typeLabels[key]!, before: previous ? text(previous[key]) : '없음', after: text(next[key]) })
+      }
     }
-    for (const target of next.targets) {
-      const old = previous?.targets.find(item => item.id !== null && item.id === target.id)
-      const targetScope = `${scope} / ${target.target}`
-      if (!old) changes.push({ scope: targetScope, field: '공급대상', before: '없음', after: '새 대상 추가' })
-      for (const key of Object.keys(targetLabels) as (keyof CorrectionTarget)[]) {
-        if (!old && !newValueWorthShowing(key, target[key], ['target'])) continue
-        if (JSON.stringify(old?.[key]) !== JSON.stringify(target[key])) changes.push({ scope: targetScope, field: targetLabels[key]!, before: old ? text(old[key]) : '없음', after: text(target[key]) })
+    const previousCells = previous ? cellsOf(before, previous.key) : []
+    for (const removed of previousCells.filter(cell => !after.cells.some(item => item.key === cell.key))) {
+      changes.push({ scope: cellName(before, removed.key), field: '공급대상', before: '있음', after: '삭제' })
+    }
+    for (const cell of cellsOf(after, next.key)) {
+      const old = previousCells.find(item => item.key === cell.key)
+      const was = old ? cellValues(before, old) : null, now = cellValues(after, cell)
+      const cellScope = cellName(after, cell.key)
+      if (!was) changes.push({ scope: cellScope, field: '공급대상', before: '없음', after: '새 공급대상 추가' })
+      for (const key of Object.keys(cellLabels) as (keyof typeof cellLabels)[]) {
+        if (!was && (!worthShowing(now[key]) || key === 'label')) continue
+        if (JSON.stringify(was?.[key]) !== JSON.stringify(now[key])) changes.push({ scope: cellScope, field: cellLabels[key], before: was ? text(was[key]) : '없음', after: text(now[key]) })
       }
     }
   }
+  const was = sharedCounts(before), now = sharedCounts(after)
+  for (const [key, quota] of now) {
+    const previous = was.get(key)
+    if (previous?.count === quota.count) continue
+    changes.push({ scope: quota.members.map(member => cellName(after, member)).join('·'), field: `함께 쓰는 ${kindLabel[quota.kind]} 수`,
+      before: previous ? String(previous.count) : '없음', after: String(quota.count) })
+  }
+  for (const [key, quota] of was) {
+    if (!now.has(key)) changes.push({ scope: quota.members.map(member => cellName(before, member)).join('·'), field: `함께 쓰는 ${kindLabel[quota.kind]} 수`, before: String(quota.count), after: '삭제' })
+  }
   return changes
 }
+
 export function SupplyCorrectionPreview({ value, historical = false }: { value: SupplyPreview; historical?: boolean }) {
-  const changes = supplyDifferences(value.before, value.after, rowLabels)
-  return <section className={styles.preview} aria-label="공급정보 변경 미리보기"><h3>{changes.length ? `${historical ? '저장한 변경' : '적용할 변경'} ${changes.length}개` : '공급행 변경 없음'}</h3>
-    {!historical && <p>이 공고의 공급행·대상 조건에 적용합니다. 새 주택형을 선택한 경우 공통 주택형 생성도 함께 처리합니다.</p>}
+  const changes = supplyDifferences(value.before, value.after)
+  return <section className={styles.preview} aria-label="공급정보 변경 미리보기"><h3>{changes.length ? `${historical ? '저장한 변경' : '적용할 변경'} ${changes.length}개` : '공급표 변경 없음'}</h3>
+    {!historical && <p>이 공고의 공급표에 적용합니다. 새 주택형을 선택한 경우 단지 주택형 생성도 함께 처리합니다.</p>}
     {changes.length > 0 && <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="변경 전후 비교"><table><thead><tr><th>대상</th><th>항목</th><th>{historical ? '변경 전' : '현재'}</th><th>{historical ? '변경 후' : '적용 후'}</th></tr></thead>
       <tbody>{changes.map((change, index) => <tr key={index}><th scope="row">{change.scope}</th><td>{change.field}</td><td>{change.before}</td><td>{change.after}</td></tr>)}</tbody></table></div>}
     {value.warnings.length > 0 && <section><h4>저장 후에도 확인할 항목</h4><ul>{value.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></section>}

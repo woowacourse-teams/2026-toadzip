@@ -25,7 +25,7 @@ function detail(item = summary): ManagementDetailData {
     agencyCode: 'LH', rentalType: 'HAPPY_HOUSING', totalHouseholdCount: 300,
     address: { roadAddress: item.subtitle, pnu: '1114010100100010000', legalDongCode: '1114010100',
       provinceCode: '11', cityCountyDistrictCode: '11140', latitude: 37.5, longitude: 127 } },
-  housingTypes: [], announcements: [], supplyRows: [], scheduleReviewed: false, schedules: [] }
+  housingTypes: [], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, scheduleReviewed: false, schedules: [] }
 }
 function evidence(): ComplexVerification {
   return { version: 2, snapshotToken: 'a'.repeat(64), status: 'UNREVIEWED',

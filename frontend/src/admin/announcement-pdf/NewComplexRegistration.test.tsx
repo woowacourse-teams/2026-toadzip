@@ -12,7 +12,7 @@ beforeEach(() => vi.clearAllMocks())
 function renderForm() {
   const onCreated = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="인천부평" rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={onCreated} />)
-  return { form: screen.getByRole('group', { name: '공급행 1 새 단지 등록' }), onCreated }
+  return { form: screen.getByRole('group', { name: '주택형 1 새 단지 등록' }), onCreated }
 }
 function search(form: HTMLElement, keyword: string) {
   fireEvent.change(within(form).getByLabelText('주소 검색'), { target: { value: keyword } })
@@ -88,7 +88,7 @@ it('주차대수는 비워 둘 수 있고, 공고문에 없는 주소·PNU·세�
   const onCreated = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="인천부평(도시재생뉴딜) 행복주택" rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={onCreated}
     myhome={{ name: '인천부평(도시재생뉴딜)', address: '인천광역시 부평구 부평동 65-17', pnu: '2823710100100650017', households: 350, heating: '개별난방', building: '아파트' }} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   expect(within(form).getByLabelText('주소(도로명 또는 지번)')).toHaveValue('인천광역시 부평구 부평동 65-17')
   expect(within(form).getByLabelText('PNU')).toHaveValue('2823710100100650017')
   expect(within(form).getByLabelText('전체 세대수')).toHaveValue(350)
@@ -151,7 +151,7 @@ it('서버가 추출 주소와 같다고 판정한 후보가 하나뿐이면 좌
   registration.createHousingComplex.mockResolvedValue({ housingComplexId: 12, name: '평창장평' })
   const onCreated = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="평창장평" defaultAddress={exactAddress.roadAddress} rentalType="INTEGRATED_PUBLIC_RENTAL" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={onCreated} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   const submit = within(form).getByRole('button', { name: '단지 등록하고 연결' })
   await waitFor(() => expect(submit).toBeEnabled())
   expect(within(form).getByLabelText('위도')).toHaveValue(37.582415)
@@ -164,7 +164,7 @@ it('주소 후보가 모호하면 자동 선택하지 않고 좌표 없는 새 �
   lookup.lookupAddresses.mockResolvedValue([exactAddress, { ...exactAddress, pnu: '5176035027103170003', latitude: null, longitude: null }])
   const onCreated = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="평창장평" defaultAddress={exactAddress.roadAddress} rentalType="INTEGRATED_PUBLIC_RENTAL" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={onCreated} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   const options = await within(form).findAllByRole('button', { name: /새이들길 23/ })
   expect(within(form).getByLabelText('위도')).toHaveValue(null)
   fireEvent.click(options[0])
@@ -182,7 +182,7 @@ it('늦게 끝난 최초 주소 검색이 직접 고친 주소와 좌표를 덮�
   registration.createHousingComplex.mockResolvedValue({ housingComplexId: 13, name: '다른 단지' })
   const onCreated = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="다른 단지" defaultAddress={exactAddress.roadAddress} rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={onCreated} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   for (const [label, value] of [['주소(도로명 또는 지번)', '서울특별시 중구 세종대로 110'], ['PNU', '1114010100100010000'], ['위도', '37.5'], ['경도', '127']]) {
     fireEvent.change(within(form).getByLabelText(label), { target: { value } })
   }
@@ -197,7 +197,7 @@ it('확인한 뒤 검색 주소를 바꾸면 이전 주소로 등록하지 못�
   lookup.lookupAddresses.mockResolvedValueOnce([exactAddress]).mockResolvedValueOnce([{ ...exactAddress, roadAddress: '서울특별시 중구 세종대로 110', pnu: '1114010100100010000', legalDongCode: '1114010100', provinceCode: '11', cityCountyDistrictCode: '11140', latitude: 37.5, longitude: 127 }])
   registration.createHousingComplex.mockResolvedValue({ housingComplexId: 14, name: '단지' })
   render(<NewComplexRegistration index={0} defaultName="단지" defaultAddress={exactAddress.roadAddress} rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   await waitFor(() => expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeEnabled())
   fireEvent.change(within(form).getByLabelText('주소 검색'), { target: { value: '서울특별시 중구 세종대로 110' } })
   expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeDisabled()
@@ -212,7 +212,7 @@ it('공고문이 시·도를 줄여 써도 서버가 같은 주소로 판정하�
   lookup.lookupAddresses.mockResolvedValue([{ ...exactAddress, roadAddress: '서울특별시 중구 세종대로 110', pnu: '1114010300100310000', legalDongCode: '1114010300', provinceCode: '11', cityCountyDistrictCode: '11140' },
     { ...exactAddress, roadAddress: '서울특별시 중구 세종대로 110-1', matchesKeyword: false }])
   render(<NewComplexRegistration index={0} defaultName="단지" defaultAddress="서울시 중구 세종대로 110" rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   expect(await within(form).findByRole('status')).toHaveTextContent('공고문 주소와 같은 주소를 찾아 채웠습니다.')
   expect(within(form).getByLabelText('주소(도로명 또는 지번)')).toHaveValue('서울특별시 중구 세종대로 110')
   expect(within(form).queryByRole('list', { name: '주소 검색 결과' })).not.toBeInTheDocument()
@@ -222,7 +222,7 @@ it('공고문이 시·도를 줄여 써도 서버가 같은 주소로 판정하�
 it('같다고 판정한 후보에 좌표가 없으면 주소·PNU는 채우고 좌표만 직접 입력하라고 알린다', async () => {
   lookup.lookupAddresses.mockResolvedValue([{ ...exactAddress, latitude: null, longitude: null }])
   render(<NewComplexRegistration index={0} defaultName="평창장평" defaultAddress={exactAddress.roadAddress} rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   expect(await within(form).findByRole('status')).toHaveTextContent('좌표는 검색 결과에 없어 직접 입력해야 합니다.')
   expect(within(form).getByLabelText('PNU')).toHaveValue(exactAddress.pnu)
   expect(within(form).getByText('이 주소는 검색 결과에 좌표가 없습니다. 주소 상세에서 위도·경도를 입력하세요.')).toBeInTheDocument()
@@ -235,7 +235,7 @@ it.each([
   lookup.lookupAddresses.mockResolvedValue([exactAddress])
   registration.createHousingComplex.mockResolvedValue({ housingComplexId: 15, name: '평창장평' })
   render(<NewComplexRegistration index={0} defaultName="평창장평" defaultAddress={exactAddress.roadAddress} defaultPnu={sourcePnu} rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   await within(form).findByRole('status')
   fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
   await waitFor(() => expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ address: expect.objectContaining({ pnu: expected, legalDongCode: expected.slice(0, 10) }) })))
@@ -246,7 +246,7 @@ it('서버가 알려 준 같은 곳의 등록 단지를 새 등록보다 먼저 
     { housingComplexId: 41, name: '평창장평 행복주택', roadAddress: '강원 평창군 용평면 새이들길 23', rentalType: 'HAPPY_HOUSING' }] }])
   const onSelectExisting = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="평창장평" defaultAddress={exactAddress.roadAddress} rentalType="HAPPY_HOUSING" agencyCode="LH" onSelectExisting={onSelectExisting} onCreated={vi.fn()} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   const existing = await within(form).findByRole('group', { name: '같은 주소의 등록된 단지' })
   expect(existing).toHaveTextContent('평창장평 행복주택 · 행복주택 · 강원 평창군 용평면 새이들길 23')
   expect(within(form).getByRole('button', { name: '다른 단지라 새로 등록하고 연결' })).toBeEnabled()
@@ -270,7 +270,7 @@ it('공고에 공급유형이 없으면 고르기 전까지 등록을 막고, �
   registration.createHousingComplex.mockResolvedValue({ housingComplexId: 9001, name: '탑석 센트럴 자이' })
   const onCreated = vi.fn()
   render(<NewComplexRegistration index={0} defaultName="탑석 센트럴 자이" defaultHouseholds={70} rentalType="" agencyCode="GH" onSelectExisting={vi.fn()} onCreated={onCreated} />)
-  const form = screen.getByRole('group', { name: '공급행 1 새 단지 등록' })
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
   search(form, '용민로 10')
   fireEvent.click(await within(form).findByRole('button', { name: /용민로 10/ }))
   expect(within(form).getByRole('button', { name: '단지 등록하고 연결' })).toBeDisabled()
@@ -283,5 +283,5 @@ it('공고에 공급유형이 없으면 고르기 전까지 등록을 막고, �
 
 it('공고에 공급유형이 있으면(LH·GH) 고르게 하지 않고 그 공급유형으로 등록한다', () => {
   render(<NewComplexRegistration index={0} defaultName="탑석 센트럴 자이" rentalType="LONG_TERM_JEONSE" agencyCode="GH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
-  expect(within(screen.getByRole('group', { name: '공급행 1 새 단지 등록' })).queryByLabelText('공급유형')).not.toBeInTheDocument()
+  expect(within(screen.getByRole('group', { name: '주택형 1 새 단지 등록' })).queryByLabelText('공급유형')).not.toBeInTheDocument()
 })

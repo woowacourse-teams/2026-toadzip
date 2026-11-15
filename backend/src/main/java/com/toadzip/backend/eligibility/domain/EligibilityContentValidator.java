@@ -132,6 +132,11 @@ public final class EligibilityContentValidator {
             require(
                     combinations.add(combination(option.pathId(), option.supplyUnitId())),
                     "중복된 신청 단위와 경로입니다.");
+            for (EligibilityContent.SupplyTarget target : option.supplyTargets()) {
+                text(target.label(), 255, "선택지 공급대상 표기");
+                require(target.applicationCondition() != null && target.applicationCondition().length() <= 255,
+                        "선택지 공급대상 신청 조건이 필요하거나 너무 깁니다.");
+            }
         }
         return combinations;
     }

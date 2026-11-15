@@ -136,15 +136,9 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
             </section>
             <section className="lh-quality-summary">
               <h4>기존 공급 원천 유지 <strong>{quality.preservedSourceRequestCount}건</strong></h4>
-              <p className="ingest-meta">빈 응답·공급행 감소로 교체하지 않은 현재 요청 수입니다. 금액을 보존한 공급행 수와는 다릅니다.</p>
+              <p className="ingest-meta">빈 응답·공급행 감소로 교체하지 않은 현재 요청 수입니다.</p>
               <ul>{Object.entries(quality.preservedReasons).map(([reason, count]) => (
                 <li key={reason}>{preservationReason(reason)}: {count}건</li>
-              ))}</ul>
-            </section>
-            <section className="lh-quality-summary">
-              <h4>기존 숫자 금액 유지 <strong>{quality.preservedAmountTargetCount}건</strong></h4>
-              <ul>{Object.entries(quality.preservedAmountReasons).map(([reason, count]) => (
-                <li key={reason}>{amountPreservationReason(reason)}: {count}건</li>
               ))}</ul>
             </section>
           </div>
@@ -235,17 +229,6 @@ function selectionFailures(execution: DataPipelineExecution, step: string): numb
   if (typeof report !== 'object' || report === null || !('selectionFailedRequestCount' in report)) return 0
   const count = report.selectionFailedRequestCount
   return typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : 0
-}
-
-function amountPreservationReason(reason: string): string {
-  const labels: Record<string, string> = {
-    LH_AMOUNT_NOT_PROVIDED: 'LH 신규 금액 미제공',
-    LH_SUPPLY_NOT_PROVIDED: 'LH 공급 정보 미제공',
-    LH_SUPPLY_MATCHING_FAILED: 'LH 공급행 연결 실패',
-    MYHOME_MAPPING_REJECTED: '주택형·공고 매핑 보류',
-    LH_ENRICHMENT_REJECTED: 'LH 보강 검증·연결 보류',
-  }
-  return labels[reason] ?? reason
 }
 
 function preservationReason(reason: string): string {

@@ -78,6 +78,9 @@ class AdminDataRegistrationFlowIntegrationTest {
     @Autowired
     private SupplyRowRepository supplyRowRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     @BeforeEach
     void setUp() {
         supplyRowRepository.deleteAll();
@@ -153,10 +156,6 @@ class AdminDataRegistrationFlowIntegrationTest {
                         announcement.getSourceAnnouncementIdentifier(),
                         "ADMIN_ENTRY-ANNOUNCEMENT-"
                 ),
-                () -> assertIdentifier(
-                        supplyRow.getSourceSupplyRowIdentifier(),
-                        "ADMIN_ENTRY-SUPPLY-ROW-"
-                ),
                 () -> assertEquals(AnnouncementPublicationType.ORIGINAL, announcement.getStatus()),
                 () -> assertNull(announcement.getPreviousAnnouncement()),
                 () -> assertNull(announcement.getPreviousSourceAnnouncementIdentifier()),
@@ -167,16 +166,20 @@ class AdminDataRegistrationFlowIntegrationTest {
                 () -> assertNull(announcement.getActualCompetitionRate()),
                 () -> assertNull(announcement.getPredictedCompetitionRate()),
                 () -> assertEquals(announcementId, supplyRow.getAnnouncement().getId()),
-                () -> assertEquals(housingComplexId, supplyRow.getHousingComplex().getId()),
+                () -> assertEquals(housingComplexId, supplyRow.getAnnouncementComplex().getHousingComplex().getId()),
                 () -> assertNull(supplyRow.getHousingType()),
                 () -> assertEquals(0, supplyRow.getDisplayOrder()),
-                () -> assertEquals("원문 두꺼비 행복주택", supplyRow.getSourceComplexName()),
-                () -> assertEquals("36A", supplyRow.getSourceHousingTypeName()),
+                () -> assertEquals("원문 두꺼비 행복주택", supplyRow.getAnnouncementComplex().getSourceComplexName()),
+                () -> assertEquals("36A", supplyRow.getHousingTypeName()),
                 () -> assertEquals("1114010100100010000", supplyRow.getSupplyPnu()),
                 () -> assertEquals(YearMonth.of(2027, 3), supplyRow.getExpectedMoveInMonth()),
                 () -> assertEquals(SupplyCategory.NEW_SUPPLY, supplyRow.getSupplyCategory()),
-                () -> assertNull(supplyRow.getMatchingFailureReason()),
-                () -> assertEquals(20, supplyRow.getTotalSupplyHouseholdCount())
+                // 대상 구분이 없는 등록의 모집수는 공급표의 '전체' 칸이 갖는다.
+                () -> assertEquals(20, jdbc.queryForObject("""
+                        SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND q.id IN (
+                            SELECT m.supply_quota_id FROM supply_quota_members m
+                            JOIN supply_row_targets c ON c.id = m.supply_row_target_id WHERE c.supply_row_id = ?)
+                        """, Integer.class, supplyRow.getId()))
         );
     }
 

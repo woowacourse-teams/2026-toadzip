@@ -8,9 +8,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
@@ -26,10 +29,8 @@ import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
-import com.toadzip.backend.ingest.mapping.domain.AnnouncementSupplyMatchDecision;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
-import com.toadzip.backend.ingest.mapping.repository.AnnouncementSupplyMatchDecisionRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -47,8 +48,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 @ExtendWith(IngestExecutionExtension.class)
 @SpringBootTest
@@ -59,6 +58,11 @@ class MyHomeComplexMappingServiceTest {
     private static final String NEW_ADDRESS = "서울특별시 종로구 새길 2";
     private static final String NEW_PNU = "1111010100200020000";
     private static final String SPLIT_ADDRESS = "대전광역시 서구 둔산로 100";
+    /** 공급행의 단지는 그 공고 단지가 이은 단지다. */
+    private static final String SUPPLY_ROW_COMPLEX = """
+            SELECT ac.housing_complex_id FROM supply_rows r
+            JOIN announcement_complexes ac ON ac.id = r.announcement_complex_id WHERE r.id = ?
+            """;
 
     @Autowired
     private MyHomeComplexMappingService service;
@@ -82,20 +86,10 @@ class MyHomeComplexMappingServiceTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
+    private AnnouncementComplexRepository announcementComplexRepository;
+
+    @Autowired
     private JdbcClient jdbc;
-
-    @Autowired
-    private AnnouncementSupplyMatchDecisionRepository matchDecisions;
-
-    @Autowired
-    private SupplyMatchingFingerprint fingerprints;
-
-    private TransactionTemplate transactions;
-
-    @Autowired
-    void setTransactions(PlatformTransactionManager transactionManager) {
-        transactions = new TransactionTemplate(transactionManager);
-    }
 
     @MockitoBean
     private RoadAddressGeocodingService geocodingService;
@@ -103,6 +97,7 @@ class MyHomeComplexMappingServiceTest {
     @BeforeEach
     void setUp() {
         supplyRowRepository.deleteAll();
+        announcementComplexRepository.deleteAll();
         announcementRepository.deleteAll();
         // 휴지통 주택형은 저장소 기본 조회에서 빠지므로 직접 지운다.
         jdbc.sql("DELETE FROM housing_types").update();
@@ -824,8 +819,8 @@ class MyHomeComplexMappingServiceTest {
             assertThat(complex.getId()).isEqualTo(representativeId);
             assertThat(complex.getTotalHouseholdCount()).isEqualTo(1380);
         });
-        assertThat(jdbc.sql("SELECT housing_complex_id FROM supply_rows WHERE id = ?").param(supply.getId())
-                .query(Long.class).single()).isEqualTo(representativeId);
+        assertThat(jdbc.sql(SUPPLY_ROW_COMPLEX).param(supply.getId()).query(Long.class).single())
+                .isEqualTo(representativeId);
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(fragmentType.getId())
                 .query(Long.class).single()).isEqualTo(representativeId);
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_complex_aliases WHERE id = ?").param(donorId)
@@ -835,27 +830,14 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
-    void 분할_단지를_합치면_관리자_기록을_대표로_옮기고_저장_매칭은_재확인_없이_유지한다() {
-        jdbc.sql("TRUNCATE announcement_supply_match_decisions, lh_household_complex_links").update();
+    void 분할_단지를_합치면_관리자_기록과_공급행을_대표로_옮긴다() {
+        jdbc.sql("TRUNCATE lh_household_complex_links, lh_household_target_decisions").update();
         List<HousingComplex> separated = separatedSplitComplexes();
         long representativeId = separated.getFirst().getId();
         HousingComplex donor = separated.getLast();
         HousingType donorType = housingTypeRepository.findAllByHousingComplex(donor).getFirst();
-        var decision = new AnnouncementSupplyMatchDecision("row-split-1");
-        decision.confirm(donor.getId(), donorType.getId(), "source", targetFingerprint(donorType.getId()),
-                "https://example.com/evidence", "공고 52형은 조각 단지 주택형", "admin");
-        long decisionId = matchDecisions.save(decision).getId();
-        // 공급행 묶음 보정으로 확정한 행도 같은 주택형을 가리키면 대표 단지로 옮긴 뒤 재확인 없이 유지한다.
         Announcement announcement = announcementRepository.save(announcement());
-        long confirmedRowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
-        jdbc.sql("UPDATE supply_rows SET confirmed_target_fingerprint = ? WHERE id = ?")
-                .params(targetFingerprint(donorType.getId()), confirmedRowId).update();
-        // 확정 뒤 주택형이 바뀌어 지문이 맞지 않는 행은 옮겨도 재확인하지 않고 검토 대상으로 남긴다.
-        jdbc.sql("UPDATE supply_rows SET source_supply_row_identifier = 'supply-row-confirmed' WHERE id = ?")
-                .param(confirmedRowId).update();
-        long staleRowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
-        jdbc.sql("UPDATE supply_rows SET confirmed_target_fingerprint = 'stale' WHERE id = ?").param(staleRowId)
-                .update();
+        long rowId = supplyRowRepository.save(supplyRow(announcement, donor, donorType)).getId();
         jdbc.sql("""
                 INSERT INTO lh_household_complex_links (source_key, housing_complex_id, source_fingerprint,
                     target_fingerprint, reason, actor, updated_at, version) VALUES ('lh-split', ?, 's', 't', '확인', 'admin', now(), 0)
@@ -881,16 +863,10 @@ class MyHomeComplexMappingServiceTest {
 
         mergeSeparatedSplitComplexes();
 
-        var moved = matchDecisions.findById(decisionId).orElseThrow();
         HousingType movedType = housingTypeRepository.findById(donorType.getId()).orElseThrow();
-        assertThat(moved.getComplexId()).isEqualTo(representativeId);
         assertThat(jdbc.sql("SELECT housing_complex_id FROM housing_types WHERE id = ?").param(movedType.getId())
                 .query(Long.class).single()).isEqualTo(representativeId);
-        assertThat(moved.getTargetFingerprint()).isEqualTo(targetFingerprint(movedType.getId()));
-        assertThat(jdbc.sql("SELECT confirmed_target_fingerprint FROM supply_rows WHERE id = ?").param(confirmedRowId)
-                .query(String.class).single()).isEqualTo(targetFingerprint(movedType.getId()));
-        assertThat(jdbc.sql("SELECT confirmed_target_fingerprint FROM supply_rows WHERE id = ?").param(staleRowId)
-                .query(String.class).single()).isEqualTo("stale");
+        assertThat(jdbc.sql(SUPPLY_ROW_COMPLEX).param(rowId).query(Long.class).single()).isEqualTo(representativeId);
         for (String table : List.of("lh_household_complex_links", "lh_household_target_decisions",
                 "housing_complex_reviews")) {
             assertThat(jdbc.sql("SELECT housing_complex_id FROM " + table).query(Long.class).list())
@@ -969,11 +945,6 @@ class MyHomeComplexMappingServiceTest {
                 assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE));
         assertThat(complexRepository.findAll()).hasSize(2)
                 .extracting(HousingComplex::getImageUrl).doesNotHaveDuplicates();
-    }
-
-    private String targetFingerprint(long housingTypeId) {
-        return transactions.execute(status ->
-                fingerprints.target(housingTypeRepository.findById(housingTypeId).orElseThrow()));
     }
 
     private List<HousingComplex> separatedSplitComplexes() {
@@ -1076,20 +1047,16 @@ class MyHomeComplexMappingServiceTest {
             HousingComplex complex,
             HousingType housingType
     ) {
-        return SupplyRow.create(
-                announcement,
-                complex,
+        AnnouncementComplex target = AnnouncementComplex.observe(announcement, complex.getName(), null, null);
+        target.linkByAdmin(complex, "test", COLLECTED_AT);
+        return SupplyRowSeed.create(
+                announcementComplexRepository.save(target),
                 housingType,
-                "supply-row-1",
                 1,
-                complex.getName(),
                 housingType.getName(),
                 complex.getAddress().getPnu(),
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                null,
-                10
-        );
+                SupplyCategory.NEW_SUPPLY);
     }
 
     private MyHomeComplexSourceView source(MyHomeComplexSourceSnapshot data) {

@@ -136,6 +136,7 @@ function announcementDetail(
       fileUrl: 'https://example.com/notice.pdf',
     }],
     competition: { actualRate: 2.4, predictedRate: 3.1 },
+    supplyConfirmed: true,
     correctionOrCancellationReason: '접수 일정 정정',
     dDay: 2,
     documentLinkUrl: 'https://example.com/notice',

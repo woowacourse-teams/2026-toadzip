@@ -7,6 +7,7 @@ public record CurrentSupplyConditionResponse(
         Long deposit,
         Long monthlyRent,
         Long convertibleDeposit,
-        LocalDate postedDate
+        LocalDate postedDate,
+        boolean supplyConfirmed
 ) {
 }

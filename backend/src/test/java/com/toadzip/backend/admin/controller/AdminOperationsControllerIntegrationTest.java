@@ -1,10 +1,12 @@
 package com.toadzip.backend.admin.controller;
 
+import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -107,6 +109,31 @@ class AdminOperationsControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.reasons.UNCONFIRMED").value(1))
                 .andExpect(jsonPath("$.data.statuses.UNKNOWN").value(1))
                 .andExpect(jsonPath("$.data.statuses.APPLYING").value(1));
+    }
+
+    @Test
+    void 공급_없음은_확정_전_공고는_준비_줄로_확정한_공고는_제외하지_않은_정본_행으로_판단한다() throws Exception {
+        var staged = announcement("확정 전 준비 줄 있음");
+        entities.persist(AgencySupplyLine.create(staged, AgencyCode.LH, new AgencySupplyLine.Values("LH:1", 0, null,
+                "단지", "36A", null, null, null, 4, null, null, null, SupplyCategory.NEW_SUPPLY)));
+        announcement("확정 전 준비 줄 없음");
+        var emptied = announcement("확정 후 모두 제외");
+        supply(emptied, complex("LH"));
+        // 확정한 공고는 준비 줄이 남아 있어도 정본만 본다.
+        entities.persist(AgencySupplyLine.create(emptied, AgencyCode.LH, new AgencySupplyLine.Values("LH:2", 0, null,
+                "단지", "36A", null, null, null, 4, null, null, null, SupplyCategory.NEW_SUPPLY)));
+        entities.flush();
+        jdbc.sql("UPDATE supply_rows SET admin_excluded = true WHERE announcement_id = :id")
+                .param("id", emptied.getId()).update();
+
+        mockMvc.perform(get("/api/admin/operations/announcements").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reasons.SUPPLY_MISSING").value(2));
+        mockMvc.perform(get("/api/admin/announcements").param("attention", "SUPPLY_MISSING")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].name", org.hamcrest.Matchers.containsInAnyOrder(
+                        "확정 전 준비 줄 없음", "확정 후 모두 제외")));
     }
 
     @Test
@@ -299,8 +326,7 @@ class AdminOperationsControllerIntegrationTest {
     }
 
     private void supply(Announcement announcement, HousingComplex complex) {
-        entities.persist(SupplyRow.create(announcement, complex, null, UUID.randomUUID().toString(), 0,
-                "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY, null, null));
+        entities.persist(SupplyRowSeed.create(entities, announcement, complex, null, 0, "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY));
     }
 
     private void execution(String status, String at) {

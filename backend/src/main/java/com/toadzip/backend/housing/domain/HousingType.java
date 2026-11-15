@@ -272,7 +272,7 @@ public class HousingType {
 
     /**
      * 면적은 DB 열과 같은 소수 넷째 자리로 맞춘다. 새로 만든 주택형의 메모리 값(16.37)과 다시 읽은 값(16.3700)이 달라
-     * 같은 주택형인데도 저장 매칭의 대상 지문이 달라지는 일을 막는다.
+     * 같은 주택형인데도 관리자 후보의 지문(token)이 달라지는 일을 막는다.
      */
     private static BigDecimal area(BigDecimal value) {
         return value == null ? null : value.setScale(4, RoundingMode.HALF_UP);

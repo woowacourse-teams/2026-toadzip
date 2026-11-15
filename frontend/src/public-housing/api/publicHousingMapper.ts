@@ -86,6 +86,7 @@ export function toAnnouncementDetail(
     attachments: raw.attachments.map(toAnnouncementAttachment),
     supplyRows: raw.supplyRows.map(toAnnouncementSupplyRow),
     competition: raw.competition,
+    supplyConfirmed: raw.supplyConfirmed ?? true,
     listPhase: raw.listPhase ?? 'NONE',
     raw,
   }
@@ -164,6 +165,7 @@ function toAnnouncementListItem(
     actualCompetitionRate: raw.actualCompetitionRate,
     predictedCompetitionRate: raw.predictedCompetitionRate,
     thumbnailImageUrl: raw.thumbnailImageUrl,
+    supplyConfirmed: raw.supplyConfirmed ?? true,
     raw,
   }
 }
@@ -296,6 +298,7 @@ function toComplexHousingType(raw: RawComplexHousingType): ComplexHousingType {
       monthlyRent: condition.monthlyRent,
       convertibleDeposit: condition.convertibleDeposit,
       postedDate: condition.postedDate,
+      supplyConfirmed: condition.supplyConfirmed ?? true,
     })),
   }
 }
@@ -313,6 +316,7 @@ function toComplexCurrentAnnouncement(
     applicationEndAt: raw.applicationEndAt,
     dDay: raw.dDay,
     actualCompetitionRate: raw.actualCompetitionRate,
+    supplyConfirmed: raw.supplyConfirmed ?? true,
   }
 }
 

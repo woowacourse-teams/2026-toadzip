@@ -54,6 +54,7 @@ class NotificationMaterializationConcurrencyIntegrationTest {
             jdbc.update("DELETE FROM user_notifications WHERE event_id=?", eventId);
             jdbc.update("DELETE FROM notification_outbox_events WHERE id=?", eventId);
             jdbc.update("DELETE FROM supply_rows WHERE announcement_id=?", announcementId);
+            jdbc.update("DELETE FROM announcement_complexes WHERE announcement_id=?", announcementId);
             jdbc.update("DELETE FROM announcements WHERE id=?", announcementId);
             jdbc.update("DELETE FROM housing_complexes WHERE id=?", complexId);
             jdbc.update("DELETE FROM notification_subscriptions WHERE user_id>=5000 AND user_id<5450");

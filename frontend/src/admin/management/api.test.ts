@@ -37,7 +37,7 @@ describe('관리 데이터 API', () => {
     const { getManagementDetail } = await import('./api')
 
     await expect(getManagementDetail('announcements', '7/8')).resolves.toMatchObject({
-      summary, housingTypes: [], announcements: [], supplyRows: [], schedules: [], scheduleReviewed: false,
+      summary, housingTypes: [], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, schedules: [], scheduleReviewed: false,
     })
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:8080/api/admin/announcements/7%2F8')
   })

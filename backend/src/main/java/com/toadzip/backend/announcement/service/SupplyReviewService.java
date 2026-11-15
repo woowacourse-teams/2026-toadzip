@@ -2,6 +2,9 @@ package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
+import com.toadzip.backend.admin.quality.domain.QualityResource;
+import com.toadzip.backend.admin.quality.dto.QualityComparison;
+import com.toadzip.backend.admin.quality.service.QualityComparisonService;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.SupplyReviewRecord;
 import com.toadzip.backend.announcement.dto.correction.SupplyReview;
@@ -32,6 +35,7 @@ public class SupplyReviewService {
     private final SupplyReviewRecordRepository records;
     private final SupplyReviewQueryRepository queries;
     private final AdminDataChangeRepository changes;
+    private final QualityComparisonService comparisons;
     private final ObjectMapper json;
 
     public SupplyReview.Overview overview(long id) {
@@ -54,8 +58,11 @@ public class SupplyReviewService {
             checked.set(field, current.get(field));
         }
         List<Map<String, Object>> evidence = new ArrayList<>();
+        // 원천 근거는 고른 때만 지금 비교 원천에서 찾는다. 공급 작업실은 원천 행을 싣지 않는다.
+        var sources = request.sources().isEmpty() ? List.<QualityComparison.Source>of()
+                : comparisons.detail(QualityResource.ANNOUNCEMENT, id, "basic").sources();
         for (var scope : request.sources()) {
-            var source = workspace.sources().stream().filter(item -> item.category() == scope.category()
+            var source = sources.stream().filter(item -> item.category() == scope.category()
                     && item.sourceKey().equals(scope.sourceKey())).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("현재 비교 자료에 있는 원천을 선택하세요."));
             if (source.rows().isEmpty()) { throw new AdminDataConflictException("확인할 원천이 사라졌습니다."); }

@@ -9,8 +9,8 @@ import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedules
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementHousingComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -27,17 +27,17 @@ public class VerifiedApplicationScheduleService {
 
     private final AnnouncementRepository announcementRepository;
     private final AnnouncementApplicationScheduleRepository scheduleRepository;
-    private final SupplyRowRepository supplyRowRepository;
+    private final AnnouncementHousingComplexRepository links;
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
 
     public VerifiedApplicationScheduleService(AnnouncementRepository announcementRepository,
-            AnnouncementApplicationScheduleRepository scheduleRepository, SupplyRowRepository supplyRowRepository,
+            AnnouncementApplicationScheduleRepository scheduleRepository, AnnouncementHousingComplexRepository links,
             AdminDataChangeRepository changes,
             ObjectMapper json) {
         this.announcementRepository = announcementRepository;
         this.scheduleRepository = scheduleRepository;
-        this.supplyRowRepository = supplyRowRepository;
+        this.links = links;
         this.changes = changes;
         this.json = json;
     }
@@ -59,8 +59,8 @@ public class VerifiedApplicationScheduleService {
                 .map(value -> new VerifiedApplicationSchedulesRequest.Schedule(complexId(value), value.getSupplyRank(),
                         value.getState(), value.getCondition(), value.getStartDate(), value.getEndDate(),
                         value.getStartTime(), value.getEndTime(), value.getSourceUrl(), value.getSourcePage())).toList();
-        Map<Long, HousingComplex> complexes = supplyRowRepository.findAllByAnnouncementIdIn(List.of(announcementId))
-                .stream().map(row -> row.getHousingComplex()).filter(complex -> complex != null)
+        Map<Long, HousingComplex> complexes = links.findAllByAnnouncementId(announcementId).stream()
+                .map(link -> link.getHousingComplex())
                 .collect(Collectors.toMap(HousingComplex::getId, Function.identity(), (left, right) -> left));
         List<AnnouncementApplicationSchedule> schedules = new ArrayList<>();
         for (var source : request.schedules()) {

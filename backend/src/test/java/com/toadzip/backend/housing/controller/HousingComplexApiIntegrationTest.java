@@ -18,10 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyRowSeed;
+import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -613,6 +615,68 @@ class HousingComplexApiIntegrationTest {
                 .andExpect(content().string(not(containsString("취소 공고 대상"))))
                 .andExpect(content().string(not(containsString("종료 대상"))))
                 .andExpect(content().string(not(containsString("미매칭 대상"))));
+    }
+
+    @Test
+    void 관리자가_한_단지의_공급행을_모두_제외하면_그_단지는_모집중과_지도에서_빠지고_다른_단지는_남는다() throws Exception {
+        HousingComplex kept = persistComplex("제외 시험 남는 단지", "36.000000", "127.000000");
+        HousingComplex excluded = persistComplex("제외 시험 빠지는 단지", "36.010000", "127.010000");
+        Announcement announcement = persistAnnouncement(null, "ORIGINAL", "exclusion", TODAY.minusDays(3),
+                TODAY.minusDays(1), TODAY.plusDays(3));
+        persistSupplyRow(announcement, kept, persistHousingType(kept, "26A", "26.00", "30.00",
+                "https://example.com/kept.png", false, "0"),
+                "exclusion-kept", 0);
+        HousingType excludedType = persistHousingType(excluded, "36A", "36.00", "40.00",
+                "https://example.com/excluded.png", false, "0");
+        SupplyRow first = persistSupplyRow(announcement, excluded, excludedType, "exclusion-first", 1);
+        SupplyRow second = persistSupplyRow(announcement, excluded, excludedType, "exclusion-second", 2);
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE supply_rows SET admin_excluded = true WHERE id IN (:ids)")
+                .setParameter("ids", List.of(first.getId(), second.getId())).executeUpdate();
+        entityManager.clear();
+
+        assertRecruitingOnMap(kept.getId());
+        mockMvc.perform(get("/api/v1/complexes/{id}", kept.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentAnnouncements[*].announcementId",
+                        contains(announcement.getId().intValue())));
+        mockMvc.perform(get("/api/v1/complexes/{id}", excluded.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentAnnouncements").isEmpty());
+    }
+
+    @Test
+    void 공급행이_없는_공고도_단지에_이어진_공고_단지로_단지_상세와_지도에_보인다() throws Exception {
+        HousingComplex complex = persistComplex("공급행 없는 공고 단지", "36.000000", "127.000000");
+        Announcement announcement = persistAnnouncement(null, "ORIGINAL", "no-rows", TODAY.minusDays(3),
+                TODAY.minusDays(1), TODAY.plusDays(3));
+        AnnouncementComplex link = AnnouncementComplex.observe(announcement, "공고문 단지", null, null);
+        link.linkByAdmin(complex, "admin", Instant.parse("2026-08-01T00:00:00Z"));
+        entityManager.persist(link);
+        entityManager.flush();
+
+        assertRecruitingOnMap(complex.getId());
+        mockMvc.perform(get("/api/v1/complexes/{id}", complex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentAnnouncements[*].announcementId",
+                        contains(announcement.getId().intValue())));
+    }
+
+    /** 위도 36 부근의 시험 단지 중 이 단지만 모집중으로 지도에 보인다. */
+    private void assertRecruitingOnMap(long complexId) throws Exception {
+        mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "18.00")
+                        .param("southWestLat", "35.900000").param("southWestLng", "126.900000")
+                        .param("northEastLat", "36.100000").param("northEastLng", "127.100000")
+                        .param("hasActiveAnnouncement", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nodes[*].complexId", contains((int) complexId)))
+                .andExpect(jsonPath("$.data.nodes[0].applicationStatus").value("APPLYING"));
+        mockMvc.perform(get("/api/v1/complexes")
+                        .param("southWestLat", "35.900000").param("southWestLng", "126.900000")
+                        .param("northEastLat", "36.100000").param("northEastLng", "127.100000")
+                        .param("hasActiveAnnouncement", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].complexId", contains((int) complexId)));
     }
 
     private void persistSearchFixture() {
@@ -1514,39 +1578,31 @@ class HousingComplexApiIntegrationTest {
             String sourceIdentifier,
             int displayOrder
     ) {
-        SupplyRow supplyRow = SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 complex,
                 housingType,
-                sourceIdentifier,
                 displayOrder,
                 complex.getName(),
                 housingType.getName(),
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                null,
-                10
-        );
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
 
     private SupplyRow persistUnmatchedSupplyRow(Announcement announcement) {
-        SupplyRow supplyRow = SupplyRow.create(
+        SupplyRow supplyRow = SupplyRowSeed.create(entityManager,
                 announcement,
                 null,
                 null,
-                "unmatched-row",
                 1,
                 "매칭되지 않은 단지",
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
-                SupplyCategory.NEW_SUPPLY,
-                "단지 매칭 실패",
-                10
-        );
+                SupplyCategory.NEW_SUPPLY);
         entityManager.persist(supplyRow);
         return supplyRow;
     }
@@ -1563,18 +1619,8 @@ class HousingComplexApiIntegrationTest {
         if (convertibleDeposit != null) {
             convertedDeposit = new BigDecimal(convertibleDeposit);
         }
-        entityManager.persist(SupplyTarget.create(
-                supplyRow,
-                target,
-                "1순위",
-                5,
-                5,
-                new BigDecimal(deposit),
-                new BigDecimal(monthlyRent),
-                convertedDeposit,
-                "신청 조건",
-                displayOrder
-        ));
+        new SupplySheetSeed(entityManager).target(supplyRow, target, "신청 조건", 5, 5, new BigDecimal(deposit),
+                new BigDecimal(monthlyRent), convertedDeposit, displayOrder);
     }
 
     @TestConfiguration(proxyBeanMethods = false)

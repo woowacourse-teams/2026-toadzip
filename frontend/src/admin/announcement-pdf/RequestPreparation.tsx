@@ -97,7 +97,7 @@ function ExtractionStatus({ extraction, hasPdf, parsed, checks, onExtract, onCan
     .filter(([, value]) => value !== null).map(([label, value]) => `${label} ${(value as number).toLocaleString('ko-KR')}`).join(' · ')
   return <div className={styles.extractionResult}>
     <p role={mismatched ? 'alert' : 'status'} className={mismatched ? styles.error : styles.notice}>{mismatched ? `현재 공고와 다른 PDF일 수 있습니다 · ${identity}`
-      : `공급행 ${parsed.value.supplyRows.length}개 · 임대조건 ${parsed.value.supplyRows.reduce((sum, row) => sum + row.targets.length, 0)}개 · 일정 ${parsed.value.schedules.length}개 · 미확인 ${parsed.value.unresolved.length}개 · ${identity}`}</p>
+      : `주택형 ${parsed.value.sheet.housingTypes.length}개 · 대상별 칸 ${parsed.value.sheet.cells.length}개 · 일정 ${parsed.value.schedules.length}개 · 미확인 ${parsed.value.unresolved.length}개 · ${identity}`}</p>
     {extraction.saved && <p className={styles.hint}>{savedAt(extraction.saved.createdAt)}에 {extraction.saved.fileName}에서 추출해 저장한 결과를 불러왔습니다.</p>}
     <p className={styles.hint}>전체 {result.totalPages}쪽 중 {result.pages.join(', ')}쪽을 읽었습니다.{tokens && ` 토큰 ${tokens}`}</p>
     {result.warnings.length > 0 && <section aria-labelledby="pdf-extraction-warnings"><h4 id="pdf-extraction-warnings">확인할 점 {result.warnings.length}개</h4><ul>{result.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></section>}

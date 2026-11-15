@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.repository;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.AnnouncementHousingComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementReleaseStatus;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -10,7 +11,6 @@ import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.ClosedAnnouncementFollowUp;
-import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import jakarta.persistence.EntityManager;
@@ -591,17 +591,15 @@ public class AnnouncementSearchRepository {
             return;
         }
 
-        Subquery<Long> supplyRowQuery = query.subquery(Long.class);
-        Root<SupplyRow> supplyRow = supplyRowQuery.from(SupplyRow.class);
-        Join<SupplyRow, HousingComplex> housingComplex = supplyRow.join("housingComplex");
-        supplyRowQuery.select(supplyRow.get("id"))
+        Subquery<Long> linkQuery = query.subquery(Long.class);
+        Root<AnnouncementHousingComplex> link = linkQuery.from(AnnouncementHousingComplex.class);
+        Join<AnnouncementHousingComplex, HousingComplex> housingComplex = link.join("housingComplex");
+        linkQuery.select(link.get("housingComplexId"))
                 .where(
-                        criteriaBuilder.equal(supplyRow.get("announcement"), announcement),
-                        criteriaBuilder.isFalse(supplyRow.get("adminExcluded")),
-                        criteriaBuilder.isNotNull(supplyRow.get("housingComplex")),
+                        criteriaBuilder.equal(link.get("announcement"), announcement),
                         regionPredicate(criteriaBuilder, housingComplex, condition.regionCodes())
                 );
-        predicates.add(criteriaBuilder.exists(supplyRowQuery));
+        predicates.add(criteriaBuilder.exists(linkQuery));
     }
 
     private Predicate regionPredicate(HibernateCriteriaBuilder builder, Path<HousingComplex> complex,

@@ -3,25 +3,24 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ManagementError } from '../management/api'
 import { SupplyCorrectionWorkbench } from './SupplyCorrectionWorkbench'
-import { linkAnnouncementComplex, loadSupplyWorkspace, type AnnouncementComplex, type CorrectionRow, type SupplyWorkspace } from './supplyCorrectionApi'
+import { linkAnnouncementComplex, loadSupplyWorkspace, type AnnouncementComplex, type SupplyWorkspace } from './supplyCorrectionApi'
+import { housingType } from './fixtures/sheet'
 
 vi.mock('./SupplyReviewPanel', () => ({ SupplyReviewPanel: () => null }))
+vi.mock('../announcement-pdf/PdfCorrectionPage', () => ({ PdfCorrectionWorkspace: () => null }))
 vi.mock('./supplyCorrectionApi', async original => ({ ...await original<typeof import('./supplyCorrectionApi')>(), loadSupplyWorkspace: vi.fn(), linkAnnouncementComplex: vi.fn() }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(),
   getManagementPage: async () => ({ items: [{ id: 9, name: '전주효자 휴먼시아5단지', subtitle: '전북 전주시' }] }) }))
 
-const row: CorrectionRow = {
-  id: 1, key: 'row:1', housingComplexId: 7, housingComplexName: '전주효자 휴먼시아6단지', housingTypeId: 8, newHousingType: null,
-  groupId: null, sharedHouseholdCount: null, protectedValues: false, excluded: false, displayOrder: 0,
-  complexName: '효자5국민임대 B2블록', typeName: '46A', pnu: '', moveInMonth: null, category: 'RESUPPLY',
-  householdCount: 2, areaOverride: false, exclusiveArea: 46.98, supplyArea: null, targetCountsComparable: false, targets: [],
-}
+const type = housingType({ key: 'row:1', name: '46A', announcementComplexId: 239, complexName: '효자5국민임대 B2블록', housingComplexId: 7,
+  housingComplexName: '전주효자 휴먼시아6단지', housingTypeId: 8, exclusiveArea: 46.98, category: 'RESUPPLY' })
 const auto: AnnouncementComplex = { id: 239, name: '효자5국민임대 B2블록', roadAddress: '전북특별자치도 전주시 완산구 호암로 88', housingComplexId: 7,
   housingComplexName: '전주효자 휴먼시아6단지', linkMethod: 'AUTO', rowCount: 1 }
-const workspace: SupplyWorkspace = { snapshotToken: 'before', version: 1, rows: [row], sources: [],
-  announcementComplexes: [auto, { ...auto, id: 238, name: '효자5국민임대 B1블록', linkMethod: 'ADMIN' }] }
-const moved: SupplyWorkspace = { ...workspace, snapshotToken: 'after', rows: [{ ...row, housingComplexId: 9, housingComplexName: '전주효자 휴먼시아5단지' }],
-  announcementComplexes: [{ ...auto, housingComplexId: 9, housingComplexName: '전주효자 휴먼시아5단지', linkMethod: 'ADMIN' }, workspace.announcementComplexes![1]] }
+const workspace: SupplyWorkspace = { snapshotToken: 'before', stagingToken: null, supplyConfirmed: true, version: 1, sheet: { housingTypes: [type], targets: [], cells: [], quotas: [], leaseTerms: [] },
+  announcementComplexes: [auto, { ...auto, id: 238, name: '효자5국민임대 B1블록', linkMethod: 'ADMIN' }], applicationTypeNames: [], sourceReference: [], warnings: [] }
+const moved: SupplyWorkspace = { ...workspace, snapshotToken: 'after',
+  sheet: { ...workspace.sheet, housingTypes: [{ ...type, housingComplexId: 9, housingComplexName: '전주효자 휴먼시아5단지' }] },
+  announcementComplexes: [{ ...auto, housingComplexId: 9, housingComplexName: '전주효자 휴먼시아5단지', linkMethod: 'ADMIN' }, workspace.announcementComplexes[1]] }
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -55,14 +54,14 @@ it('연결 맞음은 지금 단지로 관리자 연결을 저장하고 확인창
   expect(onChanged).toHaveBeenCalled()
 })
 
-it('단지를 바꾸면 공급행도 옮긴다고 확인받고 저장한 뒤 공급정보 표를 새 단지로 갱신한다', async () => {
+it('단지를 바꾸면 주택형도 옮긴다고 확인받고 저장한 뒤 공급정보 표를 새 단지로 갱신한다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   await setup()
   fireEvent.click(screen.getByRole('button', { name: '효자5국민임대 B2블록 단지 바꾸기' }))
   const picker = screen.getByRole('group', { name: '효자5국민임대 B2블록 연결 단지 찾기' })
   fireEvent.click(await within(picker).findByRole('button', { name: '선택: 전주효자 휴먼시아5단지' }))
   await waitFor(() => expect(linkAnnouncementComplex).toHaveBeenCalledWith('131', 239, { snapshotToken: 'before', housingComplexId: 9 }))
-  expect(confirm.mock.calls[0][0]).toContain('공급행 1개도 새 단지의 같은 전용면적 주택형으로 옮깁니다')
+  expect(confirm.mock.calls[0][0]).toContain('주택형 1개도 새 단지의 같은 전용면적 주택형으로 옮깁니다')
   await waitFor(() => expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('전주효자 휴먼시아5단지'))
   expect(screen.queryByRole('group', { name: '효자5국민임대 B2블록 연결 단지 찾기' })).not.toBeInTheDocument()
 })
@@ -77,7 +76,7 @@ it('확인창에서 취소하면 저장하지 않는다', async () => {
 
 it('편집 중인 공급정보가 있으면 연결을 바꾸지 못하게 한다', async () => {
   await setup()
-  fireEvent.click(screen.getByRole('button', { name: '효자5국민임대 B2블록 46A 제외' }))
+  fireEvent.click(screen.getByRole('button', { name: '직접 추가' }))
   expect(screen.getByRole('button', { name: '효자5국민임대 B2블록 단지 바꾸기' })).toBeDisabled()
   expect(screen.getByRole('button', { name: '효자5국민임대 B2블록 연결 맞음' })).toBeDisabled()
   expect(screen.getByText('편집 중인 공급정보를 저장하거나 취소한 뒤 연결을 바꿀 수 있습니다.')).toBeInTheDocument()

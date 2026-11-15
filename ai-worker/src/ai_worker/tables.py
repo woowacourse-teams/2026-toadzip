@@ -6,12 +6,10 @@
 import logging
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
-from decimal import Decimal
+from dataclasses import dataclass, field, replace
 
 import pymupdf
 
-from ai_worker.checks import area_key
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +19,8 @@ _AMOUNT_CELL = re.compile(r"[\d,\s]+")
 _DIGIT = re.compile(r"\d")
 _RENT_HEADER = re.compile(r"임대조건|월임대료")
 _SUPPLY_TABLE_HEADER = re.compile(r"공급형|공급유형|주택형|모집\s*(?:호수|세대수|인원|가구)|임대보증금|월\s*임대료")
+_HOUSING_TYPE_HEAD = re.compile(r"공급형|주택형|공급유형")
+_LONE_AREA = re.compile(r"(?<![\d.])\d{2,3}\.\d{2,4}(?![\d.])")  # 날짜(2026.11.10)는 면적이 아니다
 _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
 _AREA_NUMBER = re.compile(r"\d+(?:\.\d+)?")
@@ -37,7 +37,8 @@ _INCREASE_LIMIT = re.compile(r"\(\s*\+\s*\)\s*(\d[\d,]*)")
 # 쉼표가 줄바꿈 뒤로 밀린 금액("9000000\n, ,")도 금액 칸이다.
 _AMOUNT = re.compile(r"\d{1,3}(?:,\d{3})+|\d{4,}")
 # 오른쪽 하위 열까지 덮는 병합 머리글. 하위 열 이름만으로는 뜻이 모호하다(최소·최대 보증금, 계약면적·주거 아래 전용).
-_PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$")
+# '공급호수'만 적힌 칸은 우선·일반 하위 열 위에 병합된 상위 머리글이다(구리갈매 A-1BL).
+_PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$|^공급(?:호수|세대수)$")
 _TABLE_HEADER_CELL = re.compile(
     r"단지명|공급형|주택형|주택구분|공급대상|공급계층|청약구분|모집(?:호수|세대수|인원|가구)|"
     r"일반공급|우선공급|예비자|당첨자|전용|공용|계약면적|건설(?:호수|세대수)|총세대수|"
@@ -82,18 +83,33 @@ class SupplyTable:
     rows: list[TableRow]
     # 머리글 줄 다음 첫 데이터 행이 신청형 칸 없이 주택타입으로 시작한다. 열 구성이 같은 앞 표의 마지막 신청형이 이어진 것이다.
     continues_subtypes: bool = False
+    # 머리글에서 열 역할을 찾았다. 아니면 columns는 앞 공급표에서 물려받은 것이다.
+    header_found: bool = True
+    # 표 바로 위에 적은 금액 단위((단위: 천원)). 머리글에 단위가 없는 금액 열의 단위다.
+    money_unit: str | None = None
 
     @classmethod
     def of(cls, page: int, number: int, cells: list[list[str | None]], inherited_columns: dict[str, int] | None,
            ambiguous: bool) -> "SupplyTable":
         """셀에서 열 역할과 행 값을 읽어 공급표를 만든다. 머리글에서 열 역할을 찾지 못하면 inherited_columns를 쓴다."""
-        columns = _table_field_columns(cells) or inherited_columns or {}
+        own_columns = _table_field_columns(cells)
+        columns = own_columns or inherited_columns or {}
         subtypes = _house_type_subtypes(cells, columns)
         rows = [TableRow(source_row_id(page, number, index), "\t".join(cell or "" for cell in row),
                          _table_row_field_values(cells, index - 1, columns), _row_target_group_values(cells, index - 1),
                          subtypes.get(index - 1, ()))
                 for index, row in enumerate(cells, 1)]
-        return cls(page, number, cells, columns, ambiguous, rows, _starts_with_house_types(cells, columns))
+        return cls(page, number, cells, columns, ambiguous, rows, _starts_with_house_types(cells, columns), bool(own_columns))
+
+    def with_money_unit(self, unit: str | None) -> "SupplyTable":
+        """표 위에 적은 금액 단위를 머리글에 단위가 없는 금액 칸의 단위로 둔다(울산다운2 임대조건 (단위: 천원))."""
+        if unit is None:
+            return self
+        for row in self.rows:
+            for name in _MONEY_FIELDS:
+                if name in row.values:
+                    row.values.setdefault(f"{name}Unit", unit)
+        return replace(self, money_unit=unit)
 
     def last_housing_type_row_id(self) -> str | None:
         """신청형(주택형) 칸이 시작하는 마지막 행. 다음 표로 이어질 수 있는 신청형이다."""
@@ -126,16 +142,19 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         "houseType": lambda header: bool(re.search(r"주택타입", header)),
         # 영구임대 임대조건표는 대상 열을 '적용구분'(「가」군·「나」군)으로 둔다.
         "target": lambda header: bool(re.search(r"공급대상|공급계층|청약대상|적용\s*구분", header)),
-        "reserveCount": lambda header: bool(re.search(r"예비(?:입주자)?", header))
+        # 공급대상 칸의 '예비신혼부부'는 예비자 수가 아니다(울산다운2 A-9블록: 데이터 행도 머리글 후보로 읽힌다).
+        "reserveCount": lambda header: bool(re.search(r"예비(?!신혼|부부)(?:입주자)?", header))
             and not re.search(r"잔여|기존|현재|대기", header),
         # 모집호수를 입주자·예비자로 나눈 표의 입주자 열도 당첨자 수다(예비입주자는 아니다). 모집수는 둘의 합이다(source_check).
-        "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
+        # 예비당첨자 열은 예비자 수다(경주·영천 국민임대: 당첨자·예비당첨자 열이 나란히 있다).
+        "supplyHouseholdCount": lambda header: bool(re.search(r"(?<!예비)당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
         # 공급호수를 우선·일반 공급으로 나눈 표(행복주택)의 두 하위 열. 모집수는 둘의 합이다(source_check.recruitment_count).
         # 임대조건을 우선·일반 신청자 묶음으로 나눈 금액 열이나 '예비자 > 일반공급'처럼 다른 수량 아래의 구분은 아니다.
-        "priorityCount": lambda header: bool(re.search(r"우선\s*공급", header)
-            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자", header)),
-        "generalCount": lambda header: bool(re.search(r"일반\s*공급", header)
-            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자", header)),
+        # '공급호수' 아래 하위 머리글을 '우선'·'일반'으로만 적은 표(구리갈매 A-1BL)도 같다.
+        "priorityCount": lambda header: bool(re.search(r"우선\s*공급|공급\s*(?:호수|세대수?)\s*우선", header)
+            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자|순위", header)),
+        "generalCount": lambda header: bool(re.search(r"일반\s*공급|공급\s*(?:호수|세대수?)\s*일반", header)
+            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자|순위", header)),
         "totalSupplyHouseholdCount": lambda header: bool(
             re.search(r"모집\s*(?:호수|인원|세대수)", header)
             # 모집호수 아래로 나뉜 입주자 하위 열("모집호수입주자")만 뺀다. 한 칸짜리 "입주자 모집호수"는 모집호수 열이다.
@@ -186,6 +205,12 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if total is not None and "reserveCount" in columns and "supplyHouseholdCount" not in columns \
             and "계" not in normalized_headers[total]:
         columns["supplyHouseholdCount"] = columns.pop("totalSupplyHouseholdCount")
+    # '공급형 | 주택형' 표(울산다운2 A-9블록: 55 | 55A·55B·55C, 55 (주거약자용) | 55AS)의 공급형 칸은 주택형을 묶는 표기다.
+    # 주택형은 그대로 두고, 공급형 칸의 괄호 구분(주거약자용)만 그 행 공급대상의 구분으로 쓴다(supply_grouping).
+    supply_types = [index for index, header in enumerate(normalized_headers)
+                    if re.search(r"공급형", header) and not re.search(r"주택형", header)]
+    if "housingType" in columns and len(supply_types) == 1 and supply_types[0] not in columns.values():
+        columns["supplyType"] = supply_types[0]
     # 우선·일반 공급 열은 둘이 함께 있을 때만 모집수의 두 부분이다.
     if ("priorityCount" in columns) != ("generalCount" in columns):
         columns.pop("priorityCount", None)
@@ -207,6 +232,21 @@ def _conversion_limit_columns(rows: list[list[str | None]], headers: list[str], 
         limits = [column for column in limits
                   if any(column < len(row) and _AMOUNT.search(row[column] or "") for row in rows)]
     return limits
+
+
+_SUPPLY_TYPE_QUALIFIER = re.compile(r"[(\[]\s*([^)\]]*[가-힣][^)\]]*?)\s*[)\]]")
+
+
+def supply_type_qualifier(supply_type: str | None) -> str | None:
+    """'공급형 | 주택형' 표의 공급형 칸 괄호 구분(55 (주거약자용) → 주거약자용). 그 행 공급대상의 구분이라 대상 이름에 붙는다
+    (`신혼부부(주거약자용)`). 표 묶기·모델 답 조립·원문 대조가 이 규칙 하나를 쓴다."""
+    found = _SUPPLY_TYPE_QUALIFIER.search(supply_type or "")
+    return found.group(1) if found else None
+
+
+def with_supply_type_qualifier(target: str, qualifier: str | None) -> str:
+    """공급대상 이름에 공급형 칸의 괄호 구분을 붙인다. 공급대상 칸에 이미 적혀 있으면(`신혼부부(주거약자용)`) 다시 붙이지 않는다."""
+    return f"{target}({qualifier})" if qualifier and qualifier not in target else target
 
 
 def increase_limit(row: list[str | None], column: int) -> str | None:
@@ -271,25 +311,17 @@ def _starts_with_house_types(cells: list[list[str | None]], columns: dict[str, i
 
 def _area_subtypes(members: list[tuple[str, list[str | None]]], columns: dict[str, int]) -> tuple[TableSubtype, ...]:
     area, common, supply = columns["exclusiveArea"], columns.get("commonArea"), columns.get("supplyArea")
-    return merge_subtypes(TableSubtype(name, float(row[area]), _area_cell(row, common), _area_cell(row, supply))
-                          for name, row in members)
+    return unique_subtypes(TableSubtype(name, float(row[area]), _area_cell(row, common), _area_cell(row, supply))
+                           for name, row in members)
 
 
-def merge_subtypes(subtypes: Iterable[TableSubtype]) -> tuple[TableSubtype, ...]:
-    """세부 타입을 전용면적(소수 둘째 자리)마다 하나로 묶는다. 같은 면적은 단지 주택타입 하나로 잇기 때문이다.
-    이름은 주택타입을 나온 순서대로 '·'로 잇고, 공용·공급면적은 묶인 값이 모두 같을 때만 둔다."""
-    groups: dict[Decimal, list[TableSubtype]] = {}
+def unique_subtypes(subtypes: Iterable[TableSubtype]) -> tuple[TableSubtype, ...]:
+    """세부 타입(단지 주택타입)은 공고문 표기 이름마다 하나다. 면적이 같아도 이름이 다르면 다른 주택타입이라 묶지 않는다
+    (울산다운2 55A·55C는 둘 다 55.93㎡). 같은 이름이 여러 번 읽히면(신청형을 행마다 다시 적은 표, 두 표) 처음 것을 쓴다."""
+    first: dict[str, TableSubtype] = {}
     for subtype in subtypes:
-        groups.setdefault(area_key(subtype.exclusive_area), []).append(subtype)
-    merged = []
-    for items in groups.values():
-        names = dict.fromkeys(name for item in items for name in item.name.split("·"))
-        commons = {item.common_area for item in items}
-        supplies = {item.supply_area for item in items}
-        merged.append(TableSubtype("·".join(names), items[0].exclusive_area,
-                                   commons.pop() if len(commons) == 1 else None,
-                                   supplies.pop() if len(supplies) == 1 else None))
-    return tuple(merged)
+        first.setdefault(subtype.name, subtype)
+    return tuple(first.values())
 
 
 def _area_cell(row: list[str | None], column: int | None) -> float | None:
@@ -514,12 +546,27 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
 def detected_tables(page: pymupdf.Page) -> tuple[list[DetectedTable], bool]:
     """표 원문·좌표를 한 번만 읽는다. 하나라도 칸을 읽지 못하면 페이지 전체를 구조화 실패로 되돌린다."""
     try:
-        tables = [DetectedTable(_table_cells(page, table), tuple(getattr(table, "bbox", page.rect)))
-                  for table in page.find_tables().tables]
+        # 레이아웃 분석이 선으로 그린 공급표를 그림으로 보면 표를 하나도 돌려주지 않는다(울산다운2 A-9블록).
+        # 표를 찾은 쪽은 그대로 두고, 하나도 없는 쪽만 선 기준으로 다시 찾되 공급표 모양만 받는다.
+        # 자산 기준·제출서류 표까지 받으면 셀 문장 속 '임대보증금' 때문에 공급표로 분류된다.
+        tables = [_detected(page, table) for table in page.find_tables().tables]
+        if not tables:
+            lined = [_detected(page, table) for table in page.find_tables(use_layout=False).tables]
+            tables = [table for table in lined if _looks_like_supply_grid(table.cells)]
     except Exception:
         log.warning("%d쪽 표 인식에 실패해 텍스트만 보냅니다.", page.number + 1, exc_info=True)
         return [], True
     return tables, False
+
+
+def _detected(page: pymupdf.Page, table) -> DetectedTable:
+    return DetectedTable(_table_cells(page, table), tuple(getattr(table, "bbox", page.rect)))
+
+
+def _looks_like_supply_grid(cells: list[list[str | None]]) -> bool:
+    head = " ".join(_compact(cell) for row in cells[:4] for cell in row)
+    areas = sum(len(_LONE_AREA.findall(cell or "")) for row in cells for cell in row)
+    return bool(_HOUSING_TYPE_HEAD.search(head)) or areas >= 2
 
 
 def _mark_supply_tables(tables: list[DetectedTable], page_number: int,

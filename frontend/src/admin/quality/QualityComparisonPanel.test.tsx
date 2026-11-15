@@ -4,12 +4,14 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { QualityComparisonPanel } from './QualityComparisonPanel'
 import type { ManagementDetailData } from '../management/managementContract'
 import { ManagementError } from '../management/api'
+import { sampleSheet } from '../supply/fixtures/sheet'
+import { targetChoices, reviewTarget } from './reviewTargets'
 
 const mocks = vi.hoisted(() => ({ load: vi.fn(), request: vi.fn() }))
 vi.mock('./qualityComparisonApi', async original => ({ ...await original<typeof import('./qualityComparisonApi')>(), loadQualityComparison: mocks.load, parseQualityComparison: (value: unknown) => value }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.request }))
 const detail: ManagementDetailData = { summary: { id: 7, name: '단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null },
-  sourceIdentifier: 'manual:7', data: { version: 2 }, housingTypes: [{ id: 3, name: '26A', exclusiveArea: 26.1234, householdCount: 10 }], announcements: [], supplyRows: [], supplyTargets: [], scheduleReviewed: false, schedules: [] }
+  sourceIdentifier: 'manual:7', data: { version: 2 }, housingTypes: [{ id: 3, name: '26A', exclusiveArea: 26.1234, householdCount: 10 }], announcements: [], supplySheet: { housingTypes: [], targets: [], cells: [], quotas: [], leaseTerms: [] }, scheduleReviewed: false, schedules: [] }
 const snapshot = { snapshotToken: 'a'.repeat(64), target: 'type:3', detail, sources: [{ category: 'LH_LEASE_CATALOG', sourceKey: 'key', automatic: false, evidenceNote: '동일 주택형', rows: [{ id: 9, name: '단지', collectedAt: null, raw: { total_unit_count: '0', exclusive_area: '26.1234' } }] }] }
 const changed = vi.fn()
 beforeEach(() => { vi.clearAllMocks(); mocks.load.mockResolvedValue(snapshot); mocks.request.mockResolvedValue(snapshot) })
@@ -40,16 +42,28 @@ it('충돌하면 수정값과 근거를 보존하고 추가 저장을 막는다'
   expect(screen.getByRole('button', { name: '선택 수정 저장 · 1개' })).toBeDisabled()
 })
 
-it('공고 기본정보와 공급행은 다른 원천값부터 비교하고 확인 기록만 저장한다', async () => {
-  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplyRows: [{ id: 4, housingComplexId: 1, housingComplexName: '한스빌아파트', housingTypeId: null, modified: false, sourceComplexName: '한스빌', sourceHousingTypeName: '아파트', data: { announcementHousingTypeName: '아파트', supplyHouseholdCount: 170 } }] }
-  const rowSnapshot = { ...snapshot, target: 'row:4', detail: announcement, sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: 'key', automatic: true, evidenceNote: '', rows: [{ id: 9, name: '한스빌', collectedAt: null, raw: { hshld_co: '170' } }] }] }
+it('공고 공급정보는 공급표 칸마다 그 대상만의 모집·예비 수와 임대조건을 비교 항목으로 둔다', () => {
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplySheet: sampleSheet() }
+  expect(targetChoices('announcements', announcement).map(choice => [choice.key, choice.label])).toEqual([['basic', '공고 기본정보'],
+    ['cell:1', '공급대상 · 두꺼비 단지 · 46A 일반'], ['cell:2', '공급대상 · 두꺼비 단지 · 46A 고령자'], ['cell:3', '공급대상 · 두꺼비 단지 · 59B 일반']])
+  const target = reviewTarget('announcements', announcement, 'cell:1')
+  expect(target.current).toEqual({ target: '일반', applicationCondition: '', supplyHouseholdCount: null, reserveCount: 5,
+    rentalDeposit: '1000000', monthlyRent: '50000', convertedDeposit: null })
+  expect(target.fields.map(field => [field.name, field.unit])).toEqual([['target', '없음'], ['supplyHouseholdCount', '세대'], ['reserveCount', '명'],
+    ['rentalDeposit', '원'], ['monthlyRent', '원'], ['convertedDeposit', '원'], ['applicationCondition', '없음']])
+  expect(() => reviewTarget('announcements', announcement, 'row:1')).toThrow('수정 대상을 다시 선택해 주세요.')
+})
+
+it('공고 기본정보와 공급대상 칸은 다른 원천값부터 비교하고 확인 기록만 저장한다', async () => {
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplySheet: sampleSheet() }
+  const rowSnapshot = { ...snapshot, target: 'cell:3', detail: announcement, sources: [{ category: 'MYHOME_ANNOUNCEMENT', sourceKey: 'key', automatic: true, evidenceNote: '', rows: [{ id: 9, name: '한스빌', collectedAt: null, raw: { hshld_co: '170' } }] }] }
   mocks.load.mockResolvedValue({ ...rowSnapshot, target: 'basic' })
   render(<MemoryRouter initialEntries={['/admin/announcements/7?section=verification&provider=LH']}><QualityComparisonPanel resource="announcements" id="7" detail={announcement} onChanged={changed} onBusyChange={vi.fn()} /></MemoryRouter>)
   expect(await screen.findByRole('button', { name: /다른 값만/ })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.queryByRole('button', { name: /선택 수정 저장/ })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '기본정보 수정' })).toBeVisible()
   mocks.load.mockResolvedValue(rowSnapshot)
-  fireEvent.change(screen.getByLabelText('비교 대상'), { target: { value: 'row:4' } })
+  fireEvent.change(screen.getByLabelText('비교 대상'), { target: { value: 'cell:3' } })
   await waitFor(() => expect(screen.queryByRole('button', { name: /선택 수정 저장/ })).not.toBeInTheDocument())
   expect(screen.queryByRole('button', { name: '이 원천값 사용' })).not.toBeInTheDocument()
   expect(screen.queryByLabelText(/수정$/)).not.toBeInTheDocument()
@@ -61,7 +75,7 @@ it('공고 기본정보와 공급행은 다른 원천값부터 비교하고 확�
   fireEvent.change(screen.getByLabelText('원천 확인 근거'), { target: { value: '공고문 3쪽과 원천 일치' } })
   fireEvent.click(screen.getByRole('button', { name: '현재 원천 확인 기록' }))
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('/api/admin/quality/ANNOUNCEMENT/7/comparison/checks', 'POST',
-    expect.objectContaining({ target: 'row:4', evidenceNote: '공고문 3쪽과 원천 일치' }), expect.any(AbortSignal)))
+    expect.objectContaining({ target: 'cell:3', evidenceNote: '공고문 3쪽과 원천 일치' }), expect.any(AbortSignal)))
   expect(await screen.findByText(/현재 원천 확인을 기록했습니다/)).toBeVisible()
 })
 

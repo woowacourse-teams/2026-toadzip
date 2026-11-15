@@ -33,8 +33,6 @@ public class MyHomeComplexMappingWriter {
     private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
     private final MyHomeComplexMergeStore mergeStore;
-    private final SavedSupplyMatches savedMatches;
-    private final AnnouncementSupplySplitWriter splitWriter;
     private final MyHomeHousingTypeSynchronizer housingTypes;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -129,12 +127,8 @@ public class MyHomeComplexMappingWriter {
         }
         HousingComplex representative = complexes.getFirst();
         List<Long> donorIds = complexIds.subList(1, complexIds.size());
-        List<Long> validDecisions = savedMatches.validIn(donorIds);
-        List<Long> validGroupRows = splitWriter.confirmedRowsIn(donorIds);
         manualValues.adoptInto(representative, representative.getTotalHouseholdCount());
         mergeStore.absorbSplitComplexes(representative.getId(), donorIds);
-        savedMatches.moveToComplex(validDecisions, representative.getId());
-        splitWriter.reconfirmAfterComplexMove(validGroupRows);
     }
 
     private ComplexWriteResult upsertComplex(

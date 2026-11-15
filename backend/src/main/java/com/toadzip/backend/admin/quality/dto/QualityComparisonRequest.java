@@ -9,7 +9,7 @@ import java.util.Map;
 
 public final class QualityComparisonRequest {
     /** 단지·공고 기본값(basic) 또는 주택형·공급행·공급대상 하나 */
-    public static final String TARGET = "basic|(?:type|row|target):[1-9][0-9]{0,17}";
+    public static final String TARGET = "basic|(?:type|cell):[1-9][0-9]{0,17}";
     public static final String SNAPSHOT_TOKEN = "[a-f0-9]{64}";
 
     private QualityComparisonRequest() { }

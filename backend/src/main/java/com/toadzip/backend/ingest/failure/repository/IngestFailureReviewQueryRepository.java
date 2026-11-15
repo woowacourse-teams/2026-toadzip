@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.failure.repository;
 
+import com.toadzip.backend.announcement.repository.AnnouncementComplexLinkSql;
 import com.toadzip.backend.ingest.failure.dto.IngestFailureReviewPageResponse;
 import com.toadzip.backend.ingest.failure.dto.IngestFailureReviewPageResponse.Item;
 import com.toadzip.backend.ingest.failure.dto.IngestFailureReviewPageResponse.Product;
@@ -122,8 +123,8 @@ public class IngestFailureReviewQueryRepository {
                     (SELECT COUNT(*) FROM housing_types WHERE housing_complex_id = complex.id AND admin_deleted = false)
                 END AS housing_type_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
-                    (SELECT COUNT(DISTINCT housing_complex_id) FROM supply_rows
-                     WHERE admin_excluded = false AND announcement_id = announcement.id) END AS linked_complex_count,
+                    (SELECT COUNT(*) FROM """ + AnnouncementComplexLinkSql.LINKS + """
+                     link WHERE link.announcement_id = announcement.id) END AS linked_complex_count,
                 CASE WHEN announcement.id IS NOT NULL THEN
                     (SELECT COUNT(*) FROM supply_rows WHERE admin_excluded = false AND announcement_id = announcement.id) END AS supply_row_count,
                 CASE WHEN announcement.id IS NOT NULL THEN

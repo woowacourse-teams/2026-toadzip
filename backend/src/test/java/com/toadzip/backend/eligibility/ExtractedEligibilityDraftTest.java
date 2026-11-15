@@ -15,8 +15,12 @@ import static com.toadzip.backend.eligibility.domain.ProfileField.HOUSEHOLD_MONT
 import static com.toadzip.backend.eligibility.domain.ProfileField.IS_DUAL_INCOME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.eligibility.domain.EligibilityContent;
+import com.toadzip.backend.eligibility.domain.EligibilityContent.ApplicationOption;
+import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyTarget;
 import com.toadzip.backend.eligibility.domain.EligibilityContentValidator;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.Guidance;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.GuidanceKind;
@@ -44,6 +48,8 @@ import com.toadzip.backend.eligibility.domain.RegionMembership;
 import com.toadzip.backend.eligibility.exception.EligibilityDraftUnavailableException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -311,7 +317,118 @@ class ExtractedEligibilityDraftTest {
                 List.of(new Target("가군(우선)", 3), new Target("예비신혼부부", 2), new Target("신혼부부", 1)));
 
         // 공급행은 하나라 가군(일반)·신혼부부 경로 모두 이 행의 대상과 맞아야 이어진다: 신혼부부만 맞는다.
-        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly("신혼부부");
+        // 맞는 경로가 없는 두 대상은 공통 요건만 담은 자기 경로를 받는다.
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("신혼부부", "가군(우선)", "예비신혼부부");
+    }
+
+    @Test
+    void 이름이_어느_공급대상과도_맞지_않는_경로는_분류로_잇고_주거약자용은_주거약자용_대상에만_잇는다() {
+        // 울산다운2 A-3블록: 공급표 표기는 띄어쓰기로 나열한 '신혼부부 예비신혼부부 한부모가족'이라 경로 이름과 맞지 않는다.
+        List<SupplyTargetGroup> couples = List.of(SupplyTargetGroup.NEWLYWED, SupplyTargetGroup.PRE_NEWLYWED,
+                SupplyTargetGroup.SINGLE_PARENT);
+        List<SupplyTargetGroup> vulnerableCouples = Stream.concat(couples.stream(),
+                Stream.of(SupplyTargetGroup.HOUSING_VULNERABLE)).toList();
+        Route couple = new Route("신혼부부", List.of("신혼부부·한부모가족"), List.of(), List.of(SupplyTargetGroup.NEWLYWED),
+                new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+        Route vulnerable = new Route("주거약자용 신혼부부", List.of("신혼부부·한부모가족"), List.of(),
+                List.of(SupplyTargetGroup.NEWLYWED, SupplyTargetGroup.HOUSING_VULNERABLE),
+                new Group(WELFARE, List.of(), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(couple, vulnerable), List.of(
+                unit("1", new Target("신혼부부 예비신혼부부 한부모가족", "", couples, 203)),
+                unit("2", new Target("신혼부부 예비신혼부부 한부모가족(주거약자용)", "", vulnerableCouples, 29))));
+
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("신혼부부", "주거약자용 신혼부부");
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId)
+                .containsExactly(tuple("path-1", "unit-1"), tuple("path-2", "unit-2"));
+    }
+
+    @Test
+    void 분류로_잇는_경로도_다른_경로가_워커_키로_가리킨_공급대상에는_잇지_않는다() {
+        List<SupplyTargetGroup> couples = List.of(SupplyTargetGroup.NEWLYWED, SupplyTargetGroup.PRE_NEWLYWED,
+                SupplyTargetGroup.SINGLE_PARENT);
+        Route pointing = new Route("신혼부부 예비신혼부부 한부모가족", List.of(),
+                List.of(new SupplyTarget("신혼부부 예비신혼부부 한부모가족", "")), couples,
+                new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+        // 이름은 공급표 어느 대상과도 맞지 않고 분류(신혼부부)만 그 대상과 겹친다.
+        Route grouped = new Route("신혼부부", List.of("신혼부부·한부모가족"), List.of(), List.of(SupplyTargetGroup.NEWLYWED),
+                new Group(WELFARE, List.of(), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(pointing, grouped), List.of(
+                unit("1", new Target("신혼부부 예비신혼부부 한부모가족", "", couples, 203))));
+
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId)
+                .containsExactly(tuple("path-1", "unit-1"));
+    }
+
+    @Test
+    void 이름이_맞는_공급대상이_있는_경로는_분류가_같은_다른_대상으로_넓히지_않는다() {
+        List<SupplyTargetGroup> youth = List.of(SupplyTargetGroup.YOUTH);
+        Route earning = new Route("청년 소득(○)", List.of("청년 소득(○)"), List.of(), youth,
+                new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(earning), List.of(
+                unit("1", new Target("청년 소득(○)", "", youth, 10)), unit("2", new Target("청년 소득(×)", "", youth, 5))));
+
+        // 소득(×) 대상은 소득(○) 경로를 받지 않고 공통 요건만 담은 자기 경로를 받는다.
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("청년 소득(○)", "청년 소득(×)");
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId)
+                .containsExactly(tuple("path-1", "unit-1"), tuple("path-2", "unit-2"));
+    }
+
+    @Test
+    void 같은_표기라도_신청_조건이_다른_대상은_워커가_이은_대상_키대로_각기_다른_경로에_잇는다() {
+        SupplyTarget earning = new SupplyTarget("청년", "소득 있음");
+        SupplyTarget studying = new SupplyTarget("청년", "소득 없음");
+        Route working = new Route("청년(소득 있음)", List.of("청년"), List.of(earning),
+                new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+        Route student = new Route("청년(소득 없음)", List.of("청년"), List.of(studying),
+                new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(working, student), List.of(
+                unit("1", new Target("청년", "소득 있음", 10)), unit("2", new Target("청년", "소득 없음", 5))));
+
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId,
+                ApplicationOption::supplyTargets).containsExactly(
+                tuple("path-1", "unit-1", List.of(earning)), tuple("path-2", "unit-2", List.of(studying)));
+    }
+
+    @Test
+    void 키가_공급표에_없어_이름으로_잇는_경로도_다른_경로가_키로_가리킨_같은_표기_대상에는_잇지_않는다() {
+        // 관리자가 보정에서 첫 대상의 신청 조건을 고쳐 워커가 이은 키("소득 있음")가 공급표에 없다.
+        SupplyTarget edited = new SupplyTarget("청년", "소득 있음(고침)");
+        SupplyTarget studying = new SupplyTarget("청년", "소득 없음");
+        Route working = new Route("청년(소득 있음)", List.of("청년"), List.of(new SupplyTarget("청년", "소득 있음")),
+                new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+        Route student = new Route("청년(소득 없음)", List.of("청년"), List.of(studying),
+                new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(working, student), List.of(
+                unit("1", new Target("청년", "소득 있음(고침)", 10)), unit("2", new Target("청년", "소득 없음", 5))));
+
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId,
+                ApplicationOption::supplyTargets).containsExactly(
+                tuple("path-1", "unit-1", List.of(edited)), tuple("path-2", "unit-2", List.of(studying)));
+    }
+
+    @Test
+    void 같은_표기의_다른_신청_조건_대상을_가리키는_경로가_없으면_그_대상은_공통_요건_경로를_따로_받는다() {
+        SupplyTarget earning = new SupplyTarget("청년", "소득 있음");
+        Route working = new Route("청년", List.of("청년"), List.of(earning),
+                new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(working), List.of(
+                unit("1", new Target("청년", "소득 있음", 10), new Target("청년", "소득 없음", 5))));
+
+        // 같은 표기의 두 경로는 신청 조건을 붙여 구분한다.
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("청년", "청년 · 소득 없음");
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyTargets)
+                .containsExactly(tuple("path-1", List.of(earning)),
+                        tuple("path-2", List.of(new SupplyTarget("청년", "소득 없음"))));
     }
 
     @Test
@@ -353,6 +470,56 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 맞벌이_비율이_적힌_가산은_맞벌이_부부를_그_비율_상한으로_판정한다() {
+        // 구리갈매 A-1BL: "100퍼센트 이하(맞벌이 부부 120퍼센트 이하)". 2인 기본 상한 5,866,270원의 120%는 7,039,524원이다.
+        // 공통 소득 조건(가산 원문 없는 출산자녀 가산)은 자녀가 있는 부부를 넓게 충족으로 보므로, 청년 경로의 소득 조건이 판정을 가른다.
+        EligibilityContent content = draft(evidence(), dualIncome("맞벌이 부부 120퍼센트 이하"));
+        EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
+                HOUSEHOLD_MONTHLY_INCOME, 7_039_524L);
+
+        assertThat(youth(content, dual)).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(dual, HOUSEHOLD_MONTHLY_INCOME, 7_039_525L))).isEqualTo(Status.INELIGIBLE);
+        assertThat(youth(content, with(with(dual, IS_DUAL_INCOME, false), HOUSEHOLD_MONTHLY_INCOME, 6_000_000L)))
+                .isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 가구원_수를_적은_맞벌이_비율은_그_가구원_수_기준에서_더한_만큼으로_판정한다() {
+        // 구리갈매 A-1BL: "100퍼센트 이하(2인 110퍼센트), 맞벌이 부부 120퍼센트 이하, 맞벌이 2인 가구의 경우 130퍼센트 이하".
+        // 2인 가구 맞벌이 상한은 5,866,270원의 130%인 7,626,151원이다. 2인 줄을 읽지 못해 넓게 충족으로 보면 안 된다.
+        EligibilityContent content = draft(evidence(), dualIncome(Map.of(2L, 10),
+                "맞벌이 부부 120퍼센트 이하", "맞벌이 2인 가구의 경우 130퍼센트 이하"));
+        EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
+                HOUSEHOLD_MONTHLY_INCOME, 7_626_151L);
+
+        assertThat(youth(content, dual)).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(dual, HOUSEHOLD_MONTHLY_INCOME, 7_626_152L))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 맞벌이_포인트_가산은_기본_비율에_그만큼_더한_상한으로_판정한다() {
+        // "맞벌이 가구 20%p 가산": 기본 100%에 20%p를 더한 120%, 2인 기본 상한 5,866,270원의 120%는 7,039,524원이다.
+        EligibilityContent content = draft(evidence(), dualIncome("맞벌이 가구 20%p 가산"));
+        EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
+                HOUSEHOLD_MONTHLY_INCOME, 7_039_524L);
+
+        assertThat(youth(content, dual)).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(dual, HOUSEHOLD_MONTHLY_INCOME, 7_039_525L))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 가구원_수_가산이_없는_공고의_2인_맞벌이_비율은_기본_비율에서_센_만큼_더한_상한으로_판정한다() {
+        // 기준표에 2인 가산이 없는데 "맞벌이 2인 가구 130퍼센트"만 적혔으면 기본 100%에서 30%p를 더한다.
+        // 2인 상한은 5,866,270원의 130%인 7,626,151원이다.
+        EligibilityContent content = draft(evidence(), dualIncome(Map.of(), "맞벌이 2인 가구의 경우 130퍼센트 이하"));
+        EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
+                HOUSEHOLD_MONTHLY_INCOME, 7_626_151L);
+
+        assertThat(youth(content, dual)).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(dual, HOUSEHOLD_MONTHLY_INCOME, 7_626_152L))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
     void 본인_소득_기준은_가구원_수를_알_수_없어_판정하지_않고_목록에_둔다() {
         EligibilityContent content = draft(evidence(), applicantIncome());
 
@@ -364,22 +531,48 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
-    void 신청자격_경로가_없는_공급대상은_검토_안내로_알린다() {
-        var units = List.of(new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+    void 신청자격_경로가_없는_공급대상에는_공통_요건만_담은_경로를_두고_검토_안내로_알린다() {
+        var units = List.of(new Unit("1", "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
                 List.of(new Target("청년", 10), new Target("고령자", 4), new Target("일반", 0))));
 
         var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
 
-        assertThat(built.notices()).contains("신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.");
+        assertThat(built.notices()).contains(
+                "신청자격 경로가 없는 공급대상(고령자)에는 공통 요건만 담은 경로를 두었습니다. 공고문을 확인해 주세요.");
+        // 고령자는 대상 요건을 모르므로 지원 가능으로 확정하지 않고 직접 확인으로 돌린다.
+        EligibilityDecision.OptionDecision elderly = option(built.content(), b(), "고령자");
+        assertThat(elderly.status()).isEqualTo(Status.UNDETERMINED);
+        assertThat(elderly.directCheckGuidanceIds()).isNotEmpty();
+    }
+
+    @Test
+    void 경로가_없는_일반_공급대상도_공통_요건인_무주택세대구성원으로_판정한다() {
+        // 신청자격이 청년·신혼부부 경로만 나뉘어 있어도 일반 공급분 신청자는 무주택세대구성원이어야 한다.
+        var units = List.of(new Unit("1", "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                List.of(new Target("청년", 10), new Target("일반", 5))));
+
+        var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
+        validate(built.content());
+
+        assertThat(status(built.content(), b(), "일반")).isEqualTo(Status.ELIGIBLE);
+        assertThat(status(built.content(), with(b(), ProfileField.FAMILY_OWNS_HOUSE, true), "일반"))
+                .isEqualTo(Status.INELIGIBLE);
+        assertThat(status(built.content(), with(b(), HOUSEHOLD_MONTHLY_INCOME, 9_000_000L), "일반"))
+                .isEqualTo(Status.INELIGIBLE);
+        String general = built.content().paths().stream().filter(path -> path.label().equals("일반")).findFirst()
+                .orElseThrow().id();
+        assertThat(built.content().options()).filteredOn(option -> option.pathId().equals(general))
+                .extracting(EligibilityContent.ApplicationOption::supplyUnitId).containsExactly("unit-1");
     }
 
     @Test
     void 공급대상_구분이_없는_공급행에는_모든_신청자격_경로를_잇고_검토_안내로_알린다() {
         // 통합공공임대처럼 공급표가 대상을 나누지 않으면 대상이 없거나 "전체" 하나뿐이고, 워커는 경로에 맞춘 대상을 주지 못한다.
         var units = List.of(
-                new Unit(1, "남양주왕숙", "26A", new BigDecimal("26.00"), 10L, 20L, "통합공공임대", List.of("28237"),
+                new Unit("1", "남양주왕숙", "26A", new BigDecimal("26.00"), 10L, 20L, "통합공공임대", List.of("28237"),
                         List.of(new Target("전체", 10))),
-                new Unit(2, "남양주왕숙", "37A", new BigDecimal("37.00"), 10L, 21L, "통합공공임대", List.of("28237"), List.of()));
+                new Unit("2", "남양주왕숙", "37A", new BigDecimal("37.00"), 10L, 21L, "통합공공임대", List.of("28237"), List.of()));
 
         var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
         validate(built.content());
@@ -400,11 +593,11 @@ class ExtractedEligibilityDraftTest {
     void 대상별_행_없이_세대수만_있는_공급행은_모집_중으로_본다() {
         // 공급표가 대상을 나누지 않고 주택형 세대수만 적은 경우(예: 33A 56세대)에도 이번 공고에서 모집하는 주택형이다.
         var units = List.of(
-                new Unit(1, "대구신서", "26A", new BigDecimal("26.92"), 10L, 20L, "국민임대", List.of("27140"),
+                new Unit("1", "대구신서", "26A", new BigDecimal("26.92"), 10L, 20L, "국민임대", List.of("27140"),
                         List.of(new Target("전체", 52)), 52),
-                new Unit(2, "대구신서", "33A", new BigDecimal("33.97"), 10L, 21L, "국민임대", List.of("27140"),
+                new Unit("2", "대구신서", "33A", new BigDecimal("33.97"), 10L, 21L, "국민임대", List.of("27140"),
                         List.of(), 56),
-                new Unit(3, "대구신서", "46A", new BigDecimal("46.93"), 10L, 22L, "국민임대", List.of("27140"),
+                new Unit("3", "대구신서", "46A", new BigDecimal("46.93"), 10L, 22L, "국민임대", List.of("27140"),
                         List.of(), null));
 
         var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
@@ -421,9 +614,9 @@ class ExtractedEligibilityDraftTest {
     @Test
     void 대상을_나눈_공급행에는_그_대상의_경로만_잇는다() {
         var units = List.of(
-                new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                new Unit("1", "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
                         List.of(new Target("청년", 10))),
-                new Unit(2, "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
+                new Unit("2", "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
                         List.of(new Target("전체", 0))));
 
         var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
@@ -436,9 +629,9 @@ class ExtractedEligibilityDraftTest {
     @Test
     void 대상_구분이_없는_행과_나눈_행이_섞이면_맞춘_대상이_없는_경로는_구분_없는_행에만_잇고_알린다() {
         var units = List.of(
-                new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                new Unit("1", "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
                         List.of(new Target("전체", 10))),
-                new Unit(2, "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
+                new Unit("2", "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
                         List.of(new Target("청년", 10))));
 
         var built = ExtractedEligibilityDraft.build(source(evidence(), units, List.of()));
@@ -458,7 +651,7 @@ class ExtractedEligibilityDraftTest {
 
     @Test
     void 자기_조건이_없는_경로는_지원_가능으로_확정하지_않는다() {
-        var units = List.of(new Unit(1, "공주옥룡", "26", new BigDecimal("26.00"), 10L, 20L, "영구임대", List.of("28237"),
+        var units = List.of(new Unit("1", "공주옥룡", "26", new BigDecimal("26.00"), 10L, 20L, "영구임대", List.of("28237"),
                 List.of(new Target("전체", 10))));
 
         EligibilityContent content = ExtractedEligibilityDraft.build(source(evidence(), units, List.of())).content();
@@ -562,12 +755,27 @@ class ExtractedEligibilityDraftTest {
     private static EligibilityContent draft(Map<String, Quote> quotes, List<Route> routes, List<Target> targets) {
         Source base = source(quotes, null, List.of());
         ExtractedEligibility eligibility = new ExtractedEligibility(base.eligibility().common(), routes, List.of(), quotes);
-        List<Unit> units = List.of(new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택",
+        List<Unit> units = List.of(new Unit("1", "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택",
                 List.of("28237"), targets));
         EligibilityContent content = ExtractedEligibilityDraft.build(new Source(base.referenceDate(), base.document(), units,
                 eligibility, base.incomeTables(), base.regionCodes())).content();
         validate(content);
         return content;
+    }
+
+    /** 주어진 경로와 공급행들로 만든 초안. 공통 요건은 기본 픽스처와 같다. */
+    private static EligibilityContent draft(Map<String, Quote> quotes, List<Route> routes, Collection<Unit> units) {
+        Source base = source(quotes, null, List.of());
+        ExtractedEligibility eligibility = new ExtractedEligibility(base.eligibility().common(), routes, List.of(), quotes);
+        EligibilityContent content = ExtractedEligibilityDraft.build(new Source(base.referenceDate(), base.document(),
+                List.copyOf(units), eligibility, base.incomeTables(), base.regionCodes())).content();
+        validate(content);
+        return content;
+    }
+
+    private static Unit unit(String key, Target... targets) {
+        return new Unit(key, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"),
+                List.of(targets));
     }
 
     private static ExtractedEligibilityDraft.Draft build(Map<String, Quote> quotes) {
@@ -592,9 +800,9 @@ class ExtractedEligibilityDraftTest {
                 new Route("사라진 대상", List.of(), new Group(MISSING, List.of(), List.of())));
         ExtractedEligibility eligibility = new ExtractedEligibility(common, routes, List.of(), quotes);
         List<Unit> units = customUnits != null ? customUnits : List.of(
-                new Unit(1, "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"), List.of(
+                new Unit("1", "인천석남", "21A", new BigDecimal("21.00"), 10L, 20L, "행복주택", List.of("28237"), List.of(
                         new Target("청년", 10), new Target("신혼부부·한부모가족", 5), new Target("주거급여  수급자", 3))),
-                new Unit(2, "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
+                new Unit("2", "인천석남", "36A", new BigDecimal("36.00"), 10L, 21L, "행복주택", List.of("28237"),
                         List.of(new Target("청년", 0), new Target("신혼부부·한부모가족", null))));
         return new Source(POSTED,
                 new Document("notice.pdf", "https://apply.lh.or.kr/notice.pdf", 23, "a".repeat(64)), units,
@@ -644,8 +852,17 @@ class ExtractedEligibilityDraftTest {
     }
 
     private static List<Requirement> dualIncome() {
+        return dualIncome(null);
+    }
+
+    private static List<Requirement> dualIncome(String asWritten) {
+        return dualIncome(Map.of(), asWritten);
+    }
+
+    private static List<Requirement> dualIncome(Map<Long, Integer> sizeExtra, String... asWritten) {
+        List<Adjustment> adjustments = Arrays.stream(asWritten).map(text -> new Adjustment("DUAL_INCOME", text)).toList();
         return List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null, "URBAN_WORKER_MONTHLY_INCOME", 2025, 100,
-                Map.of(), List.of(new Adjustment("DUAL_INCOME", null)), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
+                sizeExtra, adjustments, null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
                 YOUTH + ".requirements[1]"));
     }
 

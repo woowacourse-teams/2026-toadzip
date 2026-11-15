@@ -59,3 +59,5 @@
 .merge button { justify-self: start; }
 .field { display: grid; gap: var(--ds-space-2); align-content: start; }
 .complexAddress { display:block; margin-top:var(--ds-space-1); font-weight:400; }
+.unconfirmed { display:grid; gap:var(--ds-space-2); padding:var(--ds-space-3) var(--ds-space-4); border-left:3px solid var(--ds-color-status-upcoming); background:var(--ds-color-surface); }
+.unconfirmed p { margin:0; overflow-wrap:anywhere; }

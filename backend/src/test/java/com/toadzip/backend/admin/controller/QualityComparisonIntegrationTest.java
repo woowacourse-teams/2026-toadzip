@@ -12,9 +12,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.repository.QualityComparisonRepository;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -65,8 +62,6 @@ class QualityComparisonIntegrationTest {
     @Autowired private ObjectMapper json;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private HousingTypeRepository types;
-    @Autowired private SupplyRowRepository supplyRows;
-    @Autowired private SupplyTargetRepository supplyTargets;
     @Autowired private EntityManager entities;
     @Autowired private QualityComparisonRepository comparisons;
     @Autowired private MyHomeComplexSourceFixtures sourceRows;
@@ -396,7 +391,7 @@ class QualityComparisonIntegrationTest {
     }
 
     @Test
-    void 공고와_공급행_임대조건을_분리해_수정하고_큰_금액_문자열을_보존한다() throws Exception {
+    void 공고_기본정보는_비교_화면에서_고치고_공급대상_칸은_보기만_한다() throws Exception {
         long complexId = type().getHousingComplex().getId();
         String request = """
                 {"housingComplexId":%d,"name":"비교 공고","rentalType":"HAPPY_HOUSING",
@@ -419,24 +414,24 @@ class QualityComparisonIntegrationTest {
                         "snapshotToken", first.get("snapshotToken").asText(),
                         "values", Map.of("name", "원문 확인 공고"), "evidenceNote", "공식 공고명 확인"))))
                 .andExpect(status().isOk());
-        var row = supplyRows.findAll().stream().filter(item -> item.getAnnouncement().getId() == id)
-                .findFirst().orElseThrow();
-        var condition = supplyTargets.saveAndFlush(SupplyTarget.create(
-                row, "일반", "1순위", 5, null, new BigDecimal("10000000"), new BigDecimal("100000"), null, null, 0));
-        String target = "target:" + condition.getId();
+        // 공급정보 비교 단위는 공급표 칸(cell:{id})이다. 고치기는 공급 보정 작업대에서 한다.
+        var cell = first.at("/detail/supplySheet/cells/0");
+        String target = cell.get("key").asText();
+        assertThat(target).isEqualTo("cell:" + cell.get("id").asLong());
         var before = json.readTree(mvc.perform(get(path).param("target", target).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
-        String saved = mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("target", target,
                         "snapshotToken", before.get("snapshotToken").asText(), "values",
-                        Map.of("rentalDeposit", "999999999999999999", "monthlyRent", "0"),
-                        "evidenceNote", "해당 공급대상 원 단위 확인"))))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertThat(saved).contains("999999999999999999");
-        entities.clear();
-        var stored = supplyTargets.findById(condition.getId()).orElseThrow();
-        assertThat(stored.getRentalDeposit()).isEqualByComparingTo("999999999999999999");
-        assertThat(stored.getMonthlyRent()).isEqualByComparingTo("0");
+                        Map.of("rentalDeposit", "999999999999999999"), "evidenceNote", "해당 공급대상 원 단위 확인"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("공급정보는 공급 보정 작업대에서 고쳐 주세요."));
+        var after = json.readTree(mvc.perform(get(path).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
+        assertThat(after.at("/detail/supplySheet")).isEqualTo(first.at("/detail/supplySheet"));
+        // 옛 공급대상 단위(target:{id})는 이 공고의 비교 단위가 아니다.
+        mvc.perform(get(path).param("target", "target:" + cell.get("id").asLong()).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isBadRequest());
         assertThat(complexes.findById(complexId).orElseThrow().getTotalHouseholdCount()).isEqualTo(120);
     }
 

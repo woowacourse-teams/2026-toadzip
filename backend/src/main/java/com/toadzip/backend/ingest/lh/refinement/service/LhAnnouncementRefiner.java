@@ -1,12 +1,15 @@
 package com.toadzip.backend.ingest.lh.refinement.service;
 
+import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementNameClassification;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.LhAnnouncementValues;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.announcement.repository.AgencySupplyLineStore;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.lh.collection.detail.domain.LhAnnouncementDetailSourceView;
@@ -16,17 +19,19 @@ import com.toadzip.backend.ingest.lh.collection.supply.domain.LhAnnouncementSupp
 import com.toadzip.backend.ingest.lh.collection.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.lh.refinement.domain.LhRentalTypes;
 import com.toadzip.backend.ingest.lh.refinement.domain.LhRevisionName;
+import com.toadzip.backend.ingest.domain.SourceArea;
 import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport;
+import com.toadzip.backend.ingest.lh.refinement.dto.LhAnnouncementRefinementReport.SupplyCounts;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementComplexLinker.DetailComplex;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementEnrichmentMapper;
 import com.toadzip.backend.ingest.lh.refinement.service.LhScheduleAttachmentWriter;
-import com.toadzip.backend.ingest.lh.refinement.service.LhSupplyRowWriter.SupplyLine;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -65,7 +70,7 @@ class LhAnnouncementRefiner {
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhScheduleAttachmentWriter scheduleWriter;
     private final LhAnnouncementComplexLinker complexLinker;
-    private final LhSupplyRowWriter supplyRowWriter;
+    private final AgencySupplyLineStore supplyLines;
     private final NotificationOutboxRepository notificationOutbox;
     private final Clock clock;
     private final EntityManager entityManager;
@@ -110,8 +115,9 @@ class LhAnnouncementRefiner {
         linkRevision(announcement, tally);
         Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, detailComplexes(details),
                 supplies, supplyType.get(), index, tally.complexes);
-        writeSupplies(announcement, supplies, data, complexes, tally);
-        if (announcement.observeLhSupply(fingerprint(List.copyOf(complexes.keySet()), supplies))) {
+        tally.supplies.add(supplyLines.replace(announcement, AgencyCode.LH, stagingLines(announcement, supplies, data,
+                complexes)));
+        if (announcement.observeAgencySupply(fingerprint(List.copyOf(complexes.keySet()), supplies))) {
             tally.recheckRequired++;
         }
         if (existing.isPresent()) {
@@ -136,17 +142,6 @@ class LhAnnouncementRefiner {
             tally.updated++;
         }
         return announcement;
-    }
-
-    private void writeSupplies(Announcement announcement, List<LhAnnouncementSupplySourceView> supplies,
-            LhAnnouncementEnrichmentData data, Map<String, AnnouncementComplex> complexes, Tally tally) {
-        if (announcement.suppliedByLh()) {
-            supplyRowWriter.writeLhOwned(announcement, lines(supplies, data), complexes,
-                    AnnouncementNameClassification.supplyCategory(announcement.getName()), tally.supplies);
-            return;
-        }
-        supplyRowWriter.fillDocumentOwned(announcement, complexes, tally.supplies);
-        tally.documentOwned++;
     }
 
     /** 앞서 읽은 엔티티는 잠금 조회가 상태를 새로 읽지 않으므로 잠그면서 DB 값으로 다시 읽는다. */
@@ -263,13 +258,60 @@ class LhAnnouncementRefiner {
         return Integer.valueOf(value.strip());
     }
 
-    private List<SupplyLine> lines(List<LhAnnouncementSupplySourceView> supplies, LhAnnouncementEnrichmentData data) {
-        List<SupplyLine> lines = new ArrayList<>();
+    /**
+     * LH 공급 원천 줄 그대로의 준비 줄. 줄 키는 LH 공급 원천 식별자, 단지는 원천 단지명의 공고 단지다. 대상 표기는 두지 않는다(공급표로 바꿀
+     * 때 형명으로 정한다). 정본은 쓰지 않는다.
+     */
+    private static List<AgencySupplyLine.Values> stagingLines(Announcement announcement,
+            List<LhAnnouncementSupplySourceView> supplies, LhAnnouncementEnrichmentData data,
+            Map<String, AnnouncementComplex> complexes) {
+        List<AgencySupplyLine.Values> lines = new ArrayList<>();
         for (int index = 0; index < supplies.size(); index++) {
+            LhAnnouncementSupplySourceView source = supplies.get(index);
             LhSupplyData supply = data.supplies().get(index);
-            lines.add(new SupplyLine(supplies.get(index), supply));
+            lines.add(new AgencySupplyLine.Values(supply.sourceIdentifier(), index,
+                    complexes.get(source.getComplexLabel()), source.getComplexLabel(), source.getTypeName(),
+                    area(source.getExclusiveArea()), area(source.getSupplyArea()), null,
+                    supply.supplyHouseholdCount(), supply.rentalDeposit(), supply.monthlyRent(),
+                    supply.expectedMoveInMonth(), AnnouncementNameClassification.supplyCategory(announcement.getName())));
         }
         return lines;
+    }
+
+    private static BigDecimal area(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return SourceArea.normalized(new BigDecimal(value.strip()));
+        }
+        catch (NumberFormatException unreadable) {
+            return null;
+        }
+    }
+
+    /** 준비 줄 변경 수를 공고마다 더한다. */
+    static final class SupplyTally {
+
+        private int created;
+        private int updated;
+        private int deleted;
+
+        void add(AgencySupplyLineStore.Counts counts) {
+            created += counts.created();
+            updated += counts.updated();
+            deleted += counts.deleted();
+        }
+
+        void add(SupplyTally other) {
+            created += other.created;
+            updated += other.updated;
+            deleted += other.deleted;
+        }
+
+        SupplyCounts toCounts() {
+            return new SupplyCounts(created, updated, deleted);
+        }
     }
 
     enum Outcome {
@@ -289,7 +331,6 @@ class LhAnnouncementRefiner {
             adopted += other.adopted;
             updated += other.updated;
             other.held.forEach((reason, count) -> held.merge(reason, count, Integer::sum));
-            documentOwned += other.documentOwned;
             recheckRequired += other.recheckRequired;
             revisionsLinked += other.revisionsLinked;
             linkedRevisionPanIds.addAll(other.linkedRevisionPanIds);
@@ -325,7 +366,7 @@ class LhAnnouncementRefiner {
 
         LhAnnouncementRefinementReport toReport(int targetCount, int failedCount) {
             return new LhAnnouncementRefinementReport(targetCount, created, adopted, updated, held, failedCount,
-                    documentOwned, recheckRequired, revisionsLinked, unlinkedRevisionPanIds.size(), complexes.toCounts(),
+                    recheckRequired, revisionsLinked, unlinkedRevisionPanIds.size(), complexes.toCounts(),
                     supplies.toCounts());
         }
 
@@ -333,13 +374,12 @@ class LhAnnouncementRefiner {
         private int adopted;
         private int updated;
         private final Map<String, Integer> held = new TreeMap<>();
-        private int documentOwned;
         private int recheckRequired;
         private int revisionsLinked;
         private final Set<String> linkedRevisionPanIds = new LinkedHashSet<>();
         /** 원공고를 하나로 정하지 못한 정정·취소공고의 LH 공고 ID. 실행 끝에서 다시 잇는다. */
         private final Set<String> unlinkedRevisionPanIds = new LinkedHashSet<>();
         private final LhAnnouncementComplexLinker.Tally complexes = new LhAnnouncementComplexLinker.Tally();
-        private final LhSupplyRowWriter.Tally supplies = new LhSupplyRowWriter.Tally();
+        private final SupplyTally supplies = new SupplyTally();
     }
 }

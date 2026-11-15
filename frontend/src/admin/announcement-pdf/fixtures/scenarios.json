@@ -16,50 +16,6 @@
           "contact": "063-843-0039",
           "url": null
         },
-        "supplyRows": [
-          {
-            "complexReference": {
-              "sourceComplexName": "익산한스빌"
-            },
-            "sourceHousingTypeName": "26A",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": null,
-            "exclusiveArea": 26.5195,
-            "supplyArea": 40.6486,
-            "targets": [
-              {
-                "target": "일반",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 4076000,
-                "monthlyRent": 72820,
-                "convertedDeposit": 1000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "익산한스빌"
-            },
-            "sourceHousingTypeName": "26B",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": null,
-            "exclusiveArea": 26.4673,
-            "supplyArea": 40.5686,
-            "targets": [
-              {
-                "target": "일반",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 4076000,
-                "monthlyRent": 72820,
-                "convertedDeposit": 1000000
-              }
-            ]
-          }
-        ],
         "schedules": [
           {
             "scheduleType": "APPLICATION",
@@ -80,55 +36,155 @@
             "endAt": "2026-12-17T16:00:00"
           }
         ],
-        "unresolvedFields": []
-      },
-      "sharedCounts": [
-        {
-          "paths": [
-            "supplyRows[0].totalSupplyHouseholdCount",
-            "supplyRows[1].totalSupplyHouseholdCount"
+        "unresolvedFields": [],
+        "supplySheet": {
+          "housingTypes": [
+            {
+              "key": "h0",
+              "complexName": "익산한스빌",
+              "name": "26A",
+              "exclusiveArea": 26.5195,
+              "commonArea": null,
+              "supplyArea": 40.6486,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h1",
+              "complexName": "익산한스빌",
+              "name": "26B",
+              "exclusiveArea": 26.4673,
+              "commonArea": null,
+              "supplyArea": 40.5686,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            }
           ],
-          "count": 170,
-          "page": 4,
-          "quote": "0 170"
+          "targets": [
+            {
+              "key": "t0",
+              "label": "일반",
+              "applicationCondition": null
+            }
+          ],
+          "cells": [
+            {
+              "housingType": "h0",
+              "target": "t0"
+            },
+            {
+              "housingType": "h1",
+              "target": "t0"
+            }
+          ],
+          "quotas": [
+            {
+              "kind": "WINNER",
+              "count": 170,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t0"
+                },
+                {
+                  "housingType": "h1",
+                  "target": "t0"
+                }
+              ]
+            }
+          ],
+          "leaseTerms": [
+            {
+              "rentalDeposit": 4076000,
+              "monthlyRent": 72820,
+              "convertedDeposit": 1000000,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t0"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 4076000,
+              "monthlyRent": 72820,
+              "convertedDeposit": 1000000,
+              "members": [
+                {
+                  "housingType": "h1",
+                  "target": "t0"
+                }
+              ]
+            }
+          ],
+          "unresolvedFields": [],
+          "evidence": [
+            {
+              "path": "housingTypes[0]",
+              "page": 4,
+              "quote": "26A 26.5195 14.1291 10.2310 50.8796"
+            },
+            {
+              "path": "housingTypes[1]",
+              "page": 4,
+              "quote": "26B 26.4673 14.1013 10.2109 50.7795"
+            },
+            {
+              "path": "cells[0]",
+              "page": 5,
+              "quote": "4,076,000 203,800 3,872,200 72,820"
+            },
+            {
+              "path": "cells[1]",
+              "page": 5,
+              "quote": "(+) 1,000,000 5,076,000 66,980"
+            },
+            {
+              "path": "leaseTerms[0].convertedDeposit",
+              "page": 5,
+              "quote": "(+) 1,000,000"
+            },
+            {
+              "path": "leaseTerms[1].rentalDeposit",
+              "page": 5,
+              "quote": "4,076,000 203,800 3,872,200 72,820"
+            },
+            {
+              "path": "targets[0].applicationCondition",
+              "page": 1,
+              "quote": "소득요건 배제"
+            },
+            {
+              "path": "targets[0].applicationCondition",
+              "page": 9,
+              "quote": "거주지역, 순위 및 배점 등에 상관없이"
+            },
+            {
+              "path": "leaseTerms[0]",
+              "page": 5,
+              "quote": "4,076,000 203,800 3,872,200 72,820"
+            },
+            {
+              "path": "leaseTerms[1]",
+              "page": 5,
+              "quote": "(+) 1,000,000 5,076,000 66,980"
+            },
+            {
+              "path": "quotas[0]",
+              "page": 4,
+              "quote": "0 170"
+            }
+          ]
         }
-      ],
+      },
       "notApplicable": [
         {
           "path": "receptionPlace.url",
           "reason": "현장접수만 가능하며 온라인 신청 접수처 URL을 안내하지 않음"
-        },
-        {
-          "path": "supplyRows[0].expectedMoveInMonth",
-          "reason": "기존 국민임대주택 예비입주자 모집으로 공가 발생 시 예비순번에 따라 공급하며 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[1].expectedMoveInMonth",
-          "reason": "기존 국민임대주택 예비입주자 모집으로 공가 발생 시 예비순번에 따라 공급하며 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[0].targets[0].supplyRank",
-          "reason": "거주지역, 순위 및 배점 등에 관계없이 선착순 신청접수 순번으로 선정함"
-        },
-        {
-          "path": "supplyRows[1].targets[0].supplyRank",
-          "reason": "거주지역, 순위 및 배점 등에 관계없이 선착순 신청접수 순번으로 선정함"
-        },
-        {
-          "path": "supplyRows[0].targets[0].supplyHouseholdCount",
-          "reason": "공급대상별 모집수를 별도로 구분하지 않으며 26A와 26B의 예비자 모집수 170명을 통합 기재함"
-        },
-        {
-          "path": "supplyRows[1].targets[0].supplyHouseholdCount",
-          "reason": "공급대상별 모집수를 별도로 구분하지 않으며 26A와 26B의 예비자 모집수 170명을 통합 기재함"
-        },
-        {
-          "path": "supplyRows[0].targets[0].reserveCount",
-          "reason": "주택형별 예비자 모집수를 별도로 안내하지 않고 26A와 26B에 대한 모집 예비자수 170명을 통합 기재함"
-        },
-        {
-          "path": "supplyRows[1].targets[0].reserveCount",
-          "reason": "주택형별 예비자 모집수를 별도로 안내하지 않고 26A와 26B에 대한 모집 예비자수 170명을 통합 기재함"
         }
       ],
       "evidence": [
@@ -176,46 +232,6 @@
           "path": "receptionPlace.contact",
           "page": 10,
           "quote": "063-843-0039"
-        },
-        {
-          "path": "supplyRows[0]",
-          "page": 4,
-          "quote": "26A 26.5195 14.1291 10.2310 50.8796"
-        },
-        {
-          "path": "supplyRows[1]",
-          "page": 4,
-          "quote": "26B 26.4673 14.1013 10.2109 50.7795"
-        },
-        {
-          "path": "supplyRows[0].targets[0]",
-          "page": 5,
-          "quote": "4,076,000 203,800 3,872,200 72,820"
-        },
-        {
-          "path": "supplyRows[1].targets[0]",
-          "page": 5,
-          "quote": "(+) 1,000,000 5,076,000 66,980"
-        },
-        {
-          "path": "supplyRows[0].targets[0].convertedDeposit",
-          "page": 5,
-          "quote": "(+) 1,000,000"
-        },
-        {
-          "path": "supplyRows[1].targets[0].rentalDeposit",
-          "page": 5,
-          "quote": "4,076,000 203,800 3,872,200 72,820"
-        },
-        {
-          "path": "supplyRows[0].targets[0].applicationCondition",
-          "page": 1,
-          "quote": "소득요건 배제"
-        },
-        {
-          "path": "supplyRows[1].targets[0].applicationCondition",
-          "page": 9,
-          "quote": "거주지역, 순위 및 배점 등에 상관없이"
         },
         {
           "path": "schedules[0]",
@@ -317,335 +333,6 @@
           "contact": "1600-1004",
           "url": "https://apply.lh.or.kr"
         },
-        "supplyRows": [
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-1BL"
-            },
-            "sourceHousingTypeName": "39(창업인)",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 25,
-            "exclusiveArea": 39.78,
-            "supplyArea": 66.6673,
-            "targets": [
-              {
-                "target": "청년 창업인",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 41848000,
-                "monthlyRent": 226670,
-                "convertedDeposit": 27000000
-              },
-              {
-                "target": "청년 소득(×)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 35570000,
-                "monthlyRent": 192670,
-                "convertedDeposit": 23000000
-              },
-              {
-                "target": "청년 소득(○)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 37663000,
-                "monthlyRent": 204000,
-                "convertedDeposit": 24000000
-              },
-              {
-                "target": "신혼부부·한부모",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 41848000,
-                "monthlyRent": 226670,
-                "convertedDeposit": 27000000
-              },
-              {
-                "target": "고령자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 39775000,
-                "monthlyRent": 215340,
-                "convertedDeposit": 25000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-2BL"
-            },
-            "sourceHousingTypeName": "16(대학생,청년)",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 30,
-            "exclusiveArea": 16.8,
-            "supplyArea": 27.6759,
-            "targets": [
-              {
-                "target": "대학생",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 15878000,
-                "monthlyRent": 86000,
-                "convertedDeposit": 5000000
-              },
-              {
-                "target": "청년 소득(×)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 15878000,
-                "monthlyRent": 86000,
-                "convertedDeposit": 5000000
-              },
-              {
-                "target": "청년 소득(○)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 16812000,
-                "monthlyRent": 91060,
-                "convertedDeposit": 6000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-2BL"
-            },
-            "sourceHousingTypeName": "36(신혼부부·한부모)",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 10,
-            "exclusiveArea": 36.72,
-            "supplyArea": 60.4916,
-            "targets": [
-              {
-                "target": "신혼부부·한부모",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 38336000,
-                "monthlyRent": 207650,
-                "convertedDeposit": 24000000
-              },
-              {
-                "target": "청년 소득(×)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 32585000,
-                "monthlyRent": 176500,
-                "convertedDeposit": 21000000
-              },
-              {
-                "target": "청년 소득(○)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 34502000,
-                "monthlyRent": 186880,
-                "convertedDeposit": 22000000
-              },
-              {
-                "target": "고령자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 36419000,
-                "monthlyRent": 197270,
-                "convertedDeposit": 23000000
-              },
-              {
-                "target": "주거급여수급자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 28752000,
-                "monthlyRent": 155740,
-                "convertedDeposit": 18000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-3BL"
-            },
-            "sourceHousingTypeName": "16(대학생,청년)",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 50,
-            "exclusiveArea": 16.8,
-            "supplyArea": 23.8787,
-            "targets": [
-              {
-                "target": "대학생",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 15935000,
-                "monthlyRent": 86310,
-                "convertedDeposit": 5000000
-              },
-              {
-                "target": "청년 소득無",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 15935000,
-                "monthlyRent": 86310,
-                "convertedDeposit": 5000000
-              },
-              {
-                "target": "청년 소득有",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 16873000,
-                "monthlyRent": 91390,
-                "convertedDeposit": 6000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-3BL"
-            },
-            "sourceHousingTypeName": "26(주거급여수급자)",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 10,
-            "exclusiveArea": 26.97,
-            "supplyArea": 38.3339,
-            "targets": [
-              {
-                "target": "주거급여수급자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 21522000,
-                "monthlyRent": 116570,
-                "convertedDeposit": 11000000
-              },
-              {
-                "target": "대학생",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 24391000,
-                "monthlyRent": 132120,
-                "convertedDeposit": 14000000
-              },
-              {
-                "target": "청년 소득(×)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 24391000,
-                "monthlyRent": 132120,
-                "convertedDeposit": 14000000
-              },
-              {
-                "target": "청년 소득(○)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 25826000,
-                "monthlyRent": 139890,
-                "convertedDeposit": 15000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-3BL"
-            },
-            "sourceHousingTypeName": "26(고령(주거약자용))",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 10,
-            "exclusiveArea": 26.97,
-            "supplyArea": 38.3339,
-            "targets": [
-              {
-                "target": "고령자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 27261000,
-                "monthlyRent": 147660,
-                "convertedDeposit": 17000000
-              },
-              {
-                "target": "주거급여수급자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 21522000,
-                "monthlyRent": 116570,
-                "convertedDeposit": 11000000
-              }
-            ]
-          },
-          {
-            "complexReference": {
-              "sourceComplexName": "첨단H-3BL"
-            },
-            "sourceHousingTypeName": "36(신혼부부·한부모)",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 30,
-            "exclusiveArea": 36.72,
-            "supplyArea": 52.1921,
-            "targets": [
-              {
-                "target": "신혼부부·한부모",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 38628000,
-                "monthlyRent": 209230,
-                "convertedDeposit": 25000000
-              },
-              {
-                "target": "청년 소득(×)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 32833000,
-                "monthlyRent": 177840,
-                "convertedDeposit": 21000000
-              },
-              {
-                "target": "청년 소득(○)",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 34765000,
-                "monthlyRent": 188310,
-                "convertedDeposit": 22000000
-              },
-              {
-                "target": "고령자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 36696000,
-                "monthlyRent": 198770,
-                "convertedDeposit": 23000000
-              },
-              {
-                "target": "주거급여수급자",
-                "supplyRank": null,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 28971000,
-                "monthlyRent": 156920,
-                "convertedDeposit": 18000000
-              }
-            ]
-          }
-        ],
         "schedules": [
           {
             "scheduleType": "APPLICATION",
@@ -678,53 +365,1086 @@
             "endAt": "2027-02-18T14:00:00"
           }
         ],
-        "unresolvedFields": []
+        "unresolvedFields": [],
+        "supplySheet": {
+          "housingTypes": [
+            {
+              "key": "h0",
+              "complexName": "첨단H-1BL",
+              "name": "39(창업인)",
+              "exclusiveArea": 39.78,
+              "commonArea": null,
+              "supplyArea": 66.6673,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h1",
+              "complexName": "첨단H-2BL",
+              "name": "16(대학생,청년)",
+              "exclusiveArea": 16.8,
+              "commonArea": null,
+              "supplyArea": 27.6759,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h2",
+              "complexName": "첨단H-2BL",
+              "name": "36(신혼부부·한부모)",
+              "exclusiveArea": 36.72,
+              "commonArea": null,
+              "supplyArea": 60.4916,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h3",
+              "complexName": "첨단H-3BL",
+              "name": "16(대학생,청년)",
+              "exclusiveArea": 16.8,
+              "commonArea": null,
+              "supplyArea": 23.8787,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h4",
+              "complexName": "첨단H-3BL",
+              "name": "26(주거급여수급자)",
+              "exclusiveArea": 26.97,
+              "commonArea": null,
+              "supplyArea": 38.3339,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h5",
+              "complexName": "첨단H-3BL",
+              "name": "26(고령(주거약자용))",
+              "exclusiveArea": 26.97,
+              "commonArea": null,
+              "supplyArea": 38.3339,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            },
+            {
+              "key": "h6",
+              "complexName": "첨단H-3BL",
+              "name": "36(신혼부부·한부모)",
+              "exclusiveArea": 36.72,
+              "commonArea": null,
+              "supplyArea": 52.1921,
+              "constructedHouseholdCount": null,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            }
+          ],
+          "targets": [
+            {
+              "key": "t0",
+              "label": "청년 창업인",
+              "applicationCondition": null
+            },
+            {
+              "key": "t1",
+              "label": "청년 소득(×)",
+              "applicationCondition": null
+            },
+            {
+              "key": "t2",
+              "label": "청년 소득(○)",
+              "applicationCondition": null
+            },
+            {
+              "key": "t3",
+              "label": "신혼부부·한부모",
+              "applicationCondition": null
+            },
+            {
+              "key": "t4",
+              "label": "고령자",
+              "applicationCondition": null
+            },
+            {
+              "key": "t5",
+              "label": "대학생",
+              "applicationCondition": null
+            },
+            {
+              "key": "t6",
+              "label": "주거급여수급자",
+              "applicationCondition": null
+            },
+            {
+              "key": "t7",
+              "label": "청년 소득無",
+              "applicationCondition": null
+            },
+            {
+              "key": "t8",
+              "label": "청년 소득有",
+              "applicationCondition": null
+            }
+          ],
+          "cells": [
+            {
+              "housingType": "h0",
+              "target": "t0"
+            },
+            {
+              "housingType": "h0",
+              "target": "t1"
+            },
+            {
+              "housingType": "h0",
+              "target": "t2"
+            },
+            {
+              "housingType": "h0",
+              "target": "t3"
+            },
+            {
+              "housingType": "h0",
+              "target": "t4"
+            },
+            {
+              "housingType": "h1",
+              "target": "t5"
+            },
+            {
+              "housingType": "h1",
+              "target": "t1"
+            },
+            {
+              "housingType": "h1",
+              "target": "t2"
+            },
+            {
+              "housingType": "h2",
+              "target": "t3"
+            },
+            {
+              "housingType": "h2",
+              "target": "t1"
+            },
+            {
+              "housingType": "h2",
+              "target": "t2"
+            },
+            {
+              "housingType": "h2",
+              "target": "t4"
+            },
+            {
+              "housingType": "h2",
+              "target": "t6"
+            },
+            {
+              "housingType": "h3",
+              "target": "t5"
+            },
+            {
+              "housingType": "h3",
+              "target": "t7"
+            },
+            {
+              "housingType": "h3",
+              "target": "t8"
+            },
+            {
+              "housingType": "h4",
+              "target": "t6"
+            },
+            {
+              "housingType": "h4",
+              "target": "t5"
+            },
+            {
+              "housingType": "h4",
+              "target": "t1"
+            },
+            {
+              "housingType": "h4",
+              "target": "t2"
+            },
+            {
+              "housingType": "h5",
+              "target": "t4"
+            },
+            {
+              "housingType": "h5",
+              "target": "t6"
+            },
+            {
+              "housingType": "h6",
+              "target": "t3"
+            },
+            {
+              "housingType": "h6",
+              "target": "t1"
+            },
+            {
+              "housingType": "h6",
+              "target": "t2"
+            },
+            {
+              "housingType": "h6",
+              "target": "t4"
+            },
+            {
+              "housingType": "h6",
+              "target": "t6"
+            }
+          ],
+          "quotas": [
+            {
+              "kind": "WINNER",
+              "count": 25,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t0"
+                },
+                {
+                  "housingType": "h0",
+                  "target": "t1"
+                },
+                {
+                  "housingType": "h0",
+                  "target": "t2"
+                },
+                {
+                  "housingType": "h0",
+                  "target": "t3"
+                },
+                {
+                  "housingType": "h0",
+                  "target": "t4"
+                }
+              ]
+            },
+            {
+              "kind": "WINNER",
+              "count": 30,
+              "members": [
+                {
+                  "housingType": "h1",
+                  "target": "t5"
+                },
+                {
+                  "housingType": "h1",
+                  "target": "t1"
+                },
+                {
+                  "housingType": "h1",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "kind": "WINNER",
+              "count": 10,
+              "members": [
+                {
+                  "housingType": "h2",
+                  "target": "t3"
+                },
+                {
+                  "housingType": "h2",
+                  "target": "t1"
+                },
+                {
+                  "housingType": "h2",
+                  "target": "t2"
+                },
+                {
+                  "housingType": "h2",
+                  "target": "t4"
+                },
+                {
+                  "housingType": "h2",
+                  "target": "t6"
+                }
+              ]
+            },
+            {
+              "kind": "WINNER",
+              "count": 50,
+              "members": [
+                {
+                  "housingType": "h3",
+                  "target": "t5"
+                },
+                {
+                  "housingType": "h3",
+                  "target": "t7"
+                },
+                {
+                  "housingType": "h3",
+                  "target": "t8"
+                }
+              ]
+            },
+            {
+              "kind": "WINNER",
+              "count": 10,
+              "members": [
+                {
+                  "housingType": "h4",
+                  "target": "t6"
+                },
+                {
+                  "housingType": "h4",
+                  "target": "t5"
+                },
+                {
+                  "housingType": "h4",
+                  "target": "t1"
+                },
+                {
+                  "housingType": "h4",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "kind": "WINNER",
+              "count": 10,
+              "members": [
+                {
+                  "housingType": "h5",
+                  "target": "t4"
+                },
+                {
+                  "housingType": "h5",
+                  "target": "t6"
+                }
+              ]
+            },
+            {
+              "kind": "WINNER",
+              "count": 30,
+              "members": [
+                {
+                  "housingType": "h6",
+                  "target": "t3"
+                },
+                {
+                  "housingType": "h6",
+                  "target": "t1"
+                },
+                {
+                  "housingType": "h6",
+                  "target": "t2"
+                },
+                {
+                  "housingType": "h6",
+                  "target": "t4"
+                },
+                {
+                  "housingType": "h6",
+                  "target": "t6"
+                }
+              ]
+            }
+          ],
+          "leaseTerms": [
+            {
+              "rentalDeposit": 41848000,
+              "monthlyRent": 226670,
+              "convertedDeposit": 27000000,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t0"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 35570000,
+              "monthlyRent": 192670,
+              "convertedDeposit": 23000000,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t1"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 37663000,
+              "monthlyRent": 204000,
+              "convertedDeposit": 24000000,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 41848000,
+              "monthlyRent": 226670,
+              "convertedDeposit": 27000000,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t3"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 39775000,
+              "monthlyRent": 215340,
+              "convertedDeposit": 25000000,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t4"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 15878000,
+              "monthlyRent": 86000,
+              "convertedDeposit": 5000000,
+              "members": [
+                {
+                  "housingType": "h1",
+                  "target": "t5"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 15878000,
+              "monthlyRent": 86000,
+              "convertedDeposit": 5000000,
+              "members": [
+                {
+                  "housingType": "h1",
+                  "target": "t1"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 16812000,
+              "monthlyRent": 91060,
+              "convertedDeposit": 6000000,
+              "members": [
+                {
+                  "housingType": "h1",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 38336000,
+              "monthlyRent": 207650,
+              "convertedDeposit": 24000000,
+              "members": [
+                {
+                  "housingType": "h2",
+                  "target": "t3"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 32585000,
+              "monthlyRent": 176500,
+              "convertedDeposit": 21000000,
+              "members": [
+                {
+                  "housingType": "h2",
+                  "target": "t1"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 34502000,
+              "monthlyRent": 186880,
+              "convertedDeposit": 22000000,
+              "members": [
+                {
+                  "housingType": "h2",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 36419000,
+              "monthlyRent": 197270,
+              "convertedDeposit": 23000000,
+              "members": [
+                {
+                  "housingType": "h2",
+                  "target": "t4"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 28752000,
+              "monthlyRent": 155740,
+              "convertedDeposit": 18000000,
+              "members": [
+                {
+                  "housingType": "h2",
+                  "target": "t6"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 15935000,
+              "monthlyRent": 86310,
+              "convertedDeposit": 5000000,
+              "members": [
+                {
+                  "housingType": "h3",
+                  "target": "t5"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 15935000,
+              "monthlyRent": 86310,
+              "convertedDeposit": 5000000,
+              "members": [
+                {
+                  "housingType": "h3",
+                  "target": "t7"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 16873000,
+              "monthlyRent": 91390,
+              "convertedDeposit": 6000000,
+              "members": [
+                {
+                  "housingType": "h3",
+                  "target": "t8"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 21522000,
+              "monthlyRent": 116570,
+              "convertedDeposit": 11000000,
+              "members": [
+                {
+                  "housingType": "h4",
+                  "target": "t6"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 24391000,
+              "monthlyRent": 132120,
+              "convertedDeposit": 14000000,
+              "members": [
+                {
+                  "housingType": "h4",
+                  "target": "t5"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 24391000,
+              "monthlyRent": 132120,
+              "convertedDeposit": 14000000,
+              "members": [
+                {
+                  "housingType": "h4",
+                  "target": "t1"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 25826000,
+              "monthlyRent": 139890,
+              "convertedDeposit": 15000000,
+              "members": [
+                {
+                  "housingType": "h4",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 27261000,
+              "monthlyRent": 147660,
+              "convertedDeposit": 17000000,
+              "members": [
+                {
+                  "housingType": "h5",
+                  "target": "t4"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 21522000,
+              "monthlyRent": 116570,
+              "convertedDeposit": 11000000,
+              "members": [
+                {
+                  "housingType": "h5",
+                  "target": "t6"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 38628000,
+              "monthlyRent": 209230,
+              "convertedDeposit": 25000000,
+              "members": [
+                {
+                  "housingType": "h6",
+                  "target": "t3"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 32833000,
+              "monthlyRent": 177840,
+              "convertedDeposit": 21000000,
+              "members": [
+                {
+                  "housingType": "h6",
+                  "target": "t1"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 34765000,
+              "monthlyRent": 188310,
+              "convertedDeposit": 22000000,
+              "members": [
+                {
+                  "housingType": "h6",
+                  "target": "t2"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 36696000,
+              "monthlyRent": 198770,
+              "convertedDeposit": 23000000,
+              "members": [
+                {
+                  "housingType": "h6",
+                  "target": "t4"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 28971000,
+              "monthlyRent": 156920,
+              "convertedDeposit": 18000000,
+              "members": [
+                {
+                  "housingType": "h6",
+                  "target": "t6"
+                }
+              ]
+            }
+          ],
+          "unresolvedFields": [],
+          "evidence": [
+            {
+              "path": "housingTypes[0]",
+              "page": 2,
+              "quote": "24 39.78 26.8873 9.5429 29.4862"
+            },
+            {
+              "path": "quotas[0].count",
+              "page": 2,
+              "quote": "105.6964 0 25"
+            },
+            {
+              "path": "cells[0]",
+              "page": 3,
+              "quote": "41,848,000 2,092,400 39,755,600 226,670"
+            },
+            {
+              "path": "cells[1]",
+              "page": 3,
+              "quote": "35,570,000 1,778,500 33,791,500 192,670"
+            },
+            {
+              "path": "cells[2]",
+              "page": 3,
+              "quote": "37,663,000 1,883,150 35,779,850"
+            },
+            {
+              "path": "cells[3]",
+              "page": 3,
+              "quote": "41,848,000 2,092,400 39,755,600 226,670"
+            },
+            {
+              "path": "cells[4]",
+              "page": 3,
+              "quote": "39,775,000 1,988,750 37,786,250 215,340"
+            },
+            {
+              "path": "housingTypes[1]",
+              "page": 2,
+              "quote": "40 16.80 10.8759 3.9364 11.2049"
+            },
+            {
+              "path": "quotas[1].count",
+              "page": 2,
+              "quote": "42.8172 12 30"
+            },
+            {
+              "path": "cells[5]",
+              "page": 3,
+              "quote": "15,878,000 793,900 15,084,100 86,000"
+            },
+            {
+              "path": "cells[6]",
+              "page": 3,
+              "quote": "15,878,000 793,900 15,084,100 86,000"
+            },
+            {
+              "path": "cells[7]",
+              "page": 3,
+              "quote": "16,812,000 840,600 15,971,400 91,060"
+            },
+            {
+              "path": "housingTypes[2]",
+              "page": 2,
+              "quote": "24 36.72 23.7716 8.6039 24.4907"
+            },
+            {
+              "path": "quotas[2].count",
+              "page": 2,
+              "quote": "93.5862 14 10"
+            },
+            {
+              "path": "cells[8]",
+              "page": 3,
+              "quote": "38,336,000 1,916,800 36,419,200 207,650"
+            },
+            {
+              "path": "cells[9]",
+              "page": 3,
+              "quote": "32,585,000 1,629,250 30,955,750 176,500"
+            },
+            {
+              "path": "cells[10]",
+              "page": 3,
+              "quote": "34,502,000 1,725,100 32,776,900 186,880"
+            },
+            {
+              "path": "cells[11]",
+              "page": 3,
+              "quote": "36,419,000 1,820,950 34,598,050 197,270"
+            },
+            {
+              "path": "cells[12]",
+              "page": 3,
+              "quote": "28,752,000 1,437,600 27,314,400 155,740"
+            },
+            {
+              "path": "housingTypes[3]",
+              "page": 3,
+              "quote": "76 16.80 7.0787 2.7993 11.5092"
+            },
+            {
+              "path": "quotas[3].count",
+              "page": 3,
+              "quote": "38.1872 9 50"
+            },
+            {
+              "path": "cells[13]",
+              "page": 4,
+              "quote": "15,935,000 796,750 15,138,250 86,310"
+            },
+            {
+              "path": "cells[14]",
+              "page": 4,
+              "quote": "15,935,000 796,750 15,138,250 86,310"
+            },
+            {
+              "path": "cells[15]",
+              "page": 4,
+              "quote": "16,873,000 843,650 16,029,350 91,390"
+            },
+            {
+              "path": "housingTypes[4]",
+              "page": 3,
+              "quote": "20 26.97 11.3639 4.4939 18.4764"
+            },
+            {
+              "path": "quotas[4].count",
+              "page": 3,
+              "quote": "61.3042 5 10"
+            },
+            {
+              "path": "cells[16]",
+              "page": 4,
+              "quote": "21,522,000 1,076,100 20,445,900 116,570"
+            },
+            {
+              "path": "cells[17]",
+              "page": 4,
+              "quote": "24,391,000 1,219,550 23,171,450 132,120"
+            },
+            {
+              "path": "cells[18]",
+              "page": 4,
+              "quote": "24,391,000 1,219,550 23,171,450 132,120"
+            },
+            {
+              "path": "cells[19]",
+              "page": 4,
+              "quote": "25,826,000 1,291,300 24,534,700 139,890"
+            },
+            {
+              "path": "housingTypes[5]",
+              "page": 3,
+              "quote": "12 26.97 11.3639 4.4939 18.4764"
+            },
+            {
+              "path": "quotas[5].count",
+              "page": 3,
+              "quote": "61.3042 2 10"
+            },
+            {
+              "path": "cells[20]",
+              "page": 4,
+              "quote": "27,261,000 1,363,050 25,897,950 147,660"
+            },
+            {
+              "path": "cells[21]",
+              "page": 4,
+              "quote": "21,522,000 1,076,100 20,445,900 116,570"
+            },
+            {
+              "path": "housingTypes[6]",
+              "page": 3,
+              "quote": "60 36.72 15.4721 6.1186 25.1559"
+            },
+            {
+              "path": "quotas[6].count",
+              "page": 3,
+              "quote": "83.4666 19 30"
+            },
+            {
+              "path": "cells[22]",
+              "page": 4,
+              "quote": "38,628,000 1,931,400 36,696,600 209,230"
+            },
+            {
+              "path": "cells[23]",
+              "page": 4,
+              "quote": "32,833,000 1,641,650 31,191,350 177,840"
+            },
+            {
+              "path": "cells[24]",
+              "page": 4,
+              "quote": "34,765,000 1,738,250 33,026,750 188,310"
+            },
+            {
+              "path": "cells[25]",
+              "page": 4,
+              "quote": "36,696,000 1,834,800 34,861,200 198,770"
+            },
+            {
+              "path": "cells[26]",
+              "page": 4,
+              "quote": "28,971,000 1,448,550 27,522,450 156,920"
+            },
+            {
+              "path": "quotas[0]",
+              "page": 2,
+              "quote": "24 39.78 26.8873 9.5429 29.4862"
+            },
+            {
+              "path": "quotas[1]",
+              "page": 2,
+              "quote": "40 16.80 10.8759 3.9364 11.2049"
+            },
+            {
+              "path": "quotas[2]",
+              "page": 2,
+              "quote": "24 36.72 23.7716 8.6039 24.4907"
+            },
+            {
+              "path": "quotas[3]",
+              "page": 3,
+              "quote": "76 16.80 7.0787 2.7993 11.5092"
+            },
+            {
+              "path": "quotas[4]",
+              "page": 3,
+              "quote": "20 26.97 11.3639 4.4939 18.4764"
+            },
+            {
+              "path": "quotas[5]",
+              "page": 3,
+              "quote": "12 26.97 11.3639 4.4939 18.4764"
+            },
+            {
+              "path": "quotas[6]",
+              "page": 3,
+              "quote": "60 36.72 15.4721 6.1186 25.1559"
+            },
+            {
+              "path": "leaseTerms[0]",
+              "page": 3,
+              "quote": "41,848,000 2,092,400 39,755,600 226,670"
+            },
+            {
+              "path": "leaseTerms[1]",
+              "page": 3,
+              "quote": "35,570,000 1,778,500 33,791,500 192,670"
+            },
+            {
+              "path": "leaseTerms[2]",
+              "page": 3,
+              "quote": "37,663,000 1,883,150 35,779,850"
+            },
+            {
+              "path": "leaseTerms[3]",
+              "page": 3,
+              "quote": "41,848,000 2,092,400 39,755,600 226,670"
+            },
+            {
+              "path": "leaseTerms[4]",
+              "page": 3,
+              "quote": "39,775,000 1,988,750 37,786,250 215,340"
+            },
+            {
+              "path": "leaseTerms[5]",
+              "page": 3,
+              "quote": "15,878,000 793,900 15,084,100 86,000"
+            },
+            {
+              "path": "leaseTerms[6]",
+              "page": 3,
+              "quote": "15,878,000 793,900 15,084,100 86,000"
+            },
+            {
+              "path": "leaseTerms[7]",
+              "page": 3,
+              "quote": "16,812,000 840,600 15,971,400 91,060"
+            },
+            {
+              "path": "leaseTerms[8]",
+              "page": 3,
+              "quote": "38,336,000 1,916,800 36,419,200 207,650"
+            },
+            {
+              "path": "leaseTerms[9]",
+              "page": 3,
+              "quote": "32,585,000 1,629,250 30,955,750 176,500"
+            },
+            {
+              "path": "leaseTerms[10]",
+              "page": 3,
+              "quote": "34,502,000 1,725,100 32,776,900 186,880"
+            },
+            {
+              "path": "leaseTerms[11]",
+              "page": 3,
+              "quote": "36,419,000 1,820,950 34,598,050 197,270"
+            },
+            {
+              "path": "leaseTerms[12]",
+              "page": 3,
+              "quote": "28,752,000 1,437,600 27,314,400 155,740"
+            },
+            {
+              "path": "leaseTerms[13]",
+              "page": 4,
+              "quote": "15,935,000 796,750 15,138,250 86,310"
+            },
+            {
+              "path": "leaseTerms[14]",
+              "page": 4,
+              "quote": "15,935,000 796,750 15,138,250 86,310"
+            },
+            {
+              "path": "leaseTerms[15]",
+              "page": 4,
+              "quote": "16,873,000 843,650 16,029,350 91,390"
+            },
+            {
+              "path": "leaseTerms[16]",
+              "page": 4,
+              "quote": "21,522,000 1,076,100 20,445,900 116,570"
+            },
+            {
+              "path": "leaseTerms[17]",
+              "page": 4,
+              "quote": "24,391,000 1,219,550 23,171,450 132,120"
+            },
+            {
+              "path": "leaseTerms[18]",
+              "page": 4,
+              "quote": "24,391,000 1,219,550 23,171,450 132,120"
+            },
+            {
+              "path": "leaseTerms[19]",
+              "page": 4,
+              "quote": "25,826,000 1,291,300 24,534,700 139,890"
+            },
+            {
+              "path": "leaseTerms[20]",
+              "page": 4,
+              "quote": "27,261,000 1,363,050 25,897,950 147,660"
+            },
+            {
+              "path": "leaseTerms[21]",
+              "page": 4,
+              "quote": "21,522,000 1,076,100 20,445,900 116,570"
+            },
+            {
+              "path": "leaseTerms[22]",
+              "page": 4,
+              "quote": "38,628,000 1,931,400 36,696,600 209,230"
+            },
+            {
+              "path": "leaseTerms[23]",
+              "page": 4,
+              "quote": "32,833,000 1,641,650 31,191,350 177,840"
+            },
+            {
+              "path": "leaseTerms[24]",
+              "page": 4,
+              "quote": "34,765,000 1,738,250 33,026,750 188,310"
+            },
+            {
+              "path": "leaseTerms[25]",
+              "page": 4,
+              "quote": "36,696,000 1,834,800 34,861,200 198,770"
+            },
+            {
+              "path": "leaseTerms[26]",
+              "page": 4,
+              "quote": "28,971,000 1,448,550 27,522,450 156,920"
+            }
+          ]
+        }
       },
-      "sharedCounts": [],
       "notApplicable": [
         {
           "path": "receptionPlace.address",
           "reason": "주된 접수방법은 인터넷·모바일이며 온라인 접수처에는 현장 주소가 해당하지 않음. 별도 현장 대행접수 장소는 LH 광주북부권주거복지지사임."
-        },
-        {
-          "path": "supplyRows[0].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 공가 발생에 따라 계약 및 입주하며 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[1].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[2].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[3].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[4].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[5].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[6].expectedMoveInMonth",
-          "reason": "기존 주택 예비입주자 모집으로 입주예정월을 지정하지 않음"
-        },
-        {
-          "path": "supplyRows[*].targets[*].supplyHouseholdCount",
-          "reason": "공급 표에는 주택형별 모집할 예비자수만 있고 공급대상별 모집수를 별도로 구분하지 않음. 주택형 내 공급대상을 통합하여 선정함."
-        },
-        {
-          "path": "supplyRows[*].targets[*].reserveCount",
-          "reason": "공급대상별 예비자 모집수는 별도로 제시하지 않으며 주택형별 총 모집 예비자수만 안내함"
-        },
-        {
-          "path": "supplyRows[*].targets[*].supplyRank",
-          "reason": "대학생·청년·신혼부부·한부모가족은 신청자의 거주지·대학 소재지·소득 근거지에 따른 순위 후 추첨하며 청년 창업인·고령자·주거급여수급자는 추첨으로 선정함. 공급대상별 단일 고정 순위는 없음."
         }
       ],
       "evidence": [
@@ -772,211 +1492,6 @@
           "path": "receptionPlace.url",
           "page": 14,
           "quote": "https://apply.lh.or.kr"
-        },
-        {
-          "path": "supplyRows[0]",
-          "page": 2,
-          "quote": "24 39.78 26.8873 9.5429 29.4862"
-        },
-        {
-          "path": "supplyRows[0].totalSupplyHouseholdCount",
-          "page": 2,
-          "quote": "105.6964 0 25"
-        },
-        {
-          "path": "supplyRows[0].targets[0]",
-          "page": 3,
-          "quote": "41,848,000 2,092,400 39,755,600 226,670"
-        },
-        {
-          "path": "supplyRows[0].targets[1]",
-          "page": 3,
-          "quote": "35,570,000 1,778,500 33,791,500 192,670"
-        },
-        {
-          "path": "supplyRows[0].targets[2]",
-          "page": 3,
-          "quote": "37,663,000 1,883,150 35,779,850"
-        },
-        {
-          "path": "supplyRows[0].targets[3]",
-          "page": 3,
-          "quote": "41,848,000 2,092,400 39,755,600 226,670"
-        },
-        {
-          "path": "supplyRows[0].targets[4]",
-          "page": 3,
-          "quote": "39,775,000 1,988,750 37,786,250 215,340"
-        },
-        {
-          "path": "supplyRows[1]",
-          "page": 2,
-          "quote": "40 16.80 10.8759 3.9364 11.2049"
-        },
-        {
-          "path": "supplyRows[1].totalSupplyHouseholdCount",
-          "page": 2,
-          "quote": "42.8172 12 30"
-        },
-        {
-          "path": "supplyRows[1].targets[0]",
-          "page": 3,
-          "quote": "15,878,000 793,900 15,084,100 86,000"
-        },
-        {
-          "path": "supplyRows[1].targets[1]",
-          "page": 3,
-          "quote": "15,878,000 793,900 15,084,100 86,000"
-        },
-        {
-          "path": "supplyRows[1].targets[2]",
-          "page": 3,
-          "quote": "16,812,000 840,600 15,971,400 91,060"
-        },
-        {
-          "path": "supplyRows[2]",
-          "page": 2,
-          "quote": "24 36.72 23.7716 8.6039 24.4907"
-        },
-        {
-          "path": "supplyRows[2].totalSupplyHouseholdCount",
-          "page": 2,
-          "quote": "93.5862 14 10"
-        },
-        {
-          "path": "supplyRows[2].targets[0]",
-          "page": 3,
-          "quote": "38,336,000 1,916,800 36,419,200 207,650"
-        },
-        {
-          "path": "supplyRows[2].targets[1]",
-          "page": 3,
-          "quote": "32,585,000 1,629,250 30,955,750 176,500"
-        },
-        {
-          "path": "supplyRows[2].targets[2]",
-          "page": 3,
-          "quote": "34,502,000 1,725,100 32,776,900 186,880"
-        },
-        {
-          "path": "supplyRows[2].targets[3]",
-          "page": 3,
-          "quote": "36,419,000 1,820,950 34,598,050 197,270"
-        },
-        {
-          "path": "supplyRows[2].targets[4]",
-          "page": 3,
-          "quote": "28,752,000 1,437,600 27,314,400 155,740"
-        },
-        {
-          "path": "supplyRows[3]",
-          "page": 3,
-          "quote": "76 16.80 7.0787 2.7993 11.5092"
-        },
-        {
-          "path": "supplyRows[3].totalSupplyHouseholdCount",
-          "page": 3,
-          "quote": "38.1872 9 50"
-        },
-        {
-          "path": "supplyRows[3].targets[0]",
-          "page": 4,
-          "quote": "15,935,000 796,750 15,138,250 86,310"
-        },
-        {
-          "path": "supplyRows[3].targets[1]",
-          "page": 4,
-          "quote": "15,935,000 796,750 15,138,250 86,310"
-        },
-        {
-          "path": "supplyRows[3].targets[2]",
-          "page": 4,
-          "quote": "16,873,000 843,650 16,029,350 91,390"
-        },
-        {
-          "path": "supplyRows[4]",
-          "page": 3,
-          "quote": "20 26.97 11.3639 4.4939 18.4764"
-        },
-        {
-          "path": "supplyRows[4].totalSupplyHouseholdCount",
-          "page": 3,
-          "quote": "61.3042 5 10"
-        },
-        {
-          "path": "supplyRows[4].targets[0]",
-          "page": 4,
-          "quote": "21,522,000 1,076,100 20,445,900 116,570"
-        },
-        {
-          "path": "supplyRows[4].targets[1]",
-          "page": 4,
-          "quote": "24,391,000 1,219,550 23,171,450 132,120"
-        },
-        {
-          "path": "supplyRows[4].targets[2]",
-          "page": 4,
-          "quote": "24,391,000 1,219,550 23,171,450 132,120"
-        },
-        {
-          "path": "supplyRows[4].targets[3]",
-          "page": 4,
-          "quote": "25,826,000 1,291,300 24,534,700 139,890"
-        },
-        {
-          "path": "supplyRows[5]",
-          "page": 3,
-          "quote": "12 26.97 11.3639 4.4939 18.4764"
-        },
-        {
-          "path": "supplyRows[5].totalSupplyHouseholdCount",
-          "page": 3,
-          "quote": "61.3042 2 10"
-        },
-        {
-          "path": "supplyRows[5].targets[0]",
-          "page": 4,
-          "quote": "27,261,000 1,363,050 25,897,950 147,660"
-        },
-        {
-          "path": "supplyRows[5].targets[1]",
-          "page": 4,
-          "quote": "21,522,000 1,076,100 20,445,900 116,570"
-        },
-        {
-          "path": "supplyRows[6]",
-          "page": 3,
-          "quote": "60 36.72 15.4721 6.1186 25.1559"
-        },
-        {
-          "path": "supplyRows[6].totalSupplyHouseholdCount",
-          "page": 3,
-          "quote": "83.4666 19 30"
-        },
-        {
-          "path": "supplyRows[6].targets[0]",
-          "page": 4,
-          "quote": "38,628,000 1,931,400 36,696,600 209,230"
-        },
-        {
-          "path": "supplyRows[6].targets[1]",
-          "page": 4,
-          "quote": "32,833,000 1,641,650 31,191,350 177,840"
-        },
-        {
-          "path": "supplyRows[6].targets[2]",
-          "page": 4,
-          "quote": "34,765,000 1,738,250 33,026,750 188,310"
-        },
-        {
-          "path": "supplyRows[6].targets[3]",
-          "page": 4,
-          "quote": "36,696,000 1,834,800 34,861,200 198,770"
-        },
-        {
-          "path": "supplyRows[6].targets[4]",
-          "page": 4,
-          "quote": "28,971,000 1,448,550 27,522,450 156,920"
         },
         {
           "path": "schedules[0]",
@@ -1327,39 +1842,6 @@
           "contact": "1600-1004",
           "url": null
         },
-        "supplyRows": [
-          {
-            "complexReference": {
-              "sourceComplexName": "공주옥룡1"
-            },
-            "sourceHousingTypeName": "26",
-            "expectedMoveInMonth": null,
-            "totalSupplyHouseholdCount": 70,
-            "exclusiveArea": 26.37,
-            "supplyArea": null,
-            "constructedHouseholdCount": 443,
-            "targets": [
-              {
-                "target": "가군 (생계·의료급여수급자 등)",
-                "supplyRank": 1,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 2520000,
-                "monthlyRent": 49180,
-                "convertedDeposit": null
-              },
-              {
-                "target": "나군 (일반 등)",
-                "supplyRank": 1,
-                "supplyHouseholdCount": null,
-                "reserveCount": null,
-                "rentalDeposit": 3420000,
-                "monthlyRent": 76090,
-                "convertedDeposit": null
-              }
-            ]
-          }
-        ],
         "schedules": [
           {
             "scheduleType": "APPLICATION",
@@ -1380,14 +1862,159 @@
             "endAt": null
           }
         ],
-        "unresolvedFields": [
-          {
-            "path": "supplyRows[0].supplyArea",
-            "reason": "동일한 26㎡ 주택형에 대해 101동은 주거전용 26.37㎡와 주거공용 13.47㎡의 합계 39.84㎡, 103동은 주거전용 26.37㎡와 주거공용 13.50㎡의 합계 39.87㎡로 기재되어 있어 단일 공급면적을 확정할 수 없음"
-          }
-        ]
+        "unresolvedFields": [],
+        "supplySheet": {
+          "housingTypes": [
+            {
+              "key": "h0",
+              "complexName": "공주옥룡1",
+              "name": "26",
+              "exclusiveArea": 26.37,
+              "commonArea": null,
+              "supplyArea": null,
+              "constructedHouseholdCount": 443,
+              "expectedMoveInMonth": null,
+              "sourceRow": null,
+              "houseTypes": []
+            }
+          ],
+          "targets": [
+            {
+              "key": "t0",
+              "label": "가군 (생계·의료급여수급자 등)",
+              "applicationCondition": null
+            },
+            {
+              "key": "t1",
+              "label": "나군 (일반 등)",
+              "applicationCondition": null
+            }
+          ],
+          "cells": [
+            {
+              "housingType": "h0",
+              "target": "t0"
+            },
+            {
+              "housingType": "h0",
+              "target": "t1"
+            }
+          ],
+          "quotas": [
+            {
+              "kind": "WINNER",
+              "count": 70,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t0"
+                },
+                {
+                  "housingType": "h0",
+                  "target": "t1"
+                }
+              ]
+            }
+          ],
+          "leaseTerms": [
+            {
+              "rentalDeposit": 2520000,
+              "monthlyRent": 49180,
+              "convertedDeposit": null,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t0"
+                }
+              ]
+            },
+            {
+              "rentalDeposit": 3420000,
+              "monthlyRent": 76090,
+              "convertedDeposit": null,
+              "members": [
+                {
+                  "housingType": "h0",
+                  "target": "t1"
+                }
+              ]
+            }
+          ],
+          "unresolvedFields": [
+            {
+              "path": "housingTypes[0].supplyArea",
+              "reason": "동일한 26㎡ 주택형에 대해 101동은 주거전용 26.37㎡와 주거공용 13.47㎡의 합계 39.84㎡, 103동은 주거전용 26.37㎡와 주거공용 13.50㎡의 합계 39.87㎡로 기재되어 있어 단일 공급면적을 확정할 수 없음"
+            }
+          ],
+          "evidence": [
+            {
+              "path": "housingTypes[0]",
+              "page": 1,
+              "quote": "26 443 26.37 13.47 39.84 20"
+            },
+            {
+              "path": "quotas[0].count",
+              "page": 1,
+              "quote": "70"
+            },
+            {
+              "path": "housingTypes[0].exclusiveArea",
+              "page": 1,
+              "quote": "26.37"
+            },
+            {
+              "path": "housingTypes[0].constructedHouseholdCount",
+              "page": 1,
+              "quote": "26 443"
+            },
+            {
+              "path": "cells[0]",
+              "page": 2,
+              "quote": "26 2,520,000 126,000 2,394,000 49,180"
+            },
+            {
+              "path": "cells[0]",
+              "page": 8,
+              "quote": "금회모집은 1순위에 한합니다."
+            },
+            {
+              "path": "targets[0].applicationCondition",
+              "page": 2,
+              "quote": "가군 해당자 이외의 영구임대 입주 가능한 자"
+            },
+            {
+              "path": "cells[1]",
+              "page": 2,
+              "quote": "3,420,000 171,000 3,249,000 76,090"
+            },
+            {
+              "path": "cells[1]",
+              "page": 8,
+              "quote": "금회모집은 1순위에 한합니다."
+            },
+            {
+              "path": "targets[1].applicationCondition",
+              "page": 2,
+              "quote": "가군 해당자 이외의 영구임대 입주 가능한 자"
+            },
+            {
+              "path": "quotas[0]",
+              "page": 1,
+              "quote": "26 443 26.37 13.47 39.84 20"
+            },
+            {
+              "path": "leaseTerms[0]",
+              "page": 2,
+              "quote": "26 2,520,000 126,000 2,394,000 49,180"
+            },
+            {
+              "path": "leaseTerms[1]",
+              "page": 2,
+              "quote": "3,420,000 171,000 3,249,000 76,090"
+            }
+          ]
+        }
       },
-      "sharedCounts": [],
       "notApplicable": [
         {
           "path": "receptionPlace.address",
@@ -1396,34 +2023,6 @@
         {
           "path": "receptionPlace.url",
           "reason": "인터넷 신청이 불가능하고 현장접수만 가능하므로 온라인 접수 URL이 없음"
-        },
-        {
-          "path": "supplyRows[0].expectedMoveInMonth",
-          "reason": "기존 영구임대주택 예비입주자 모집으로 공가 발생 시 순번에 따라 계약하며 입주예정월을 안내하지 않음"
-        },
-        {
-          "path": "supplyRows[0].targets[0].supplyHouseholdCount",
-          "reason": "가군과 나군의 대상별 모집호수를 구분하지 않고 26㎡ 주택형 전체 예비입주자 70명을 모집함"
-        },
-        {
-          "path": "supplyRows[0].targets[1].supplyHouseholdCount",
-          "reason": "가군과 나군의 대상별 모집호수를 구분하지 않고 26㎡ 주택형 전체 예비입주자 70명을 모집함"
-        },
-        {
-          "path": "supplyRows[0].targets[0].reserveCount",
-          "reason": "대상별 예비입주자 모집수를 별도로 구분하지 않으며 주택형 전체 모집 예비자수 70명만 안내함"
-        },
-        {
-          "path": "supplyRows[0].targets[1].reserveCount",
-          "reason": "대상별 예비입주자 모집수를 별도로 구분하지 않으며 주택형 전체 모집 예비자수 70명만 안내함"
-        },
-        {
-          "path": "supplyRows[0].targets[0].convertedDeposit",
-          "reason": "전환가능 보증금 증액 한도액을 안내하지 않음"
-        },
-        {
-          "path": "supplyRows[0].targets[1].convertedDeposit",
-          "reason": "전환가능 보증금 증액 한도액을 안내하지 않음"
         },
         {
           "path": "schedules[2].startAt",
@@ -1474,56 +2073,6 @@
           "path": "receptionPlace.contact",
           "page": 25,
           "quote": "콜센터 1600-1004"
-        },
-        {
-          "path": "supplyRows[0]",
-          "page": 1,
-          "quote": "26 443 26.37 13.47 39.84 20"
-        },
-        {
-          "path": "supplyRows[0].totalSupplyHouseholdCount",
-          "page": 1,
-          "quote": "70"
-        },
-        {
-          "path": "supplyRows[0].exclusiveArea",
-          "page": 1,
-          "quote": "26.37"
-        },
-        {
-          "path": "supplyRows[0].constructedHouseholdCount",
-          "page": 1,
-          "quote": "26 443"
-        },
-        {
-          "path": "supplyRows[0].targets[0]",
-          "page": 2,
-          "quote": "26 2,520,000 126,000 2,394,000 49,180"
-        },
-        {
-          "path": "supplyRows[0].targets[0].supplyRank",
-          "page": 8,
-          "quote": "금회모집은 1순위에 한합니다."
-        },
-        {
-          "path": "supplyRows[0].targets[0].applicationCondition",
-          "page": 2,
-          "quote": "가군 해당자 이외의 영구임대 입주 가능한 자"
-        },
-        {
-          "path": "supplyRows[0].targets[1]",
-          "page": 2,
-          "quote": "3,420,000 171,000 3,249,000 76,090"
-        },
-        {
-          "path": "supplyRows[0].targets[1].supplyRank",
-          "page": 8,
-          "quote": "금회모집은 1순위에 한합니다."
-        },
-        {
-          "path": "supplyRows[0].targets[1].applicationCondition",
-          "page": 2,
-          "quote": "가군 해당자 이외의 영구임대 입주 가능한 자"
         },
         {
           "path": "schedules[0]",
