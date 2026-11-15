@@ -143,7 +143,7 @@ class SupplySheetDraftTest {
     }
 
     private static Target target(String key, String label, String condition) {
-        return new Target(key, label, condition, 0, false);
+        return new Target(key, label, condition, List.of(), 0, false);
     }
 
     private static LeaseTerms.Amounts amounts(String deposit) {

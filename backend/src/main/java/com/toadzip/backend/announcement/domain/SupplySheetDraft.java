@@ -190,14 +190,15 @@ public final class SupplySheetDraft {
         }
     }
 
-    /** 공급대상 하나. 신청 조건이 없으면 빈 문자열이다. */
-    public record Target(String key, String label, String applicationCondition, int displayOrder,
-            boolean adminModified) {
+    /** 공급대상 하나. 신청 조건이 없으면 빈 문자열이다. 분류는 상수 순서로 두고 같은 분류를 두 번 받지 않는다. */
+    public record Target(String key, String label, String applicationCondition, List<SupplyTargetGroup> groups,
+            int displayOrder, boolean adminModified) {
 
         public Target {
             key = requiredKey(key, "공급대상");
             label = text(label, "공급대상 표기");
             applicationCondition = condition(applicationCondition);
+            groups = SupplyTargetGroup.distinct(groups);
             displayOrder = order(displayOrder);
         }
 

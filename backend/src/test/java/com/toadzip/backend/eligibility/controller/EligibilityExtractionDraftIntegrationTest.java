@@ -131,6 +131,48 @@ class EligibilityExtractionDraftIntegrationTest extends EligibilityIntegrationSu
     }
 
     @Test
+    void 이름이_맞지_않는_공급대상은_저장된_분류로_경로를_잇고_주거약자용_경로는_주거약자용_대상에만_잇는다() throws Exception {
+        // 울산다운2 A-3블록: 공급표 표기 '신혼부부 예비신혼부부 한부모가족'은 경로 이름·소속 대상과 맞지 않고 워커가 대상 키도 비웠다.
+        long announcement = notice(true);
+        jdbc.update("""
+                UPDATE announcement_supply_targets
+                SET label = '신혼부부 예비신혼부부 한부모가족', target_groups = '["NEWLYWED", "PRE_NEWLYWED", "SINGLE_PARENT"]'
+                WHERE announcement_id = ? AND display_order = 0
+                """, announcement);
+        Long vulnerable = jdbc.queryForObject("""
+                INSERT INTO supply_rows (announcement_id, announcement_complex_id, display_order, housing_type_name,
+                    supply_category, exclusive_area)
+                SELECT ?, id, 1, '21AS', 'NEW_SUPPLY', 21.00 FROM announcement_complexes WHERE announcement_id = ?
+                RETURNING id
+                """, Long.class, announcement, announcement);
+        cell(announcement, vulnerable, "신혼부부 예비신혼부부 한부모가족(주거약자용)", 2, 3);
+        jdbc.update("""
+                UPDATE announcement_supply_targets
+                SET target_groups = '["NEWLYWED", "PRE_NEWLYWED", "SINGLE_PARENT", "HOUSING_VULNERABLE"]'
+                WHERE announcement_id = ? AND display_order = 2
+                """, announcement);
+        List<Map<String, Object>> routes = new ArrayList<>();
+        for (List<String> route : List.of(List.of("신혼부부", "NEWLYWED"), List.of("주거약자용 신혼부부", "NEWLYWED",
+                "HOUSING_VULNERABLE"))) {
+            routes.add(Map.of("target", route.getFirst(), "supplyTarget", "신혼부부·한부모가족", "supplyTargets", List.of(),
+                    "groups", route.subList(1, route.size()),
+                    "requirements", List.of(Map.of("kind", "OTHER", "asWritten", "입주 전까지 청약통장 가입")),
+                    "qualifications", List.of(), "summary", route.getFirst()));
+        }
+        replaceExtraction(announcement, Map.of("targets", routes), List.of());
+        long general = jdbc.queryForObject("SELECT id FROM supply_rows WHERE announcement_id = ? AND display_order = 0",
+                Long.class, announcement);
+
+        JsonNode created = response(fromExtraction(announcement, SHA, null, 0).andExpect(status().isOk()));
+
+        JsonNode content = created.path("ruleSet").path("content");
+        assertThat(texts(content.path("paths"), "label")).containsExactly("신혼부부", "주거약자용 신혼부부");
+        assertThat(texts(content.path("options"), "pathId")).containsExactly("path-1", "path-2");
+        assertThat(texts(content.path("options"), "supplyUnitId")).containsExactly("unit-" + general, "unit-" + vulnerable);
+        assertThat(texts(created.path("notices"))).noneMatch(notice -> notice.contains("잇지 못한"));
+    }
+
+    @Test
     void 같은_표기라도_신청_조건이_다른_대상은_처음_만들_때와_다시_만들_때_모두_각기_다른_경로에_잇는다() throws Exception {
         long announcement = notice(true);
         jdbc.update("UPDATE announcement_supply_targets SET application_condition = '소득 있음'"

@@ -6,6 +6,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementNameClassification;
 import com.toadzip.backend.announcement.domain.AnnouncementSupplyTarget;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetInput;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
@@ -120,10 +121,11 @@ class SupplySheetPlanner {
                 .map(SupplySheetView.HousingType::id).collect(Collectors.toSet());
     }
 
-    /** 주택형 칸마다 공급대상 표기·신청 조건과 그 칸이 든 수량 묶음·임대조건. 목록 순서와 무관하다. */
+    /** 주택형 칸마다 공급대상 표기·신청 조건·분류와 그 칸이 든 수량 묶음·임대조건. 목록 순서와 무관하다. */
     private static List<String> cellContent(SupplySheetView sheet, String housingTypeKey) {
         Map<String, String> targets = new HashMap<>();
-        sheet.targets().forEach(target -> targets.put(target.key(), target.label() + "\u0000" + target.applicationCondition()));
+        sheet.targets().forEach(target -> targets.put(target.key(), target.label() + "\u0000" + target.applicationCondition()
+                + "\u0000" + target.groups()));
         return sheet.cells().stream().filter(cell -> cell.housingType().equals(housingTypeKey)).map(cell -> String.join("\u0001",
                 cell.key(), targets.get(cell.target()),
                 sheet.quotas().stream().filter(quota -> quota.members().contains(cell.key()))
@@ -269,18 +271,22 @@ class SupplySheetPlanner {
         return core.isEmpty() ? first : core;
     }
 
-    /** 칸이 있는 공급대상만 둔다. 저장된 공급대상은 (표기, 신청 조건)으로 찾는다. */
+    /**
+     * 칸이 있는 공급대상만 둔다. 저장된 공급대상은 (표기, 신청 조건)으로 찾고, 순서나 분류가 바뀌면 관리자가 고친 대상이다. 분류가 빠진
+     * 요청은 같은 대상(없으면 같은 ID로 이름을 고친 대상)의 저장된 분류를 쓴다.
+     */
     private Map<String, SupplySheetView.Target> targets(long announcementId, SupplySheetView before,
             SupplySheetInput input, SupplySheetProtection protection, Map<String, Boolean> flags) {
         var stored = before.targets().stream().collect(Collectors.toMap(
                 target -> AnnouncementSupplyTarget.key(target.label(), target.applicationCondition()), Function.identity()));
-        Set<Long> storedIds = before.targets().stream().map(SupplySheetView.Target::id).collect(Collectors.toSet());
+        Map<Long, SupplySheetView.Target> storedById = before.targets().stream()
+                .collect(Collectors.toMap(SupplySheetView.Target::id, Function.identity()));
         var storedFlags = sheetViews.targetAdminModified(announcementId);
         Set<String> used = input.cells().stream().map(SupplySheetInput.Cell::target).collect(Collectors.toSet());
         Set<String> seen = new HashSet<>();
         Map<String, SupplySheetView.Target> result = new LinkedHashMap<>();
         for (var target : input.targets()) {
-            if (target.id() != null && !storedIds.contains(target.id())) {
+            if (target.id() != null && !storedById.containsKey(target.id())) {
                 throw new IllegalArgumentException(target.label().strip() + ": 이 공고에 없는 공급대상입니다. 최신 공급정보를 다시 불러오세요.");
             }
             if (!used.contains(target.key())) { continue; }
@@ -291,12 +297,15 @@ class SupplySheetPlanner {
                 throw new IllegalArgumentException(label + ": 같은 공급대상(표기, 신청 조건)이 두 번 있습니다.");
             }
             var match = stored.get(naturalKey);
+            var previous = match != null ? match : storedById.get(target.id());
+            List<SupplyTargetGroup> groups = target.groups() != null ? SupplyTargetGroup.distinct(target.groups())
+                    : previous != null ? previous.groups() : List.of();
             String key = match != null ? match.key() : target.key();
             flags.put(key, protection.adminModified(match != null,
                     match != null && storedFlags.getOrDefault(match.id(), false),
-                    match != null && match.displayOrder() == target.displayOrder()));
+                    match != null && match.displayOrder() == target.displayOrder() && match.groups().equals(groups)));
             result.put(target.key(), new SupplySheetView.Target(key, match == null ? null : match.id(), label, condition,
-                    target.displayOrder()));
+                    groups, target.displayOrder()));
         }
         return result;
     }

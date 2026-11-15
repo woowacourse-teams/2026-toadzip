@@ -216,7 +216,7 @@ class SupplySheetReadTest {
     }
 
     private static Target sheetTarget(String key, String label, int order) {
-        return new Target(key, label, null, order, false);
+        return new Target(key, label, null, List.of(), order, false);
     }
 
     private Announcement announcement() {

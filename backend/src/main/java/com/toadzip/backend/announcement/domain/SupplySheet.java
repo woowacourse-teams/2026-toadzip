@@ -70,8 +70,9 @@ public final class SupplySheet {
                 .toList();
         return new SupplySheet(visible,
                 cells.stream().map(cell -> new Cell(cell.getId(), cell.getSupplyRow().getId(),
-                        cell.getTarget().getLabel(), cell.getTarget().getApplicationCondition(), cell.getDisplayOrder(),
-                        cell.getTarget().getDisplayOrder())).toList(),
+                        cell.getTarget().getLabel(), cell.getTarget().getApplicationCondition(),
+                        cell.getTarget().getTargetGroups(), cell.getDisplayOrder(), cell.getTarget().getDisplayOrder()))
+                        .toList(),
                 quotas.stream().map(quota -> new Quota(quota.getId(), quota.getKind(), quota.getHouseholdCount(),
                         quota.getMembers().stream().map(SupplyRowTarget::getId).collect(Collectors.toSet()))).toList(),
                 leases.stream().map(lease -> new Lease(lease.amounts(),
@@ -92,7 +93,7 @@ public final class SupplySheet {
             cellIds.put(cell.key(), id);
             SupplySheetDraft.Target target = targets.get(cell.targetKey());
             cells.add(new Cell(id, rows.get(cell.housingTypeKey()).id(), target.label(), target.applicationCondition(),
-                    cell.displayOrder(), target.displayOrder()));
+                    target.groups(), cell.displayOrder(), target.displayOrder()));
         }
         List<Quota> quotas = new ArrayList<>();
         for (SupplySheetDraft.Quota quota : draft.quotas()) {
@@ -212,9 +213,13 @@ public final class SupplySheet {
             SupplyCategory supplyCategory, BigDecimal exclusiveArea, BigDecimal supplyArea, boolean adminModified) {
     }
 
-    /** 공급표 칸: 이 공급행의 이 공급대상. */
-    public record Cell(long id, long rowId, String label, String applicationCondition, int displayOrder,
-            int targetOrder) {
+    /** 공급표 칸: 이 공급행의 이 공급대상. groups는 공급대상 분류다(기관 준비 데이터는 분류가 없다). */
+    public record Cell(long id, long rowId, String label, String applicationCondition, List<SupplyTargetGroup> groups,
+            int displayOrder, int targetOrder) {
+
+        public Cell {
+            groups = List.copyOf(groups);
+        }
 
         public boolean everyone() {
             return AnnouncementSupplyTarget.EVERYONE.equals(label);

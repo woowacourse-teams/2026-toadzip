@@ -1,5 +1,6 @@
 package com.toadzip.backend.eligibility.domain;
 
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,13 +29,21 @@ public record ExtractedEligibility(
 
     /**
      * 신청 자격 경로. supplyTargets는 워커가 맞춘 공급표 대상 이름 원문이다. supplyTargetKeys는 워커가 이은 공급표 대상 키를 같은 추출의
-     * 공급표(data.supplySheet.targets)에서 찾은 (표기, 신청 조건)이다. 키가 있으면 공급대상은 이 키로만 잇는다.
+     * 공급표(data.supplySheet.targets)에서 찾은 (표기, 신청 조건)이다. 키가 있으면 공급대상은 이 키로만 잇는다. groups는 워커가 경로
+     * 이름(없으면 소속 대상)에서 읽은 공급대상 분류로, 키도 이름도 공급대상에 맞지 않을 때 쓴다.
      */
     public record Route(String name, List<String> supplyTargets, List<EligibilityContent.SupplyTarget> supplyTargetKeys,
-            Group group) {
+            List<SupplyTargetGroup> groups, Group group) {
         public Route {
             supplyTargets = EligibilityContent.immutable(supplyTargets);
             supplyTargetKeys = EligibilityContent.immutable(supplyTargetKeys);
+            groups = EligibilityContent.immutable(groups);
+        }
+
+        /** 분류가 없는 경로(분류를 읽기 전 워커의 추출). */
+        public Route(String name, List<String> supplyTargets, List<EligibilityContent.SupplyTarget> supplyTargetKeys,
+                Group group) {
+            this(name, supplyTargets, supplyTargetKeys, List.of(), group);
         }
 
         /** 공급표 대상 키가 없는 경로(이전 워커의 추출, 워커가 대상 이름을 맞추지 못한 경로). */

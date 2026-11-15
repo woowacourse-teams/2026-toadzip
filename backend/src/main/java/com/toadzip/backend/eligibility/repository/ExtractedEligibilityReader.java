@@ -1,5 +1,6 @@
 package com.toadzip.backend.eligibility.repository;
 
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyTarget;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Adjustment;
@@ -54,6 +55,7 @@ public class ExtractedEligibilityReader {
             routes.add(new Route(text(target, "target"), supplyTargets(target),
                     texts(target.path("supplyTargetKeys")).stream().map(sheetTargets::get).filter(Objects::nonNull)
                             .distinct().toList(),
+                    SupplyTargetGroup.known(texts(target.path("groups"))),
                     group(target, "eligibility.targets[" + index + "]")));
         }
         List<Exclusion> exclusions = new ArrayList<>();

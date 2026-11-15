@@ -43,7 +43,7 @@ public record SupplySheetPlan(SupplySheetView before, SupplySheetView after, Map
                         type.complexName(), type.name(), type.exclusiveArea(), type.supplyArea(), type.expectedMoveInMonth(),
                         type.supplyPnu(), type.category(), type.displayOrder())).toList(),
                 after.targets().stream().map(target -> new SupplySheetDraft.Target(target.key(), target.label(),
-                        target.applicationCondition(), target.displayOrder(),
+                        target.applicationCondition(), target.groups(), target.displayOrder(),
                         targetAdminModified.getOrDefault(target.key(), false))).toList(),
                 after.cells().stream().map(cell -> new SupplySheetDraft.Cell(cell.key(), cell.housingType(), cell.target(),
                         cell.displayOrder())).toList(),

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
+import com.toadzip.backend.announcement.domain.AnnouncementSupplyTarget;
 import com.toadzip.backend.announcement.domain.LeaseTerms;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota.Kind;
@@ -16,6 +17,7 @@ import com.toadzip.backend.announcement.domain.SupplySheetDraft.HousingTypeRow;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Lease;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Quota;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Target;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
 import com.toadzip.backend.announcement.dto.response.SupplyRowResponse;
 import com.toadzip.backend.announcement.dto.response.SupplyTargetResponse;
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 class SupplySheetStoreIntegrationTest {
 
     @Autowired private SupplySheetStore store;
+    @Autowired private SupplySheetViewQueryRepository views;
     @Autowired private AnnouncementQueryService queries;
     @Autowired private EntityManager entities;
     @Autowired private JdbcTemplate jdbc;
@@ -98,6 +101,27 @@ class SupplySheetStoreIntegrationTest {
         assertThat(second.targets()).isEqualTo(first.targets());
         assertThat(second.cells()).isEqualTo(first.cells());
         assertThat(quotas()).containsExactlyInAnyOrder("WINNER:103:c1,c3", "RESERVE:20:c1,c2", "WINNER:5:c5");
+    }
+
+    @Test
+    void 대상_분류를_바꿔_다시_쓰면_대상_ID를_지키고_분류만_고친다() {
+        SupplySheetStore.Saved first = replace(sheet());
+        long youthId = first.targets().get("t1");
+
+        SupplySheetStore.Saved second = replace(SupplySheetDraft.of(List.of(type55A()),
+                List.of(new Target("t1", "청년", null, List.of(SupplyTargetGroup.UNIVERSITY_STUDENT,
+                        SupplyTargetGroup.YOUTH), 0, true)),
+                List.of(new Cell("c1", "h1", "t1", 0)), List.of(), List.of()));
+        entities.clear();
+
+        assertThat(second.targets().get("t1")).isEqualTo(youthId);
+        assertThat(jdbc.queryForObject("SELECT target_groups::text FROM announcement_supply_targets WHERE id = ?",
+                String.class, youthId)).isEqualTo("[\"YOUTH\", \"UNIVERSITY_STUDENT\"]");
+        // 공개 읽기(JPA)와 관리자 공급표 보기(JDBC)가 같은 분류를 읽는다.
+        assertThat(entities.find(AnnouncementSupplyTarget.class, youthId).getTargetGroups())
+                .containsExactly(SupplyTargetGroup.YOUTH, SupplyTargetGroup.UNIVERSITY_STUDENT);
+        assertThat(views.read(announcement.getId()).targets()).singleElement().satisfies(target ->
+                assertThat(target.groups()).containsExactly(SupplyTargetGroup.YOUTH, SupplyTargetGroup.UNIVERSITY_STUDENT));
     }
 
     @Test
@@ -223,7 +247,7 @@ class SupplySheetStoreIntegrationTest {
         return SupplySheetDraft.of(
                 List.of(type55A(), type55B(), new HousingTypeRow("h3", null, null, null, null, "행복단지2", "84", null,
                         null, null, null, SupplyCategory.NEW_SUPPLY, 2)),
-                List.of(youth(), newlywed(), new Target("t3", "고령자", null, 2, false)),
+                List.of(youth(), newlywed(), new Target("t3", "고령자", null, List.of(), 2, false)),
                 List.of(new Cell("c1", "h1", "t1", 0), new Cell("c2", "h1", "t2", 1), new Cell("c3", "h2", "t1", 0),
                         new Cell("c4", "h2", "t2", 1), new Cell("c5", "h3", "t3", 0)),
                 List.of(new Quota(Kind.WINNER, 103, List.of("c1", "c3"), false),
@@ -244,11 +268,11 @@ class SupplySheetStoreIntegrationTest {
     }
 
     private static Target youth() {
-        return new Target("t1", "청년", null, 0, false);
+        return new Target("t1", "청년", null, List.of(SupplyTargetGroup.YOUTH), 0, false);
     }
 
     private static Target newlywed() {
-        return new Target("t2", "신혼부부", "소득 있음", 1, false);
+        return new Target("t2", "신혼부부", "소득 있음", List.of(SupplyTargetGroup.NEWLYWED), 1, false);
     }
 
     private static LeaseTerms.Amounts amounts(String deposit, String rent) {

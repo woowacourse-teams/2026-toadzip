@@ -42,7 +42,8 @@ class EligibilityDraftUnits {
         List<Unit> units = new ArrayList<>();
         for (SupplySheet.Row row : sheet.rows()) {
             List<Target> targets = sheet.cells(row.id()).stream().map(cell -> new Target(cell.label(),
-                    cell.applicationCondition(), sheet.smallestCount(cell, SupplyQuota.Kind.WINNER))).toList();
+                    cell.applicationCondition(), cell.groups(), sheet.smallestCount(cell, SupplyQuota.Kind.WINNER)))
+                    .toList();
             if (!targets.isEmpty()) {
                 units.add(unit(announcement, row, unitKey(supply, row), targets));
             }

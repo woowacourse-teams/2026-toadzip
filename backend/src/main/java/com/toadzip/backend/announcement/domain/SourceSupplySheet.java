@@ -18,7 +18,8 @@ import java.util.Set;
  * 옛 대상 테이블을 공급표로 다시 만들던 규칙(V20261113_02 supply_sheet_rebuild)과 같은 공급표가 나온다.
  *
  * <ol>
- *   <li>공급대상: 표기가 빈 대상은 버리고, (표기, 신청 조건)을 공고마다 한 번씩 처음 나온 공급행·대상 순서로 둔다.</li>
+ *   <li>공급대상: 표기가 빈 대상은 버리고, (표기, 신청 조건)을 공고마다 한 번씩 처음 나온 공급행·대상 순서로 둔다. 분류는 두지 않는다
+ *       (표기를 분류로 읽는 규칙은 AI 워커에 있고, 관리자가 공급표 화면에서 정한다).</li>
  *   <li>칸: 대상 하나가 칸 하나다. 한 공급행에 같은 (표기, 조건)이 또 나오면 먼저 나온 칸에 수를 더하고 금액은 먼저 나온 것을 쓴다.
  *       대상이 없는 공급행은 '전체' 칸 하나를 둔다.</li>
  *   <li>수량 묶음: 칸마다 그 대상만의 당첨·예비 수. 공급행 모집수 중 대상별 수로 나뉘지 않은 나머지는 그 행의 모든 칸이 함께 쓴다.
@@ -153,7 +154,7 @@ public final class SourceSupplySheet {
             String naturalKey = AnnouncementSupplyTarget.key(label, applicationCondition);
             String key = "target:" + naturalKey;
             if (ranked.add(key)) {
-                byKey.put(key, new SupplySheetDraft.Target(key, label, applicationCondition, next++, false));
+                byKey.put(key, new SupplySheetDraft.Target(key, label, applicationCondition, List.of(), next++, false));
             }
             return key;
         }
@@ -161,7 +162,7 @@ public final class SourceSupplySheet {
         String everyone() {
             String key = "target:" + AnnouncementSupplyTarget.key(AnnouncementSupplyTarget.EVERYONE, "");
             byKey.computeIfAbsent(key, ignored -> new SupplySheetDraft.Target(key, AnnouncementSupplyTarget.EVERYONE, "",
-                    EVERYONE_ORDER, false));
+                    List.of(), EVERYONE_ORDER, false));
             return key;
         }
 

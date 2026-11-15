@@ -1,6 +1,7 @@
 package com.toadzip.backend.eligibility.domain;
 
 import com.toadzip.backend.announcement.domain.AnnouncementSupplyTarget;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.AccessMode;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.ApplicantKind;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.ApplicationOption;
@@ -128,13 +129,23 @@ public final class ExtractedEligibilityDraft {
         }
     }
 
-    /** 공급행의 공급대상 하나. (표기, 신청 조건)이 공고 안의 대상 자연 키({@link AnnouncementSupplyTarget#key})다. */
-    public record Target(String label, String applicationCondition, Integer supplyHouseholdCount) {
+    /**
+     * 공급행의 공급대상 하나. (표기, 신청 조건)이 공고 안의 대상 자연 키({@link AnnouncementSupplyTarget#key})다. groups는 공급대상
+     * 분류다(기관 준비 데이터는 분류가 없다).
+     */
+    public record Target(String label, String applicationCondition, List<SupplyTargetGroup> groups,
+            Integer supplyHouseholdCount) {
         public Target {
             applicationCondition = Objects.requireNonNullElse(applicationCondition, "");
+            groups = groups == null ? List.of() : List.copyOf(groups);
         }
 
-        /** 신청 조건이 없는 대상. */
+        /** 분류가 없는 대상. */
+        public Target(String label, String applicationCondition, Integer supplyHouseholdCount) {
+            this(label, applicationCondition, List.of(), supplyHouseholdCount);
+        }
+
+        /** 신청 조건과 분류가 없는 대상. */
         public Target(String label, Integer supplyHouseholdCount) {
             this(label, "", supplyHouseholdCount);
         }
@@ -392,15 +403,29 @@ public final class ExtractedEligibilityDraft {
      * 경로가 이 공급대상을 가리키는지. 워커가 이은 공급표 대상 키 가운데 하나라도 이 공고 공급표에 있으면 (표기, 신청 조건) 자연 키가
      * 같은 대상만 가리킨다. 같은 표기라도 신청 조건이 다르면 다른 대상이다. 키가 없거나 어느 키도 공급표에 없는 경로는 대상 이름으로
      * 맞춘다: 이전 워커의 추출, 확정 전 준비 데이터(신청 조건이 '공고문 참조'), 보정에서 관리자가 표기·조건을 고친 대상이 그렇다.
-     * 이름으로 맞출 때도 다른 경로가 키로 가리킨 대상은 그 경로의 대상이라 잇지 않는다. 키 일부만 공급표에 있는 경로는 남은 키의 대상을
-     * 이름으로도 잇지 않는다(그 대상은 공통 요건 경로를 받고 관리자에게 안내된다).
+     * 이름이 공급표의 어느 대상과도 맞지 않으면 분류({@link SupplyTargetGroup#linked})로 맞춘다(공급표 '신혼부부 예비신혼부부
+     * 한부모가족' ↔ 경로 '신혼부부'). 이름이 맞는 대상이 있으면 분류로 넓히지 않는다(청년 소득(○) 경로를 청년 소득(×)에 잇지 않는다).
+     * 이름·분류로 맞출 때도 다른 경로가 키로 가리킨 대상은 그 경로의 대상이라 잇지 않는다. 키 일부만 공급표에 있는 경로는 남은 키의
+     * 대상을 이름으로도 잇지 않는다(그 대상은 공통 요건 경로를 받고 관리자에게 안내된다).
      */
     private boolean wants(Route route, Target target) {
         if (keyed(route)) {
             return pointed(route, target);
         }
-        return sameTarget(targetNames(route), target.label())
-                && source.eligibility().routes().stream().filter(this::keyed).noneMatch(other -> pointed(other, target));
+        if (source.eligibility().routes().stream().filter(this::keyed).anyMatch(other -> pointed(other, target))) {
+            return false;
+        }
+        if (named(route)) {
+            return sameTarget(targetNames(route), target.label());
+        }
+        return SupplyTargetGroup.linked(route.groups(), target.groups());
+    }
+
+    /** 키가 없는 경로의 이름이 이 공고 공급표의 어느 대상과 맞는지. */
+    private boolean named(Route route) {
+        List<String> names = targetNames(route);
+        return source.units().stream().flatMap(unit -> unit.targets().stream())
+                .anyMatch(target -> sameTarget(names, target.label()));
     }
 
     private static boolean pointed(Route route, Target target) {

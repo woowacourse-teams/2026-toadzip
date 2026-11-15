@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
@@ -35,8 +36,13 @@ public record SupplySheetView(List<HousingType> housingTypes, List<Target> targe
             SupplyCategory category, int displayOrder, boolean adminModified) {
     }
 
-    /** 공급대상. 신청 조건이 없으면 빈 문자열이다. */
-    public record Target(String key, Long id, String label, String applicationCondition, int displayOrder) {
+    /** 공급대상. 신청 조건이 없으면 빈 문자열이다. groups는 공급대상 분류(상수 순서)다. */
+    public record Target(String key, Long id, String label, String applicationCondition, List<SupplyTargetGroup> groups,
+            int displayOrder) {
+
+        public Target {
+            groups = List.copyOf(groups);
+        }
     }
 
     /** 이 주택형에 이 공급대상이 있다는 칸. */

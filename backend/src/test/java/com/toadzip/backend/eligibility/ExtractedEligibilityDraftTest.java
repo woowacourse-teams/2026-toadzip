@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.eligibility.domain.EligibilityContent;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.ApplicationOption;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyTarget;
@@ -319,6 +320,63 @@ class ExtractedEligibilityDraftTest {
         // 맞는 경로가 없는 두 대상은 공통 요건만 담은 자기 경로를 받는다.
         assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
                 .containsExactly("신혼부부", "가군(우선)", "예비신혼부부");
+    }
+
+    @Test
+    void 이름이_어느_공급대상과도_맞지_않는_경로는_분류로_잇고_주거약자용은_주거약자용_대상에만_잇는다() {
+        // 울산다운2 A-3블록: 공급표 표기는 띄어쓰기로 나열한 '신혼부부 예비신혼부부 한부모가족'이라 경로 이름과 맞지 않는다.
+        List<SupplyTargetGroup> couples = List.of(SupplyTargetGroup.NEWLYWED, SupplyTargetGroup.PRE_NEWLYWED,
+                SupplyTargetGroup.SINGLE_PARENT);
+        List<SupplyTargetGroup> vulnerableCouples = Stream.concat(couples.stream(),
+                Stream.of(SupplyTargetGroup.HOUSING_VULNERABLE)).toList();
+        Route couple = new Route("신혼부부", List.of("신혼부부·한부모가족"), List.of(), List.of(SupplyTargetGroup.NEWLYWED),
+                new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+        Route vulnerable = new Route("주거약자용 신혼부부", List.of("신혼부부·한부모가족"), List.of(),
+                List.of(SupplyTargetGroup.NEWLYWED, SupplyTargetGroup.HOUSING_VULNERABLE),
+                new Group(WELFARE, List.of(), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(couple, vulnerable), List.of(
+                unit("1", new Target("신혼부부 예비신혼부부 한부모가족", "", couples, 203)),
+                unit("2", new Target("신혼부부 예비신혼부부 한부모가족(주거약자용)", "", vulnerableCouples, 29))));
+
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("신혼부부", "주거약자용 신혼부부");
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId)
+                .containsExactly(tuple("path-1", "unit-1"), tuple("path-2", "unit-2"));
+    }
+
+    @Test
+    void 분류로_잇는_경로도_다른_경로가_워커_키로_가리킨_공급대상에는_잇지_않는다() {
+        List<SupplyTargetGroup> couples = List.of(SupplyTargetGroup.NEWLYWED, SupplyTargetGroup.PRE_NEWLYWED,
+                SupplyTargetGroup.SINGLE_PARENT);
+        Route pointing = new Route("신혼부부 예비신혼부부 한부모가족", List.of(),
+                List.of(new SupplyTarget("신혼부부 예비신혼부부 한부모가족", "")), couples,
+                new Group(COUPLE, List.of(family(COUPLE + ".requirements[0]")), List.of()));
+        // 이름은 공급표 어느 대상과도 맞지 않고 분류(신혼부부)만 그 대상과 겹친다.
+        Route grouped = new Route("신혼부부", List.of("신혼부부·한부모가족"), List.of(), List.of(SupplyTargetGroup.NEWLYWED),
+                new Group(WELFARE, List.of(), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(pointing, grouped), List.of(
+                unit("1", new Target("신혼부부 예비신혼부부 한부모가족", "", couples, 203))));
+
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId)
+                .containsExactly(tuple("path-1", "unit-1"));
+    }
+
+    @Test
+    void 이름이_맞는_공급대상이_있는_경로는_분류가_같은_다른_대상으로_넓히지_않는다() {
+        List<SupplyTargetGroup> youth = List.of(SupplyTargetGroup.YOUTH);
+        Route earning = new Route("청년 소득(○)", List.of("청년 소득(○)"), List.of(), youth,
+                new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+
+        EligibilityContent content = draft(evidence(), List.of(earning), List.of(
+                unit("1", new Target("청년 소득(○)", "", youth, 10)), unit("2", new Target("청년 소득(×)", "", youth, 5))));
+
+        // 소득(×) 대상은 소득(○) 경로를 받지 않고 공통 요건만 담은 자기 경로를 받는다.
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label)
+                .containsExactly("청년 소득(○)", "청년 소득(×)");
+        assertThat(content.options()).extracting(ApplicationOption::pathId, ApplicationOption::supplyUnitId)
+                .containsExactly(tuple("path-1", "unit-1"), tuple("path-2", "unit-2"));
     }
 
     @Test

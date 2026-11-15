@@ -12,14 +12,18 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.type.SqlTypes;
 
 /**
  * 공고 공급대상: 공고문 공급표의 대상 칸 하나(신혼부부, 청년(소득 있음), 고령자 등). 같은 표기라도 신청 조건이 다르면 다른 대상이다.
- * 대상 구분이 없는 표는 '전체' 대상 하나를 둔다. 신청자격 경로가 이 대상을 가리킨다.
+ * 대상 구분이 없는 표는 '전체' 대상 하나를 둔다. 신청자격 경로가 이 대상을 가리킨다. 분류({@link SupplyTargetGroup})는 표기와 함께
+ * 저장하고, 신청자격 경로를 표기로 잇지 못할 때 쓴다.
  */
 @Getter
 @Entity
@@ -48,6 +52,11 @@ public class AnnouncementSupplyTarget {
 
     @Column(nullable = false)
     private int displayOrder;
+
+    /** 공급대상 분류(상수 순서). 분류를 정할 수 없는 표기는 빈 목록이다. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false, columnDefinition = "jsonb")
+    private List<SupplyTargetGroup> targetGroups = List.of();
 
     @Column(nullable = false)
     private boolean adminModified;

@@ -2,12 +2,15 @@ package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import java.math.BigDecimal;
+import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -53,11 +56,14 @@ public class SupplySheetViewQueryRepository {
                         "target:" + row.getLong("supply_target_id"), row.getInt("display_order"))).list();
         var usedTargets = cells.stream().map(SupplySheetView.Cell::target).collect(Collectors.toSet());
         var targets = jdbc.sql("""
-                SELECT id, label, application_condition, display_order FROM announcement_supply_targets
+                SELECT id, label, application_condition, display_order,
+                       ARRAY(SELECT jsonb_array_elements_text(target_groups)) AS target_groups
+                FROM announcement_supply_targets
                 WHERE announcement_id = :id ORDER BY display_order, id
                 """).param("id", announcementId).query((row, index) -> new SupplySheetView.Target(
                         "target:" + row.getLong("id"), row.getLong("id"), row.getString("label"),
-                        row.getString("application_condition"), row.getInt("display_order"))).list()
+                        row.getString("application_condition"), groups(row.getArray("target_groups")),
+                        row.getInt("display_order"))).list()
                 .stream().filter(target -> usedTargets.contains(target.key())).toList();
         Map<String, Integer> cellOrder = new HashMap<>();
         cells.forEach(cell -> cellOrder.put(cell.key(), cellOrder.size()));
@@ -123,6 +129,11 @@ public class SupplySheetViewQueryRepository {
                 area(row.getBigDecimal("supply_area")), month == null ? null : YearMonth.parse(month),
                 row.getString("supply_pnu"), category == null ? null : SupplyCategory.valueOf(category),
                 row.getInt("display_order"), row.getBoolean("admin_modified"));
+    }
+
+    /** 저장된 분류 이름. DB 제약이 상수 이름만 받는다. */
+    private static List<SupplyTargetGroup> groups(Array names) throws SQLException {
+        return Arrays.stream((String[]) names.getArray()).map(SupplyTargetGroup::valueOf).toList();
     }
 
     private static Long nullableLong(ResultSet row, String column) throws SQLException {

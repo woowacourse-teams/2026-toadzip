@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.dto.correction;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.dto.request.RejectUnknownJsonFields;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
@@ -55,12 +56,18 @@ public record SupplySheetInput(
             @PositiveOrZero int displayOrder) implements RejectUnknownJsonFields {
     }
 
+    /** groups는 공급대상 분류다. 빠지면(null) 저장된 같은 공급대상의 분류를 그대로 두고, 빈 목록이어야 분류를 지운다. */
     public record Target(
             @NotBlank @Size(max = 64) String key,
             @Positive Long id,
             @NotBlank @Size(max = 255) String label,
             @Size(max = 255) String applicationCondition,
+            @Size(max = 13) List<@NotNull SupplyTargetGroup> groups,
             @PositiveOrZero int displayOrder) implements RejectUnknownJsonFields {
+
+        public Target {
+            groups = groups == null ? null : List.copyOf(groups);
+        }
     }
 
     public record Cell(

@@ -151,6 +151,66 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 공급대상_분류만_바꿔도_저장하고_대상을_관리자_수정으로_표시하며_같은_분류_두_번은_거절한다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        var before = workspace(id).get("sheet");
+        assertThat(before.at("/targets/0/groups").toString()).isEqualTo("[]");
+
+        var duplicated = request(id);
+        ((ObjectNode) sheet(duplicated).get("targets").get(0)).putArray("groups").add("GENERAL").add("GENERAL");
+        rejects(id, duplicated, "같은 공급대상 분류가 두 번");
+        // 빈 값과 서버가 모르는 분류(목록에 없는 상수)는 요청을 읽을 때 거절한다.
+        for (String invalid : List.of("[null]", "[\"DISABLED\"]")) {
+            var wrong = request(id);
+            ((ObjectNode) sheet(wrong).get("targets").get(0)).set("groups", json.readTree(invalid));
+            mvc.perform(post(root(id) + "/preview").with(user("admin").roles("ADMIN")).with(csrf())
+                    .contentType("application/json").content(json.writeValueAsString(wrong)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        var request = request(id);
+        ((ObjectNode) sheet(request).get("targets").get(0)).putArray("groups").add("HOUSING_VULNERABLE").add("GENERAL");
+        var preview = preview(id, request);
+        assertThat(preview.at("/after/targets/0/groups").toString()).isEqualTo("[\"GENERAL\",\"HOUSING_VULNERABLE\"]");
+        apply(id, request, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        var after = workspace(id).get("sheet");
+        assertThat(keys(after.get("targets"))).isEqualTo(keys(before.get("targets")));
+        assertThat(after.at("/targets/0/groups").toString()).isEqualTo("[\"GENERAL\",\"HOUSING_VULNERABLE\"]");
+        assertThat(jdbc.queryForObject("SELECT admin_modified FROM announcement_supply_targets WHERE announcement_id = ?",
+                Boolean.class, id)).isTrue();
+    }
+
+    @Test
+    void 공급대상_분류가_빠진_요청은_저장된_분류를_그대로_두고_빈_목록이어야_분류를_지운다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        jdbc.update("UPDATE announcement_supply_targets SET target_groups = '[\"YOUTH\"]'::jsonb WHERE announcement_id = ?", id);
+
+        var omitted = request(id);
+        ((ObjectNode) sheet(omitted).get("targets").get(0)).remove("groups");
+        type(omitted, 0).put("name", "26A");
+        var preview = preview(id, omitted);
+        assertThat(preview.at("/after/targets/0/groups").toString()).isEqualTo("[\"YOUTH\"]");
+        apply(id, omitted, preview).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+        assertThat(workspace(id).at("/sheet/targets/0/groups").toString()).isEqualTo("[\"YOUTH\"]");
+        assertThat(jdbc.queryForObject("SELECT admin_modified FROM announcement_supply_targets WHERE announcement_id = ?",
+                Boolean.class, id)).isFalse();
+
+        // 이 칸만 쓰는 대상의 이름을 같은 ID로 고치면 새 대상이 되고, 분류가 빠졌으면 고치기 전 대상의 분류를 이어받는다.
+        var renamed = request(id);
+        var target = (ObjectNode) sheet(renamed).get("targets").get(0);
+        target.remove("groups");
+        target.put("label", "청년(고침)");
+        assertThat(preview(id, renamed).at("/after/targets/0/groups").toString()).isEqualTo("[\"YOUTH\"]");
+
+        var cleared = request(id);
+        ((ObjectNode) sheet(cleared).get("targets").get(0)).putArray("groups");
+        assertThat(preview(id, cleared).at("/after/targets/0/groups").toString()).isEqualTo("[]");
+    }
+
+    @Test
     void 공통_모집수는_두_칸을_멤버로_가진_묶음_하나로_저장하고_읽는다() throws Exception {
         var row = fixture(); long id = row.getAnnouncement().getId();
         second(row);

@@ -29,7 +29,7 @@ public final class SupplySheetInputs {
     public static SupplySheetInput of(SupplySheetView view) {
         return new SupplySheetInput(view.housingTypes().stream().map(SupplySheetInputs::housingType).toList(),
                 view.targets().stream().map(target -> new SupplySheetInput.Target(target.key(), target.id(), target.label(),
-                        target.applicationCondition(), target.displayOrder())).toList(),
+                        target.applicationCondition(), target.groups(), target.displayOrder())).toList(),
                 view.cells().stream().map(cell -> new SupplySheetInput.Cell(cell.key(), cell.id(), cell.housingType(),
                         cell.target(), cell.displayOrder())).toList(),
                 view.quotas().stream().map(quota -> new SupplySheetInput.Quota(quota.kind(), quota.count(), quota.members()))

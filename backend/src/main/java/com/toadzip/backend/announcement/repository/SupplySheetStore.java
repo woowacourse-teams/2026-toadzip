@@ -9,6 +9,7 @@ import com.toadzip.backend.announcement.domain.SupplySheetDraft.HousingTypeRow;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Lease;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Quota;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Target;
+import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import jakarta.persistence.EntityManager;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -156,22 +158,28 @@ public class SupplySheetStore {
         return found;
     }
 
-    /** (공고, 표기, 신청 조건)이 같은 공급대상은 지우지 않고 고쳐 ID를 지킨다. */
+    /** (공고, 표기, 신청 조건)이 같은 공급대상은 지우지 않고 고쳐 ID를 지킨다. 분류는 상수 이름의 JSON 배열로 쓴다. */
     private Map<String, Long> upsertTargets(long announcementId, List<Target> targets) {
         Map<String, Long> ids = new LinkedHashMap<>();
         for (Target target : targets) {
             ids.put(target.key(), jdbc.sql("""
                     INSERT INTO announcement_supply_targets
-                        (announcement_id, label, application_condition, display_order, admin_modified)
-                    VALUES (:announcement, :label, :condition, :order, :adminModified)
+                        (announcement_id, label, application_condition, target_groups, display_order, admin_modified)
+                    VALUES (:announcement, :label, :condition, CAST(:groups AS jsonb), :order, :adminModified)
                     ON CONFLICT (announcement_id, label, application_condition)
-                        DO UPDATE SET display_order = EXCLUDED.display_order, admin_modified = EXCLUDED.admin_modified
+                        DO UPDATE SET target_groups = EXCLUDED.target_groups, display_order = EXCLUDED.display_order,
+                            admin_modified = EXCLUDED.admin_modified
                     RETURNING id
                     """).param("announcement", announcementId).param("label", target.label())
-                    .param("condition", target.applicationCondition()).param("order", target.displayOrder())
-                    .param("adminModified", target.adminModified()).query(Long.class).single());
+                    .param("condition", target.applicationCondition()).param("groups", groupsJson(target.groups()))
+                    .param("order", target.displayOrder()).param("adminModified", target.adminModified())
+                    .query(Long.class).single());
         }
         return ids;
+    }
+
+    private static String groupsJson(List<SupplyTargetGroup> groups) {
+        return groups.stream().map(group -> "\"" + group.name() + "\"").collect(Collectors.joining(",", "[", "]"));
     }
 
     private void clearQuotasAndLeases(long announcementId) {
