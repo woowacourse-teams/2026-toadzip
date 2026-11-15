@@ -191,3 +191,22 @@ def test_eligibility_targets_carry_the_supply_target_names_matched_by_the_same_r
     # 공급 표 대상 안에서 나뉜 경로(취업준비생)는 그 경로가 속한 공급 표 대상(대학생)으로 잇는다.
     assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
         ["신혼부부·한부모가족"], ["고령자(주거약자)"], [], ["대학생"]]
+
+
+def test_qualified_eligibility_paths_link_only_the_supply_target_named_by_their_qualifier():
+    """세종 4-2생활권 M3: 공급 표 대상이 신혼부부·한부모가족과 신혼부부·한부모가족(주거약자용)으로 나뉘고, 모델은 주거약자용 경로의
+    소속 대상도 괄호 없이 적는다. 경로 이름에 괄호 표기(주거약자용)가 든 경로는 그 대상에만, 나머지 경로는 그 대상을 빼고 잇는다.
+    괄호 표기를 가진 경로가 없으면(주거약자용 ↔ 주거약자용(주거복지동)) 지금처럼 모두 잇는다."""
+    supply, sheet, notice, _ = _condition_stages([], [
+        ("신혼부부·한부모가족", None), ("신혼부부·한부모가족(주거약자용)", None),
+        ("주거약자용", None), ("주거약자용(주거복지동)", None)], [])
+    group = {"requirements": [], "qualifications": [], "summary": None}
+    data = {"common": dict(group), "exclusions": [], "targets": [
+        {"target": "신혼부부", "supplyTarget": "신혼부부·한부모가족", **group},
+        {"target": "주거약자용 한부모가족", "supplyTarget": "신혼부부·한부모가족", **group},
+        {"target": "주거약자용", "supplyTarget": "주거약자용", **group}]}
+
+    tree, _ = merge.merge(supply, sheet, notice, Extracted(data))
+
+    assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
+        ["신혼부부·한부모가족"], ["신혼부부·한부모가족(주거약자용)"], ["주거약자용", "주거약자용(주거복지동)"]]

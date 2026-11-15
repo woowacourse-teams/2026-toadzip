@@ -105,13 +105,29 @@ def _apply_conditions(sheet: SupplySheet, conditions, notice_evidence: list[dict
 def _link_supply_targets(data: dict | None, sheet: SupplySheet) -> None:
     """신청자격 대상마다 그 대상이 속한 공급 표 대상(supplyTarget)과 같은 규칙(_condition_applies)으로 맞은 공급표 대상 이름을
     원문 그대로 싣는다(supplyTargets).
-    서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다."""
+    서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다.
+    같은 핵심 이름이 괄호 표기로 나뉘면(신혼부부·한부모가족 ↔ 신혼부부·한부모가족(주거약자용)) 경로 이름에 그 괄호 표기가 든
+    경로(주거약자용 한부모가족)는 그 대상에만, 나머지 경로는 그렇게 가져간 대상을 빼고 잇는다. 모델이 경로의 소속 대상을 괄호 없이 적어도 갈린다."""
     if data is None:
         return
     names = list(dict.fromkeys(entry.label for _, entry in sheet.entries()
                                if isinstance(entry.label, str) and entry.label.strip()))
-    for target in data["targets"]:
-        target["supplyTargets"] = [name for name in names if _condition_applies(target["supplyTarget"], name)]
+    matched = [[name for name in names if _condition_applies(target["supplyTarget"], name)] for target in data["targets"]]
+    qualified = [[name for name in candidates if _qualifier(name) and _qualifier(name) in _core_text(target.get("target"))]
+                 for target, candidates in zip(data["targets"], matched)]
+    claimed = {name for names_ in qualified for name in names_}
+    for target, candidates, own in zip(data["targets"], matched, qualified):
+        target["supplyTargets"] = own or [name for name in candidates if name not in claimed] or candidates
+
+
+def _qualifier(name: str) -> str:
+    """공급대상 이름의 괄호 표기(신혼부부·한부모가족(주거약자용) → 주거약자용)."""
+    found = re.search(r"[(\[]([^)\]]+)", name)
+    return _core_text(found.group(1)) if found else ""
+
+
+def _core_text(value) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", value) if isinstance(value, str) else ""
 
 
 def _condition_applies(condition_target, target_name) -> bool:
