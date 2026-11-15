@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { daegu, savedSheet, scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction, type Extraction } from './extraction'
-import { assembledSheet, assembleReview, chooseCellValue, complexKey, createReview, decideComplex, editCell, foreignCharacters, needsComplex, pendingChanges, pendingItems, pendingJumpTarget, rebaseReview,
+import { assembledSheet, assembleReview, chooseCellValue, complexGroups, complexKey, createReview, decideComplex, editCell, foreignCharacters, needsComplex, pendingChanges, pendingItems, pendingJumpTarget, rebaseReview,
   otherComplexes, remapSchedule, removedHousingTypes, ReviewError, serverFieldError, shownDateTime, targetName, validCellValue, type Review } from './review'
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
@@ -230,6 +230,15 @@ describe('공고 공급표 검토', () => {
     expect(otherComplexes(chosen, workspace).map(group => [group.name, group.remove])).toEqual([['다른 단지', false]])
     expect(removedHousingTypes(chosen, workspace).map(type => type.key)).toEqual(['row:747'])
     expect(assembledSheet(chosen, workspace).housingTypes.map(type => type.key)).toContain('row:748')
+  })
+
+  it('공급표에 단지 열이 없는 단일 단지 공고문은 단지 이름 대신 저장할 단지 이름을 보이고, 정하지 못했으면 이름 없음으로 보인다', () => {
+    const { review } = daegu()
+    const unnamed = (complexName: string): Review => ({ ...review, rows: review.rows.map(row => ({ ...row, existing: null })),
+      extraction: { ...review.extraction, sheet: { ...review.extraction.sheet, housingTypes: review.extraction.sheet.housingTypes.map(type => ({ ...type, complexName: '' })) } },
+      complexes: { '': { announcementComplexId: 1, complexName, housingComplexId: 2, housingComplexName: null, supplyPnu: null, category: null } } })
+    expect(complexGroups(unnamed('구리갈매역세권 A-1BL 신혼희망타운')).map(group => [group.key, group.name])).toEqual([['', '구리갈매역세권 A-1BL 신혼희망타운']])
+    expect(complexGroups(unnamed('')).map(group => group.name)).toEqual(['단지 이름 없음'])
   })
 
   it('그대로 둘 단지의 수가 이 PDF 단지 칸과 함께 묶여 있으면 원래 합계를 남은 칸에 저장하지 않고 단지 안내로 보낸다', () => {

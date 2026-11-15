@@ -591,12 +591,17 @@ export function pendingTarget(review: Pick<Review, 'extraction' | 'labels'>, tar
   return target.cells.some(pendingCell) || (labelOf(review, target.cell)?.cells.some(pendingCell) ?? false) || !targetName(review, target.cell)
 }
 export function pendingPrice(review: Review, index: number) { return housingTypePrice(review, index, linkedHousingType(review, index)).confirm }
-/** PDF 단지 이름별 주택형 번호. 처음 나온 단지 순서를 따른다. 공급정보 화면은 이 묶음대로 한 단지씩 보여 준다. */
-export function complexGroups(review: Pick<Review, 'extraction'>) {
+/**
+ * PDF 단지 이름별 주택형 번호. 처음 나온 단지 순서를 따른다. 공급정보 화면은 이 묶음대로 한 단지씩 보여 준다.
+ * 단지 하나만 실린 공고문은 공급표에 단지 열이 없어 이름이 비므로, 저장할 단지가 정해졌으면 그 이름을 보인다.
+ */
+export function complexGroups(review: Pick<Review, 'extraction'> & Partial<Pick<Review, 'complexes' | 'rows'>>) {
   const groups: { key: string; name: string; indexes: number[] }[] = []
+  const savedName = (index: number) => review.complexes && review.rows
+    ? complexFor({ extraction: review.extraction, complexes: review.complexes, rows: review.rows }, index).complexName : ''
   review.extraction.sheet.housingTypes.forEach((type, index) => {
     const key = complexKey(type.complexName), group = groups.find(item => item.key === key)
-    if (group) group.indexes.push(index); else groups.push({ key, name: complexLabel(key), indexes: [index] })
+    if (group) group.indexes.push(index); else groups.push({ key, name: key || savedName(index) || complexLabel(key), indexes: [index] })
   })
   return groups
 }
