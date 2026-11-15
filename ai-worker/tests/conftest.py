@@ -431,12 +431,18 @@ def model_supply(selected, answer=None, *, rows=(), shared=(), source_names=()) 
     return _finished(model_stage(selected, answer, source_names))
 
 
-def code_supply(selected, source_names=()) -> Supplied | None:
-    """코드가 표 셀에서 공급표를 읽었을 때의 공급 단계 결과. 코드가 표를 읽지 못하면 None이다."""
+def code_stage(selected, source_names=()) -> supply_sources.Supply | None:
+    """코드가 표 셀에서 공급표를 읽었을 때의 공급 단계 결과(공급표 모델을 내보내기 전). 코드가 표를 읽지 못하면 None이다."""
     grouped = supply_grouping.group(selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
     if grouped is None:
         return None
-    return _finished(supply_sources.CodeSupply(grouped, selected, list(source_names)).read())
+    return supply_sources.CodeSupply(grouped, selected, list(source_names)).read()
+
+
+def code_supply(selected, source_names=()) -> Supplied | None:
+    """코드가 표 셀에서 공급표를 읽었을 때의 공급 단계 결과. 코드가 표를 읽지 못하면 None이다."""
+    supply = code_stage(selected, source_names)
+    return None if supply is None else _finished(supply)
 
 
 def readable(sheet: dict) -> dict:

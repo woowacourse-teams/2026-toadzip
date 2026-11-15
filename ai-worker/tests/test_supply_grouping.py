@@ -1,8 +1,10 @@
 """코드가 표 셀에서 공급표를 읽는 경로. 쪽 표 → data.supplySheet(+경고·미확인 경로)로 확인한다."""
 
-from ai_worker import pages, supply_grouping
+from ai_worker import checks, merge, pages, supply_grouping
+from ai_worker.eligibility import Extracted
+from ai_worker.source_frame import SourceFrame, SourceSupplyRow
 from ai_worker.tables import SupplyTable
-from conftest import code_supply, readable
+from conftest import code_stage, code_supply, readable
 
 QUANTITY_HEADER = [
     ["단지명", "청약구분", "공급대상", "모집호수 예비자", "주거전용", "주거공용"],
@@ -491,3 +493,42 @@ def test_type_cells_reads_only_data_rows_of_quantity_tables():
 
     assert {row_id: values["housingType"] for row_id, values in found.items()} == {
         "P3:T1:R2": "16A", "P3:T1:R3": "", "P4:T1:R1": "31A"}
+
+
+def test_code_read_sheet_goes_through_merge_review_and_gh_linking_on_the_same_cells():
+    # 경계: 코드가 읽은 공급표(두 대상이 함께 쓰는 병합 수량 포함)가 신청 조건·대상 키(merge), LH 검산(checks),
+    # GH 틀 잇기(source_frame)를 지나 내보낼 때 같은 칸·수량을 가리키는지 본다.
+    page = table(4, [
+        ["Alpha", "26B", "청년", "39", "26.4422", "15.2435"],
+        [None, "36AB", "신혼부부", "136", "36.1396", "20.1"],
+        [None, "36AB1", "청년", None, "36.2643", "20.9058"],
+    ])
+    picked = selected([page])
+    supply = code_stage(picked)
+    notice = {"data": {"announcement": {"name": "공고", "postedDate": "2026-10-01"}, "receptionPlaces": [],
+                       "schedules": [], "unresolvedFields": [], "complexes": [{"sourceComplexName": "Alpha"}]},
+              "notApplicable": [], "evidence": []}
+    tree, _ = merge.merge(supply.tree, supply.sheet, notice, Extracted(
+        {"common": {}, "exclusions": [], "targets": [{"target": "청년", "supplyTarget": "청년"}]}))
+    lh_rows = [SourceSupplyRow("LH", None, "Alpha", "26B", "26.4422", "", "30")]
+    frame = SourceFrame.read({"sourceSupplyRows": [
+        {"source": "GH", "rowIdentifier": "GH:1:Alpha:26B", "complexLabel": "Alpha", "typeName": "26B",
+         "exclusiveArea": "26.4422", "supplyArea": "", "suppliedUnitCount": ""}]})
+
+    # 이 표의 행 인용은 "row"라 LH 주택형 이름(26B)이 근거 인용에 없다. 경고는 공급표 경로가 아니라 이름으로 알린다.
+    warnings = checks.review(tree, supply.sheet, [1, 2, 3, 4], ["", "", "", "\n".join(picked.supply_row_text.values())],
+                             lh_rows, 0)
+    warnings += frame.link(supply.sheet)
+    sheet = supply.sheet.emit(tree["data"]["eligibility"])
+
+    assert readable(sheet)["quotas"] == [("RESERVE", 136, ["36AB/신혼부부", "36AB1/청년"]), ("RESERVE", 39, ["26B/청년"])]
+    assert [(item["name"], item["sourceRow"]) for item in sheet["housingTypes"]] == [
+        ("26B", "GH:1:Alpha:26B"), ("36AB", None), ("36AB1", None)]
+    labels = {item["key"]: item["label"] for item in sheet["targets"]}
+    assert [labels[key] for key in tree["data"]["eligibility"]["targets"][0]["supplyTargetKeys"]] == ["청년"]
+    assert warnings == ["Alpha 26B 주택형 이름: 근거 인용에 없는 LH 주택형 이름(26B)",
+                        "GH 공급행 틀과 맞추지 못한 PDF 공급행 2개: Alpha 36AB, Alpha 36AB1"]
+    assert sheet["unresolvedFields"] == []
+    assert [(item["path"], item["page"]) for item in sheet["evidence"]] == [
+        (path, 4) for path in ("housingTypes[0]", "cells[0]", "housingTypes[1]", "cells[1]", "housingTypes[2]", "cells[2]",
+                               "quotas[1]", "quotas[0]")]
