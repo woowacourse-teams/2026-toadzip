@@ -161,7 +161,7 @@ def test_unsupported_target_evidence_clears_numeric_values_and_marks_each_field_
     warnings = source_check.check_source_rows(rows, {}, {}, [], unresolved)
 
     # 경고는 근거를 확인하지 못한 경로마다 한 줄이다. 비운 값마다의 사유는 미확인에만 남는다.
-    assert warnings == ["supplyRows[0]: 원문 표 행 ID를 확인하지 못함", "supplyRows[0].targets[0]: 원문 표 행 ID를 확인하지 못함"]
+    assert warnings == [("supplyRows[0]", "원문 표 행 ID를 확인하지 못함"), ("supplyRows[0].targets[0]", "원문 표 행 ID를 확인하지 못함")]
     assert rows[0]["targets"][0]["reserveCount"] is None
     assert rows[0]["targets"][0]["rentalDeposit"] is None
     assert {item["path"] for item in unresolved} >= {

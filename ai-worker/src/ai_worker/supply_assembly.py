@@ -1,13 +1,15 @@
-"""짧은 공급행 목록(모델 공급 단계 답을 supply_answer가 옮긴 행이나 코드가 표에서 묶은 행)을 관리자 계약의 공급행·단지로 조립한다.
+"""칸 초안(Draft: 모델 공급 단계 답을 supply_answer가 옮긴 칸이나 코드가 표에서 읽은 칸)을 공급표 모델과 단지로 조립한다.
 
-같은 단지·주택형 행은 한 공급행의 대상으로 모으고, 값마다 그 칸이 있는 원문 표 행을 근거로 둔다.
+같은 단지·주택형 칸은 한 모집 단위의 공급대상으로 모으고, 값마다 그 칸이 있는 원문 표 행을 근거로 둔다.
 문자열·수치는 source_check로 같은 의미의 원문 칸과 대조해 확인되지 않으면 미확인으로 남긴다.
+조립과 대조는 안에서 공급행 경로(supplyRows[0].targets[1])로 값을 가리키고, 끝에 _RowOwners가 그 경로를 공급표 모델의
+단위·대상·주택형으로 옮긴다. 이 경로는 조립 밖으로 나가지 않는다.
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as data_field
 
-from ai_worker import checks, pages, tables
+from ai_worker import checks, pages, supply_sheet, tables
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
     Headings, check_source_rows, count_cell, count_or_dash, normalize_source_text, numeric_cell_matches,
@@ -31,9 +33,9 @@ class DraftCell:
     housing_type: object
     target: object = None
     targeted: bool = False
-    values: dict = field(default_factory=dict)
-    house_types: list[dict] = field(default_factory=list)
-    unresolved: list[tuple[str, str]] = field(default_factory=list)
+    values: dict = data_field(default_factory=dict)
+    house_types: list[dict] = data_field(default_factory=list)
+    unresolved: list[tuple[str, str]] = data_field(default_factory=list)
 
 
 @dataclass(eq=False)
@@ -53,13 +55,10 @@ class Draft:
     shared: list[SharedCount]
 
 
-# 여러 주택형 행을 모집 칸 하나 때문에 한 공급행으로 묶은(공통 형명 49, 주택형마다 subtypes) 공급행 번호를 공급 tree에 남기는 키.
-# 공급표(supply_sheet)는 그 공급행을 주택형마다 나눈다. merge가 결과 tree를 새로 만들며 버리므로 결과 계약에 남지 않는다.
-JOINED_ROWS = "_joinedSupplyRows"
-
-
-def assemble(draft: Draft, selected: pages.PromptPages, source_names=()) -> tuple[dict, list[str]]:
-    """칸 초안을 표 셀 근거에 맞춰 관리자 계약으로 조립한다. 원문 대조 검산의 경고를 함께 돌려준다.
+def assemble(draft: Draft, selected: pages.PromptPages,
+             source_names=()) -> tuple[dict, supply_sheet.SupplySheet, list[str]]:
+    """칸 초안을 표 셀 근거에 맞춰 공급표 모델로 조립한다. 단지와 그 미확인·근거는 관리자 계약 tree로, 원문 대조 검산의 경고를
+    함께 돌려준다.
     source_names는 LH 공급행의 단지명이다. 표 위 블록 제목과 단지명을 대조할 때 후보로 쓴다(Headings)."""
     groups: list[dict] = []
     group_indexes: dict[tuple, int] = {}
@@ -329,14 +328,10 @@ def assemble(draft: Draft, selected: pages.PromptPages, source_names=()) -> tupl
     tree = {
         "data": {
             "complexes": complexes,
-            "supplyRows": supply_rows,
             "unresolvedFields": deduplicate(unresolved),
         },
-        "sharedCounts": shared_counts,
         "notApplicable": [],
         "evidence": evidence,
-        "sourceRows": source_rows,
-        JOINED_ROWS: sorted(merged),
     }
     # 문자열·수치는 동일 의미의 머리글 열에서 확인할 수 있을 때만 유지한다.
     row_source_map = source_row_map(source_rows)
@@ -357,13 +352,106 @@ def assemble(draft: Draft, selected: pages.PromptPages, source_names=()) -> tupl
         # 원문 칸에서 대상별로 정한 수(우선·일반 공급의 합, 예비자만 모집하는 표의 예비자 수)와 공통 수량에 든 대상(None)
         for suffix, values in group.get("sourceCounts", {}).items():
             block_counts.setdefault(f"supplyRows[{index}]{suffix}", {}).update(values)
-    warnings = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
+    failures = check_source_rows(supply_rows, row_source_map, selected.supply_row_text, evidence,
                                  tree["data"]["unresolvedFields"], selected.supply_row_values,
                                  selected.supply_row_target_values, block_counts, headings)
-    tree["data"]["unresolvedFields"] = deduplicate(tree["data"]["unresolvedFields"])
+    unresolved = deduplicate(tree["data"]["unresolvedFields"])
     for index, row in enumerate(supply_rows):
-        _all_applicants_when_no_target_column(index, row, source_by_path, selected, tree["data"]["unresolvedFields"])
-    return tree, warnings
+        _all_applicants_when_no_target_column(index, row, source_by_path, selected, unresolved)
+    owners = _RowOwners(supply_rows, merged)
+    sheet = owners.sheet(unresolved, evidence, shared_counts)
+    tree["data"]["unresolvedFields"] = [item for item in unresolved if not _ROW_PATH.match(str(item.get("path")))]
+    tree["evidence"] = [item for item in evidence if not _ROW_PATH.match(str(item.get("path")))]
+    warnings = [f"{sheet.label(owner)}: {reason}" for path, reason in failures for owner, _ in owners.of(path)[:1]]
+    return tree, sheet, warnings
+
+
+# 조립 안에서 공급행 값을 가리키는 경로(supplyRows[0].targets[1].reserveCount). 조립 결과는 공급표 모델이고 이 경로는 남지 않는다.
+_ROW_PATH = re.compile(r"supplyRows(?:$|[.\[])")
+_ROW_INDEX = re.compile(r"supplyRows\[(\d+|\*)\](.*)")
+_TARGET_INDEX = re.compile(r"\.targets\[(\d+|\*)\](.*)")
+_SUBTYPE_INDEX = re.compile(r"\.subtypes(?:\[(\d+|\*)\])?(.*)")
+_SHARED_PATH = re.compile(r"supplyRows\[(\d+)\](?:\.targets\[(\d+)\])?\.(\w+)")
+_UNIT_FIELDS = {"sourceHousingTypeName": "name", "complexReference.sourceComplexName": "complexName",
+                "complexReference": "complexName"}
+
+
+class _RowOwners:
+    """조립한 공급행을 공급표 모델의 모집 단위·공급대상으로 옮기고, 공급행 경로가 그 가운데 무엇의 어느 값인지 찾는다.
+    모집 칸을 함께 쓰려고 묶은 공급행(joined, 49 = 49A·49B·49C)은 세부 주택형마다 주택형 하나인 단위가 된다."""
+
+    def __init__(self, rows: list[dict], joined: set[int]):
+        self.units = []
+        for index, row in enumerate(rows):
+            subtypes = checks.objects(row.get("subtypes"))
+            areas = [{name: subtype.get(name) for name in supply_sheet.AREA_FIELDS} for subtype in subtypes]
+            parts = index in joined and subtypes
+            self.units.append(supply_sheet.Unit(
+                complex_name=(row.get("complexReference") or {}).get("sourceComplexName"),
+                name=row.get("sourceHousingTypeName"),
+                values={name: row.get(name) for name in (*_ROW_FIELDS, "expectedMoveInMonth")},
+                entries=[supply_sheet.Entry(target.get("target"),
+                                            {name: value for name, value in target.items() if name != "target"})
+                         for target in checks.objects(row.get("targets"))],
+                house_types=[] if parts else [{"name": subtype.get("name"), **area}
+                                              for subtype, area in zip(subtypes, areas)],
+                parts=[supply_sheet.HousingType(subtype.get("name"), area)
+                       for subtype, area in zip(subtypes, areas)] if parts else []))
+
+    def sheet(self, unresolved: list[dict], evidence: list[dict], shared_counts: list[dict]) -> supply_sheet.SupplySheet:
+        return supply_sheet.SupplySheet(
+            units=self.units,
+            shared=[self._shared(shared) for shared in shared_counts],
+            findings=[supply_sheet.Finding(owner, name, item.get("reason")) for item in unresolved
+                      for owner, name in self.of(item.get("path"))],
+            evidence=[supply_sheet.Cite(owner, name, item.get("page"), item.get("quote")) for item in evidence
+                      for owner, name in self.of(item.get("path"))])
+
+    def _shared(self, shared: dict) -> supply_sheet.Shared:
+        owners, kinds = [], set()
+        for path in shared.get("paths") or []:
+            match = _SHARED_PATH.fullmatch(path) if isinstance(path, str) else None
+            if not match or match.group(3) not in supply_sheet.COUNT_KINDS or int(match.group(1)) >= len(self.units):
+                continue
+            unit, target = self.units[int(match.group(1))], match.group(2)
+            kinds.add(supply_sheet.COUNT_KINDS[match.group(3)])
+            if target is None:
+                owners.append(unit)
+            elif int(target) < len(unit.entries):
+                owners.append(unit.entries[int(target)])
+        return supply_sheet.Shared(kinds.pop() if len(kinds) == 1 else None, shared.get("count"), owners,
+                                   shared.get("page"), shared.get("quote"))
+
+    def of(self, path: object) -> list[tuple[object, str]]:
+        """공급행 경로가 가리키는 (단위·대상·주택형, 값 이름). 공급행 밖의 경로는 없다."""
+        match = _ROW_INDEX.fullmatch(path) if isinstance(path, str) else None
+        if not match:
+            return []
+        indexes = range(len(self.units)) if match.group(1) == "*" else [int(match.group(1))]
+        return [owner for index in indexes if index < len(self.units)
+                for owner in self._row(self.units[index], match.group(2))]
+
+    def _row(self, unit: supply_sheet.Unit, rest: str) -> list[tuple[object, str]]:
+        if target := _TARGET_INDEX.fullmatch(rest):
+            entries = _pick(unit.entries, target.group(1))
+            name = target.group(2).lstrip(".")
+            return [(entry, "label" if name == "target" else name) for entry in entries]
+        if rest.startswith(".targets"):
+            return [(unit, "targets")]
+        if subtype := _SUBTYPE_INDEX.fullmatch(rest):
+            name = subtype.group(2).lstrip(".")
+            if unit.parts:
+                return [(part, name) for part in _pick(unit.parts, subtype.group(1))]
+            house = "houseTypes" if subtype.group(1) is None else f"houseTypes[{subtype.group(1)}]"
+            return [(unit, house + (f".{name}" if name else ""))]
+        name = rest.lstrip(".")
+        return [(unit, _UNIT_FIELDS.get(name, name))]
+
+
+def _pick(items: list, index: str | None) -> list:
+    if index in (None, "*"):
+        return list(items)
+    return [items[int(index)]] if int(index) < len(items) else []
 
 
 @dataclass(frozen=True)

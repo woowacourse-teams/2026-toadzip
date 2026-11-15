@@ -372,7 +372,7 @@ def test_missing_targets_against_rent_table_is_warning_not_failure(monkeypatch):
 
     result = AnnouncementPdfExtractor(FakeModel()).extract(job(pdf(COVER, SUPPLY, RENT)))
 
-    assert "supplyRows: 공급대상 0개가 임대조건표 4줄보다 적어 빠진 대상이 있을 수 있음" in result["warnings"]
+    assert "공급표: 공급대상 0개가 임대조건표 4줄보다 적어 빠진 대상이 있을 수 있음" in result["warnings"]
 
 
 def structured_table_pdf():
@@ -511,7 +511,7 @@ def test_lh_rows_keep_the_code_path_and_are_checked_by_area_against_the_pdf_row(
     assert (housing_type["name"], housing_type["exclusiveArea"], housing_type["sourceRow"]) == ("26A", 26.37, None)
     assert readable(supply_sheet(result))["quotas"] == [("WINNER", 20, ["26A/청년"])]
     assert [warning for warning in result["warnings"] if "LH API" in warning] == [
-        "supplyRows[0].totalSupplyHouseholdCount: 같은 전용면적(26.37) LH API 공급행 2줄의 모집수 합계 22와 다름(20)"]
+        "Test 26A 모집수: 같은 전용면적(26.37) LH API 공급행 2줄의 모집수 합계 22와 다름(20)"]
 
 
 def test_one_pdf_row_written_once_per_lh_row_comes_out_once(monkeypatch):
@@ -844,8 +844,8 @@ SOURCE_CHECKED_TREE = {
 SOURCE_CHECKED_WARNINGS = ['공급표·임대조건표 쪽을 찾지 못해 전체 1쪽을 보냈습니다.',
  'announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)',
  'complexes[0].address: 표·본문 단계의 값이 달라 미확인으로 남김',
- 'supplyRows[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음',
- 'supplyRows[0].targets[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음',
+ '이름을 확인하지 못한 주택형: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음',
+ '이름을 확인하지 못한 주택형 표기를 확인하지 못한 공급대상: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음',
  'announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)']
 
 
@@ -888,8 +888,8 @@ def test_source_check_findings_reach_the_result_once():
     assert sorted(result["warnings"]) == sorted(SOURCE_CHECKED_WARNINGS)
     assert result["warnings"] == [
         "공급표·임대조건표 쪽을 찾지 못해 전체 1쪽을 보냈습니다.",
-        "supplyRows[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음",
-        "supplyRows[0].targets[0]: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음",
+        "이름을 확인하지 못한 주택형: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음",
+        "이름을 확인하지 못한 주택형 표기를 확인하지 못한 공급대상: 응답의 원문 표 행 ID가 입력 표와 일치하지 않음",
         "announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)",
         "complexes[0].address: 표·본문 단계의 값이 달라 미확인으로 남김",
         "announcement.name: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(99)",

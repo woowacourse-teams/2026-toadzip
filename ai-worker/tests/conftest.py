@@ -13,7 +13,7 @@ import pymupdf
 import pytest
 from testcontainers.community.postgres import PostgresContainer
 
-from ai_worker import checks, jev, supply_assembly, supply_grouping, supply_sheet, supply_sources
+from ai_worker import checks, jev, supply_grouping, supply_sources
 from ai_worker.openai import Reply
 from ai_worker.source_frame import SourceSupplyRow
 
@@ -412,7 +412,7 @@ class _AnswerModel:
 
 def _finished(supply) -> Supplied:
     tree = copy.deepcopy(supply.tree)
-    supply_sheet.attach(tree, tree.pop(supply_assembly.JOINED_ROWS, []))
+    tree["data"]["supplySheet"] = supply.sheet.emit(None)
     return Supplied(tree, supply.warnings)
 
 

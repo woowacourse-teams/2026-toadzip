@@ -1,44 +1,45 @@
 """공급·본문·신청자격 단계의 부분 결과를 관리자 계약 하나로 합친다. 두 단계의 단지를 이름으로 맞추고
-단지 경로(complexes[N])를 합친 순번으로 고친다. 공급행 값의 원문 대조는 조립(supply_assembly)에서 이미 끝났다."""
+단지 경로(complexes[N])를 합친 순번으로 고친다. 공급표 값의 원문 대조는 조립(supply_assembly)에서 이미 끝났고,
+여기서는 공급표 모델의 단지명을 합친 단지 이름으로 맞추고 신청자격 조건을 공급대상에 붙인다."""
 
 import json
 import re
 
 from ai_worker import checks
+from ai_worker.supply_sheet import Cite, SupplySheet
 from ai_worker.checks import deduplicate
 from ai_worker.eligibility import Extracted
 from ai_worker.supply_assembly import add_complex_name, address_key, complex_key, normalize_address
 
 
-def merge(supply: dict, notice: dict, eligibility: Extracted | None = None) -> tuple[dict, list[str]]:
-    """단계별 부분 결과를 관리자 계약으로 합친다. 경고는 두 단계의 단지 값이 서로 다른 경우다.
-    신청자격은 data.eligibility로 두고, 묶음 요약은 공급대상 신청 조건(applicationCondition)에 합친다."""
+def merge(supply: dict, sheet: SupplySheet, notice: dict,
+          eligibility: Extracted | None = None) -> tuple[dict, list[str]]:
+    """단계별 부분 결과를 관리자 계약으로 합친다. supply는 공급 단계의 단지 부분, sheet는 공급표 모델이다.
+    경고는 두 단계의 단지 값이 서로 다른 경우다. 신청자격은 data.eligibility로 두고, 묶음 요약은 공급대상 신청 조건
+    (applicationCondition)에 합친다. 공급표는 결과 tree에 넣지 않는다(검산 뒤 supply_sheet가 내보낸다)."""
     supply_data, notice_data = supply["data"], notice["data"]
-    supply_rows = checks.objects(supply_data.get("supplyRows"))
     supply_complexes = checks.objects(supply_data.get("complexes"))
     notice_complexes = checks.objects(notice_data.get("complexes"))
     complexes, supply_indexes, notice_indexes, complex_unresolved, complex_warnings = _merge_complexes(
-        supply_rows, supply_complexes, notice_complexes
+        sheet, supply_complexes, notice_complexes
     )
     supply_unresolved = checks.objects(supply_data.get("unresolvedFields"))
-    notice_unresolved = checks.objects(notice_data.get("unresolvedFields"))
+    notice_unresolved = _outside_sheet(notice_data.get("unresolvedFields"))
     _remap_complex_paths(supply_unresolved, supply_complexes, supply_indexes)
     _remap_complex_paths(notice_unresolved, notice_complexes, notice_indexes)
 
     supply_evidence = checks.objects(supply.get("evidence"))
-    notice_evidence = checks.objects(notice.get("evidence"))
+    notice_evidence = _outside_sheet(notice.get("evidence"))
     _remap_complex_paths(supply_evidence, supply_complexes, supply_indexes)
     _remap_complex_paths(notice_evidence, notice_complexes, notice_indexes)
     evidence = [*supply_evidence, *notice_evidence]
 
     supply_not_applicable = checks.objects(supply.get("notApplicable"))
-    notice_not_applicable = checks.objects(notice.get("notApplicable"))
+    notice_not_applicable = _outside_sheet(notice.get("notApplicable"))
     _remap_complex_paths(supply_not_applicable, supply_complexes, supply_indexes)
     _remap_complex_paths(notice_not_applicable, notice_complexes, notice_indexes)
     not_applicable = deduplicate([*supply_not_applicable, *notice_not_applicable])
 
-    shared_counts = checks.objects(supply.get("sharedCounts"))
-    _remap_complex_paths(shared_counts, supply_complexes, supply_indexes)
     unresolved = [*supply_unresolved, *notice_unresolved, *complex_unresolved]
     for index, complex_ in enumerate(complexes):
         for field in ("address", "totalHouseholdCount", "parkingCount"):
@@ -49,62 +50,66 @@ def merge(supply: dict, notice: dict, eligibility: Extracted | None = None) -> t
                 unresolved.append({"path": path, "reason": "공급 표와 본문에서 확인하지 못함"})
     if eligibility is not None:
         evidence += eligibility.evidence
-        evidence += _apply_conditions(supply_rows, eligibility.conditions, eligibility.condition_evidence)
-        _link_supply_targets(eligibility.data, supply_rows)
+        _apply_conditions(sheet, eligibility.conditions, eligibility.condition_evidence)
+        _link_supply_targets(eligibility.data, sheet)
     tree = {
         "data": {
             "announcement": notice_data["announcement"],
             "receptionPlaces": notice_data["receptionPlaces"],
             "complexes": complexes,
-            "supplyRows": supply_rows,
             "schedules": notice_data["schedules"],
             "eligibility": eligibility.data if eligibility is not None else None,
             "unresolvedFields": deduplicate(unresolved),
         },
-        "sharedCounts": deduplicate(shared_counts),
         "notApplicable": deduplicate(not_applicable),
         "evidence": evidence,
     }
-    checks.first_json_object(json.dumps(tree, ensure_ascii=False))
+    checks.first_json_object(json.dumps(tree, ensure_ascii=False), {"announcement": dict, "schedules": list})
     return tree, complex_warnings
+
+
+# 공급정보의 미확인·근거는 공급표 안에 있다. 본문 단계가 옛 공급행 경로(supplyRows·sharedCounts)를 쓰면 가리킬 곳이 없어 뺀다.
+_OLD_SUPPLY_PATH = re.compile(r"(?:supplyRows|sharedCounts)(?:$|[.\[])")
+
+
+def _outside_sheet(items: object) -> list[dict]:
+    return [item for item in checks.objects(items)
+            if not (isinstance(item.get("path"), str) and _OLD_SUPPLY_PATH.match(item["path"]))]
 
 
 _CONDITION_LIMIT = 255
 _CONDITION_SEPARATOR = " · "
 
 
-def _apply_conditions(supply_rows: list[dict], conditions, notice_evidence: list[dict]) -> list[dict]:
+def _apply_conditions(sheet: SupplySheet, conditions, notice_evidence: list[dict]) -> None:
     """본문 신청자격을 대상 신청 조건에 합친다. 공고 전체 조건(target 없음)은 모든 대상에, 대상 조건은 이름이 같거나 한쪽이 다른 쪽을
     품는 대상(고령자 ↔ 고령자(주거약자))에 붙이고, 표에 적힌 조건은 뒤에 둔다. 대상 이름은 바꾸지 않는다(PDF 보정이 기존 대상과 짝짓는 이름).
     255자(저장 칸 길이)를 넘으면 조건 단위로 자른다. 근거는 처음 붙인 본문 조건의 근거를 그 대상 칸에 옮긴다."""
     items = [item for item in checks.objects(conditions) if _present(item.get("condition"))]
     if not items:
-        return []
+        return
     quotes = {item.get("path"): item for item in notice_evidence}
-    added = []
-    for row_index, row in enumerate(supply_rows):
-        for target_index, target in enumerate(checks.objects(row.get("targets"))):
-            matched = [(index, item) for index, item in enumerate(items) if _condition_applies(item.get("target"), target.get("target"))]
-            if not matched:
-                continue
-            own = target.get("applicationCondition")
-            notice_parts = [item["condition"].strip() for _, item in matched]
-            target["applicationCondition"] = _joined_within_limit(list(dict.fromkeys(notice_parts)),
-                                                                  own.strip() if _present(own) else None)
-            source = quotes.get(f"applicationConditions[{conditions.index(matched[0][1])}]")
-            if source:
-                added.append({**source, "path": f"supplyRows[{row_index}].targets[{target_index}].applicationCondition"})
-    return added
+    for _, entry in sheet.entries():
+        matched = [item for item in items if _condition_applies(item.get("target"), entry.label)]
+        if not matched:
+            continue
+        own = entry.values.get("applicationCondition")
+        notice_parts = [item["condition"].strip() for item in matched]
+        entry.values["applicationCondition"] = _joined_within_limit(list(dict.fromkeys(notice_parts)),
+                                                                    own.strip() if _present(own) else None)
+        source = quotes.get(f"applicationConditions[{conditions.index(matched[0])}]")
+        if source:
+            sheet.evidence.append(Cite(entry, "applicationCondition", source.get("page"), source.get("quote")))
 
 
-def _link_supply_targets(data: dict | None, supply_rows: list[dict]) -> None:
+def _link_supply_targets(data: dict | None, sheet: SupplySheet) -> None:
     """신청자격 대상마다 그 대상이 속한 공급 표 대상(supplyTarget)과 같은 규칙(_condition_applies)으로 맞은 공급표 대상 이름을
     원문 그대로 싣는다(supplyTargets).
     서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다."""
     if data is None:
         return
-    names = list(dict.fromkeys(target.get("target") for row in supply_rows for target in checks.objects(row.get("targets"))
-                               if isinstance(target.get("target"), str) and target["target"].strip()))
+    names = list(dict.fromkeys(entry.label for _, entry in sheet.entries()
+                               if isinstance(entry.label, str) and entry.label.strip()))
     for target in data["targets"]:
         target["supplyTargets"] = [name for name in names if _condition_applies(target["supplyTarget"], name)]
 
@@ -144,20 +149,17 @@ def _present(value) -> bool:
     return isinstance(value, str) and value.strip() != ""
 
 
-def _merge_complexes(supply_rows: list[dict], supply: list[dict], notice: list[dict]):
+def _merge_complexes(sheet: SupplySheet, supply: list[dict], notice: list[dict]):
     names = []
-    for row in supply_rows:
-        name = row.get("complexReference", {}).get("sourceComplexName") if isinstance(row.get("complexReference"), dict) else None
-        add_complex_name(names, name)
+    for unit in sheet.units:
+        add_complex_name(names, unit.complex_name)
     for item in [*supply, *notice]:
         add_complex_name(names, item.get("sourceComplexName"))
 
     canonical_names = {complex_key(name): name for name in names}
-    for row in supply_rows:
-        reference = row.get("complexReference")
-        name = reference.get("sourceComplexName") if isinstance(reference, dict) else None
-        if isinstance(name, str) and complex_key(name) in canonical_names:
-            reference["sourceComplexName"] = canonical_names[complex_key(name)]
+    for unit in sheet.units:
+        if isinstance(unit.complex_name, str) and complex_key(unit.complex_name) in canonical_names:
+            unit.complex_name = canonical_names[complex_key(unit.complex_name)]
 
     merged, supply_indexes, notice_indexes, unresolved, warnings = [], {}, {}, [], []
     for name in names:

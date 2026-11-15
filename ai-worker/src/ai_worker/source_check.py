@@ -26,12 +26,12 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
                       source_row_values: dict[str, dict[str, str]] | None = None,
                       target_values: dict[str, dict[str, dict[str, str]]] | None = None,
                       block_counts: dict[str, dict[str, int]] | None = None,
-                      headings: "Headings | None" = None) -> list[str]:
+                      headings: "Headings | None" = None) -> list[tuple[str, str]]:
     """headings는 단지명 열이 없는 표의 단지명을 표 위 가장 가까운 제목과 대조할 때 쓴다(Headings).
     block_counts는 주택타입 여럿을 묶은 주택형 공급행의 경로별 수량 합이다. 그 수량은 행 칸 대신 이 합과 대조한다.
     공급행·대상 경로마다 근거(행 ID·인용·쪽)를 원문 표 행에서 확인하고, 확인되면 값을 같은 의미의 원문 칸과 대조한다.
     target_values는 금액 열이 신청자 묶음(가군·나군) 머리글로 나뉜 표의 행별 묶음 칸이다(target_cells).
-    확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 경고는 근거를 확인하지 못한 경로마다 한 줄이고,
+    확인하지 못한 값은 비우고 unresolved에 사유를 남긴다. 근거를 확인하지 못한 경로는 (경로, 사유)로 돌려준다(조립이 경고로 알린다).
     값마다의 사유는 unresolved에만 있다."""
     warnings = []
     expected = []
@@ -72,7 +72,7 @@ def check_source_rows(supply_rows: list[dict], source_rows: dict[str, set[str]],
         else:
             reason = "근거 쪽과 원문 표 행 ID의 쪽이 일치하지 않음"
         unresolved.append({"path": path, "reason": reason})
-        warnings.append(f"{path}: {reason}")
+        warnings.append((path, reason))
         _clear_unverified_string_values(path, supply_rows, unresolved, reason)
         _clear_unverified_numeric_values(path, supply_rows, unresolved, reason)
     return warnings

@@ -363,17 +363,20 @@ def test_sub_route_summary_reaches_its_supply_target_condition_through_merge():
 
     extracted = _normalize([{"kind": "JOB_SEEKER", "text": "졸업 또는 중퇴한 지 2년 이내"}], routes=[
         {"name": "취업준비생", "supplyTarget": "대학생", "requires": ["r1"], "summary": "졸업·중퇴 2년 이내 취업준비생"}])
-    supply = {"data": {"complexes": [], "unresolvedFields": [], "supplyRows": [
-        {"complexReference": {"sourceComplexName": "인천석남"}, "targets": [{"target": "대학생", "applicationCondition": None}]}]},
-        "sharedCounts": [], "notApplicable": [], "evidence": []}
+    from ai_worker.supply_sheet import Entry, SupplySheet, Unit
+
+    supply = {"data": {"complexes": [], "unresolvedFields": []}, "notApplicable": [], "evidence": []}
+    sheet = SupplySheet([Unit("인천석남", "26A", {}, [Entry("대학생", {"applicationCondition": None})])])
     notice = {"data": {"announcement": {}, "receptionPlaces": [], "complexes": [], "schedules": [], "unresolvedFields": []},
               "notApplicable": [], "evidence": []}
 
-    tree, _ = merge.merge(supply, notice, extracted)
+    tree, _ = merge.merge(supply, sheet, notice, extracted)
 
-    assert tree["data"]["supplyRows"][0]["targets"][0]["applicationCondition"] == "졸업·중퇴 2년 이내 취업준비생"
+    emitted = sheet.emit(tree["data"]["eligibility"])
+    assert [target["applicationCondition"] for target in emitted["targets"]] == ["졸업·중퇴 2년 이내 취업준비생"]
     assert tree["data"]["eligibility"]["targets"][0]["supplyTargets"] == ["대학생"]
-    assert [item["page"] for item in tree["evidence"] if item["path"].endswith(".applicationCondition")] == [11]
+    assert tree["data"]["eligibility"]["targets"][0]["supplyTargetKeys"] == ["t0"]
+    assert [(item["path"], item["page"]) for item in emitted["evidence"]] == [("targets[0].applicationCondition", 11)]
 
 
 def test_closed_lists_in_the_prompt_match_the_code():

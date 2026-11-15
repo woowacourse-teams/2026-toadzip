@@ -14,6 +14,7 @@ from ai_worker.extraction import MODEL_RESPONSE_INVALID, PermanentError
 
 if TYPE_CHECKING:
     from ai_worker.source_frame import SourceSupplyRow
+    from ai_worker.supply_sheet import SupplySheet, Unit
 
 INVALID_CODE = MODEL_RESPONSE_INVALID
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -46,7 +47,7 @@ def first_json_object(reply: str, expected_data: dict[str, type] | None = None) 
     if not isinstance(data, dict):
         raise PermanentError(INVALID_CODE, "AI 모델 응답에 추출 결과(data)가 없습니다.")
     # 단계별 응답은 관리자 계약의 일부만 갖고, 합친 뒤 최종 구조를 다시 확인한다.
-    expected = expected_data or {"announcement": dict, "supplyRows": list, "schedules": list}
+    expected = expected_data or {"announcement": dict, "schedules": list}
     if any(not isinstance(data.get(name), value_type) for name, value_type in expected.items()):
         raise PermanentError(INVALID_CODE, "AI 모델 응답의 추출 단계 형식이 맞지 않습니다.")
     return tree
@@ -56,38 +57,55 @@ def _reject_constant(name: str):
     raise ValueError(f"JSON이 아닌 값: {name}")
 
 
-def review(tree: dict, pages: list[int], texts: list[str], lh_rows: list["SourceSupplyRow"],
+def review(tree: dict, sheet: "SupplySheet", pages: list[int], texts: list[str], lh_rows: list["SourceSupplyRow"],
            rental_rows: int) -> list[str]:
-    """tree의 쪽 번호를 원본 기준으로 바꾸고 경고를 돌려준다.
+    """tree의 쪽 번호를 원본 기준으로 바꾸고 tree와 공급표 모델(sheet)의 경고를 돌려준다.
     texts는 원본 PDF 쪽마다 근거 인용문을 찾을 글(단계가 그 쪽을 다른 순서로 읽었으면 그 글도 이어 붙인 것), lh_rows는 참고 목록으로 준 LH API 행,
-    rental_rows는 임대조건표에서 센 (주택형, 공급계층) 줄 수다."""
+    rental_rows는 임대조건표에서 센 (주택형, 공급계층) 줄 수다. 공급표 경고는 경로 대신 단지·주택형·공급대상 이름으로 알린다."""
     lh_types = [row.type_name for row in lh_rows]
     warnings: list[str] = []
+    _check_sheet_quotes(sheet, len(texts), texts, warnings)
     evidence = remap_pages(objects(tree.get("evidence")), pages, warnings)
-    remap_pages(objects(tree.get("sharedCounts")), pages, warnings)
     _check_quotes(evidence, texts, warnings)
     data = tree["data"]
     announcement = data["announcement"]
     _check_announcement(announcement, warnings)
     _check_complexes(announcement, objects(data.get("complexes")), warnings)
-    rows = objects(data.get("supplyRows"))
-    for index, row in enumerate(rows):
-        _check_supply_row(row, f"supplyRows[{index}]", _text(announcement.get("postedDate")), set(lh_types), warnings)
-    _check_lh_type_names(rows, evidence, set(lh_types), warnings)
-    _check_lh_counts(rows, lh_rows, warnings)
-    _check_target_count(rows, rental_rows, warnings)
+    for unit in sheet.units:
+        _check_unit(unit, _text(announcement.get("postedDate")), set(lh_types), warnings)
+    _check_lh_type_names(sheet, set(lh_types), warnings)
+    _check_lh_counts(sheet.units, lh_rows, warnings)
+    _check_target_count(sheet, rental_rows, warnings)
     return warnings
 
 
-def _check_lh_type_names(rows: list[dict], evidence: list[dict], lh_types: set[str], warnings: list[str]) -> None:
-    """공급행 틀로 준 LH 주택형 이름(24A)을 PDF 공급 표 표기(24) 대신 옮겼는지 본다. 그 행의 근거 인용에 이름이 없으면 경고한다."""
-    quotes = {item.get("path"): _WHITESPACE.sub("", _text(item.get("quote"))) for item in evidence}
-    for index, row in enumerate(rows):
-        housing_type, quote = _text(row.get("sourceHousingTypeName")), quotes.get(f"supplyRows[{index}]")
+def _check_sheet_quotes(sheet: "SupplySheet", page_count: int, texts: list[str], warnings: list[str]) -> None:
+    """공급표 근거는 원문 행 ID에서 원본 쪽을 복원했다. 쪽 범위와 인용문 낱말이 그 쪽 원문에 있는지만 본다."""
+    for cite in sheet.evidence:
+        label = sheet.label(cite.owner)
+        page = cite.page
+        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= page_count:
+            warnings.append(f"{label}: 첨부한 쪽 범위를 벗어난 근거 쪽 번호({page})")
+            continue
+        missing = missing_words(_text(cite.quote), texts[page - 1])
+        if missing:
+            warnings.append(f"{label}: 근거 인용문의 {', '.join(missing[:3])}이(가) {page}쪽 원문에 없음")
+    for shared in sheet.shared:
+        page = shared.page
+        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= page_count:
+            names = ", ".join(sheet.label(owner) for owner in shared.owners)
+            warnings.append(f"공통 수량({names}): 첨부한 쪽 범위를 벗어난 근거 쪽 번호({page})")
+
+
+def _check_lh_type_names(sheet: "SupplySheet", lh_types: set[str], warnings: list[str]) -> None:
+    """공급행 틀로 준 LH 주택형 이름(24A)을 PDF 공급 표 표기(24) 대신 옮겼는지 본다. 그 단위의 근거 인용에 이름이 없으면 경고한다."""
+    quotes = {cite.owner: _WHITESPACE.sub("", _text(cite.quote)) for cite in sheet.evidence if not cite.field}
+    for unit in sheet.units:
+        housing_type, quote = _text(unit.name), quotes.get(unit)
         # 공급대상 괄호는 병합 셀이라 표 한 줄 인용에 없을 수 있어 괄호 앞 표기만 대조한다(화면과 같은 기준).
         core = _WHITESPACE.sub("", housing_type).split("(")[0]
         if housing_type in lh_types and quote and core not in quote:
-            warnings.append(f"supplyRows[{index}].sourceHousingTypeName: 근거 인용에 없는 LH 주택형 이름({housing_type})")
+            warnings.append(f"{unit.label()} 주택형 이름: 근거 인용에 없는 LH 주택형 이름({housing_type})")
 
 
 def remap_pages(items: list[dict], pages: list[int], warnings: list[str]) -> list[dict]:
@@ -125,7 +143,7 @@ def _check_quotes(evidence: list[dict], texts: list[str], warnings: list[str]) -
             warnings.append(f"{_label(item)}: 근거 인용문의 {', '.join(missing[:3])}이(가) {page}쪽 원문에 없음")
 
 
-def _check_lh_counts(rows: list[dict], lh_rows: list["SourceSupplyRow"], warnings: list[str]) -> None:
+def _check_lh_counts(rows: list["Unit"], lh_rows: list["SourceSupplyRow"], warnings: list[str]) -> None:
     """LH API 행은 공급행을 정하지 않는다. 같은 단지에서 전용면적(소수 둘째 자리)이 공급행의 면적(세부 주택형 포함) 가운데
     하나와 같은 LH 행이 그 공급행에 붙는다. 신청자 구분으로 나뉜 여러 LH 행이 한 공급행에 붙으므로 모집수 합계를 PDF 모집수와 맞대고,
     다르면 경고만 한다(PDF와 API 중 하나를 확인할 일이지 PDF 값을 못 쓰는 것은 아니다). LH 행 수와 공급행 수가 다른 것은 오류가 아니다.
@@ -138,12 +156,12 @@ def _check_lh_counts(rows: list[dict], lh_rows: list["SourceSupplyRow"], warning
     if not groups:
         return
     labels = list(dict.fromkeys(label for label, _ in groups))
-    pdf_complexes = {_complex_key(_complex_name(row)) for row in rows}
+    pdf_complexes = {_complex_key(_text(row.complex_name)) for row in rows}
     # 같은 단지에서 면적이 겹치는 PDF 행은 화면이 공급행 하나로 접는다(형명만 다른 26A·26B, 신청자 구분 행). 그 행들을 함께 맞댄다.
     clusters: list[tuple[str, list[Decimal], list[int]]] = []
     for index, row in enumerate(rows):
-        label = _lh_complex_label(_complex_name(row), labels, len(pdf_complexes) == 1)
-        areas = list(dict.fromkeys(_row_areas(row)))
+        label = _lh_complex_label(_text(row.complex_name), labels, len(pdf_complexes) == 1)
+        areas = list(dict.fromkeys(area for area in map(area_key, row.areas()) if area is not None))
         if label is None or not areas:
             continue
         touching = [cluster for cluster in clusters if cluster[0] == label and set(cluster[1]) & set(areas)]
@@ -151,8 +169,8 @@ def _check_lh_counts(rows: list[dict], lh_rows: list["SourceSupplyRow"], warning
                   sorted([index, *(at for cluster in touching for at in cluster[2])]))
         clusters = [cluster for cluster in clusters if cluster not in touching] + [merged]
     for label, areas, indexes in sorted(clusters, key=lambda cluster: cluster[2][0]):
-        counts = [rows[at].get("totalSupplyHouseholdCount") for at in indexes]
-        # 행 모집수가 비어 있으면 공통 모집수(sharedCounts)로 묶인 행이라 맞대지 않는다.
+        counts = [rows[at].values.get("totalSupplyHouseholdCount") for at in indexes]
+        # 모집수가 비어 있으면 여러 주택형이 함께 쓰는 모집 칸으로 묶인 단위라 맞대지 않는다.
         if not all(isinstance(count, int) and not isinstance(count, bool) for count in counts):
             continue
         attached = [lh_row for area in areas for lh_row in groups.get((label, area), [])]
@@ -164,13 +182,13 @@ def _check_lh_counts(rows: list[dict], lh_rows: list["SourceSupplyRow"], warning
         if total == count:
             continue
         shown = ", ".join(str(area) for area in areas)
-        head = (f"supplyRows[{indexes[0]}].totalSupplyHouseholdCount: 같은 전용면적({shown}) LH API 공급행 "
+        head = (f"{rows[indexes[0]].label()} 모집수: 같은 전용면적({shown}) LH API 공급행 "
                 f"{len(attached)}줄의 모집수 합계 {total}와 ")
         if len(indexes) == 1:
             warnings.append(f"{head.removesuffix('와 ')}와 다름({count})")
         else:
-            members = ", ".join(f"supplyRows[{at}]" for at in indexes)
-            warnings.append(f"{head}같은 면적 PDF 행 {len(indexes)}개({members})의 합 {count}가 다름")
+            members = ", ".join(rows[at].label() for at in indexes)
+            warnings.append(f"{head}같은 면적 PDF 주택형 {len(indexes)}개({members})의 합 {count}가 다름")
 
 
 def area_key(value: object) -> Decimal | None:
@@ -183,11 +201,6 @@ def area_key(value: object) -> Decimal | None:
     except InvalidOperation:
         return None
     return area.quantize(Decimal("0.01"), ROUND_HALF_UP) if area.is_finite() else None
-
-
-def _row_areas(row: dict) -> list[Decimal]:
-    areas = [area_key(row.get("exclusiveArea")), *(area_key(subtype.get("exclusiveArea")) for subtype in objects(row.get("subtypes")))]
-    return list(dict.fromkeys(area for area in areas if area is not None))
 
 
 def _lh_complex_label(name: str, labels: list[str], single_pdf_complex: bool) -> str | None:
@@ -203,21 +216,16 @@ def _lh_complex_label(name: str, labels: list[str], single_pdf_complex: bool) ->
     return found[0] if len(found) == 1 else None
 
 
-def _complex_name(row: dict) -> str:
-    reference = row.get("complexReference")
-    return _text(reference.get("sourceComplexName")) if isinstance(reference, dict) else ""
-
-
 def _complex_key(name: str) -> str:
     return _WHITESPACE.sub("", name)
 
 
-def _check_target_count(rows: list[dict], rental_rows: int, warnings: list[str]) -> None:
-    """추론을 낮추면 모델이 한 공급계층(예: 기존거주자)을 모든 행에서 통째로 빠뜨린다. 그래도 값은 맞아 보여
+def _check_target_count(sheet: "SupplySheet", rental_rows: int, warnings: list[str]) -> None:
+    """추론을 낮추면 모델이 한 공급계층(예: 기존거주자)을 모든 주택형에서 통째로 빠뜨린다. 그래도 값은 맞아 보여
     다른 검산에 걸리지 않으므로, 공급대상 수가 임대조건표 줄 수보다 적으면 경고한다."""
-    targets = sum(len(objects(row.get("targets"))) for row in rows)
+    targets = len(sheet.entries())
     if targets < rental_rows:
-        warnings.append(f"supplyRows: 공급대상 {targets}개가 임대조건표 {rental_rows}줄보다 적어 빠진 대상이 있을 수 있음")
+        warnings.append(f"공급표: 공급대상 {targets}개가 임대조건표 {rental_rows}줄보다 적어 빠진 대상이 있을 수 있음")
 
 
 _SUMMARY_WORDS = {"합계", "소계", "계", "총계"}
@@ -301,19 +309,20 @@ def _check_complexes(announcement: dict, complexes: list[dict], warnings: list[s
             warnings.append(f"complexes[{index}].sourceComplexName: 단지명이 공고 제목 전체와 같음")
 
 
-def _check_supply_row(row: dict, path: str, posted_date: str, lh_types: set[str], warnings: list[str]) -> None:
-    housing_type = _text(row.get("sourceHousingTypeName"))
+def _check_unit(unit: "Unit", posted_date: str, lh_types: set[str], warnings: list[str]) -> None:
+    label = unit.label()
+    housing_type = _text(unit.name)
     if housing_type and _AREA_ONLY.fullmatch(housing_type) and housing_type not in lh_types:
-        warnings.append(f"{path}.sourceHousingTypeName: 면적 숫자만 있음({housing_type})")
-    if row.get("commonArea") is not None and row.get("supplyArea") is not None:
-        warnings.append(f"{path}.supplyArea: 공용면적이 있는데 공급면적도 채워짐")
-    move_in = _text(row.get("expectedMoveInMonth"))
+        warnings.append(f"{label} 주택형 이름: 면적 숫자만 있음({housing_type})")
+    if unit.values.get("commonArea") is not None and unit.values.get("supplyArea") is not None:
+        warnings.append(f"{label} 공급면적: 공용면적이 있는데 공급면적도 채워짐")
+    move_in = _text(unit.values.get("expectedMoveInMonth"))
     if move_in and len(posted_date) >= 7 and move_in < posted_date[:7]:
-        warnings.append(f"{path}.expectedMoveInMonth: 공고일보다 이른 연월({move_in})")
-    for index, target in enumerate(objects(row.get("targets"))):
-        name = _text(target.get("target"))
+        warnings.append(f"{label} 입주 예정 연월: 공고일보다 이른 연월({move_in})")
+    for entry in unit.entries:
+        name = _text(entry.label)
         if _TARGET_NOTATION.search(name):
-            warnings.append(f"{path}.targets[{index}].target: 표기 규칙 위반({name})")
+            warnings.append(f"{label} 공급대상: 표기 규칙 위반({name})")
 
 
 def _label(item: dict) -> str:

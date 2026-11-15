@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
-                       supply_assembly, supply_grouping, supply_sheet, supply_sources)
+                       supply_grouping, supply_sources)
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 
@@ -93,13 +93,14 @@ class AnnouncementPdfExtractor:
         extracted = _eligibility(eligibility_reply, eligibility_error, notice_tree, eligibility_source.pages, read_texts)
         warnings += extracted.warnings
         # merge는 페이지 변환 전에 tree를 만들므로, 최종 결과의 근거를 원본 PDF 쪽 번호로 변환한다.
-        tree, merge_warnings = merge.merge(supply.tree, notice_tree, extracted)
+        tree, merge_warnings = merge.merge(supply.tree, supply.sheet, notice_tree, extracted)
         warnings += merge_warnings
         quote_texts = [read_texts.get(number, text) for number, text in enumerate(texts, 1)]
-        warnings += checks.review(tree, list(range(1, len(texts) + 1)), quote_texts, rows, selected.rental_rows)
-        warnings += frame.link(tree)
+        warnings += checks.review(tree, supply.sheet, list(range(1, len(texts) + 1)), quote_texts, rows,
+                                  selected.rental_rows)
+        warnings += frame.link(supply.sheet)
         checks.normalize_note_paths(tree, warnings)
-        supply_sheet.attach(tree, supply.tree.get(supply_assembly.JOINED_ROWS, []))
+        tree["data"]["supplySheet"] = supply.sheet.emit(tree["data"].get("eligibility"))
         warnings += checks.missing_housing_types(tree["data"]["supplySheet"], supply_grouping.type_cells(selected.supply_tables), rows)
         usage = _combined_usage(*supply.usage, notice_reply.usage, *([eligibility_reply.usage] if eligibility_reply else []))
         log.info("작업 %d 추출 완료 pages=%d/%d eligibilityPages=%d%s tableRows=%d frameRows=%d warnings=%d supply=%s "
@@ -148,7 +149,6 @@ def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dic
 
 def _remap_stage_pages(tree: dict, source_pages: list[int]) -> list[str]:
     warnings: list[str] = []
-    checks.remap_pages(checks.objects(tree.get("sharedCounts")), source_pages, warnings)
     checks.remap_pages(checks.objects(tree.get("evidence")), source_pages, warnings)
     return warnings
 
