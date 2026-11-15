@@ -411,6 +411,20 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 맞벌이_비율이_적힌_가산은_맞벌이_부부를_그_비율_상한으로_판정한다() {
+        // 구리갈매 A-1BL: "100퍼센트 이하(맞벌이 부부 120퍼센트 이하)". 2인 기본 상한 5,866,270원의 120%는 7,039,524원이다.
+        // 공통 소득 조건(가산 원문 없는 출산자녀 가산)은 자녀가 있는 부부를 넓게 충족으로 보므로, 청년 경로의 소득 조건이 판정을 가른다.
+        EligibilityContent content = draft(evidence(), dualIncome("맞벌이 부부 120퍼센트 이하"));
+        EligibilityProfile dual = with(withChildren(with(b(), IS_DUAL_INCOME, true), 1, POSTED.minusYears(1)),
+                HOUSEHOLD_MONTHLY_INCOME, 7_039_524L);
+
+        assertThat(youth(content, dual)).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(dual, HOUSEHOLD_MONTHLY_INCOME, 7_039_525L))).isEqualTo(Status.INELIGIBLE);
+        assertThat(youth(content, with(with(dual, IS_DUAL_INCOME, false), HOUSEHOLD_MONTHLY_INCOME, 6_000_000L)))
+                .isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
     void 본인_소득_기준은_가구원_수를_알_수_없어_판정하지_않고_목록에_둔다() {
         EligibilityContent content = draft(evidence(), applicantIncome());
 
@@ -721,8 +735,12 @@ class ExtractedEligibilityDraftTest {
     }
 
     private static List<Requirement> dualIncome() {
+        return dualIncome(null);
+    }
+
+    private static List<Requirement> dualIncome(String asWritten) {
         return List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null, "URBAN_WORKER_MONTHLY_INCOME", 2025, 100,
-                Map.of(), List.of(new Adjustment("DUAL_INCOME", null)), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
+                Map.of(), List.of(new Adjustment("DUAL_INCOME", asWritten)), null, List.of(), List.of(), List.of(), "월평균소득 100% 이하(맞벌이 120%)",
                 YOUTH + ".requirements[1]"));
     }
 

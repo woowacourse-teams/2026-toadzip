@@ -82,6 +82,8 @@ public final class ExtractedEligibilityDraft {
 
     /** 공공임대 출산가구 가산의 출산자녀 기준일. 이날 이후 출산한 미성년자녀(태아 포함)를 출산자녀로 센다. */
     private static final LocalDate CHILDBIRTH_SINCE = LocalDate.of(2023, 3, 28);
+    // "맞벌이 부부 120퍼센트 이하", "맞벌이 가구 20%p 가산". 그룹 2가 있으면 기본 비율에 더하는 값이다.
+    private static final Pattern DUAL_INCOME_PERCENT = Pattern.compile("맞벌이[^\\d%]{0,15}?(\\d{1,3})\\s*(?:%|퍼센트)\\s*(p|포인트)?");
     /** 출산자녀 수별 가산 비율: "2인 이상 20%", "1인 10% 가산", "1명당 10%p". */
     private static final Pattern CHILDBIRTH_TIER = Pattern.compile("(\\d)\\s*(?:인|명)\\s*(당)?\\s*(이상)?[^\\d%]{0,10}?(\\d{1,3})\\s*(?:%|퍼센트)");
 
@@ -581,8 +583,14 @@ public final class ExtractedEligibilityDraft {
                         equal(ProfileField.FAMILY_TYPE, "SINGLE_PARENT"), equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"))),
                         equal(ProfileField.HAS_CHILDREN_OR_PREGNANCY, "true"))));
             } else if ("DUAL_INCOME".equals(adjustment.kind())) {
-                alternatives.add(group(Operator.ALL, List.of(equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"),
-                        equal(ProfileField.IS_DUAL_INCOME, "true"))));
+                Optional<Integer> extra = dualIncomeExtra(rule, adjustment.asWritten());
+                List<ProfileRule> dual = new ArrayList<>(List.of(equal(ProfileField.FAMILY_TYPE, "COUPLE_OR_ENGAGED"),
+                        equal(ProfileField.IS_DUAL_INCOME, "true")));
+                extra.ifPresent(percent -> dual.add(raised(rule, percent)));
+                alternatives.add(group(Operator.ALL, dual));
+                if (extra.isPresent()) {
+                    continue;
+                }
             }
             uncomputed.add(adjustment);
         }
@@ -647,6 +655,23 @@ public final class ExtractedEligibilityDraft {
             percents.put(2, percents.get(1) * 2);
         }
         return percents;
+    }
+
+    /**
+     * 맞벌이 소득 상한이 기본 비율보다 몇 %p 높은지. "맞벌이 부부 120퍼센트 이하"는 기본 100%에서 20, "맞벌이 20%p 가산"은 20이다.
+     * 소득 기준이 아니거나 비율을 읽지 못하면 비어 있다.
+     */
+    private static Optional<Integer> dualIncomeExtra(ProfileRule rule, String asWritten) {
+        if (rule.operator() != Operator.INCOME_CEILING || asWritten == null) {
+            return Optional.empty();
+        }
+        Matcher matcher = DUAL_INCOME_PERCENT.matcher(asWritten);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        int percent = Integer.parseInt(matcher.group(1));
+        int extra = matcher.group(2) != null ? percent : percent - rule.incomeLimit().percent();
+        return extra > 0 && extra <= 100 ? Optional.of(extra) : Optional.empty();
     }
 
     private static ProfileRule raised(ProfileRule rule, int percent) {
