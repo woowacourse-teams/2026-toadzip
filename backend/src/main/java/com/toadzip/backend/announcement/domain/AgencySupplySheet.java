@@ -22,7 +22,8 @@ import java.util.stream.Collectors;
  *   <li>공급행: LH 줄은 (공고 단지, 신청형 키 {@link HousingTypeNames#key})로 묶는다. LH는 같은 신청형을 신청자 묶음마다 여러 줄로
  *       준다("36형 일반(고령자)"·"36형 일반(청년)"). 형명이 빈 줄과 GH 줄은 줄마다 공급행이다. 공급행 형명은 줄 형명을 순서대로 잇는다.</li>
  *   <li>주택타입: 공고 단지의 연결 단지에서 {@link HousingTypeAreas#pick}(이름 우선, 같은 면적이 하나뿐일 때만)으로 임시로 고른다.
- *       면적은 첫 줄 전용면적이다. 고른 주택타입이 있으면 그 이름·면적을 보인다. 정본으로 복사하는 주택형(신청형) 이름은 원천 형명이다.</li>
+ *       면적은 첫 줄 전용면적이다. 고른 주택타입이 있으면 그 이름·면적을, 없으면 줄 면적(전용·공급 각각 처음 값이 있는 줄)을 보이고
+ *       정본으로 복사한다. 정본으로 복사하는 주택형(신청형) 이름은 원천 형명이다.</li>
  *   <li>대상: 줄마다 하나(신청 조건 '공고문 참조'). 대상 표기는 원천이 준 표기, 없으면 형명 끝의 신청자 표기다. 신청자 표기가 없으면 한
  *       줄뿐인 공급행은 '전체', 여러 줄이면 형명 원문이고, 같은 표기가 여럿이어도 형명 원문이다. 금액이 없는 한 줄뿐인 공급행은 대상을
  *       두지 않는다('전체' 칸이 모집수를 갖는다).</li>
@@ -50,24 +51,32 @@ public final class AgencySupplySheet {
             AgencySupplyLine first = members.getFirst();
             AnnouncementComplex announcementComplex = first.getAnnouncementComplex();
             HousingComplex complex = announcementComplex == null ? null : announcementComplex.linkedComplex();
-            BigDecimal area = members.stream().map(AgencySupplyLine::getExclusiveArea).filter(Objects::nonNull)
-                    .findFirst().orElse(null);
+            BigDecimal area = firstArea(members, AgencySupplyLine::getExclusiveArea);
             HousingType type = complex == null ? null
                     : HousingTypeAreas.pick(typesOf.apply(complex), area, first.getHousingTypeName()).orElse(null);
+            BigDecimal exclusiveArea = type == null ? area : type.getExclusiveArea();
+            BigDecimal supplyArea = type == null ? firstArea(members, AgencySupplyLine::getSupplyArea)
+                    : type.getSupplyArea();
             String joinedName = joinedTypeName(members);
             String displayName = type == null ? joinedName : type.getName();
             String key = "line:" + first.getId();
             SupplySheetDraft.HousingTypeRow housingType = new SupplySheetDraft.HousingTypeRow(key, null,
                     announcementComplex == null ? null : announcementComplex.getId(),
                     complex == null ? null : complex.getId(), type == null ? null : type.getId(), first.getComplexName(),
-                    joinedName, null, null, first.getExpectedMoveInMonth(), null, first.getSupplyCategory(), order++);
+                    joinedName, exclusiveArea, supplyArea, first.getExpectedMoveInMonth(), null, first.getSupplyCategory(),
+                    order++);
             rows.add(new SourceSupplySheet.Row(housingType, false, totalCount(members), targets(members)));
             display.put(key, new SupplySheet.Row(first.getId(), first.getComplexName(), joinedName, displayName, complex,
                     type, first.getExpectedMoveInMonth(), first.getSupplyCategory(),
-                    type == null ? null : type.getExclusiveArea(), type == null ? null : type.getSupplyArea(), false));
+                    exclusiveArea, supplyArea, false));
         }
         SupplySheetDraft draft = SourceSupplySheet.draft(rows);
         return new Converted(draft, SupplySheet.fromDraft(draft, display));
+    }
+
+    /** 묶음에서 처음 값이 있는 줄의 면적. */
+    private static BigDecimal firstArea(List<AgencySupplyLine> members, Function<AgencySupplyLine, BigDecimal> area) {
+        return members.stream().map(area).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     /** 줄을 공급행으로 묶는다. 원천 순서대로 처음 나온 묶음이 앞선다. */

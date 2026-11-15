@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.AgencySupplyLine;
+import com.toadzip.backend.announcement.domain.AgencySupplySheet;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.LeaseTerms;
@@ -62,6 +63,30 @@ class AnnouncementSuppliesIntegrationTest {
         assertThat(sheet.lease(cells.get(0))).map(lease -> lease.amounts().rentalDeposit().intValue()).contains(1000);
         assertThat(sheet.rowCount(joint.id(), Kind.WINNER)).isEqualTo(8);
         assertThat(sheet.total(Kind.WINNER)).isEqualTo(15);
+    }
+
+    @Test
+    void 주택타입을_고르지_못한_준비_공급행은_줄_면적을_보이고_정본_복사본에도_싣는다() {
+        Announcement staged = announcement();
+        AnnouncementComplex complex = complex(staged, "영구임대단지");
+        entities.persist(AgencySupplyLine.create(staged, AgencyCode.LH, new AgencySupplyLine.Values("LH:1", 0, complex,
+                complex.getSourceComplexName(), "39.9300", null, null, null, 4, null, null, null,
+                SupplyCategory.NEW_SUPPLY)));
+        entities.persist(AgencySupplyLine.create(staged, AgencyCode.LH, new AgencySupplyLine.Values("LH:2", 1, complex,
+                complex.getSourceComplexName(), "39.9300", new BigDecimal("26.37"), new BigDecimal("39.93"), "고령자",
+                2, null, null, null, SupplyCategory.NEW_SUPPLY)));
+        entities.flush();
+        entities.clear();
+
+        AgencySupplySheet.Converted staging = supplies.staging(entities.find(Announcement.class, staged.getId()));
+
+        SupplySheet.Row row = staging.sheet().rows().getFirst();
+        assertThat(row.housingType()).isNull();
+        assertThat(row.exclusiveArea()).isEqualByComparingTo("26.37");
+        assertThat(row.supplyArea()).isEqualByComparingTo("39.93");
+        SupplySheetDraft.HousingTypeRow copied = staging.draft().housingTypes().getFirst();
+        assertThat(copied.exclusiveArea()).isEqualByComparingTo("26.37");
+        assertThat(copied.supplyArea()).isEqualByComparingTo("39.93");
     }
 
     @Test
