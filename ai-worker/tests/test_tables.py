@@ -20,6 +20,20 @@ def test_split_table_headers_map_reserve_count_to_its_own_column():
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}
 
 
+
+def test_winner_column_is_read_beside_reserve_winner_column():
+    # 경주·영천 국민임대 공고문은 '당첨자'와 '예비당첨자'를 나란히 둔다. 예비당첨자 열이 당첨자 열 후보로 겹쳐 당첨자 수가 빠졌다.
+    rows = [
+        ["단지명", "주택형", "세대당 계약면적(㎡)", None, "건설 호수", "당첨자", "예비당첨자"],
+        [None, None, "주거 전용", "주거 공용", None, None, None],
+        ["경주건천", "33", "33.48", "16.0127", "172", "12", "6"],
+    ]
+
+    values = tables.SupplyTable.of(3, 1, rows, None, False).rows[2].values
+
+    assert values["supplyHouseholdCount"] == "12"
+    assert values["reserveCount"] == "6"
+
 def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
     rows = [
         ["공급형", "공급대상", "임대조건", None, None, None, "임대보증금 최소화", "", "임대보증금 최대화", ""],
@@ -434,3 +448,46 @@ def test_single_cell_entrant_recruitment_header_is_the_recruitment_column():
     split = _table_field_columns([["단지명", "주택형", "모집호수", None, None], [None, None, "계", "입주자", "예비자"],
                                   ["A", "59", "13", "0", "13"]])
     assert (split["totalSupplyHouseholdCount"], split["supplyHouseholdCount"], split["reserveCount"]) == (2, 3, 4)
+
+
+def test_ruled_supply_table_is_read_even_when_layout_analysis_calls_it_a_picture(monkeypatch):
+    # 울산다운2 A-9블록 공고문은 레이아웃 분석이 선으로 그린 공급표를 그림으로 보고, 표 인식이 표를 0개로 돌려줘 추출이 멈췄다.
+    import pymupdf
+    from conftest import grid_page
+
+    def picture_only(page):
+        page.layout_information = [(*page.rect, "picture")]
+
+    monkeypatch.setattr(pymupdf.Page, "get_layout", picture_only)
+    document = pymupdf.open()
+    page = grid_page(document, [
+        ["공급형", "주택형", "공급대상", "당첨자", "주거전용", "주거공용"],
+        ["55", "55A", "신혼부부", "103", "55.93", "24.1361"],
+    ])
+
+    detected, failed = tables.detected_tables(page)
+
+    assert not failed
+    assert len(detected) == 1
+    assert detected[0].cells[1][1] == "55A"
+
+
+def test_tables_found_only_without_layout_analysis_are_kept_only_when_they_look_like_supply_tables(monkeypatch):
+    # 자산 기준표는 셀 문장 속 '임대보증금' 때문에 공급표로 분류된다. 레이아웃 분석이 버린 쪽에서 다시 찾을 때는 받지 않는다.
+    import pymupdf
+    from conftest import grid_page
+
+    monkeypatch.setattr(pymupdf.Page, "get_layout",
+                        lambda page: setattr(page, "layout_information", [(*page.rect, "picture")]))
+    asset_rules = grid_page(pymupdf.open(), [
+        ["구분", "산정 기준", "비고"],
+        ["부채", "임대보증금 및 대출금", "차감"],
+    ])
+    schedule = grid_page(pymupdf.open(), [
+        ["단지명", "동호지정일정", "접수장소"],
+        ["경주건천", "2026.11.24.", "지사"],
+        ["경주안강", "2026.11.25.", "지사"],
+    ])
+
+    assert tables.detected_tables(asset_rules) == ([], False)
+    assert tables.detected_tables(schedule) == ([], False)

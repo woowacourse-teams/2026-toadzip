@@ -21,6 +21,8 @@ _AMOUNT_CELL = re.compile(r"[\d,\s]+")
 _DIGIT = re.compile(r"\d")
 _RENT_HEADER = re.compile(r"임대조건|월임대료")
 _SUPPLY_TABLE_HEADER = re.compile(r"공급형|공급유형|주택형|모집\s*(?:호수|세대수|인원|가구)|임대보증금|월\s*임대료")
+_HOUSING_TYPE_HEAD = re.compile(r"공급형|주택형|공급유형")
+_LONE_AREA = re.compile(r"(?<![\d.])\d{2,3}\.\d{2,4}(?![\d.])")  # 날짜(2026.11.10)는 면적이 아니다
 _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
 _AREA_NUMBER = re.compile(r"\d+(?:\.\d+)?")
@@ -133,7 +135,8 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         "reserveCount": lambda header: bool(re.search(r"예비(?:입주자)?", header))
             and not re.search(r"잔여|기존|현재|대기", header),
         # 모집호수를 입주자·예비자로 나눈 표의 입주자 열도 당첨자 수다(예비입주자는 아니다). 모집수는 둘의 합이다(source_check).
-        "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
+        # 예비당첨자 열은 예비자 수다(경주·영천 국민임대: 당첨자·예비당첨자 열이 나란히 있다).
+        "supplyHouseholdCount": lambda header: bool(re.search(r"(?<!예비)당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
         # 공급호수를 우선·일반 공급으로 나눈 표(행복주택)의 두 하위 열. 모집수는 둘의 합이다(source_check.recruitment_count).
         # 임대조건을 우선·일반 신청자 묶음으로 나눈 금액 열이나 '예비자 > 일반공급'처럼 다른 수량 아래의 구분은 아니다.
         # '공급호수' 아래 하위 머리글을 '우선'·'일반'으로만 적은 표(구리갈매 A-1BL)도 같다.
@@ -519,12 +522,27 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
 def detected_tables(page: pymupdf.Page) -> tuple[list[DetectedTable], bool]:
     """표 원문·좌표를 한 번만 읽는다. 하나라도 칸을 읽지 못하면 페이지 전체를 구조화 실패로 되돌린다."""
     try:
-        tables = [DetectedTable(_table_cells(page, table), tuple(getattr(table, "bbox", page.rect)))
-                  for table in page.find_tables().tables]
+        # 레이아웃 분석이 선으로 그린 공급표를 그림으로 보면 표를 하나도 돌려주지 않는다(울산다운2 A-9블록).
+        # 표를 찾은 쪽은 그대로 두고, 하나도 없는 쪽만 선 기준으로 다시 찾되 공급표 모양만 받는다.
+        # 자산 기준·제출서류 표까지 받으면 셀 문장 속 '임대보증금' 때문에 공급표로 분류된다.
+        tables = [_detected(page, table) for table in page.find_tables().tables]
+        if not tables:
+            lined = [_detected(page, table) for table in page.find_tables(use_layout=False).tables]
+            tables = [table for table in lined if _looks_like_supply_grid(table.cells)]
     except Exception:
         log.warning("%d쪽 표 인식에 실패해 텍스트만 보냅니다.", page.number + 1, exc_info=True)
         return [], True
     return tables, False
+
+
+def _detected(page: pymupdf.Page, table) -> DetectedTable:
+    return DetectedTable(_table_cells(page, table), tuple(getattr(table, "bbox", page.rect)))
+
+
+def _looks_like_supply_grid(cells: list[list[str | None]]) -> bool:
+    head = " ".join(_compact(cell) for row in cells[:4] for cell in row)
+    areas = sum(len(_LONE_AREA.findall(cell or "")) for row in cells for cell in row)
+    return bool(_HOUSING_TYPE_HEAD.search(head)) or areas >= 2
 
 
 def _mark_supply_tables(tables: list[DetectedTable], page_number: int,
