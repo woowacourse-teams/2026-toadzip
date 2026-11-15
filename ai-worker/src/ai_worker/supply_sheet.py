@@ -9,7 +9,7 @@ merge·checks·source_frame은 이 모델 위에서 신청 조건·검산·GH �
 
 from dataclasses import dataclass, field
 
-from ai_worker import checks
+from ai_worker import checks, target_groups
 
 EVERYONE = "전체"
 AREA_FIELDS = ("exclusiveArea", "commonArea", "supplyArea", "constructedHouseholdCount")
@@ -212,7 +212,8 @@ class _Emit:
         key = (label, condition)
         if key not in self.target_keys:
             self.target_keys[key] = len(self.targets)
-            self.targets.append({"key": f"t{len(self.targets)}", "label": label, "applicationCondition": condition or None})
+            self.targets.append({"key": f"t{len(self.targets)}", "label": label, "applicationCondition": condition or None,
+                                 "groups": target_groups.groups(label)})
         return self.target_keys[key]
 
     def _cell(self, type_index: int, target_index: int) -> int:

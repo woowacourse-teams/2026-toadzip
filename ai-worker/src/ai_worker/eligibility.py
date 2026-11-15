@@ -19,7 +19,7 @@ import copy
 import re
 from dataclasses import dataclass, field
 
-from ai_worker import checks
+from ai_worker import checks, target_groups
 
 KINDS = frozenset({"AGE", "NO_HOUSE", "INCOME", "ASSETS", "CAR_VALUE", "NO_CAR", "RESIDENCE", "MARRIAGE_PERIOD",
                    "FAMILY_TYPE", "UNIVERSITY_STUDENT", "JOB_SEEKER", "ANY_OF", "OTHER"})
@@ -103,7 +103,10 @@ def normalize(reply: dict, posted_date: object, source_pages: list[int], page_te
         if not named and any(route.qualifications or set(route.requires) - set(shared) for route in routes):
             # 이름 없는 경로들의 서로 다른 요건은 실을 곳이 없다. 공통 요건만으로 충족되지 않게 판단 보류(UNRESOLVED)를 둔다.
             common["requirements"].append({"kind": UNRESOLVED, "asWritten": _PER_ROUTE_REQUIREMENT})
+    # 경로 분류는 경로 이름이 먼저다(주거약자용 신혼부부의 소속 대상이 '신혼부부·한부모가족'이어도 주거약자다). 이름으로 정하지 못하면
+    # 그 경로가 속한 공급대상 이름으로 정한다(1순위 → 가군). 서버는 이 분류로 경로를 공급대상에 잇는다.
     targets = [{"target": route.name, "supplyTarget": route.supply_target or route.name,
+                "groups": target_groups.groups(route.name) or target_groups.groups(route.supply_target),
                 **answer.group(f"eligibility.targets[{index}]", [name for name in route.requires if name not in shared],
                                route.qualifications, route.summary, evidence)}
                for index, route in enumerate(named)]

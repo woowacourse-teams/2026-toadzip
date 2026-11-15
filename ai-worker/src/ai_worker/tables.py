@@ -7,11 +7,9 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from decimal import Decimal
 
 import pymupdf
 
-from ai_worker.checks import area_key
 
 log = logging.getLogger(__name__)
 
@@ -207,7 +205,12 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if total is not None and "reserveCount" in columns and "supplyHouseholdCount" not in columns \
             and "계" not in normalized_headers[total]:
         columns["supplyHouseholdCount"] = columns.pop("totalSupplyHouseholdCount")
-    _split_supply_type_from_house_types(rows, normalized_headers, columns)
+    # '공급형 | 주택형' 표(울산다운2 A-9블록: 55 | 55A·55B·55C, 55 (주거약자용) | 55AS)의 공급형 칸은 주택형을 묶는 표기다.
+    # 주택형은 그대로 두고, 공급형 칸의 괄호 구분(주거약자용)만 그 행 공급대상의 구분으로 쓴다(supply_grouping).
+    supply_types = [index for index, header in enumerate(normalized_headers)
+                    if re.search(r"공급형", header) and not re.search(r"주택형", header)]
+    if "housingType" in columns and len(supply_types) == 1 and supply_types[0] not in columns.values():
+        columns["supplyType"] = supply_types[0]
     # 우선·일반 공급 열은 둘이 함께 있을 때만 모집수의 두 부분이다.
     if ("priorityCount" in columns) != ("generalCount" in columns):
         columns.pop("priorityCount", None)
@@ -231,6 +234,21 @@ def _conversion_limit_columns(rows: list[list[str | None]], headers: list[str], 
     return limits
 
 
+_SUPPLY_TYPE_QUALIFIER = re.compile(r"[(\[]\s*([^)\]]*[가-힣][^)\]]*?)\s*[)\]]")
+
+
+def supply_type_qualifier(supply_type: str | None) -> str | None:
+    """'공급형 | 주택형' 표의 공급형 칸 괄호 구분(55 (주거약자용) → 주거약자용). 그 행 공급대상의 구분이라 대상 이름에 붙는다
+    (`신혼부부(주거약자용)`). 표 묶기·모델 답 조립·원문 대조가 이 규칙 하나를 쓴다."""
+    found = _SUPPLY_TYPE_QUALIFIER.search(supply_type or "")
+    return found.group(1) if found else None
+
+
+def with_supply_type_qualifier(target: str, qualifier: str | None) -> str:
+    """공급대상 이름에 공급형 칸의 괄호 구분을 붙인다. 공급대상 칸에 이미 적혀 있으면(`신혼부부(주거약자용)`) 다시 붙이지 않는다."""
+    return f"{target}({qualifier})" if qualifier and qualifier not in target else target
+
+
 def increase_limit(row: list[str | None], column: int) -> str | None:
     """전환보증금 열 칸에서 증액(+) 한도 금액 글자. 전환보증금은 증액 한도다. 부호 없이 금액만 적힌 칸은 그대로 두고,
     감액(-) 한도만 있거나 증액 한도가 '-'인 칸은 ''이다. 병합 칸은 None이다."""
@@ -244,29 +262,6 @@ def increase_limit(row: list[str | None], column: int) -> str | None:
         return cell
     match = _INCREASE_LIMIT.search(cell)
     return match.group(1) if match else ""
-
-
-_COUNT_FIELDS = ("supplyHouseholdCount", "reserveCount", "totalSupplyHouseholdCount", "priorityCount", "generalCount")
-
-
-def _split_supply_type_from_house_types(rows: list[list[str | None]], headers: list[str], columns: dict[str, int]) -> None:
-    """'공급형' 열과 '주택형' 열을 따로 둔 표(울산다운2 A-9블록: 55 | 55A·55B·55C)에서 공급형 칸 하나에 묶인 주택형들이
-    모집수 칸도 함께 쓰면(공통 모집 103) 공급형이 신청형이고 주택형은 단지 주택타입이다. 주택형마다 모집수가 있으면 그대로 둔다."""
-    housing = columns.get("housingType")
-    supply_types = [index for index, header in enumerate(headers)
-                    if re.search(r"공급형", header) and not re.search(r"주택형", header)]
-    if housing is None or "houseType" in columns or len(supply_types) != 1 or supply_types[0] == housing:
-        return
-    supply_type = supply_types[0]
-    counts = [columns[name] for name in _COUNT_FIELDS if name in columns]
-    grouped = False
-    for row in rows:
-        if _cell(row, supply_type) is None and (_cell(row, housing) or "").strip():
-            if any((_cell(row, count) or "").strip() for count in counts):
-                return
-            grouped = True
-    if grouped:
-        columns["houseType"], columns["housingType"] = housing, supply_type
 
 
 def _house_type_subtypes(cells: list[list[str | None]], columns: dict[str, int]) -> dict[int, tuple[TableSubtype, ...]]:
@@ -316,25 +311,17 @@ def _starts_with_house_types(cells: list[list[str | None]], columns: dict[str, i
 
 def _area_subtypes(members: list[tuple[str, list[str | None]]], columns: dict[str, int]) -> tuple[TableSubtype, ...]:
     area, common, supply = columns["exclusiveArea"], columns.get("commonArea"), columns.get("supplyArea")
-    return merge_subtypes(TableSubtype(name, float(row[area]), _area_cell(row, common), _area_cell(row, supply))
-                          for name, row in members)
+    return unique_subtypes(TableSubtype(name, float(row[area]), _area_cell(row, common), _area_cell(row, supply))
+                           for name, row in members)
 
 
-def merge_subtypes(subtypes: Iterable[TableSubtype]) -> tuple[TableSubtype, ...]:
-    """세부 타입을 전용면적(소수 둘째 자리)마다 하나로 묶는다. 같은 면적은 단지 주택타입 하나로 잇기 때문이다.
-    이름은 주택타입을 나온 순서대로 '·'로 잇고, 공용·공급면적은 묶인 값이 모두 같을 때만 둔다."""
-    groups: dict[Decimal, list[TableSubtype]] = {}
+def unique_subtypes(subtypes: Iterable[TableSubtype]) -> tuple[TableSubtype, ...]:
+    """세부 타입(단지 주택타입)은 공고문 표기 이름마다 하나다. 면적이 같아도 이름이 다르면 다른 주택타입이라 묶지 않는다
+    (울산다운2 55A·55C는 둘 다 55.93㎡). 같은 이름이 여러 번 읽히면(신청형을 행마다 다시 적은 표, 두 표) 처음 것을 쓴다."""
+    first: dict[str, TableSubtype] = {}
     for subtype in subtypes:
-        groups.setdefault(area_key(subtype.exclusive_area), []).append(subtype)
-    merged = []
-    for items in groups.values():
-        names = dict.fromkeys(name for item in items for name in item.name.split("·"))
-        commons = {item.common_area for item in items}
-        supplies = {item.supply_area for item in items}
-        merged.append(TableSubtype("·".join(names), items[0].exclusive_area,
-                                   commons.pop() if len(commons) == 1 else None,
-                                   supplies.pop() if len(supplies) == 1 else None))
-    return tuple(merged)
+        first.setdefault(subtype.name, subtype)
+    return tuple(first.values())
 
 
 def _area_cell(row: list[str | None], column: int | None) -> float | None:

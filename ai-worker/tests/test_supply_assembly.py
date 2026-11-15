@@ -591,11 +591,10 @@ def test_house_types_of_a_housing_type_row_come_from_its_house_type_column_inste
     housing_type, unresolved = one_type(house_type_pages(), rowIds=["P3:T1:R3", "P3:T1:R4"], housingType="059.9000A",
                                         exclusiveArea=59.98, subtypes=[{"name": "059.9000A", "exclusiveArea": 59.98}])
 
+    # 면적이 같은 59A·59A1도 공고문 이름대로 따로 둔다.
     assert housing_type["houseTypes"] == [
-        {"name": "59A·59A1", "exclusiveArea": 59.98, "commonArea": 21.5309, "supplyArea": None,
-         "constructedHouseholdCount": None},
-        {"name": "59A2", "exclusiveArea": 59.99, "commonArea": 21.5345, "supplyArea": None,
-         "constructedHouseholdCount": None},
+        {"name": name, "exclusiveArea": area, "commonArea": common, "supplyArea": None, "constructedHouseholdCount": None}
+        for name, area, common in (("59A", 59.98, 21.5309), ("59A1", 59.98, 21.5309), ("59A2", 59.99, 21.5345))
     ]
     # 주택형 자체의 면적은 모델이 낸 첫 면적을 원문 칸과 대조한 값이다.
     assert housing_type["exclusiveArea"] == 59.98
@@ -616,8 +615,8 @@ def test_house_types_of_a_cited_row_of_another_housing_type_are_not_used():
         ("59B", 59.93), ("59B1", 59.92)]
 
 
-def test_house_types_of_several_rows_of_one_housing_type_stay_one_per_exclusive_area():
-    # 신청형 칸을 병합하지 않고 행마다 다시 적은 표. 같은 면적 59.98은 세부 타입 하나다.
+def test_house_types_of_several_rows_of_one_housing_type_stay_one_per_house_type_name():
+    # 신청형 칸을 병합하지 않고 행마다 다시 적은 표. 같은 면적 59.98이어도 이름이 다른 59A·59A1은 따로다.
     rows = tables.SupplyTable.of(3, 1, [
         ["주택형", "주택타입", "주거전용", "주거공용", "예비자"],
         ["059.9000A", "59A", "59.98", "21.5309", "10"],
@@ -635,7 +634,7 @@ def test_house_types_of_several_rows_of_one_housing_type_stay_one_per_exclusive_
     housing_type, _ = one_type(selected, rowIds=["P3:T1:R2", "P3:T1:R3", "P3:T1:R4"], housingType="059.9000A")
 
     assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in housing_type["houseTypes"]] == [
-        ("59A·59A1", 59.98, None), ("59C", 59.99, 21.5345)]
+        ("59A", 59.98, 21.5309), ("59A1", 59.98, 21.54), ("59C", 59.99, 21.5345)]
 
 
 # 다산진건 장기전세(GH 808)를 줄인 표. 주택형(신청형) 칸이 주택타입 행으로 병합되고, 모집호수를 계·입주자·예비자로 나눈다.
@@ -742,7 +741,7 @@ def test_housing_type_row_count_is_left_empty_when_a_house_type_count_is_missing
     assert ({"cells[0].winner", "cells[0].reserve"} <= result.unresolved()) == bool(model_counts)
 
 
-# 울산다운2 A-9블록을 줄인 표. 공급형 칸 하나가 주택타입 행들에 걸치고 당첨자·예비자 칸도 그 행 전체에 하나로 병합된다.
+# 울산다운2 A-9블록을 줄인 표. 공급형 칸 하나가 주택형 행들에 걸치고 당첨자·예비자 칸도 그 행 전체에 하나로 병합된다.
 # 주거약자용 형은 자기 수량을 따로 적고 공급대상 칸만 위 형과 함께 쓴다.
 MERGED_COUNT_TABLE = [
     ["공급형", "주택형", "공급대상", "금회 공급호수", None, "주거 전용"],
@@ -753,18 +752,54 @@ MERGED_COUNT_TABLE = [
 ]
 
 
-def test_count_cell_merged_over_all_house_type_rows_is_the_housing_type_count():
-    # 병합된 한 칸(당첨자 103 + 예비자 100)이 55A·55B를 묶은 55의 모집수다. 55(주거약자용)이 공급대상 칸의 근거로
-    # 55A 행을 함께 가리켜도 그 행의 수량을 나눠 쓰는 것이 아니라 두 형 모두 자기 수가 원문 대조를 통과한다.
+def test_merged_count_under_a_supply_type_cell_is_a_shared_recruitment_not_a_housing_type():
+    # 병합 모집과 주택형은 다르다(사용자 교정). 공고문이 '주택형'이라 적은 55A·55B·55AS가 공고 주택형이고, 55A·55B에 걸쳐
+    # 병합된 당첨자 103 + 예비자 100은 두 주택형이 함께 쓰는 모집수다. 55AS는 자기 수(19 + 10)를 가진다.
+    # 모델이 55AS 대상을 공급형 칸의 괄호 구분 없이 적어도 표를 코드로 묶을 때와 같이 주거약자용 대상으로 남는다.
     result = supplied(table_pages(MERGED_COUNT_TABLE),
-                      {"rowIds": ["P5:T1:R3", "P5:T1:R4"], "housingType": "55", "target": "신혼부부",
+                      *({"rowIds": [f"P5:T1:R{number}"], "housingType": label, "target": "신혼부부"}
+                        for number, label in ((3, "55A"), (4, "55B"), (5, "55AS"))))
+
+    assert [(item["name"], item["exclusiveArea"], item["houseTypes"]) for item in result.sheet["housingTypes"]] == [
+        ("55A", 55.93, []), ("55B", 55.97, []), ("55AS", 55.93, [])]
+    joined = ["55A/신혼부부", "55B/신혼부부"]
+    assert readable(result.sheet)["quotas"] == [("WINNER", 203, joined), ("RESERVE", 100, joined),
+                                                *own("55AS", "신혼부부(주거약자용)", 29, 10)]
+    assert not {path for path in result.unresolved() if path.endswith((".winner", ".reserve"))}
+
+
+def test_supply_type_qualifier_comes_only_from_the_rows_that_name_the_housing_type():
+    # 모델이 병합된 공급대상 칸의 근거로 55A와 55AS 행을 함께 가리켜도, 괄호 구분은 주택형 칸에 그 주택형이 적힌 행의 것이다.
+    # 55A에 55AS 행의 '주거약자용'이 붙으면 55A 신혼부부가 주거약자용 신청자격 경로만 받는다.
+    both = ["P5:T1:R3", "P5:T1:R5"]
+    result = supplied(table_pages(MERGED_COUNT_TABLE), {"rowIds": both, "housingType": "55A", "target": "신혼부부"},
+                      {"rowIds": ["P5:T1:R4"], "housingType": "55B", "target": "신혼부부"},
+                      {"rowIds": both, "housingType": "55AS", "target": "신혼부부"})
+
+    assert readable(result.sheet)["cells"] == ["55A/신혼부부", "55B/신혼부부", "55AS/신혼부부(주거약자용)"]
+
+
+# 주택형 칸 하나가 주택타입 행들에 걸치고(84 = 84A·84B) 당첨자·예비자 칸도 그 행 전체에 하나로 병합된 표.
+HOUSE_TYPE_MERGED_COUNT_TABLE = [
+    ["주택형", "주택 타입", "공급대상", "당첨자", "예비자", "주거 전용"],
+    ["84", "84A", "신혼부부", "103", "100", "84.93"],
+    [None, "84B", None, None, None, "84.97"],
+    ["59", "59A", None, "19", "10", "59.93"],
+]
+
+
+def test_count_cell_merged_over_all_house_type_rows_is_the_housing_type_count():
+    # 공고문이 주택형 84 아래 주택타입 84A·84B를 적고 수량 칸 하나를 두 행에 병합했으면 그 칸이 주택형 84의 모집수다.
+    # 59가 공급대상 칸의 근거로 84A 행을 함께 가리켜도 그 행의 수량을 나눠 쓰는 것이 아니라 두 형 모두 자기 수가 원문 대조를 통과한다.
+    result = supplied(table_pages(HOUSE_TYPE_MERGED_COUNT_TABLE),
+                      {"rowIds": ["P5:T1:R2", "P5:T1:R3"], "housingType": "84", "target": "신혼부부",
                        "supplyHouseholdCount": 203, "reserveCount": 100},
-                      {"rowIds": ["P5:T1:R3", "P5:T1:R5"], "housingType": "55 (주거약자용)", "target": "신혼부부",
+                      {"rowIds": ["P5:T1:R2", "P5:T1:R4"], "housingType": "59", "target": "신혼부부",
                        "supplyHouseholdCount": 29, "reserveCount": 10})
 
     assert [(item["name"], [house["name"] for house in item["houseTypes"]]) for item in result.sheet["housingTypes"]] == [
-        ("55", ["55A", "55B"]), ("55 (주거약자용)", ["55AS"])]
-    assert readable(result.sheet)["quotas"] == [*own("55", "신혼부부", 203, 100), *own("55 (주거약자용)", "신혼부부", 29, 10)]
+        ("84", ["84A", "84B"]), ("59", ["59A"])]
+    assert readable(result.sheet)["quotas"] == [*own("84", "신혼부부", 203, 100), *own("59", "신혼부부", 29, 10)]
     assert not {path for path in result.unresolved() if path.endswith((".winner", ".reserve"))}
 
 

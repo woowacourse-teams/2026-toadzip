@@ -16,7 +16,7 @@ def test_split_table_headers_map_reserve_count_to_its_own_column():
 
     values = tables.SupplyTable.of(4, 1, rows, None, False).rows[3].values
 
-    assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
+    assert values == {"complexName": "Test", "supplyType": "26", "housingType": "26A", "target": "청년", "reserveCount": "20",
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}
 
 
@@ -59,9 +59,9 @@ def test_reserve_column_is_not_the_target_column_naming_prospective_newlyweds():
     assert "reserveCount" not in rent_columns
 
 
-def test_supply_type_cell_shared_by_house_types_with_one_count_is_the_application_type():
-    # 울산다운2 A-9블록: "55A, 55B, 55C은 타입 구분없이 55형으로 청약신청". 공급형 55가 신청형, 주택형 55A·55B·55C는 단지 주택타입이고
-    # 모집 103·예비 100은 공급형 55의 수다. 주택형마다 신청형으로 읽으면 103이 세 주택형이 함께 쓰는 수로 떨어진다.
+def test_house_type_column_stays_the_housing_type_under_a_supply_type_cell_with_one_merged_count():
+    # 울산다운2 A-9블록: 공급형 55 아래 주택형 55A·55B가 당첨자·예비자 칸 하나를 함께 쓴다. 병합된 수량 칸은 함께 모집하는 수이고
+    # 주택형이 아니다. 공고문이 '주택형'이라 적은 55A·55B가 공고 주택형이고 공급형으로 바꿔 읽지 않는다(사용자 교정).
     rows = [
         ["공급형", "주택형", "공급대상", "당첨자", "예비자", "주거전용", "주거공용"],
         ["55", "55A", "신혼부부", "103", "100", "55.93", "24.1361"],
@@ -71,9 +71,8 @@ def test_supply_type_cell_shared_by_house_types_with_one_count_is_the_applicatio
 
     table = tables.SupplyTable.of(2, 1, rows, None, False)
 
-    assert table.rows[1].values["housingType"] == "55"
-    assert [subtype.name for subtype in table.rows[1].subtypes] == ["55A", "55B"]
-    assert table.rows[3].values["housingType"] == "55 (주거약자용)"
+    assert [row.values.get("housingType") for row in table.rows[1:]] == ["55A", "55B", "55AS"]
+    assert all(not row.subtypes for row in table.rows[1:])
 
 
 def test_house_types_with_their_own_counts_stay_application_types_under_a_supply_type_cell():
@@ -185,7 +184,7 @@ def test_continued_table_page_reuses_the_previous_page_header_columns():
     inherited = tables.SupplyTable.of(4, 1, headers, None, False).columns
     values = tables.SupplyTable.of(5, 1, continuation_rows, inherited, False).rows[0].values
 
-    assert values == {"complexName": "Test", "housingType": "26A", "target": "청년", "reserveCount": "20",
+    assert values == {"complexName": "Test", "supplyType": "26", "housingType": "26A", "target": "청년", "reserveCount": "20",
                       "exclusiveArea": "26.0000", "commonArea": "15.0000"}
 
 
@@ -440,20 +439,31 @@ def subtypes_by_housing_type(table):
             for row in table.rows if row.subtypes}
 
 
-def test_house_type_rows_under_a_merged_housing_type_cell_become_one_subtype_per_exclusive_area():
+def test_house_type_rows_under_a_merged_housing_type_cell_become_one_subtype_per_house_type_name():
     table = tables.SupplyTable.of(3, 1, HOUSE_TYPE_ROWS, None, False)
 
     assert subtypes_by_housing_type(table) == {
         "049.7600A": [("49A", 49.76, 17.8623)],
-        "059.9000A": [("59A·59A1·59C", 59.98, 21.5309), ("59A2·59D", 59.99, 21.5345)],
+        # 면적이 같아도 공고문이 이름을 나눈 주택타입은 따로다(면적으로 묶지 않음, docs/features/admin/guide.md).
+        "059.9000A": [("59A", 59.98, 21.5309), ("59A1", 59.98, 21.5309), ("59C", 59.98, 21.5309),
+                      ("59A2", 59.99, 21.5345), ("59D", 59.99, 21.5345)],
         "059.9000B": [("59B", 59.93, 21.513), ("59B1", 59.92, 21.5094)],
-        "084.0000A": [("84A·84B", 84.67, 30.3939), ("84A1", 84.96, 30.498)],
+        "084.0000A": [("84A", 84.67, 30.3939), ("84B", 84.67, 30.3939), ("84A1", 84.96, 30.498)],
     }
     # 공급행 값은 지금처럼 신청형 행의 칸이다(첫 면적).
     assert table.rows[4].values["exclusiveArea"] == "59.98"
 
 
-def test_subtype_common_and_supply_areas_come_from_its_area_rows_only_when_they_agree():
+def test_house_type_read_twice_keeps_its_first_values_and_the_notice_order():
+    subtypes = [tables.TableSubtype("55A", 55.93, None, None), tables.TableSubtype("55B", 55.97, None, None),
+                tables.TableSubtype("55A", 55.99, None, None), tables.TableSubtype("55C", 55.93, None, None)]
+
+    assert tables.unique_subtypes(subtypes) == (tables.TableSubtype("55A", 55.93, None, None),
+                                                tables.TableSubtype("55B", 55.97, None, None),
+                                                tables.TableSubtype("55C", 55.93, None, None))
+
+
+def test_subtype_common_and_supply_areas_come_from_its_own_area_row():
     rows = [
         ["주택형", "주택타입", "주거전용", "주거공용", "공급면적", "예비자"],
         ["059.9000A", "59A", "59.98", "21.5309", "81.5109", "10"],
@@ -464,7 +474,9 @@ def test_subtype_common_and_supply_areas_come_from_its_area_rows_only_when_they_
 
     table = tables.SupplyTable.of(3, 1, rows, None, False)
 
-    assert table.rows[1].subtypes == (tables.TableSubtype("59A·59A1·59C", 59.98, None, None),)
+    assert table.rows[1].subtypes == (tables.TableSubtype("59A", 59.98, 21.5309, 81.5109),
+                                      tables.TableSubtype("59A1", 59.98, 21.54, 81.52),
+                                      tables.TableSubtype("59C", 59.98, 21.54, 81.52))
     assert table.rows[4].subtypes == (tables.TableSubtype("74A", 74.97, 26.9119, 101.8819),)
 
 

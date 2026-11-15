@@ -156,32 +156,43 @@ def test_rent_rows_that_match_no_supply_row_and_tableless_next_page_are_warned()
     assert readable(result.sheet)["leaseTerms"] == [(40000000, 150000, ["26B/청년"])]
 
 
-def test_rent_row_whose_merged_housing_type_cell_also_holds_another_types_house_types_applies_to_that_type():
-    # 울산다운2: 공급표는 55와 55(주거약자용)을 나누지만 임대조건표는 공급형 55 칸 아래 55A·55B·55AS를 함께 두고 금액 칸도 병합한다.
-    # 55(주거약자용)의 주택타입(55AS)이 그 임대조건 행에 들어 있으므로 같은 조건이다. 주택타입이 없는 형(59)은 잇지 않는다.
-    header = [["공급형", "주택형", "공급대상", "당첨자", "주거전용", "주거공용"]]
-    quantity = table(4, [
+def test_merged_rent_cells_apply_to_every_housing_type_row_and_the_supply_type_qualifier_splits_the_target():
+    # 울산다운2 A-9블록: 공급형 칸이 주택형을 묶어도 주택형(55A·55B·55C·55AS)은 그대로다. 공급형 '55 (주거약자용)' 아래 55AS는
+    # 같은 공급대상 칸을 쓰지만 주거약자용으로 따로 신청하는 대상이다. 임대조건표는 금액 칸 하나를 네 주택형에 병합하고
+    # 전환 한도 칸의 감액(-) 줄이 55C 행에 읽힌다.
+    quantity = table(2, [
         ["55", "55A", "신혼부부", "103", "55.93", "24.1"],
         [None, "55B", None, None, "55.97", "24.2"],
+        [None, "55C", None, None, "55.93", "24.1"],
         ["55 (주거약자용)", "55AS", None, "19", "55.93", "24.1"],
-        ["59", "59A", None, "7", "59.91", "25.1"],
-    ], header=header)
-    rent = table(5, [
-        ["55", "55A", "신혼부부", None, "66,000", "302,500"],
+    ], header=[["공급형", "주택형", "공급대상", "당첨자", "주거전용", "주거공용"]])
+    rent = table(3, [
+        ["55", "55A", "신혼부부", "66,000", "302,500", "(+) 36,000"],
         [None, "55B", None, None, None, None],
+        [None, "55C", None, None, None, "(-) 54,000"],
         [None, "55AS", None, None, None, None],
-    ], header=[["공급형", "주택형", "공급대상", None, "임대보증금(천원)", "월임대료(원)"]])
+    ], header=[["공급형", "주택형", "공급대상", "임대보증금(천원)", "월임대료(원)", "전환가능 보증금 한도액(천원)"]])
 
     result = read(quantity, rent)
 
-    assert readable(result.sheet)["leaseTerms"] == [(66000000, 302500, ["55/신혼부부"]),
-                                                    (66000000, 302500, ["55 (주거약자용)/신혼부부"])]
-    assert {"cells[2].rentalDeposit", "cells[2].monthlyRent"} <= result.unresolved()
+    assert cells(result) == [("", "55A", "신혼부부"), ("", "55B", "신혼부부"), ("", "55C", "신혼부부"),
+                             ("", "55AS", "신혼부부(주거약자용)")]
+    assert readable(result.sheet)["leaseTerms"] == [(66000000, 302500, ["55A/신혼부부"]),
+                                                    (66000000, 302500, ["55B/신혼부부"]),
+                                                    (66000000, 302500, ["55C/신혼부부"]),
+                                                    (66000000, 302500, ["55AS/신혼부부(주거약자용)"])]
+    assert [lease["convertedDeposit"] for lease in result.sheet["leaseTerms"]] == [36000000] * 4
+    assert not {path for path in result.unresolved() if "rentalDeposit" in path or "monthlyRent" in path
+                or path.startswith("targets")}
 
-    # 55(주거약자용)의 주택타입 가운데 일부(55AT)가 임대조건 행에 없으면 잇지 않는다.
-    with_more = table(4, [*quantity.cells[1:4], [None, "55AT", None, None, "55.93", "24.1"], *quantity.cells[4:]], header=header)
-    result = read(with_more, rent)
-    assert readable(result.sheet)["leaseTerms"] == [(66000000, 302500, ["55/신혼부부"])]
+    # 공급대상 칸에 구분까지 적힌 행은 공급형 칸의 같은 구분을 다시 붙이지 않는다(모델 답 조립과 같은 이름).
+    written = table(2, [*quantity.cells[1:4], ["55 (주거약자용)", "55AS", "신혼부부(주거약자용)", "19", "55.93", "24.1"]],
+                    header=quantity.cells[:1])
+    assert cells(read(written, rent))[-1] == ("", "55AS", "신혼부부(주거약자용)")
+
+    # 금액 칸이 병합되지 않고 비어 있는('') 행은 위 행의 임대조건을 쓰지 않는다.
+    blank = table(3, [rent.cells[1], [None, "55B", None, "", "", ""], *rent.cells[3:]], header=rent.cells[:1])
+    result = read(quantity, blank)
     assert {"cells[1].rentalDeposit", "cells[1].monthlyRent"} <= result.unresolved()
 
 
@@ -484,7 +495,7 @@ def test_code_grouped_housing_type_row_gets_house_types_from_its_house_type_colu
 
     assert (housing_type["name"], housing_type["exclusiveArea"]) == ("059.9000A", 59.98)
     assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in housing_type["houseTypes"]] == [
-        ("59A·59A1", 59.98, 21.5309), ("59C", 59.99, 21.5345)]
+        ("59A", 59.98, 21.5309), ("59A1", 59.98, 21.5309), ("59C", 59.99, 21.5345)]
 
 
 def test_target_recruitment_count_is_winners_plus_reserves_of_the_same_rows():

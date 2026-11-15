@@ -126,6 +126,8 @@ def test_targets_are_one_per_label_and_condition_and_equal_amounts_stay_separate
 
     assert [(item["label"], item["applicationCondition"]) for item in result.sheet["targets"]] == [
         ("청년", "미혼"), ("청년", "신혼"), ("전체", None)]
+    # 분류는 표기에서 읽는다. 신청 조건이 달라도 같은 분류이고, '전체'는 분류를 정하지 않는다.
+    assert [item["groups"] for item in result.sheet["targets"]] == [["YOUTH"], ["YOUTH"], []]
     # 금액이 같아도 단지·주택형마다 따로 고칠 수 있게 합치지 않는다.
     assert [members for _, _, members in readable(result.sheet)["leaseTerms"]] == [["26A/청년"], ["36A/청년"], ["46A/청년"]]
 

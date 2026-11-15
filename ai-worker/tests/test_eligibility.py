@@ -169,6 +169,8 @@ def test_requirements_shared_by_every_route_become_common_and_the_rest_stay_with
     assert result.data["common"]["summary"] is None
     assert [(target["target"], target["supplyTarget"], [item["kind"] for item in target["requirements"]])
             for target in result.data["targets"]] == [("고령자", "고령자", ["AGE"]), ("취업준비생", "대학생", ["UNIVERSITY_STUDENT"])]
+    # 경로 분류는 경로 이름에서 읽는다(서버가 이 분류로 공급대상에 잇는다).
+    assert [target["groups"] for target in result.data["targets"]] == [["ELDERLY"], ["UNIVERSITY_STUDENT"]]
     assert result.data["targets"][0]["qualifications"] == [
         {"exactName": "주거급여 수급자", "legalBasis": "「주거급여법」", "conditionsAsWritten": "주거급여 수급자"}]
     assert result.data["exclusions"] == [{"title": "재당첨 제한", "body": "공공임대 당첨자"}]
@@ -355,6 +357,16 @@ def test_reply_without_requirements_yields_empty_groups():
     assert result.data == {"common": {"requirements": [], "qualifications": [], "summary": None},
                            "targets": [], "exclusions": []}
     assert (result.evidence, result.conditions, result.warnings) == ([], [], [])
+
+
+def test_route_groups_come_from_the_route_name_then_from_its_supply_target():
+    # 울산다운2: 모델은 '주거약자용 신혼부부' 경로의 소속 대상을 '신혼부부·한부모가족'으로 적었다. 경로 이름의 주거약자를 잃으면
+    # 주거약자용이 아닌 공급대상에도 이어진다. 이름이 상수 밖이면(1순위) 소속 대상(가군)으로 정한다.
+    result = _normalize([{"kind": "NO_HOUSE", "scope": "HOUSEHOLD", "text": "무주택세대구성원"}], routes=[
+        {"name": "주거약자용 신혼부부", "supplyTarget": "신혼부부·한부모가족", "requires": ["r1"], "summary": "주거약자"},
+        {"name": "1순위", "supplyTarget": "가군", "requires": ["r1"], "summary": "생계급여"}], pages=["무주택세대구성원"])
+
+    assert [target["groups"] for target in result.data["targets"]] == [["NEWLYWED", "HOUSING_VULNERABLE"], ["GA_CLASS"]]
 
 
 def test_sub_route_summary_reaches_its_supply_target_condition_through_merge():

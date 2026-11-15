@@ -12,7 +12,8 @@ import re
 from dataclasses import dataclass, field
 
 from ai_worker.supply_assembly import Draft, DraftCell, SharedCount
-from ai_worker.tables import SupplyTable, increase_limit, source_row_id, table_column_headers
+from ai_worker.tables import (SupplyTable, increase_limit, source_row_id, supply_type_qualifier, table_column_headers,
+                              with_supply_type_qualifier)
 
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
 _AREA_FIELDS = ("exclusiveArea", "commonArea", "supplyArea")
@@ -50,17 +51,22 @@ class _SourceRow:
     origin_ids: list[str]
     cells: dict[str, str | None]
     variant: str | None = None
+    # 공급형 칸의 괄호 구분(55 (주거약자용) → 주거약자용). 같은 공급대상 칸 아래라도 그 주택형의 모집은 따로 신청하는 대상이다.
+    qualifier: str | None = None
     continuation_ids: list[str] = field(default_factory=list)
     # 병합으로 위 행과 함께 쓰는 수량: 필드 → 값이 적힌 행
     shared_from: dict[str, "_SourceRow"] = field(default_factory=dict)
     # 병합된 면적 칸을 물려준 위 행. 원문 대조가 면적 값을 찾을 수 있게 rowIds에 넣는다.
     area_ids: list[str] = field(default_factory=list)
+    # 병합된 금액 칸을 물려준 위 행. 원문 대조가 금액 값을 찾을 수 있게 rowIds에 넣는다.
+    rent_ids: list[str] = field(default_factory=list)
     # 이어짐 줄에 다른 값이 있어 하나로 정할 수 없는 필드
     conflicts: set[str] = field(default_factory=set)
 
     @property
     def name(self) -> str:
-        return f"{self.target}({self.variant})" if self.variant else self.target
+        target = with_supply_type_qualifier(self.target, self.qualifier)
+        return f"{target}({self.variant})" if self.variant else target
 
 
 @dataclass(frozen=True)
@@ -259,7 +265,8 @@ def _fill(item: DraftCell, row: _SourceRow, names: tuple[str, ...], row_values: 
         item.values[name] = value
         if name in _RENT_FIELDS:
             # 머리글 없는 이어짐 표는 행 값에 단위가 없어 검산이 원 단위로 볼 수 있다.
-            row_values.setdefault(row.row_id, {})[f"{name}Unit"] = unit
+            for row_id in (row.row_id, *row.rent_ids):
+                row_values.setdefault(row_id, {})[f"{name}Unit"] = unit
 
 
 def _is_conversion_limit(row: _SourceRow) -> bool:
@@ -281,22 +288,9 @@ def _rental_applies(rental: _SourceRow, quantity: _SourceRow, quantities: list[_
 
 
 def _same_type(rental: _SourceRow, quantity: _SourceRow) -> bool:
-    """주택형·대상이 같은 행이다. 임대조건표가 공급표와 달리 주택형 칸을 병합해 다른 주택형의 주택타입까지 한 행에 묶었으면
-    (울산다운2: 공급표는 55·55(주거약자용)으로 나누고 임대조건표는 55 칸 아래 55A·55B·55C·55AS를 함께 둠) 그 주택형의
-    주택타입이 모두 그 임대조건 행에 들어 있을 때도 같은 행이다."""
-    if _compact(quantity.target) not in _names(rental.target, _TARGET_TOKEN):
-        return False
-    if _compact(quantity.housing_type) in _names(rental.housing_type, _HOUSING_TOKEN):
-        return True
-    own = _house_types(quantity)
-    return bool(own) and own <= _house_types(rental)
-
-
-def _house_types(row: _SourceRow) -> set[str]:
-    """행과 그 이어짐 줄의 주택타입 칸."""
-    ids = {row.row_id, *row.continuation_ids}
-    return {_compact(item.values["houseType"]) for item in row.table.rows
-            if item.id in ids and _present(item.values.get("houseType"))}
+    """주택형·대상이 같은 행이다. 공급형 칸의 괄호 구분은 수량표에만 적혀도(울산다운2) 주택형이 같으면 같은 행이다."""
+    return _compact(quantity.target) in _names(rental.target, _TARGET_TOKEN) \
+        and _compact(quantity.housing_type) in _names(rental.housing_type, _HOUSING_TOKEN)
 
 
 def _names(cell: str, token: re.Pattern) -> set[str]:
@@ -357,13 +351,26 @@ def _read_rows(tables: list[SupplyTable]) -> list[_SourceRow]:
                     origin_ids.append(inherited[name][1])
             if "housingType" not in inherited or "target" not in inherited:
                 continue
+            qualifier = None
+            if "supplyType" not in columns:
+                inherited.pop("supplyType", None)
+            elif _present(value.get("supplyType")):
+                inherited["supplyType"] = (value["supplyType"], row_id)
+            elif value.get("supplyType") == "":
+                inherited.pop("supplyType", None)
+            if "supplyType" in inherited:
+                qualifier = supply_type_qualifier(inherited["supplyType"][0])
+                if qualifier:
+                    origin_ids.append(inherited["supplyType"][1])
             row = _SourceRow(table, layout, row_id, inherited.get("complexName", ("", ""))[0],
                              inherited["housingType"][0], inherited["target"][0], _unique(origin_ids), value,
-                             detail.strip() if _present(detail) else None)
+                             detail.strip() if _present(detail) else None, qualifier)
             previous = rows[-1] if rows and rows[-1].table.columns == columns else None
             if previous is not None:
                 _share_merged_counts(row, previous, columns)
                 _share_merged_areas(row, previous, columns, next_page=previous.table is not table and index == start == 0)
+                if previous.table is table:
+                    _share_merged_rents(row, previous, columns)
             rows.append(row)
     return rows
 
@@ -379,6 +386,26 @@ def _share_merged_counts(row: _SourceRow, previous: _SourceRow, columns: dict[st
     for name in _COUNT_FIELDS:
         if name in columns and row.cells.get(name) is None:
             row.shared_from[name] = previous.shared_from.get(name, previous)
+
+
+def _share_merged_rents(row: _SourceRow, previous: _SourceRow, columns: dict[str, int]) -> None:
+    """같은 표에서 병합된 금액 칸(None)은 위 행과 같은 임대조건이다(울산다운2 임대조건표: 55A·55B·55C·55AS가 보증금·월임대료 칸 하나).
+    보증금·월임대료가 위 행과 병합된 행은 전환 한도도 같은 보증금의 한도다. 그 행의 전환 한도 칸이 비었거나 감액(-) 줄뿐이면
+    (병합 칸의 둘째 줄이 그 행에 읽힘) 위 행의 증액 한도를 쓴다."""
+    names = [name for name in _RENT_FIELDS[:2] if name in columns]
+    merged = bool(names) and all(row.cells.get(name) is None for name in names)
+    shared = False
+    for name in _RENT_FIELDS:
+        if name not in columns or not _present(previous.cells.get(name)):
+            continue
+        cell = row.cells.get(name)
+        if cell is None or (merged and name == "convertedDeposit" and not _present(cell)):
+            row.cells[name] = previous.cells[name]
+            shared = True
+            if name in previous.conflicts:
+                row.conflicts.add(name)
+    if shared:
+        row.rent_ids = _unique([*previous.rent_ids, previous.row_id])
 
 
 def _share_merged_areas(row: _SourceRow, previous: _SourceRow, columns: dict[str, int], next_page: bool) -> None:
@@ -418,7 +445,7 @@ def _table_layout(header_rows: list[list[str | None]], columns: dict[str, int], 
 
 
 def _source_ids(row: _SourceRow) -> list[str]:
-    return _unique([row.row_id, *row.continuation_ids, *row.origin_ids, *row.area_ids])
+    return _unique([row.row_id, *row.continuation_ids, *row.origin_ids, *row.area_ids, *row.rent_ids])
 
 
 def _supply_key(row: _SourceRow) -> tuple[str, str]:

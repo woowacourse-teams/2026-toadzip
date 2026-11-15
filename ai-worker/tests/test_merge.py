@@ -212,6 +212,27 @@ def test_qualified_eligibility_paths_link_only_the_supply_target_named_by_their_
         ["신혼부부·한부모가족"], ["신혼부부·한부모가족(주거약자용)"], ["주거약자용", "주거약자용(주거복지동)"]]
 
 
+def test_eligibility_paths_whose_supply_target_name_matches_nothing_link_by_groups():
+    """울산다운2: 공급표 대상은 공백으로 나열한 '신혼부부 예비신혼부부 한부모가족'과 그 주거약자용이고, 모델은 경로 소속 대상을
+    '신혼부부·한부모가족'으로 적는다. 이름으로 맞는 대상이 없으면 분류로 잇되 주거약자 구분이 같은 대상에만 잇는다.
+    분류를 정하지 못한 경로(청년 창업인)는 잇지 않는다."""
+    supply, sheet, notice, _ = _condition_stages([], [
+        ("신혼부부 예비신혼부부 한부모가족", None), ("신혼부부 예비신혼부부 한부모가족(주거약자용)", None)], [])
+    group = {"requirements": [], "qualifications": [], "summary": None}
+    data = {"common": dict(group), "exclusions": [], "targets": [
+        {"target": "신혼부부", "supplyTarget": "신혼부부·한부모가족", "groups": ["NEWLYWED"], **group},
+        {"target": "예비신혼부부", "supplyTarget": "신혼부부·한부모가족", "groups": ["PRE_NEWLYWED"], **group},
+        {"target": "주거약자용 신혼부부", "supplyTarget": "신혼부부·한부모가족", "groups": ["NEWLYWED", "HOUSING_VULNERABLE"],
+         **group},
+        {"target": "청년 창업인", "supplyTarget": "청년 창업인", "groups": [], **group}]}
+
+    tree, _ = merge.merge(supply, sheet, notice, Extracted(data))
+
+    assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
+        ["신혼부부 예비신혼부부 한부모가족"], ["신혼부부 예비신혼부부 한부모가족"],
+        ["신혼부부 예비신혼부부 한부모가족(주거약자용)"], []]
+
+
 def test_eligibility_path_without_supply_target_links_every_target_even_if_its_name_holds_a_qualifier():
     """소속 대상(supplyTarget)을 적지 않은 경로는 모든 대상에 잇는다. 경로 이름에 괄호 표기(주거약자용)가 들어 있어도 그 대상 하나로
     좁히지 않고, 다른 경로에서 그 대상을 빼지도 않는다."""

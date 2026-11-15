@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
-from ai_worker import pages
+from ai_worker import pages, tables
 from ai_worker.supply_sheet import AMOUNT_FIELDS, AREA_FIELDS, TOTAL, Cite, Entry, Finding, Unit
 
 _UNIT_NUMBERS = (TOTAL, *AREA_FIELDS)
@@ -231,6 +231,8 @@ def source_texts(field: str, row_ids, row_values: dict[str, dict[str, str]],
             texts += sorted(house_types)
     if field == "target":
         details = [row_values.get(row_id, {}).get("targetDetail") for row_id in row_ids]
+        # '공급형 | 주택형' 표의 공급형 칸 괄호 구분(55 (주거약자용))은 그 행 공급대상의 구분이다(supply_grouping).
+        details += [tables.supply_type_qualifier(row_values.get(row_id, {}).get("supplyType")) for row_id in row_ids]
         texts += [f"{text}({detail})" for text in list(texts) for detail in details if detail]
         texts += [name for row_id in row_ids for label in (target_values or {}).get(row_id, {})
                   for name in _group_names(label)]

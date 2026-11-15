@@ -5,7 +5,7 @@
 import json
 import re
 
-from ai_worker import checks
+from ai_worker import checks, target_groups
 from ai_worker.supply_sheet import Cite, SupplySheet
 from ai_worker.checks import deduplicate
 from ai_worker.eligibility import Extracted
@@ -105,7 +105,8 @@ def _apply_conditions(sheet: SupplySheet, conditions, notice_evidence: list[dict
 def _link_supply_targets(data: dict | None, sheet: SupplySheet) -> None:
     """신청자격 대상마다 그 대상이 속한 공급 표 대상(supplyTarget)과 같은 규칙(_condition_applies)으로 맞은 공급표 대상 이름을
     원문 그대로 싣는다(supplyTargets).
-    서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다.
+    서버는 이 이름과 정확히 같은 공급대상만 잇고, 이름 맞추기 규칙을 따로 두지 않는다. 소속 대상 이름으로 맞는 대상이 없으면 경로 분류와
+    대상 분류(target_groups.linked)로 맞춘다.
     같은 핵심 이름이 괄호 표기로 나뉘면(신혼부부·한부모가족 ↔ 신혼부부·한부모가족(주거약자용)) 경로 이름에 그 괄호 표기가 든
     경로(주거약자용 한부모가족)는 그 대상에만, 나머지 경로는 그렇게 가져간 대상을 빼고 잇는다. 모델이 경로의 소속 대상을 괄호 없이 적어도 갈린다.
     소속 대상을 적지 않은 경로는 이 규칙에서 빠지고 모든 대상에 잇는다."""
@@ -113,7 +114,10 @@ def _link_supply_targets(data: dict | None, sheet: SupplySheet) -> None:
         return
     names = list(dict.fromkeys(entry.label for _, entry in sheet.entries()
                                if isinstance(entry.label, str) and entry.label.strip()))
-    matched = [[name for name in names if _condition_applies(target["supplyTarget"], name)] for target in data["targets"]]
+    # 소속 대상 이름으로 맞는 대상이 없으면 분류로 잇는다(울산다운2: 경로 소속 '신혼부부·한부모가족' ↔ 표기 '신혼부부 예비신혼부부 한부모가족').
+    matched = [[name for name in names if _condition_applies(target["supplyTarget"], name)]
+               or [name for name in names if target_groups.linked(target.get("groups"), target_groups.groups(name))]
+               for target in data["targets"]]
     # 소속 대상을 적지 않은 경로는 모든 대상이 후보라 괄호 표기로 좁히지 않는다.
     qualified = [[name for name in candidates if _qualifier(name) and _qualifier(name) in _core_text(target.get("target"))]
                  if _present(target.get("supplyTarget")) else [] for target, candidates in zip(data["targets"], matched)]

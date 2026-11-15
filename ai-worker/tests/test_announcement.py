@@ -71,7 +71,7 @@ def test_result_has_contract_keys_and_original_page_numbers():
     sheet = tree["data"]["supplySheet"]
     assert [(item["key"], item["name"], item["sourceRow"]) for item in sheet["housingTypes"]] == [("h0", None, None)]
     assert sheet["cells"] == [{"housingType": "h0", "target": "t0"}]
-    assert sheet["targets"] == [{"key": "t0", "label": "전체", "applicationCondition": None}]
+    assert sheet["targets"] == [{"key": "t0", "label": "전체", "applicationCondition": None, "groups": []}]
     assert sheet["quotas"] == []
     assert tree["data"]["eligibility"] == EMPTY_ELIGIBILITY_DATA
     # 인식된 원문 표 행은 남지만, 모델 값이 해당 열과 일치하지 않아 미확인으로 둔다.

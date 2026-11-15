@@ -159,6 +159,7 @@ class _Assembly:
                                           for name in (*_TARGET_VALUE_FIELDS, "applicationCondition"))
         label, label_reason = _source_text(item.target, "target", row_ids, selected, "", required=has_target) \
             if has_target else (None, None)
+        label = _with_supply_type_qualifier(label, housing_type or item.housing_type, row_ids, selected)
 
         group_complex = _group_name(complex_name, item.complex_name, "complexName", row_ids, selected) or ""
         group_type = _group_name(housing_type, item.housing_type, "housingType", row_ids, selected)
@@ -533,8 +534,8 @@ class _Assembly:
 
     def _fill_block_counts(self, unit: Unit, house_type_unit: "_HouseTypeUnit") -> None:
         """주택타입 여럿을 묶은 주택형 단위(84 = 84A·84B…)의 모집수는 주택타입 행마다 따로 적힌 모집수의 합이다(사용자 결정).
-        예비자 수도 같은 행들의 합이다. 수량 칸이 그 주택형의 주택타입 행 전체에 걸쳐 하나로 병합되면(울산다운2 55 = 55A·55B·55C의
-        당첨자 103·예비자 100) 그 칸이 주택형의 모집수다. 단지 주택타입은 세부 타입마다 따로 두고 이 합은 공고 단위 한 줄에만 둔다.
+        예비자 수도 같은 행들의 합이다. 수량 칸이 그 주택형의 주택타입 행 전체에 걸쳐 하나로 병합되면(84 = 84A·84B의
+        당첨자 103·예비자 100) 그 칸이 주택형의 모집수다. 여러 주택형에 걸쳐 병합된 칸은 주택형 모집수가 아니라 함께 쓰는 수다. 단지 주택타입은 세부 타입마다 따로 두고 이 합은 공고 단위 한 줄에만 둔다.
         그 밖에 병합된 공통 수량 칸이 섞이거나, 한 타입이라도 수가 없거나, 다른 단위도 그 행의 수량을 가리키면 정하지 않는다.
         합은 block_counts에 두어 원문 대조가 그 값을 확인된 값으로 본다. 모델이 낸 값은 바꾸지 않는다.
         합을 정하지 못한 필드는 None으로 두어, 모델이 낸 한 타입의 수(84A 41)도 원문 대조에서 비운다.
@@ -575,7 +576,7 @@ class _Assembly:
 
     def _count_rows(self, rows: set[str], unit: Unit) -> set[str]:
         """단위·대상이 가리키는 행 가운데 그 수량을 읽을 수 있는 행. 주택형 칸에 다른 단위의 주택형이 적힌 행은 병합된 공급대상·단지
-        칸의 근거로만 가리킨 행이라(울산다운2 55(주거약자용)이 55A 행의 공급대상 칸을 함께 씀) 그 행의 수량은 이 단위 것이 아니다.
+        칸의 근거로만 가리킨 행이라(울산다운2 55AS가 55A 행의 공급대상 칸을 함께 씀) 그 행의 수량은 이 단위 것이 아니다.
         이름이 원문 칸과 조금 달라도(21A형) 다른 단위 이름과 같다고 확인되지 않은 행은 남겨 병합 수량 검사를 건너뛰지 않는다."""
         own = normalize_source_text(unit.name or "")
         others = {normalize_source_text(other.name or "") for other in self.units if other is not unit} - {own, ""}
@@ -993,10 +994,10 @@ def _table_subtypes(row_ids: list[str], housing_type: str | None, selected: page
 
 
 def _subtype_values(subtypes: list[tables.TableSubtype]) -> list[dict]:
-    """같은 신청형 행이 여럿(신청형을 행마다 다시 적은 표, 두 표)이어도 한 공급행 안 세부 타입은 전용면적마다 하나다."""
+    """같은 신청형 행이 여럿(신청형을 행마다 다시 적은 표, 두 표)이어도 한 공급행 안 세부 타입은 이름마다 하나다."""
     return [{"name": subtype.name, "exclusiveArea": subtype.exclusive_area, "commonArea": subtype.common_area,
              "supplyArea": subtype.supply_area, "constructedHouseholdCount": None}
-            for subtype in tables.merge_subtypes(subtypes)]
+            for subtype in tables.unique_subtypes(subtypes)]
 
 
 _LABELED_AREA = re.compile(r"\(\s*([A-Za-z0-9]+)\s*\)\s*(\d+(?:\.\d+)?)")
@@ -1082,6 +1083,22 @@ def _integer_cell(value: object) -> int | None:
     except ValueError:
         return None
 
+
+
+def _with_supply_type_qualifier(label: str | None, housing_type: str | None, row_ids: list[str],
+                                selected: pages.PromptPages) -> str | None:
+    """원문 행의 공급형 칸 괄호 구분(55 (주거약자용))을 모델이 빼고 적은 대상 이름에 붙인다. 코드가 표를 묶을 때(supply_grouping)와
+    같은 이름이라야 55AS가 55A·55B와 다른 공급대상(주거약자용)으로 남고 주거약자용 신청자격 경로만 받는다.
+    구분은 주택형 칸에 이 주택형이 적힌 행에서 읽는다. 병합된 공급대상 칸의 근거로 가리킨 다른 주택형 행(55A가 가리킨 55AS 행)의
+    구분은 이 주택형 것이 아니다. 주택형이 적힌 행이 없으면(이름이 원문과 조금 다름) 가리킨 행 모두에서 읽는다."""
+    values = selected.supply_row_values
+    wanted = normalize_source_text(housing_type or "")
+    own = [row_id for row_id in row_ids if wanted and normalize_source_text(values.get(row_id, {}).get("housingType", "")) == wanted]
+    qualifiers = {qualifier for row_id in own or row_ids
+                  if (qualifier := tables.supply_type_qualifier(values.get(row_id, {}).get("supplyType")))}
+    if not label or len(qualifiers) != 1:
+        return label
+    return tables.with_supply_type_qualifier(label, qualifiers.pop())
 
 
 def _quotes(row_ids: list[str], selected: pages.PromptPages) -> list[tuple[int, str]]:

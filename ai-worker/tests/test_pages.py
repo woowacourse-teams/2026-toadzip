@@ -250,7 +250,7 @@ def test_prompt_pages_carries_header_columns_to_a_real_continuation_table_page(m
 
     assert all(not split.supply_row_values[f"P1:T1:R{row}"] for row in (1, 2, 3))
     assert split.supply_row_values["P2:T1:R1"] == {
-        "housingType": "26A", "target": "청년", "reserveCount": "20",
+        "supplyType": "26", "housingType": "26A", "target": "청년", "reserveCount": "20",
         "exclusiveArea": "26.0000", "commonArea": "15.0000", "totalHouseholdCount": "100세대",
     }
 
