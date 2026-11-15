@@ -3,6 +3,9 @@
 import copy
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
@@ -10,8 +13,9 @@ import pymupdf
 import pytest
 from testcontainers.community.postgres import PostgresContainer
 
-from ai_worker import checks, jev, supply_sheet
+from ai_worker import checks, jev, supply_assembly, supply_grouping, supply_sheet, supply_sources
 from ai_worker.openai import Reply
+from ai_worker.source_frame import SourceSupplyRow
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = REPO_ROOT / "backend/src/main/resources/db/migration/V20261103_01__ai_jobs.sql"
@@ -382,16 +386,70 @@ def two_quantity_tables_pdf(title="Sample Notice"):
     return document.tobytes()
 
 
-@pytest.fixture
-def supply_stage(monkeypatch):
-    """공급표로 바꾸기 직전의 결과 tree. 워커 출력에는 공급표만 나가므로, 공급행 검산 규칙(원천 행 번호, 확인되지 않은 수 비우기,
-    병합 수)은 이 안쪽 모양에서 확인하고 공급표로 옮기는 규칙은 test_supply_sheet가 확인한다."""
-    seen = {}
-    attach = supply_sheet.attach
+@dataclass(frozen=True)
+class Supplied:
+    """공급 단계가 내보내는 결과. sheet는 data.supplySheet, tree는 단지·단지 경로의 미확인·근거가 든 공급 단계 tree다."""
 
-    def capture(tree, joined_rows):
-        seen.clear()
-        seen.update(copy.deepcopy(tree))
-        attach(tree, joined_rows)
-    monkeypatch.setattr(supply_sheet, "attach", capture)
-    return seen
+    tree: dict
+    warnings: list[str]
+
+    @property
+    def sheet(self) -> dict:
+        return self.tree["data"]["supplySheet"]
+
+    def unresolved(self) -> set[str]:
+        """공급표 안 미확인 경로."""
+        return {item["path"] for item in self.sheet["unresolvedFields"]}
+
+
+class _AnswerModel:
+    def __init__(self, answer: dict):
+        self.answer = answer
+
+    def chat(self, prompt, deadline):
+        return Reply(json.dumps(self.answer, ensure_ascii=False), USAGE)
+
+
+def _finished(supply) -> Supplied:
+    tree = copy.deepcopy(supply.tree)
+    supply_sheet.attach(tree, tree.pop(supply_assembly.JOINED_ROWS, []))
+    return Supplied(tree, supply.warnings)
+
+
+def model_supply(selected, answer=None, *, rows=(), shared=(), source_names=()) -> Supplied:
+    """공급 단계 모델이 answer(공급표 모양 답)로 답했을 때의 공급 단계 결과. rows·shared는 옛 짧은 공급행 목록 모양으로 적은
+    테스트 입력이고 sheet_answer가 공급표 모양 답으로 바꾼다. source_names는 LH 공급행의 단지명이다."""
+    if answer is None:
+        answer = sheet_answer({"data": {"rows": list(rows)}, "sharedCounts": list(shared)})
+    lh_rows = [SourceSupplyRow("LH", None, name, "", "", "", "") for name in source_names]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        supply = supply_sources.ModelSupply(_AnswerModel(answer), lh_rows, selected, time.monotonic() + 60, pool)
+        return _finished(supply.read())
+
+
+def code_supply(selected, source_names=()) -> Supplied | None:
+    """코드가 표 셀에서 공급표를 읽었을 때의 공급 단계 결과. 코드가 표를 읽지 못하면 None이다."""
+    grouped = supply_grouping.group(selected.supply_tables, selected.supply_row_values, selected.tableless_supply_pages)
+    if grouped is None:
+        return None
+    return _finished(supply_sources.CodeSupply(grouped, selected, list(source_names)).read())
+
+
+def readable(sheet: dict) -> dict:
+    """공급표를 키 대신 '주택형/대상' 이름으로 읽는다."""
+    types = {item["key"]: item["name"] for item in sheet["housingTypes"]}
+    labels = {item["key"]: item["label"] for item in sheet["targets"]}
+
+    def members(items):
+        return [f"{types[item['housingType']]}/{labels[item['target']]}" for item in items]
+    return {
+        "cells": members(sheet["cells"]),
+        "quotas": [(quota["kind"], quota["count"], members(quota["members"])) for quota in sheet["quotas"]],
+        "leaseTerms": [(lease["rentalDeposit"], lease["monthlyRent"], members(lease["members"]))
+                       for lease in sheet["leaseTerms"]],
+    }
+
+
+def evidence_at(sheet: dict, path: str) -> dict:
+    """그 경로의 첫 근거. 화면은 같은 경로의 첫 근거를 쓴다."""
+    return next(item for item in sheet["evidence"] if item["path"] == path)
