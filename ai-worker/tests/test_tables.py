@@ -58,6 +58,35 @@ def test_reserve_column_is_not_the_target_column_naming_prospective_newlyweds():
     assert supply_columns["target"] == 2
     assert "reserveCount" not in rent_columns
 
+
+def test_supply_type_cell_shared_by_house_types_with_one_count_is_the_application_type():
+    # 울산다운2 A-9블록: "55A, 55B, 55C은 타입 구분없이 55형으로 청약신청". 공급형 55가 신청형, 주택형 55A·55B·55C는 단지 주택타입이고
+    # 모집 103·예비 100은 공급형 55의 수다. 주택형마다 신청형으로 읽으면 103이 세 주택형이 함께 쓰는 수로 떨어진다.
+    rows = [
+        ["공급형", "주택형", "공급대상", "당첨자", "예비자", "주거전용", "주거공용"],
+        ["55", "55A", "신혼부부", "103", "100", "55.93", "24.1361"],
+        [None, "55B", None, None, None, "55.97", "24.1534"],
+        ["55 (주거약자용)", "55AS", None, "19", "10", "55.93", "24.1361"],
+    ]
+
+    table = tables.SupplyTable.of(2, 1, rows, None, False)
+
+    assert table.rows[1].values["housingType"] == "55"
+    assert [subtype.name for subtype in table.rows[1].subtypes] == ["55A", "55B"]
+    assert table.rows[3].values["housingType"] == "55 (주거약자용)"
+
+
+def test_house_types_with_their_own_counts_stay_application_types_under_a_supply_type_cell():
+    rows = [
+        ["공급형", "주택형", "공급대상", "당첨자", "주거전용"],
+        ["36", "36A1", "청년", "10", "36.59"],
+        [None, "36A2", "청년", "8", "36.59"],
+    ]
+
+    table = tables.SupplyTable.of(2, 1, rows, None, False)
+
+    assert [row.values.get("housingType") for row in table.rows[1:]] == ["36A1", "36A2"]
+
 def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
     rows = [
         ["공급형", "공급대상", "임대조건", None, None, None, "임대보증금 최소화", "", "임대보증금 최대화", ""],

@@ -533,8 +533,9 @@ class _Assembly:
 
     def _fill_block_counts(self, unit: Unit, house_type_unit: "_HouseTypeUnit") -> None:
         """주택타입 여럿을 묶은 주택형 단위(84 = 84A·84B…)의 모집수는 주택타입 행마다 따로 적힌 모집수의 합이다(사용자 결정).
-        예비자 수도 같은 행들의 합이다. 단지 주택타입은 세부 타입마다 따로 두고 이 합은 공고 단위 한 줄에만 둔다.
-        병합된 공통 수량 칸이 섞이거나, 한 타입이라도 수가 없거나, 다른 단위도 그 행을 가리키면 정하지 않는다.
+        예비자 수도 같은 행들의 합이다. 수량 칸이 그 주택형의 주택타입 행 전체에 걸쳐 하나로 병합되면(울산다운2 55 = 55A·55B·55C의
+        당첨자 103·예비자 100) 그 칸이 주택형의 모집수다. 단지 주택타입은 세부 타입마다 따로 두고 이 합은 공고 단위 한 줄에만 둔다.
+        그 밖에 병합된 공통 수량 칸이 섞이거나, 한 타입이라도 수가 없거나, 다른 단위도 그 행의 수량을 가리키면 정하지 않는다.
         합은 block_counts에 두어 원문 대조가 그 값을 확인된 값으로 본다. 모델이 낸 값은 바꾸지 않는다.
         합을 정하지 못한 필드는 None으로 두어, 모델이 낸 한 타입의 수(84A 41)도 원문 대조에서 비운다.
         근거 행은 넓히지 않는다. 다른 주택타입 행의 면적·금액 칸으로 다른 값이 통과하지 않게 수량만 이 합과 대조한다."""
@@ -544,11 +545,17 @@ class _Assembly:
         block = sorted((row_id for row_id in selected.supply_row_values
                         if (row := _house_type_row(row_id, selected)) is not None and row.start == start.start),
                        key=lambda row_id: int(row_id.rsplit(":R", 1)[1]))
-        if len(block) != start.block_size or any(_merged_count_rows(row_id, selected) != {row_id} for row_id in block) \
-                or any(set(block) & self.rows[other] for other in self.units if other is not unit):
+        if len(block) != start.block_size or any(set(block) & self._count_rows(self.rows[other], other)
+                                                 for other in self.units if other is not unit):
             return
-        recruited = [recruitment_count(selected.supply_row_values[row_id]) for row_id in block]
-        reserves = [count_cell(selected.supply_row_values[row_id].get("reserveCount")) for row_id in block]
+        if all(_merged_count_rows(row_id, selected) == {row_id} for row_id in block):
+            rows = block
+        elif _counts_merged_over(block, selected):
+            rows = block[:1]
+        else:
+            return
+        recruited = [recruitment_count(selected.supply_row_values[row_id]) for row_id in rows]
+        reserves = [count_cell(selected.supply_row_values[row_id].get("reserveCount")) for row_id in rows]
         if any(count is None for count in recruited):
             return
         counts = {TOTAL: sum(recruited), "supplyHouseholdCount": sum(recruited)}
@@ -566,13 +573,22 @@ class _Assembly:
             entry.values["reserveCount"] = counts["reserveCount"]
             self._drop(entry, "reserveCount")
 
+    def _count_rows(self, rows: set[str], unit: Unit) -> set[str]:
+        """단위·대상이 가리키는 행 가운데 그 수량을 읽을 수 있는 행. 주택형 칸에 다른 주택형이 적힌 행은 병합된 공급대상·단지
+        칸의 근거로만 가리킨 행이라(울산다운2 55(주거약자용)이 55A 행의 공급대상 칸을 함께 씀) 그 행의 수량은 이 단위 것이 아니다."""
+        name = normalize_source_text(unit.name or "")
+        values = self.selected.supply_row_values
+        return {row_id for row_id in rows
+                if not (housing := normalize_source_text(values.get(row_id, {}).get("housingType", "")))
+                or housing == name or normalize_source_text(values.get(row_id, {}).get("houseType", "")) == name}
+
     def _leave_merged_cells_unconfirmed(self, unit: Unit) -> None:
         """대상의 수량 칸이 그 대상 밖의 행까지 병합된 칸이면(대학생·청년이 함께 쓰는 일반 공급 28) 여러 대상의 공통 수량이다.
         병합이 시작된 행에는 그 칸 값이 그대로 있어, 코드가 대상 수를 정하지 못했을 때 모델이 낸 5 + 28이 대학생 몫으로
         확인되지 않게 그 대상의 수량은 어떤 값도 확인된 값으로 보지 않는다."""
         for entry in unit.entries:
             confirmed = dict(self.confirmed.get(entry, {}))
-            for row_id in sorted(self.rows[entry]):
+            for row_id in sorted(self._count_rows(self.rows[entry], unit)):
                 table = _table_of(row_id, self.selected)
                 if table is None:
                     continue
@@ -932,6 +948,21 @@ def _column_span(table: "tables.SupplyTable", index: int, column: int) -> tuple[
 _COUNT_FIELDS = ("totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount")
 # 모집수를 읽는 원문 칸. 공급호수를 우선·일반 공급으로 나눈 표는 두 칸의 합이 모집수다.
 _SOURCE_COUNT_FIELDS = (*_COUNT_FIELDS, "priorityCount", "generalCount")
+
+
+def _counts_merged_over(block: list[str], selected: pages.PromptPages) -> bool:
+    """표의 수량 열마다 칸 하나가 block 행 전체에 걸쳐 세로로 병합됐는가. 병합이 block 밖으로 이어지거나
+    일부 열만 행마다 따로 적혔으면 아니다."""
+    for table in selected.supply_tables:
+        ids = [row.id for row in table.rows]
+        if block[0] not in ids:
+            continue
+        first = ids.index(block[0])
+        last = first + len(block) - 1
+        columns = [table.columns[field] for field in _SOURCE_COUNT_FIELDS if field in table.columns]
+        return ids[first:last + 1] == block and bool(columns) \
+            and all(_column_span(table, first, column) == (first, last) for column in columns)
+    return False
 
 
 def _merged_count_rows(row_id: str, selected: pages.PromptPages) -> set[str]:

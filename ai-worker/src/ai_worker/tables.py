@@ -195,6 +195,7 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
     if total is not None and "reserveCount" in columns and "supplyHouseholdCount" not in columns \
             and "계" not in normalized_headers[total]:
         columns["supplyHouseholdCount"] = columns.pop("totalSupplyHouseholdCount")
+    _split_supply_type_from_house_types(rows, normalized_headers, columns)
     # 우선·일반 공급 열은 둘이 함께 있을 때만 모집수의 두 부분이다.
     if ("priorityCount" in columns) != ("generalCount" in columns):
         columns.pop("priorityCount", None)
@@ -231,6 +232,29 @@ def increase_limit(row: list[str | None], column: int) -> str | None:
         return cell
     match = _INCREASE_LIMIT.search(cell)
     return match.group(1) if match else ""
+
+
+_COUNT_FIELDS = ("supplyHouseholdCount", "reserveCount", "totalSupplyHouseholdCount", "priorityCount", "generalCount")
+
+
+def _split_supply_type_from_house_types(rows: list[list[str | None]], headers: list[str], columns: dict[str, int]) -> None:
+    """'공급형' 열과 '주택형' 열을 따로 둔 표(울산다운2 A-9블록: 55 | 55A·55B·55C)에서 공급형 칸 하나에 묶인 주택형들이
+    모집수 칸도 함께 쓰면(공통 모집 103) 공급형이 신청형이고 주택형은 단지 주택타입이다. 주택형마다 모집수가 있으면 그대로 둔다."""
+    housing = columns.get("housingType")
+    supply_types = [index for index, header in enumerate(headers)
+                    if re.search(r"공급형", header) and not re.search(r"주택형", header)]
+    if housing is None or "houseType" in columns or len(supply_types) != 1 or supply_types[0] == housing:
+        return
+    supply_type = supply_types[0]
+    counts = [columns[name] for name in _COUNT_FIELDS if name in columns]
+    grouped = False
+    for row in rows:
+        if _cell(row, supply_type) is None and (_cell(row, housing) or "").strip():
+            if any((_cell(row, count) or "").strip() for count in counts):
+                return
+            grouped = True
+    if grouped:
+        columns["houseType"], columns["housingType"] = housing, supply_type
 
 
 def _house_type_subtypes(cells: list[list[str | None]], columns: dict[str, int]) -> dict[int, tuple[TableSubtype, ...]]:

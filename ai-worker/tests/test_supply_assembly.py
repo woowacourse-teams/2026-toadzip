@@ -742,6 +742,32 @@ def test_housing_type_row_count_is_left_empty_when_a_house_type_count_is_missing
     assert ({"cells[0].winner", "cells[0].reserve"} <= result.unresolved()) == bool(model_counts)
 
 
+# 울산다운2 A-9블록을 줄인 표. 공급형 칸 하나가 주택타입 행들에 걸치고 당첨자·예비자 칸도 그 행 전체에 하나로 병합된다.
+# 주거약자용 형은 자기 수량을 따로 적고 공급대상 칸만 위 형과 함께 쓴다.
+MERGED_COUNT_TABLE = [
+    ["공급형", "주택형", "공급대상", "금회 공급호수", None, "주거 전용"],
+    [None, None, None, "당첨자", "예비자", None],
+    ["55", "55A", "신혼부부", "103", "100", "55.93"],
+    [None, "55B", None, None, None, "55.97"],
+    ["55 (주거약자용)", "55AS", None, "19", "10", "55.93"],
+]
+
+
+def test_count_cell_merged_over_all_house_type_rows_is_the_housing_type_count():
+    # 병합된 한 칸(당첨자 103 + 예비자 100)이 55A·55B를 묶은 55의 모집수다. 55(주거약자용)이 공급대상 칸의 근거로
+    # 55A 행을 함께 가리켜도 그 행의 수량을 나눠 쓰는 것이 아니라 두 형 모두 자기 수가 원문 대조를 통과한다.
+    result = supplied(table_pages(MERGED_COUNT_TABLE),
+                      {"rowIds": ["P5:T1:R3", "P5:T1:R4"], "housingType": "55", "target": "신혼부부",
+                       "supplyHouseholdCount": 203, "reserveCount": 100},
+                      {"rowIds": ["P5:T1:R3", "P5:T1:R5"], "housingType": "55 (주거약자용)", "target": "신혼부부",
+                       "supplyHouseholdCount": 29, "reserveCount": 10})
+
+    assert [(item["name"], [house["name"] for house in item["houseTypes"]]) for item in result.sheet["housingTypes"]] == [
+        ("55", ["55A", "55B"]), ("55 (주거약자용)", ["55AS"])]
+    assert readable(result.sheet)["quotas"] == [*own("55", "신혼부부", 203, 100), *own("55 (주거약자용)", "신혼부부", 29, 10)]
+    assert not {path for path in result.unresolved() if path.endswith((".winner", ".reserve"))}
+
+
 def test_housing_type_row_sum_does_not_let_other_house_type_cells_confirm_other_values():
     # 합을 위해 84B 행을 읽어도 84A 행만 가리킨 주택형의 면적은 84A 칸과만 대조한다(84B 면적 84.95는 아니다).
     result = dasan(table_pages(SPLIT_COUNT_TABLE), {"rowIds": ["P5:T1:R3"], "housingType": "72"},
