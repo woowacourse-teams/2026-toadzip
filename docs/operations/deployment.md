@@ -116,7 +116,7 @@ CI에서 실행하는 빠른 배포 검사는 `tests/deployment/test_bluegreen.p
 1. 주 DB(`toadzip`, `PRIMARY_DB_NAME`이 다르면 스크립트의 `GRANT CONNECT ON DATABASE` 이름도 바꾼다)에 관리자 계정으로 접속해 [`infra/db/create-ai-worker-role.sql`](../../infra/db/create-ai-worker-role.sql)을 실행하고
    `\password toadzip_ai_worker`로 비밀번호를 정한다. 역할은 `ai_jobs`를 읽고 상태·결과 열만 고칠 수 있다.
    `ai_jobs` 마이그레이션이 이미 적용된 DB에도 같은 권한을 준다.
-2. 서버 `.env`에 `AI_WORKER_DB_PASSWORD`(위 비밀번호)와 `DEEPSEEK_API_KEY`를 넣는다. 접속 주소는 백엔드와 같은 `PRIMARY_DB_*`를 쓴다.
+2. 서버 `.env`에 `AI_WORKER_DB_PASSWORD`(위 비밀번호)와 `OPENAI_API_KEY`를 넣는다. 접속 주소는 백엔드와 같은 `PRIMARY_DB_*`를 쓴다.
 3. 릴리스는 실행 중인 워커를 바꾸기 전에 새 이미지로 `run --rm ai-worker --check`를 실행해 DB 접속과 `ai_jobs` 읽기·상태 열 수정 권한을 확인한다.
    비밀번호·역할·권한·네트워크 문제로 확인에 실패하면 `deploy-ai-worker` 단계에서 멈추고, 실행 중인 워커는 이전 이미지로 그대로 둔다. 오류 문구 끝에 워커가 남긴 이유가 붙는다.
    확인을 지나면 워커를 새 이미지로 다시 띄운다. 이미지의 healthcheck는 워커가 DB에서 작업 꺼내기에 성공하며 큐를 처리하는 동안만 healthy여서, 그 뒤에 접속을 잃어도 같은 단계에서 실패한다.
