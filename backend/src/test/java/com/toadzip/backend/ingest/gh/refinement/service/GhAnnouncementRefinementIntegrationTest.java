@@ -332,6 +332,24 @@ class GhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 이름_없는_원천_주택형은_준비_줄로_만들지_않고_나머지_정제는_마친다() {
+        collect(ROW);
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("""
+                UPDATE gh_announcement_source SET districts = ? WHERE pbanc_no = '801'
+                """, """
+                [{"name":"다산 센트럴파크6단지","address":"경기도 남양주시 다산동 6107",
+                  "housingTypes":[{"houseTypeCode":"33A","name":"33A","supplyCount":"120"},
+                                  {"houseTypeCode":"","name":"  ","supplyCount":"5"}]}]
+                """);
+
+        assertThat(GhRefinementTestSupport.refineAll(refinement, sources).failed()).isZero();
+
+        assertThat(lines("GH:801")).extracting(row -> row.get("source_line_key"))
+                .containsExactly("GH:801:다산 센트럴파크6단지:33A");
+    }
+
+    @Test
     void 지구의_주택형마다_미리_고른_단지를_가리키는_공급행_틀을_만들고_같은_원천이면_다시_쓰지_않는다() {
         long dasan = complex("다산 센트럴파크 6단지", "경기도 남양주시 다산순환로 20", "4136010100161070000", "GH",
                 "NATIONAL_RENTAL");

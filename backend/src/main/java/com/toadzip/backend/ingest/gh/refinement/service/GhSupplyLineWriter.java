@@ -67,7 +67,10 @@ class GhSupplyLineWriter {
                 continue;
             }
             for (JsonNode housingType : district.path("housingTypes")) {
-                String typeName = housingType.path("name").asText();
+                String typeName = housingType.path("name").asText("");
+                if (typeName.isBlank()) {
+                    continue; // 이름 없는 주택형은 공급행이 될 수 없다. 이행 SQL도 같은 주택형을 건너뛴다.
+                }
                 String key = uniqueKey(identifier + ":" + name + ":" + typeCode(housingType, typeName), keys);
                 lines.add(new Line(key, lines.size(), name, typeName, householdCount(housingType),
                         exclusiveArea(housingType), category, announcementComplex));
