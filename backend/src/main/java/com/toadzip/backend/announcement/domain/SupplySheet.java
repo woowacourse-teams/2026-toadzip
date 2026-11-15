@@ -80,7 +80,7 @@ public final class SupplySheet {
 
     /**
      * 저장하지 않은 공급표 draft를 읽기 모델로 바꾼다. 공급행은 rows가 draft 주택형 키별로 준 보이는 값이고, 칸·묶음 ID는 이 공급표 안에서만
-     * 쓰는 음수다.
+     * 쓰는 1부터의 순번이다. 화면이 그 공급표 안의 열쇠로만 쓰고, 공개 응답 계약이 양수를 요구한다.
      */
     public static SupplySheet fromDraft(SupplySheetDraft draft, Map<String, Row> rows) {
         Map<String, SupplySheetDraft.Target> targets = draft.targets().stream()
@@ -88,7 +88,7 @@ public final class SupplySheet {
         Map<String, Long> cellIds = new HashMap<>();
         List<Cell> cells = new ArrayList<>();
         for (SupplySheetDraft.Cell cell : draft.cells()) {
-            long id = -(cells.size() + 1L);
+            long id = cells.size() + 1L;
             cellIds.put(cell.key(), id);
             SupplySheetDraft.Target target = targets.get(cell.targetKey());
             cells.add(new Cell(id, rows.get(cell.housingTypeKey()).id(), target.label(), target.applicationCondition(),
@@ -96,7 +96,7 @@ public final class SupplySheet {
         }
         List<Quota> quotas = new ArrayList<>();
         for (SupplySheetDraft.Quota quota : draft.quotas()) {
-            quotas.add(new Quota(-(quotas.size() + 1L), quota.kind(), quota.count(),
+            quotas.add(new Quota(quotas.size() + 1L, quota.kind(), quota.count(),
                     quota.cellKeys().stream().map(cellIds::get).collect(Collectors.toSet())));
         }
         List<Lease> leases = draft.leases().stream().map(lease -> new Lease(lease.amounts(),

@@ -212,6 +212,9 @@ class LhAnnouncementRefinementIntegrationTest {
         assertThat(detail.supplyRows().get(1).targets()).extracting(SupplyTargetResponse::target,
                 SupplyTargetResponse::supplyHouseholdCount, SupplyTargetResponse::deposit)
                 .containsExactly(tuple("전체", 3, 20_000_000L));
+        // 공개 응답 계약은 대상 ID를 양수로 요구하고, 화면은 그 ID를 공급행 안의 열쇠로 쓴다.
+        assertThat(detail.supplyRows().stream().flatMap(row -> row.targets().stream())
+                .map(SupplyTargetResponse::supplyTargetId)).allMatch(targetId -> targetId > 0).doesNotHaveDuplicates();
     }
 
     @Test
