@@ -107,6 +107,11 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   }
 }
 
+/** 아직 고르지 않은 PDF 공급대상 이름. 지금 이름이 없을 때 표에 후보로 보인다. */
+const extractedName = (review: Review, cell: number) => {
+  const value = labelOf(review, cell)?.cells.find(item => item.field === 'label')?.value
+  return typeof value === 'string' ? value.trim() : ''
+}
 const countText = (cell: Cell | undefined) => cell?.state === 'notApplicable' && cell.value === null ? '함께' : shown(cell?.value)
 
 /** 대상별 칸(모집·예비·임대조건). 줄을 펼치면 공급대상 이름·신청 조건과 칸 값을 대조·수정한다. 공급대상 이름은 공고 전체에서 한 번 고친다. */
@@ -125,9 +130,9 @@ function TargetBlock({ review, index, filter, onChange, onEvidence }: { review: 
       <tbody>{row.targets.map((target, at) => {
         if (!targetMatches(review, target, filter)) return null
         const cell = (field: string) => target.cells.find(item => item.field === field)
-        const waiting = pendingTarget(review, target), name = targetName(review, target.cell)
+        const waiting = pendingTarget(review, target), name = targetName(review, target.cell), candidate = extractedName(review, target.cell)
         return <tr key={at} data-pending={waiting || undefined} data-review-id={`target:${index}:${at}`} tabIndex={-1}>
-          <th scope="row">{name || <span className={styles.pendingLabel}>이름 없음</span>}</th>
+          <th scope="row">{name || (candidate ? <>{candidate}<small className={styles.pendingLabel}>이름 확인 필요</small></> : <span className={styles.pendingLabel}>이름 없음</span>)}</th>
           <td>{countText(cell('winner'))}</td><td>{countText(cell('reserve'))}</td>
           {['rentalDeposit', 'monthlyRent', 'convertedDeposit'].map(field => { const item = cell(field)!; return <td key={field}><strong>{shownMoney(item.value)}</strong><small>{item.before != null && item.before !== item.value ? `현재 ${shownMoney(item.before)}` : item.state === 'notApplicable' ? '해당 없음' : item.state === 'same' ? '같음' : item.selected ? '적용 선택' : '적용 안 함'}</small>
             {item.evidence && item.value != null && <Button data-design-system className={styles.evidenceButton} aria-label={`PDF ${item.evidence.page}쪽에서 대상 ${at + 1} ${item.label} 보기`} title={item.evidence.quote} onClick={() => onEvidence(item.evidence!, item)}>p.{item.evidence.page}</Button>}</td> })}
@@ -138,7 +143,9 @@ function TargetBlock({ review, index, filter, onChange, onEvidence }: { review: 
     {selected && expanded !== null && <section className={styles.target} aria-label={`주택형 ${index + 1} 대상 ${expanded + 1} 수정`}>
       <h4>대상 {expanded + 1} 대조·수정</h4>
       {label && <>
-        {!targetName(review, selected.cell) && <p className={styles.pendingLabel} role="note">공급대상 이름을 원문에서 읽지 못했습니다. 이름을 넣어야 저장할 수 있습니다.</p>}
+        {!targetName(review, selected.cell) && <p className={styles.pendingLabel} role="note">{extractedName(review, selected.cell)
+          ? 'PDF에서 읽은 공급대상 이름을 원문과 대조해 고르세요. 고르거나 직접 넣어야 저장할 수 있습니다.'
+          : '공급대상 이름을 원문에서 읽지 못했습니다. 이름을 넣어야 저장할 수 있습니다.'}</p>}
         <p className={styles.hint}>공급대상 이름·신청 조건은 이 대상을 쓰는 모든 주택형에 함께 적용됩니다.</p>
         <ReviewCells cells={label.cells} scope={`공급대상 ${label.target + 1}`} onChange={cells => updateLabel(label.target, cells)} onEvidence={onEvidence} />
       </>}

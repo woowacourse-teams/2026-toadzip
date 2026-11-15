@@ -142,6 +142,19 @@ it('공급대상 이름을 읽지 못한 칸은 이름 없음으로 표시하고
   expect(screen.getByText('공급대상 이름을 원문에서 읽지 못했습니다. 이름을 넣어야 저장할 수 있습니다.')).toBeVisible()
 })
 
+it('지금 이름이 없는 공급대상은 아직 고르지 않은 PDF 이름을 확인 필요와 함께 보이고, 펼치면 대조해 고르라고 알린다', () => {
+  // 지금 공급표 대상과 짝이 안 지어지고 근거도 없어 확인을 기다리는 PDF 이름이다.
+  const found = scenario('hansville')
+  found.review.labels[0].cells = found.review.labels[0].cells.map(cell => cell.field === 'label' ? { ...cell, value: '신혼부부 한부모가족', before: null, selected: false, state: 'confirm' as const } : cell)
+  renderSupply(found)
+  const table = screen.getByRole('region', { name: '주택형 1 대상별 칸 표' })
+  expect(within(table).getByText('신혼부부 한부모가족')).toBeVisible()
+  expect(within(table).getByText('이름 확인 필요')).toBeVisible()
+  expect(within(table).queryByText('이름 없음')).not.toBeInTheDocument()
+  fireEvent.click(within(table).getByRole('button', { name: '대상 1 대조·수정' }))
+  expect(screen.getByText('PDF에서 읽은 공급대상 이름을 원문과 대조해 고르세요. 고르거나 직접 넣어야 저장할 수 있습니다.')).toBeVisible()
+})
+
 it('다른 주택형과 함께 쓰는 모집 수는 그 주택형 모두의 편집 영역에 같은 칸으로 보인다', () => {
   renderSupply(scenario('hansville'))
   const shared = () => within(screen.getByRole('region', { name: /^주택형 \d 검토$/ })).getByRole('group', { name: '26A·26B 일반 함께 모집 26A·26B 일반 함께 모집 반영 방법' })
