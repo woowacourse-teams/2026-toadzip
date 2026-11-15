@@ -210,3 +210,19 @@ def test_qualified_eligibility_paths_link_only_the_supply_target_named_by_their_
 
     assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
         ["신혼부부·한부모가족"], ["신혼부부·한부모가족(주거약자용)"], ["주거약자용", "주거약자용(주거복지동)"]]
+
+
+def test_eligibility_path_without_supply_target_links_every_target_even_if_its_name_holds_a_qualifier():
+    """소속 대상(supplyTarget)을 적지 않은 경로는 모든 대상에 잇는다. 경로 이름에 괄호 표기(주거약자용)가 들어 있어도 그 대상 하나로
+    좁히지 않고, 다른 경로에서 그 대상을 빼지도 않는다."""
+    supply, sheet, notice, _ = _condition_stages([], [
+        ("신혼부부·한부모가족", None), ("신혼부부·한부모가족(주거약자용)", None)], [])
+    group = {"requirements": [], "qualifications": [], "summary": None}
+    data = {"common": dict(group), "exclusions": [], "targets": [
+        {"target": "주거약자용", "supplyTarget": None, **group},
+        {"target": "신혼부부", "supplyTarget": "신혼부부·한부모가족", **group}]}
+
+    tree, _ = merge.merge(supply, sheet, notice, Extracted(data))
+
+    assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
+        ["신혼부부·한부모가족", "신혼부부·한부모가족(주거약자용)"], ["신혼부부·한부모가족", "신혼부부·한부모가족(주거약자용)"]]

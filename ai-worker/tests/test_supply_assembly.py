@@ -973,7 +973,8 @@ def test_targets_split_by_income_tier_share_their_one_count_row_as_one_shared_qu
 
 def test_priority_and_general_columns_are_not_read_from_amount_or_reserve_headers():
     # 우선·일반 공급 아래 예비자·보증금 열은 모집수 칸이 아니다. 둘 다 있을 때만 모집수 칸으로 본다.
-    for header in (["일반 공급 예비자", "우선 공급 예비자"], ["우선 공급 보증금", "일반 공급 보증금"], ["우선 공급", "비고"]):
+    for header in (["일반 공급 예비자", "우선 공급 예비자"], ["우선 공급 보증금", "일반 공급 보증금"], ["우선 공급", "비고"],
+                   ["공급호수 우선순위", "공급호수 일반순위"]):
         table = tables.SupplyTable.of(1, 1, [["주택형", "공급대상", *header], ["21A", "청년", "5", "28"]], None, False)
         assert not {"priorityCount", "generalCount"} & table.columns.keys(), header
 
