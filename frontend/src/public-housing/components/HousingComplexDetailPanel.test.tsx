@@ -521,6 +521,43 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(housingType).getAllByText('0원')).toHaveLength(3)
   })
 
+  it('공고문 확인 전 공급 조건과 공고에만 확인 전 표시를 하고 안내는 주택형마다 한 번만 둔다', () => {
+    const [first, second] = BASE_DETAIL.housingTypes
+    const youth = first.currentSupplyConditions[0]
+    const { panel } = renderPanel(detailWith({
+      housingTypes: [{ ...first, currentSupplyConditions: [
+        { ...youth, supplyConfirmed: false },
+        { ...youth, target: '신혼부부', supplyConfirmed: false },
+        { ...youth, target: '고령자', supplyConfirmed: true },
+      ] }, second],
+      currentAnnouncements: [
+        { ...BASE_DETAIL.currentAnnouncements[0], supplyConfirmed: false },
+        { ...BASE_DETAIL.currentAnnouncements[0], announcementId: '202', title: '확정 공고', supplyConfirmed: true },
+      ],
+    }))
+    const housingType = section(panel, '주택형 정보')
+    expect(within(housingType).getAllByText('공고문으로 확인하기 전 기관이 제공한 정보라 공고문과 다를 수 있어요.')).toHaveLength(1)
+    const targets = within(housingType).getAllByRole('listitem').map((item) => item.querySelector('strong')?.textContent)
+    expect(targets).toEqual(['청년 · 공고문 확인 전', '신혼부부 · 공고문 확인 전', '고령자'])
+
+    const comparison = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    expect(within(comparison).getAllByText(/공고문 확인 전/)).toHaveLength(2)
+
+    const [unconfirmed, confirmed] = within(section(panel, '현재 모집 공고')).getAllByRole('article')
+    expect(within(unconfirmed).getByRole('heading', { name: '행복주택 입주자 모집 공고' }).closest('header')).toHaveTextContent('공급정보 · 공고문 확인 전')
+    expect(confirmed).not.toHaveTextContent('공고문 확인 전')
+  })
+
+  it.each([true, undefined])('확인된 공급정보(%s)에는 확인 전 표시와 안내를 두지 않는다', (supplyConfirmed) => {
+    const [first, second] = BASE_DETAIL.housingTypes
+    const { panel } = renderPanel(detailWith({
+      housingTypes: [{ ...first, currentSupplyConditions: [{ ...first.currentSupplyConditions[0], supplyConfirmed }] }, second],
+      currentAnnouncements: [{ ...BASE_DETAIL.currentAnnouncements[0], supplyConfirmed }],
+    }))
+    expect(panel).not.toHaveTextContent('공고문 확인 전')
+    expect(panel).not.toHaveTextContent('공고문과 다를 수 있어요')
+  })
+
   it('대상별 공급 조건을 항목·금액 두 쌍의 4열 표로 표시한다', () => {
     const { panel } = renderPanel()
     const table = within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })

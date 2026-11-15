@@ -125,6 +125,8 @@ export interface RawComplexSupplyCondition {
   readonly convertibleDeposit: number | null
   /** 이 조건을 낸 공고의 게시일(YYYY-MM-DD). */
   readonly postedDate: string | null
+  /** 공고문으로 확정한 공급정보인지. 이 필드가 없던 이전 API 응답을 위해 생략할 수 있다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface ComplexBasicRentalCondition {
@@ -158,6 +160,8 @@ export interface RawComplexCurrentAnnouncement {
   readonly applicationEndAt: string | null
   readonly dDay: number | null
   readonly actualCompetitionRate: number | null
+  /** 공고문으로 확정한 공급정보인지. 이 필드가 없던 이전 API 응답을 위해 생략할 수 있다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface RawComplexDetail {
@@ -193,6 +197,8 @@ export interface ComplexSupplyCondition {
   readonly convertibleDeposit: number | null
   /** 이 조건을 낸 공고의 게시일(YYYY-MM-DD). */
   readonly postedDate: string | null
+  /** 공고문으로 확정한 공급정보인지. false면 기관이 제공한 공고문 확인 전 정보다. */
+  readonly supplyConfirmed: boolean
 }
 
 export interface ComplexHousingType {
@@ -218,6 +224,8 @@ export interface ComplexCurrentAnnouncement {
   readonly applicationEndAt: string | null
   readonly dDay: number | null
   readonly actualCompetitionRate: number | null
+  /** 공고문으로 확정한 공급정보인지. false면 기관이 제공한 공고문 확인 전 정보다. */
+  readonly supplyConfirmed: boolean
 }
 
 export interface ComplexDetail {

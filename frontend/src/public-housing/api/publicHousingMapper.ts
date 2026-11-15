@@ -298,6 +298,7 @@ function toComplexHousingType(raw: RawComplexHousingType): ComplexHousingType {
       monthlyRent: condition.monthlyRent,
       convertibleDeposit: condition.convertibleDeposit,
       postedDate: condition.postedDate,
+      supplyConfirmed: condition.supplyConfirmed ?? true,
     })),
   }
 }
@@ -315,6 +316,7 @@ function toComplexCurrentAnnouncement(
     applicationEndAt: raw.applicationEndAt,
     dDay: raw.dDay,
     actualCompetitionRate: raw.actualCompetitionRate,
+    supplyConfirmed: raw.supplyConfirmed ?? true,
   }
 }
 

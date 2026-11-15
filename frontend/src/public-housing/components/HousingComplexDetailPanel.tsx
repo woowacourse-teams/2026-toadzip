@@ -39,6 +39,8 @@ export interface HousingComplexDetailSupplyCondition {
   readonly monthlyRent: number | null
   readonly convertibleDeposit: number | null
   readonly postedDate: string | null
+  /** false면 공고문으로 확인하기 전 기관이 제공한 조건이다. 없으면 확인된 것으로 본다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface HousingComplexDetailHousingType {
@@ -64,6 +66,8 @@ export interface HousingComplexDetailAnnouncement {
   readonly applicationEndAt: string | null
   readonly dDay: number | null
   readonly actualCompetitionRate: number | null
+  /** false면 이 공고의 공급정보가 공고문으로 확인되기 전이다. 없으면 확인된 것으로 본다. */
+  readonly supplyConfirmed?: boolean
 }
 
 export interface HousingComplexDetailData {
@@ -293,7 +297,10 @@ export function HousingComplexDetailPanel({
                             )}
                             <td>
                               {formatArea(housingType.exclusiveArea, areaUnit, '-')}
-                              <span className={styles.conditionTarget}>{condition?.label ?? ''}</span>
+                              <span className={styles.conditionTarget}>
+                                {condition?.label ?? ''}
+                                {condition?.supplyConfirmed === false && <UnconfirmedMark />}
+                              </span>
                               {condition?.target && <span className={styles.conditionTarget}>{condition.target}</span>}
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
@@ -486,6 +493,7 @@ function AnnouncementCard({
           </p>}
         </div>
         <h4>{title}</h4>
+        {announcement.supplyConfirmed === false && <small>공급정보<UnconfirmedMark /></small>}
       </header>
       <div className={styles.announcementBody}>
         <DetailFacts columns={2} appearance="list">
@@ -595,11 +603,14 @@ function HousingTypePanel({
       <BasicRentalCondition condition={housingType.basicRentalCondition} />
 
       <h4>현재 공급 조건</h4>
+      {housingType.currentSupplyConditions.some((condition) => condition.supplyConfirmed === false) && (
+        <p className={styles.unconfirmedNote}>공고문으로 확인하기 전 기관이 제공한 정보라 공고문과 다를 수 있어요.</p>
+      )}
       {housingType.currentSupplyConditions.length > 0 && (
         <ul className={styles.supplyList}>
           {housingType.currentSupplyConditions.map((condition, index) => (
             <li key={`${condition.target ?? 'unknown'}-${index}`}>
-              <strong>{condition.target || '-'}</strong>
+              <strong>{condition.target || '-'}{condition.supplyConfirmed === false && <UnconfirmedMark />}</strong>
               <SupplyConditionTable housingTypeName={name} condition={condition} />
             </li>
           ))}
@@ -607,6 +618,11 @@ function HousingTypePanel({
       )}
     </>
   )
+}
+
+/** 공고 목록 카드와 같은 작은 표시로, 공고문으로 확인하기 전 공급정보임을 붙인다. */
+function UnconfirmedMark() {
+  return <small className={styles.unconfirmed}> · 공고문 확인 전</small>
 }
 
 function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCondition | null }) {
@@ -641,7 +657,7 @@ function rentalComparisonConditions(housingType: HousingComplexDetailHousingType
   const basic = housingType.basicRentalCondition
   const conditions = [
     ...(basic === null ? [] : [{
-      label: '기본 임대조건', target: null, deposit: basic.deposit, monthlyRent: basic.monthlyRent,
+      label: '기본 임대조건', target: null, deposit: basic.deposit, monthlyRent: basic.monthlyRent, supplyConfirmed: true,
       updatedAt: basic.collectedAt,
     }]),
     ...housingType.currentSupplyConditions.map((condition) => ({

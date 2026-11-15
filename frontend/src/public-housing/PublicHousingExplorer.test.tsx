@@ -4450,6 +4450,7 @@ function complexDetail(): ComplexDetail {
       publicationType: 'ORIGINAL',
       targets: ['청년'],
       title: '성남 청년 행복주택 입주자 모집 공고',
+      supplyConfirmed: true,
     }],
     hasElevator: true,
     heatingType: 'INDIVIDUAL',

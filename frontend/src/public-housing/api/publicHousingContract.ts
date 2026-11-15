@@ -845,6 +845,9 @@ function decodeComplexSupplyCondition(
     postedDate: Object.hasOwn(condition, 'postedDate')
       ? nullableDateStringAt(condition.postedDate, `${path}.postedDate`)
       : null,
+    ...(condition.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(condition.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 
@@ -900,6 +903,9 @@ function decodeComplexCurrentAnnouncement(
       recordField(announcement, 'actualCompetitionRate', path),
       `${path}.actualCompetitionRate`,
     ),
+    ...(announcement.supplyConfirmed === undefined ? {} : {
+      supplyConfirmed: booleanAt(announcement.supplyConfirmed, `${path}.supplyConfirmed`),
+    }),
   }
 }
 
