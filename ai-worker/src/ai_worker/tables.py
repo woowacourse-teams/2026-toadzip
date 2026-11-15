@@ -37,7 +37,8 @@ _INCREASE_LIMIT = re.compile(r"\(\s*\+\s*\)\s*(\d[\d,]*)")
 # 쉼표가 줄바꿈 뒤로 밀린 금액("9000000\n, ,")도 금액 칸이다.
 _AMOUNT = re.compile(r"\d{1,3}(?:,\d{3})+|\d{4,}")
 # 오른쪽 하위 열까지 덮는 병합 머리글. 하위 열 이름만으로는 뜻이 모호하다(최소·최대 보증금, 계약면적·주거 아래 전용).
-_PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$")
+# '공급호수'만 적힌 칸은 우선·일반 하위 열 위에 병합된 상위 머리글이다(구리갈매 A-1BL).
+_PARENT_HEADER = re.compile(r"최소|최대|전환|증액|계약면적|^주거$|^공급(?:호수|세대수)$")
 _TABLE_HEADER_CELL = re.compile(
     r"단지명|공급형|주택형|주택구분|공급대상|공급계층|청약구분|모집(?:호수|세대수|인원|가구)|"
     r"일반공급|우선공급|예비자|당첨자|전용|공용|계약면적|건설(?:호수|세대수)|총세대수|"
@@ -135,10 +136,11 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
         "supplyHouseholdCount": lambda header: bool(re.search(r"당첨(?:자|인원|호수)|(?<!예비)입주자(?![가-힣])", header)),
         # 공급호수를 우선·일반 공급으로 나눈 표(행복주택)의 두 하위 열. 모집수는 둘의 합이다(source_check.recruitment_count).
         # 임대조건을 우선·일반 신청자 묶음으로 나눈 금액 열이나 '예비자 > 일반공급'처럼 다른 수량 아래의 구분은 아니다.
-        "priorityCount": lambda header: bool(re.search(r"우선\s*공급", header)
-            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자", header)),
-        "generalCount": lambda header: bool(re.search(r"일반\s*공급", header)
-            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자", header)),
+        # '공급호수' 아래 하위 머리글을 '우선'·'일반'으로만 적은 표(구리갈매 A-1BL)도 같다.
+        "priorityCount": lambda header: bool(re.search(r"우선\s*공급|공급\s*(?:호수|세대수?)\s*우선", header)
+            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자|순위", header)),
+        "generalCount": lambda header: bool(re.search(r"일반\s*공급|공급\s*(?:호수|세대수?)\s*일반", header)
+            and not re.search(r"보증금|임대료|면적|금액|소득|자산|예비|당첨|입주자|순위", header)),
         "totalSupplyHouseholdCount": lambda header: bool(
             re.search(r"모집\s*(?:호수|인원|세대수)", header)
             # 모집호수 아래로 나뉜 입주자 하위 열("모집호수입주자")만 뺀다. 한 칸짜리 "입주자 모집호수"는 모집호수 열이다.

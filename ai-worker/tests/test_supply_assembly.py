@@ -978,6 +978,17 @@ def test_priority_and_general_columns_are_not_read_from_amount_or_reserve_header
         assert not {"priorityCount", "generalCount"} & table.columns.keys(), header
 
 
+def test_supply_count_split_into_bare_priority_and_general_subheaders_is_the_recruitment_count():
+    # 구리갈매 A-1BL 행복주택 공급표는 '공급호수' 아래 하위 머리글을 '우선'·'일반'으로만 적는다. 모집수는 둘의 합이다(13+20).
+    table = [["공급형별", "공급대상", "공급호수", None, "세대당 계약면적(㎡)", None],
+             [None, None, "우선", "일반", "주거전용", "기타공용"],
+             ["46A-1", "신혼부부 한부모가족·기존거주자", "13", "20", "46.94", "33.3824"]]
+    selected = table_pages(table, page=2)
+    result = supplied(selected, {"rowIds": ["P2:T1:R3"], "housingType": "46A-1", "target": "신혼부부 한부모가족·기존거주자"})
+
+    assert readable(result.sheet)["quotas"] == [("WINNER", 33, ["46A-1/신혼부부 한부모가족·기존거주자"])]
+
+
 @pytest.mark.parametrize("change", ["target name", "unreadable cell"])
 def test_target_counts_are_left_empty_when_a_target_or_a_cell_cannot_be_matched(change):
     # 대상과 수량 행을 하나씩 맞추지 못하거나 읽지 못한 칸이 있으면 대상별 수도, 공통 모집수도, 주택형 합계도 정하지 않는다.
