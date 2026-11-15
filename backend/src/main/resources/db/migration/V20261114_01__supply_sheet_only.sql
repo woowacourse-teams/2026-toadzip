@@ -37,11 +37,15 @@ SELECT setval(pg_get_serial_sequence('supply_row_targets', 'id'), GREATEST(
 -- 2. 관리자가 고친 LH 원천 공고를 공고문 소유로 옮긴다. 옛 구조에서는 LH 정제가 관리자가 고친 행의 모집수와 대상을 건드리지
 --    않았지만, 공급표 쓰기는 원천 소유 공고의 공급표를 LH 값으로 통째로 다시 쓴다. 관리자가 고치면 공고문 소유가 된다는 지금 규칙을
 --    옛 데이터에도 적용해, 다음 정제가 관리자 값을 덮지 않게 한다. 대상의 관리자 표시는 아래 4에서 지워지므로 그 전에 본다.
+--    접힌 행(여러 주택형 연결)도 관리자 연결에서만 생기므로 함께 옮긴다. 남기면 다음 LH 정제가 아래 3에서 나눈 행을 LH 행에
+--    없다고 지워 대표 주택형 하나로 되돌리고, 나눈 행에 걸린 신청자격 단위가 끊긴다.
 UPDATE announcements a SET supply_owner = 'ANNOUNCEMENT_DOCUMENT'
 WHERE a.supply_owner = 'LH_SOURCE'
   AND (EXISTS (SELECT 1 FROM supply_rows r WHERE r.announcement_id = a.id AND (r.admin_modified OR r.admin_excluded))
        OR EXISTS (SELECT 1 FROM supply_targets t JOIN supply_rows r ON r.id = t.supply_row_id
-                  WHERE r.announcement_id = a.id AND (t.admin_modified OR t.admin_excluded)));
+                  WHERE r.announcement_id = a.id AND (t.admin_modified OR t.admin_excluded))
+       OR EXISTS (SELECT 1 FROM supply_row_housing_types h JOIN supply_rows r ON r.id = h.supply_row_id
+                  WHERE r.announcement_id = a.id AND h.housing_type_id IS DISTINCT FROM r.housing_type_id));
 
 -- 3. 접힌 행 나누기. 옛 공급행 하나가 대표 주택형 밖의 주택형도 함께 가리키면(supply_row_housing_types) 그 주택형마다 공급행을
 --    하나씩 더 만든다. 새 행은 원래 행의 단지·공고 단지·입주 예정월·공급구분·PNU·제외·관리자 수정 표시를 그대로 갖고, 이름은 그

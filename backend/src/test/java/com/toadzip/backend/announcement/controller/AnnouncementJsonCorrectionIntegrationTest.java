@@ -300,6 +300,32 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.supplyRows[0].targets[1].waitlistCount").value(7));
     }
 
+    /**
+     * PDF 보정 화면은 PDF가 표기를 바꾼 대상을 새 대상(새 키)으로 보내고, 그대로 둘 다른 PDF 단지 칸이 쓰는 지금 대상은 저장된 키·표기
+     * 그대로 함께 보낸다. 서버는 두 대상을 따로 저장하고 지금 대상과 그 칸의 ID를 지킨다.
+     */
+    @Test
+    void 표기를_바꾼_새_대상과_같은_뜻의_지금_대상을_함께_보내면_둘_다_저장하고_지금_대상과_칸의_ID는_그대로다() throws Exception {
+        long id = incomeSplitRow();
+        var request = request(id);
+        var sheet = sheet(request);
+        var saved = sheet.get("targets").get(1);
+        var savedCell = sheet.get("cells").get(1);
+        assertThat(saved.path("label").asText()).isEqualTo("청년(소득 있음)");
+        long savedCellId = savedCell.path("id").asLong();
+        ((ArrayNode) sheet.get("targets")).addObject().put("key", "new:g9").putNull("id").put("label", "청년 (소득 있음)")
+                .put("applicationCondition", "").put("displayOrder", 2);
+        ((ArrayNode) sheet.get("cells")).addObject().put("key", "new:c9").putNull("id")
+                .put("housingType", savedCell.path("housingType").asText()).put("target", "new:g9").put("displayOrder", 2);
+        apply(id, request, preview(id, request).path("confirmationToken").asText()).andExpect(status().isOk());
+        entities.flush();
+
+        assertThat(targetIds(id)).containsEntry("청년(소득 있음)", saved.path("id").asLong()).containsKey("청년 (소득 있음)");
+        assertThat(jdbc.queryForObject("SELECT c.id FROM supply_row_targets c JOIN announcement_supply_targets st"
+                + " ON st.id = c.supply_target_id WHERE st.announcement_id = ? AND st.label = '청년(소득 있음)'", Long.class, id))
+                .isEqualTo(savedCellId);
+    }
+
     @Test
     void 모집수와_예비자_수를_함께_쓰는_대상에서_예비자_묶음만_풀면_모집수_묶음은_그대로_남는다() throws Exception {
         long id = incomeSplitRow();

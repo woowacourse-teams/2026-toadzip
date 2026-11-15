@@ -644,11 +644,12 @@ export type OtherComplex = { key: string; name: string; types: SheetHousingType[
 /**
  * 이 PDF에 나오지 않는 단지의 지금 주택형을 단지별로 묶는다. 공고 단지·연결 단지·단지 이름이 PDF 주택형의 단지와 하나도 같지 않은 단지다.
  * 공고문 PDF(종류가 공고문인 첨부)가 여럿인 공고는 단지마다 다른 PDF에 실릴 수 있어 기본은 그대로 두고, 하나뿐이면 PDF가 공고 전체라 기본은 지운다.
- * 단지 이름 없는 PDF 주택형이 있으면 어느 단지인지 몰라 모든 단지를 이 PDF 단지로 본다.
+ * PDF 단지는 운영자가 단지 정하기에서 고른 결과로 정한다. 단지 이름 없는 PDF 주택형의 단지를 아직 정하지 않았으면 어느 단지인지 몰라
+ * 모든 단지를 이 PDF 단지로 본다(그동안은 단지 정하기 때문에 저장할 수 없다).
  */
 export function otherComplexes(review: Pick<Review, 'extraction' | 'complexes' | 'rows' | 'removeComplexes'>, workspace: JsonWorkspace): OtherComplex[] {
-  if (review.extraction.sheet.housingTypes.some(type => !complexKey(type.complexName))) return []
   const pdf = review.rows.map((_, index) => complexFor(review, index))
+  if (pdf.some((complex, index) => !complexKey(review.extraction.sheet.housingTypes[index].complexName) && complex.housingComplexId === null && complex.announcementComplexId === null)) return []
   const inPdf = (type: SheetHousingType) => pdf.some(complex => complex.announcementComplexId !== null && complex.announcementComplexId === type.announcementComplexId
     || complex.housingComplexId !== null && complex.housingComplexId === type.housingComplexId || sameComplex(complex.complexName, type.complexName))
   // 신청서 양식·정정 공고 같은 다른 PDF는 단지를 나눠 싣지 않으므로 공고문 PDF만 센다.
@@ -838,7 +839,9 @@ export function assembledSheet(review: Review, workspace: JsonWorkspace): Supply
     for (const [index, row] of review.rows.entries()) { const at = row.targets.findIndex(item => extracted.cells[item.cell].target === target); if (at >= 0) return `target:${index}:${at}` }
     return undefined
   }
-  // 1. 공급대상. 이름·신청 조건이 같아지면 하나로 합치고, 지금 공급표에 같은 대상이 있으면 그 키를 쓴다.
+  // 1. 공급대상. 이름·신청 조건이 같아지면 하나로 합치고, 지금 공급표에 표기·신청 조건이 글자 그대로 같은 대상이 있으면 그 키를 쓴다.
+  //    서버는 표기 그대로 대상을 짝짓는다. 띄어쓰기·가운뎃점만 다른 표기도 새 대상이라 지금 대상의 키를 쓰면, 그 대상을 그대로 둘 단지가
+  //    쓸 때 두 대상이 한 키로 겹친다.
   const targets: SheetTarget[] = [], targetOf = new Map<number, string>()
   for (const entry of review.labels) {
     const reviewId = firstUse(entry.target)
@@ -850,7 +853,7 @@ export function assembledSheet(review: Review, workspace: JsonWorkspace): Supply
     const value = { label, applicationCondition: condition }
     let target = targets.find(item => sameTarget(item, value))
     if (!target) {
-      const saved = current.targets.find(item => sameTarget(item, value) && !targets.some(used => used.key === item.key))
+      const saved = current.targets.find(item => item.label.trim() === label && item.applicationCondition.trim() === condition && !targets.some(used => used.key === item.key))
       target = { key: saved?.key ?? `new:g${entry.target}`, id: saved?.id ?? null, ...value, displayOrder: targets.length }
       targets.push(target)
     }
@@ -927,7 +930,9 @@ export function assembledSheet(review: Review, workspace: JsonWorkspace): Supply
   return { ...sheet, targets: sheet.targets.filter(target => used.has(target.key)) }
 }
 /**
- * 지금 공급표의 주택형(kept)을 칸·묶음·임대조건과 함께 sheet에 더한다. 묶음·임대조건은 옮기는 칸만 멤버로 남긴다.
+ * 지금 공급표의 주택형(kept)을 칸·묶음·임대조건과 함께 sheet에 더한다. 옮기는 칸은 지금 공급대상에 두어 서버가 같은 칸으로 짝짓게 한다.
+ * PDF가 그 대상의 표기를 바꿨으면 지금 대상을 저장된 순서 그대로 따로 보낸다(1단계가 표기가 다른 PDF 대상에 새 키를 주므로 키가 겹치지 않는다).
+ * 묶음·임대조건은 멤버가 모두 옮기는 칸일 때만 옮긴다. 이 PDF 단지 칸과 함께 묶인 수는 어느 쪽 몫인지 몰라 저장을 막는다.
  * 순서는 지금 공급표에서 이 PDF 단지의 첫 주택형(first, 없으면 Infinity)보다 앞에 있던 주택형은 PDF 주택형 앞에, 나머지는 뒤에 둔다.
  */
 function withKeptTypes(sheet: SupplySheet, current: SupplySheet, kept: SheetHousingType[], first: number): SupplySheet {
@@ -937,13 +942,17 @@ function withKeptTypes(sheet: SupplySheet, current: SupplySheet, kept: SheetHous
   for (const cell of cells) {
     if (targetOf.has(cell.target)) continue
     const saved = current.targets.find(target => target.key === cell.target)!
-    let target = targets.find(item => item.key === saved.key) ?? targets.find(item => sameTarget(item, saved))
-    if (!target) { target = { ...saved, displayOrder: targets.length }; targets.push(target) }
+    let target = targets.find(item => item.key === saved.key)
+    if (!target) { target = saved; targets.push(target) }
     targetOf.set(cell.target, target.key)
   }
   const within = <T extends { members: string[] }>(items: T[]) => items.flatMap(item => {
     const members = item.members.filter(member => cellKeys.has(member))
-    return members.length ? [{ ...item, members }] : []
+    if (members.length && members.length < item.members.length) {
+      const name = kept.find(type => cells.some(cell => cell.housingType === type.key && members.includes(cell.key)))?.complexName || '그대로 둘 단지'
+      throw new ReviewError(`${name}의 수가 다른 단지와 함께 묶여 있어 그대로 둘 수 없습니다. 이 PDF에 없는 단지 안내에서 그 단지를 지우기로 고르세요.`, 'notices')
+    }
+    return members.length ? [item] : []
   })
   const housingTypes = [...kept.filter(type => type.displayOrder < first), ...sheet.housingTypes, ...kept.filter(type => type.displayOrder >= first)]
     .map((type, displayOrder) => ({ ...type, displayOrder }))

@@ -117,7 +117,7 @@ class SupplySheetOnlyMigrationTest {
     }
 
     @Test
-    void 나눈_이름이_이미_있는_행과_겹치면_나누지_않고_관리자가_고친_LH_원천_공고는_공고문_소유로_옮긴다() throws Exception {
+    void 나눈_이름이_이미_있는_행과_겹치면_나누지_않고_관리자가_고치거나_접힌_행이_있는_LH_원천_공고는_공고문_소유로_옮긴다() throws Exception {
         String database = "supply_sheet_only_" + UUID.randomUUID().toString().replace("-", "");
         try (Connection admin = connect("postgres"); Statement statement = admin.createStatement()) {
             statement.execute("CREATE DATABASE " + database);
@@ -137,7 +137,8 @@ class SupplySheetOnlyMigrationTest {
                             FROM supply_rows WHERE announcement_id = 3 ORDER BY id
                             """)).containsExactly("3 301 59A", "3 302 59A1", "3 303 26B", "3 304 26A");
                     assertThat(rows(query, "SELECT id || ' ' || supply_owner FROM announcements ORDER BY id"))
-                            .containsExactly("3 ANNOUNCEMENT_DOCUMENT", "4 ANNOUNCEMENT_DOCUMENT", "5 LH_SOURCE");
+                            .containsExactly("3 ANNOUNCEMENT_DOCUMENT", "4 ANNOUNCEMENT_DOCUMENT", "5 LH_SOURCE",
+                                    "6 ANNOUNCEMENT_DOCUMENT");
                 }
             } finally {
                 statement.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
@@ -146,8 +147,8 @@ class SupplySheetOnlyMigrationTest {
     }
 
     /**
-     * 이름이 겹치는 접힌 행과 LH 원천 공고 셋. 공고 3은 관리자가 고친 행이, 공고 4는 관리자가 고친 대상만 있고, 공고 5는 관리자
-     * 손을 타지 않았다.
+     * 이름이 겹치는 접힌 행과 LH 원천 공고 넷. 공고 3은 관리자가 고친 행이, 공고 4는 관리자가 고친 대상만 있고, 공고 5는 관리자
+     * 손을 타지 않았다. 공고 6은 관리자 표시는 없지만 접힌 행(26A + 26B)이 있다.
      */
     private static void seedOverlaps(Statement seed) throws SQLException {
         seed.execute("""
@@ -168,6 +169,8 @@ class SupplySheetOnlyMigrationTest {
                     (4, '공고 4', 'https://example.com/4', DATE '2026-11-01', 'LH', 'overlap-4', 'ORIGINAL', 0,
                         'UNCONFIRMED', 'LH_SOURCE'),
                     (5, '공고 5', 'https://example.com/5', DATE '2026-11-01', 'LH', 'overlap-5', 'ORIGINAL', 0,
+                        'UNCONFIRMED', 'LH_SOURCE'),
+                    (6, '공고 6', 'https://example.com/6', DATE '2026-11-01', 'LH', 'overlap-6', 'ORIGINAL', 0,
                         'UNCONFIRMED', 'LH_SOURCE')
                 """);
         seed.execute("""
@@ -179,11 +182,12 @@ class SupplySheetOnlyMigrationTest {
                     (303, 3, 1, 24, 'row-303', 2, '단지', '26B', 'NEW_SUPPLY', 10, false),
                     (304, 3, 1, 23, 'row-304', 3, '단지', '26A·26B', 'NEW_SUPPLY', 10, false),
                     (401, 4, 1, 21, 'row-401', 0, '단지', '59A', 'NEW_SUPPLY', 10, false),
-                    (501, 5, 1, 21, 'row-501', 0, '단지', '59A', 'NEW_SUPPLY', 10, false)
+                    (501, 5, 1, 21, 'row-501', 0, '단지', '59A', 'NEW_SUPPLY', 10, false),
+                    (601, 6, 1, 23, 'row-601', 0, '단지', '26A·26B', 'NEW_SUPPLY', 10, false)
                 """);
         seed.execute("""
                 INSERT INTO supply_row_housing_types (supply_row_id, housing_type_id)
-                VALUES (301, 21), (301, 22), (302, 22), (302, 21), (303, 24), (304, 23), (304, 24), (401, 21), (501, 21)
+                VALUES (301, 21), (301, 22), (302, 22), (302, 21), (303, 24), (304, 23), (304, 24), (401, 21), (501, 21), (601, 23), (601, 24)
                 ON CONFLICT DO NOTHING
                 """);
         seed.execute("""

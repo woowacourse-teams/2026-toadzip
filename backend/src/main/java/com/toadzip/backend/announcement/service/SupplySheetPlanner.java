@@ -70,6 +70,7 @@ class SupplySheetPlanner {
         var housingTypeKeys = new LinkedHashMap<String, String>();
         housingTypes.forEach((key, type) -> housingTypeKeys.put(key, type.key()));
         var plan = new SupplySheetPlan(before, after, housingTypeKeys, targetFlags, List.of(), List.of(), List.of(), false);
+        // 결과는 버린다. 공급표 쓰기(SupplySheetDraft.of)가 하는 칸·묶음·임대조건 참조 검증을 미리보기에서도 돌려 적용 때 거절될 입력을 먼저 막는다.
         plan.draft(Map.of());
         boolean changed = !canonical(before).equals(canonical(after));
         var warnings = new ArrayList<>(warnings(announcement.getId(), after, changed));

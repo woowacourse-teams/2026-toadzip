@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { daegu, savedSheet, scenario } from './fixtures/workspace'
 import fixtures from './fixtures/scenarios.json'
 import { readExtraction, type Extraction } from './extraction'
-import { assembledSheet, assembleReview, chooseCellValue, createReview, decideComplex, editCell, foreignCharacters, needsComplex, pendingChanges, pendingItems, pendingJumpTarget, rebaseReview,
-  remapSchedule, removedHousingTypes, serverFieldError, shownDateTime, validCellValue, type Review } from './review'
+import { assembledSheet, assembleReview, chooseCellValue, complexKey, createReview, decideComplex, editCell, foreignCharacters, needsComplex, pendingChanges, pendingItems, pendingJumpTarget, rebaseReview,
+  otherComplexes, remapSchedule, removedHousingTypes, ReviewError, serverFieldError, shownDateTime, validCellValue, type Review } from './review'
 
 const evidence = { reason: '공고문과 대조', sourceUrl: 'https://example.com/notice', sourcePage: '4' }
 /** 이 공고문을 이미 반영해 단지에 연결된 지금 공급표 */
@@ -192,6 +192,52 @@ describe('공고 공급표 검토', () => {
     const removing = { ...review, removeComplexes: { 'n:다른 단지': true } }
     expect(removedHousingTypes(removing, workspace).map(type => type.key)).toEqual(['row:747', 'row:748'])
     expect(assembledSheet(removing, workspace).housingTypes.map(type => type.key)).toEqual(['new:t0', 'new:t1', 'new:t2'])
+  })
+
+  it('PDF 주택형에 단지 이름이 없어도 단지 정하기에서 단지를 고르면, 이 PDF에 없는 단지는 그대로 둘 수 있다', () => {
+    const { review: named, workspace } = daegu()
+    workspace.detail.attachments = [{ attachmentId: 1, fileName: 'a.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: 'b.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }]
+    const [first] = named.extraction.sheet.housingTypes, decided = named.complexes[complexKey(first.complexName)]
+    const unnamed = (housingComplexId: number | null) => ({ ...named,
+      extraction: { ...named.extraction, sheet: { ...named.extraction.sheet, housingTypes: named.extraction.sheet.housingTypes.map((type, index) => index === 0 ? { ...type, complexName: '' } : type) } },
+      complexes: { ...named.complexes, '': { ...decided, housingComplexId, announcementComplexId: null } } })
+    // 단지를 정하기 전에는 어느 단지인지 몰라 모든 단지를 이 PDF 단지로 본다(단지 정하기 때문에 저장도 막힌다).
+    expect(otherComplexes(unnamed(null), workspace)).toEqual([])
+    const chosen = unnamed(decided.housingComplexId)
+    expect(otherComplexes(chosen, workspace).map(group => [group.name, group.remove])).toEqual([['다른 단지', false]])
+    expect(removedHousingTypes(chosen, workspace).map(type => type.key)).toEqual(['row:747'])
+    expect(assembledSheet(chosen, workspace).housingTypes.map(type => type.key)).toContain('row:748')
+  })
+
+  it('그대로 둘 단지의 수가 이 PDF 단지 칸과 함께 묶여 있으면 원래 합계를 남은 칸에 저장하지 않고 단지 안내로 보낸다', () => {
+    const { review, workspace } = daegu()
+    workspace.detail.attachments = [{ attachmentId: 1, fileName: 'a.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: 'b.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }]
+    const current = workspace.supply.sheet
+    const mine = current.cells.find(cell => cell.housingType === 'row:747')!, other = current.cells.find(cell => cell.housingType === 'row:748')!
+    current.quotas = [...current.quotas.filter(quota => !quota.members.includes(mine.key) && !quota.members.includes(other.key)),
+      { key: 'quota:both', id: 31, kind: 'WINNER', count: 40, members: [mine.key, other.key], adminModified: false }]
+    let error: unknown
+    try { assembledSheet(review, workspace) } catch (cause) { error = cause }
+    expect(error).toBeInstanceOf(ReviewError)
+    expect(error).toMatchObject({ reviewId: 'notices', message: expect.stringContaining('다른 단지의 수가 다른 단지와 함께 묶여') })
+    // 그 단지도 지우기로 고르면 묶음째 빠지므로 저장할 수 있다.
+    expect(assembledSheet({ ...review, removeComplexes: { 'n:다른 단지': true } }, workspace).quotas.some(quota => quota.count === 40)).toBe(false)
+  })
+
+  it('PDF가 공급대상 표기를 바꿔도 그대로 둘 단지의 칸은 지금 표기의 대상에 남겨 서버가 같은 칸으로 짝짓게 한다', () => {
+    const { review, workspace } = daegu()
+    workspace.detail.attachments = [{ attachmentId: 1, fileName: 'a.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: 'b.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }]
+    const current = workspace.supply.sheet, other = current.cells.find(cell => cell.housingType === 'row:748')!
+    const saved = current.targets.find(target => target.key === other.target)!
+    // 띄어쓰기만 다른 표기라 화면은 PDF 대상과 같은 대상으로 보지만, 서버는 표기 그대로 짝짓는다.
+    const spaced = [...saved.label].join(' ')
+    current.targets = current.targets.map(target => target.key === saved.key ? { ...target, label: spaced } : target)
+    const sheet = assembledSheet(review, workspace)
+    const keptCell = sheet.cells.find(cell => cell.housingType === 'row:748')!, keptTarget = sheet.targets.find(target => target.key === keptCell.target)!
+    expect(keptTarget).toEqual(current.targets.find(target => target.key === saved.key))
+    // 표기가 다른 PDF 대상은 지금 대상의 키를 쓰지 않아, 서버가 짝지은 뒤에도 두 대상의 키가 겹치지 않는다.
+    const pdfTargets = sheet.targets.filter(target => sheet.cells.some(cell => cell.housingType !== 'row:748' && cell.target === target.key))
+    expect(pdfTargets.map(target => [target.key, target.id])).toEqual([[expect.stringMatching(/^new:/), null]])
   })
 
   it('이 PDF 단지는 공고 단지·연결 단지·단지 이름 중 하나만 같아도 이 PDF 단지로 보고, PDF에 없는 주택형을 지운다', () => {

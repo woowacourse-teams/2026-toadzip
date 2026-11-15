@@ -195,7 +195,7 @@ public class AnnouncementJsonCorrectionService {
                 && attachmentChanges.isEmpty() && typeChanges.isEmpty()
                 && !housingTypes.advancesObservation(postedDate, supplyPlan, request.housingTypeValues());
         if (find(id).isPublished()) {
-            warnings.add("JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
+            warnings.add("공급표를 보내면 그 공급표에 없는 주택형·공급대상은 지우고, JSON에 없는 일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
         } else {
             warnings.add(unconfirmedWarning(publishes));
         }
@@ -351,7 +351,7 @@ public class AnnouncementJsonCorrectionService {
     }
 
     private String unconfirmedWarning(boolean publishes) {
-        String kept = "JSON에 없는 기존 행·조건·일정·첨부파일은 유지합니다. ";
+        String kept = "공급표를 보내면 그 공급표에 없는 주택형·공급대상은 지우고, JSON에 없는 일정·첨부파일은 유지합니다. ";
         if (publishes) {
             return kept + "미확정 공고를 공개합니다. 적용하면 사용자에게 보이고 신규 공고 알림이 나갑니다.";
         }
