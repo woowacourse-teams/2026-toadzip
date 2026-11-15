@@ -555,6 +555,27 @@ class SupplyCorrectionIntegrationTest {
     }
 
     @Test
+    void 공고문_PDF가_있는_공고는_준비_데이터로_정본을_시작하지_않고_PDF로_보정하게_한다() throws Exception {
+        long staged = stagedAnnouncement();
+        var announcement = entities.find(com.toadzip.backend.announcement.domain.Announcement.class, staged);
+        // PDF가 아닌 첨부는 공고문으로 보지 않는다.
+        entities.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(announcement, "신청서.hwp",
+                com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT, "https://example.com/a.hwp", 0));
+        entities.flush();
+        var seen = workspace(staged);
+        assertThat(seen.get("stagingToken").isNull()).isFalse();
+
+        entities.persist(com.toadzip.backend.announcement.domain.AnnouncementAttachment.create(announcement, "공고문.PDF",
+                com.toadzip.backend.announcement.domain.AttachmentType.ANNOUNCEMENT, "https://example.com/a.pdf", 1));
+        entities.flush();
+
+        assertThat(workspace(staged).get("stagingToken").isNull()).isTrue();
+        startFromStaging(staged, workspace(staged).get("snapshotToken").asText(), seen.get("stagingToken").asText())
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_CONFLICT"));
+        assertThat(supplyConfirmed(staged)).isFalse();
+    }
+
+    @Test
     void 준비_데이터로_정본_시작은_이미_확정했거나_화면이_낡았거나_준비_데이터가_없으면_거절한다() throws Exception {
         long staged = stagedAnnouncement();
         var seen = workspace(staged);

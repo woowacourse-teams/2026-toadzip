@@ -178,7 +178,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     {!workspace.supplyConfirmed && <section className={styles.unconfirmed} aria-label="공고문 확인 전 공급정보">
       <p><strong>아직 공고문으로 확인한 공급표가 없습니다.</strong> 사용자 화면에는 기관(LH·GH)이 보낸 공급정보를 ‘공고문 확인 전 정보’로 보여 줍니다. PDF로 채우거나 직접 추가해 저장하면 공급표가 확정됩니다.</p>
       {workspace.stagingToken && <>
-        <p className={styles.hint}>공고문 PDF가 없으면 기관이 보낸 공급정보를 그대로 공급표로 시작할 수 있습니다.</p>
+        <p className={styles.hint}>공고문 PDF가 없는 공고라 기관이 보낸 공급정보를 그대로 공급표로 시작할 수 있습니다.</p>
         <div className={styles.actions}><button type="button" disabled={busy || uncertain || sheetDirty} onClick={() => void startFromAgency()}>기관 제공 정보로 공급표 시작</button></div>
         {sheetDirty && <p className={styles.hint}>편집 중인 공급정보를 저장하거나 취소한 뒤 시작할 수 있습니다.</p>}
       </>}

@@ -121,6 +121,8 @@ class GhAnnouncementPublishFlowIntegrationTest {
         assertThat(lines(id)).extracting(row -> row.get("housing_complex_id")).containsOnly(right);
         assertThat(supplyRecheckRequired(id)).isFalse();
 
+        // 준비 데이터로 정본 시작은 공고문 PDF가 없는 공고만 한다(PDF가 있으면 PDF로 보정한다).
+        jdbc.update("DELETE FROM announcement_attachments WHERE announcement_id = ?", id);
         var started = data("/api/admin/announcements/" + id + "/supply-corrections");
         mvc.perform(post("/api/admin/announcements/" + id + "/supply-corrections/start-from-staging")
                         .with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)

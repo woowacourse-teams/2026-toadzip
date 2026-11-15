@@ -11,6 +11,7 @@ import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.repository.AgencySupplyLineRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyCorrectionRecordRepository;
@@ -29,6 +30,7 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import lombok.RequiredArgsConstructor;
@@ -64,13 +66,15 @@ public class SupplyCorrectionService {
     private final AnnouncementComplexRepository announcementComplexes;
     private final AgencySupplyLineRepository agencyLines;
     private final AnnouncementSupplies supplies;
+    private final AnnouncementAttachmentRepository attachments;
     private final EntityManager entities;
     private final ObjectMapper json;
 
     /**
      * 작업실. snapshotToken은 공급표·공고 단지 연결·원천 참고 행을 덮어, 화면이 본 뒤 그중 하나가 바뀌면 저장을 거절한다.
      * stagingToken은 확정 전 공고에서 '준비 데이터로 정본 시작'이 복사할 공급표(금액·대상·고른 주택타입 포함)를 덮는다. 정제가 준비
-     * 데이터를 고쳐도 보정·연결 저장은 거절하지 않도록 두 토큰을 나눈다. 확정된 공고는 stagingToken이 null이다.
+     * 데이터를 고쳐도 보정·연결 저장은 거절하지 않도록 두 토큰을 나눈다. 확정된 공고와 공고문 PDF가 있는 공고(PDF로 보정한다)는
+     * stagingToken이 null이다.
      */
     public SupplyCorrection.Workspace workspace(long id) {
         var announcement = find(id);
@@ -81,12 +85,18 @@ public class SupplyCorrectionService {
         List<String> warnings = new ArrayList<>();
         sheet.housingTypes().stream().filter(type -> type.category() == null).forEach(type ->
                 warnings.add(type.complexName() + " · " + type.name() + ": 공급 구분이 없습니다. 저장하려면 정해 주세요."));
-        var draft = announcement.isSupplyConfirmed() ? null : supplies.staging(announcement).draft();
+        var draft = announcement.isSupplyConfirmed() || hasPdf(announcement) ? null : supplies.staging(announcement).draft();
         var stagingToken = draft == null ? null
                 : hash(List.of(draft.housingTypes(), draft.targets(), draft.cells(), draft.quotas(), draft.leases()));
         return new SupplyCorrection.Workspace(hash(List.of(sheet, complexViews, sourceReference,
                 announcement.isSupplyConfirmed())), stagingToken, announcement.getVersion(), sheet, complexViews, names,
                 sourceReference, List.copyOf(warnings), announcement.isSupplyConfirmed());
+    }
+
+    /** 공고문 PDF가 있으면 정본은 PDF 보정으로만 만든다. 기관 준비 데이터 복사는 PDF 없는 공고의 대안이다. */
+    private boolean hasPdf(Announcement announcement) {
+        return attachments.findAllByAnnouncement(announcement).stream()
+                .anyMatch(attachment -> attachment.getFileName().toLowerCase(Locale.ROOT).endsWith(".pdf"));
     }
 
     private List<SupplyCorrection.AnnouncementComplexView> announcementComplexes(Announcement announcement, SupplySheetView sheet) {
@@ -121,6 +131,9 @@ public class SupplyCorrectionService {
         if (announcement.isAdminDeleted()) { throw new AdminDataConflictException("공고를 복구한 뒤 보정하세요."); }
         if (announcement.isSupplyConfirmed()) {
             throw new AdminDataConflictException("이미 공고 공급표가 있습니다. 공급정보 보정으로 고치세요.");
+        }
+        if (hasPdf(announcement)) {
+            throw new AdminDataConflictException("공고문 PDF가 있는 공고입니다. PDF로 보정하세요.");
         }
         var current = workspace(id);
         if (!current.snapshotToken().equals(request.snapshotToken())
