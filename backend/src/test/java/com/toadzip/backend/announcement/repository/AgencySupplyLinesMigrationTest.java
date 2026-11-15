@@ -145,7 +145,7 @@ class AgencySupplyLinesMigrationTest {
                 INSERT INTO supply_rows (id, announcement_id, announcement_complex_id, source_supply_row_identifier,
                     display_order, source_complex_name, source_housing_type_name, supply_category, lh_exclusive_area)
                 VALUES (11, 1, 101, 'LH:P1:1', 0, '행복단지', '26A(청년) · 26A(고령자)', 'NEW_SUPPLY', 26.0),
-                    (12, 1, 101, 'LH:P1:2', 1, '행복단지', '36A', 'NEW_SUPPLY', 36.0),
+                    (12, 1, 101, 'LH:P1:2', 1, '행복단지', '36A', 'NEW_SUPPLY', NULL),
                     (21, 2, 201, 'LH:P2:1', 0, '행복단지', '26A', 'NEW_SUPPLY', NULL),
                     (31, 3, 301, 'LH:P3:1', 0, '행복단지', '26A', 'NEW_SUPPLY', NULL),
                     (41, 4, 401, 'GH:9:다산:A1', 0, '다산', '36A 청년', 'RESUPPLY', NULL),
@@ -160,6 +160,10 @@ class AgencySupplyLinesMigrationTest {
         seed.execute("UPDATE announcements SET release_status = 'PUBLISHED', application_start_date = DATE '2026-11-02',"
                 + " application_end_date = DATE '2026-11-03', winner_announcement_date = DATE '2026-12-01',"
                 + " supply_type = 'HAPPY_HOUSING', recruitment_type = 'NEW' WHERE id = 11");
+        // 원천 면적이 없고 옛 연결이 이어 둔 주택타입만 있는 행: 준비 줄은 그 주택타입 면적을 갖는다.
+        seed.execute("INSERT INTO housing_types (id, housing_complex_id, name, exclusive_area, supply_area)"
+                + " VALUES (31, 1, '36', 36.0, 60.5)");
+        seed.execute("UPDATE supply_rows SET housing_type_id = 31 WHERE id = 12");
         seed.execute("UPDATE supply_rows SET admin_modified = true WHERE id = 71");
         seed.execute("UPDATE supply_rows SET admin_excluded = true WHERE id = 81");
         seed.execute("""

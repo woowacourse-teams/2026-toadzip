@@ -71,13 +71,17 @@ WHERE a.provider = 'GH' AND a.supply_owner = 'ANNOUNCEMENT_DOCUMENT' AND a.admin
 --    세대수는 그 칸만 멤버인 모집수의 합, 금액은 그 칸의 임대조건이다.
 WITH cells AS (
     SELECT r.announcement_id, r.announcement_complex_id, r.source_complex_name, r.source_housing_type_name,
-           COALESCE(r.lh_exclusive_area, r.announcement_exclusive_area) AS exclusive_area, r.announcement_supply_area,
+           -- 원천 면적이 없던 행은 옛 정제·연결이 이어 둔 주택타입의 면적을 옮긴다. 준비 줄은 주택타입 열이 없어 읽을 때 같은
+           -- 면적으로 그 주택타입을 다시 고른다(같은 면적이 하나뿐일 때).
+           COALESCE(r.lh_exclusive_area, r.announcement_exclusive_area, linked.exclusive_area) AS exclusive_area,
+           COALESCE(r.announcement_supply_area, linked.supply_area) AS announcement_supply_area,
            r.expected_move_in_month, r.supply_category, c.id AS cell_id, t.label,
            string_to_array(r.source_housing_type_name, ' · ') AS names,
            ROW_NUMBER() OVER (PARTITION BY r.announcement_id
                               ORDER BY r.display_order, r.id, c.display_order, c.id) - 1 AS line_order
     FROM supply_rows r
     JOIN staged_announcements s ON s.announcement_id = r.announcement_id AND s.agency = 'LH'
+    LEFT JOIN housing_types linked ON linked.id = r.housing_type_id AND NOT linked.admin_deleted
     JOIN supply_row_targets c ON c.supply_row_id = r.id
     JOIN announcement_supply_targets t ON t.id = c.supply_target_id
     WHERE NOT (t.label = '전체' AND EXISTS (
