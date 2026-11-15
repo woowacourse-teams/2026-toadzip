@@ -3,7 +3,7 @@ import { Button } from '../../design-system/components/Button'
 import type { JsonWorkspace } from '../announcement-json/api'
 import { type Evidence } from './extraction'
 import { cellMatches, complexFor, complexKey, expectedHousingType, editCell, housingTypePrice, labelOf, linkName, linkedHousingType, linkedHousingTypeId, pendingItems, pendingTarget,
-  removedHousingTypes, sharedOf, sharedRow, shown, shownMoney, targetName, undecidedGroups, type Cell, type ComplexReview, type Review, type ReviewFilter, type RowReview } from './review'
+  otherComplexes, removedHousingTypes, sharedOf, sharedRow, shown, shownMoney, showsComplexDecisions, targetName, type Cell, type ComplexReview, type Review, type ReviewFilter, type RowReview } from './review'
 import { ComplexDecisions } from './ComplexDecision'
 import { type ComplexLabels, type HousingCandidates } from './matching'
 import { SupplyRowList } from './SupplyRowList'
@@ -29,20 +29,30 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
   function update(index: number, next: RowReview) { onChange({ ...review, rows: review.rows.map((row, at) => at === index ? next : row) }) }
   const shownChecks = [...filter === 'all' ? review.extraction.checks : [], ...warnings]
   // PDF에 없어 저장하면 지울 주택형은 단지마다가 아니라 공고 전체에서 한 번 알린다.
-  const removed = removedHousingTypes(review, workspace)
-  const decisions = undecidedGroups(review, group?.indexes).length > 0 || (group !== undefined && review.complexes[group.key]?.chosen)
+  // 이 PDF에 없는 단지의 주택형은 그 단지 안내에서 고르므로, 주택형 안내에는 이 PDF 단지에서 빠진 주택형만 보인다.
+  const others = otherComplexes(review, workspace), removing = others.filter(group => group.remove).length
+  const otherKeys = new Set(others.flatMap(group => group.types.map(type => type.key)))
+  const removed = removedHousingTypes(review, workspace).filter(type => !otherKeys.has(type.key))
+  const decisions = group !== undefined && showsComplexDecisions(review, group.indexes[0])
   const noticesOpen = noticesChoice ?? false
   const notices: { key: string; label: string; tone: 'info' | 'warning'; body: ReactNode }[] = [
     ...shownChecks.length ? [{ key: 'checks', label: `검산 확인 ${shownChecks.length}건`, tone: 'warning' as const, body: <div className={`${styles.pending} ${styles.checks}`} role="note" aria-label="검산 결과"><p><strong>검산 확인</strong> 합계·면적·원문 대조가 맞지 않는 항목입니다. 공고문과 대조하세요.</p><ul>{shownChecks.map(check => <li key={check}>{check}</li>)}</ul></div> }] : [],
+    ...others.length ? [{ key: 'others', label: `이 PDF에 없는 단지 ${others.length}곳 ${removing === 0 ? '그대로 둠' : removing === others.length ? '삭제' : `중 ${removing}곳 삭제`}`, tone: removing ? 'warning' as const : 'info' as const,
+      // 그대로 두기로 한 단지는 경고가 아니라 결정 상태라 경고 선·색을 쓰지 않는다.
+      body: <div className={styles.pending} data-tone={removing ? 'warning' : 'info'} role="group" aria-label="이 PDF에 없는 단지">
+        <p><strong>이 PDF에 없는 단지</strong> 다른 공고문 PDF에 실린 단지일 수 있습니다. 그대로 두면 지금 공급정보를 유지하고, 지우기를 고르면 저장할 때 그 단지의 주택형을 모두 지웁니다.</p>
+        <ul className={styles.otherComplexes}>{others.map(group => <li key={group.key}><label><input type="checkbox" checked={group.remove}
+          onChange={event => onChange({ ...review, removeComplexes: { ...review.removeComplexes, [group.key]: event.target.checked } })} />{`${group.name} 주택형 ${group.types.length}개 지우기`}</label>
+          <span>{group.types.map(type => type.name).join(', ')}</span></li>)}</ul></div> }] : [],
     ...removed.length ? [{ key: 'removed', label: `PDF에 없는 주택형 ${removed.length}개 삭제`, tone: 'warning' as const, body: <div className={styles.pending} role="note" aria-label="PDF에 없는 주택형">
-      <p><strong>PDF에 없는 주택형</strong> 지금 공급정보에는 있지만 PDF 공급표에는 없어 저장하면 지웁니다. 남겨야 하는 주택형이면 PDF 공급표를 다시 확인하세요.</p>
+      <p><strong>PDF에 없는 주택형</strong> 지금 공급정보에는 있지만 이 PDF 공급표에는 없어 저장하면 지웁니다. 추출에서 빠진 주택형이면 '응답 준비로 돌아가기'에서 응답에 넣고 다시 비교하세요.</p>
       <ul>{removed.map(type => <li key={type.key}>{`${type.complexName || '단지 이름 없음'} · ${type.name}`}</li>)}</ul></div> }] : [],
   ]
   return <>
     {/* 탭 이름과 같아 화면에서는 숨기고, 보조기술의 구역 제목으로만 남긴다. */}
     <h2 className={styles.srOnly}>공급정보</h2>
     {/* 안내(검산·지울 주택형)는 한 줄 요약으로 접어 주택형 목록과 편집 영역이 화면 위쪽에 남게 한다. */}
-    {notices.length > 0 && <div className={styles.noticeStrip} role="group" aria-label="공급정보 안내">
+    {notices.length > 0 && <div className={styles.noticeStrip} role="group" aria-label="공급정보 안내" data-review-id="notices" tabIndex={-1}>
       <div className={styles.noticeSummary}><Button data-design-system className={styles.quietButton} aria-expanded={noticesOpen} aria-controls="supply-notices" onClick={() => setNoticesOpen(!noticesOpen)}>{noticesOpen ? '안내 접기' : '안내 펼치기'}</Button>
         <ul aria-label="안내 요약">{notices.map(notice => <li key={notice.key} data-tone={notice.tone}>{notice.label}</li>)}</ul></div>
       <div id="supply-notices" className={styles.noticeBody} hidden={!noticesOpen}>{notices.map(notice => <div key={notice.key}>{notice.body}</div>)}</div>

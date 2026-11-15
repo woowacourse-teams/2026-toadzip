@@ -169,6 +169,39 @@ describe('공고 공급표 검토', () => {
     expect(request.housingTypeValues!.every(value => sheet.housingTypes.some(type => type.key === value.rowKey))).toBe(true)
   })
 
+  it('공고문 PDF가 둘인 공고는 이 PDF에 없는 단지의 주택형을 기본으로 그대로 두고, 지우기로 고르면 지운다', () => {
+    const { review, workspace } = daegu()
+    const pdf = (attachmentId: number, fileName: string, fileType = 'ANNOUNCEMENT') => ({ attachmentId, fileName, fileType, fileUrl: `https://example.com/${attachmentId}` })
+    workspace.detail.attachments = [pdf(1, '대구 공고문.pdf'), pdf(2, '다른 단지 공고문.pdf'), pdf(3, '신청서.pdf', 'REFERENCE')]
+    // 지금 공급표의 다른 단지 39에 칸·모집 묶음·임대조건을 두어 그대로 옮기는지 본다.
+    const current = workspace.supply.sheet, other = current.cells.find(cell => cell.housingType === 'row:748')!
+    current.leaseTerms.push({ key: 'lease:748', id: 9, rentalDeposit: '12000000', monthlyRent: '150000', convertedDeposit: null, members: [other.key], adminModified: true })
+    expect([current.quotas.some(quota => quota.members.includes(other.key)), current.leaseTerms.some(lease => lease.members.includes(other.key))]).toEqual([true, true])
+
+    expect(removedHousingTypes(review, workspace).map(type => type.key)).toEqual(['row:747'])
+    const { sheet } = assembleReview(review, workspace, evidence).correction
+    expect(sheet.housingTypes.map(type => [type.key, type.id, type.name, type.displayOrder])).toEqual([
+      ['new:t0', null, '051.9800A', 0], ['new:t1', null, '059.9100A', 1], ['new:t2', null, '059.9300B', 2], ['row:748', 748, '39', 3]])
+    const kept = sheet.cells.filter(cell => cell.housingType === 'row:748')
+    expect(kept.map(cell => [cell.key, cell.target])).toEqual([[other.key, other.target]])
+    expect(sheet.targets.filter(target => target.key === other.target)).toHaveLength(1)
+    expect(sheet.quotas.filter(quota => quota.members.includes(other.key))).toEqual(current.quotas.filter(quota => quota.members.includes(other.key)).map(({ kind, count, members }) => ({ kind, count, members })))
+    expect(sheet.leaseTerms.filter(lease => lease.members.includes(other.key)).map(lease => lease.rentalDeposit))
+      .toEqual(current.leaseTerms.filter(lease => lease.members.includes(other.key)).map(lease => lease.rentalDeposit))
+
+    const removing = { ...review, removeComplexes: { 'n:다른 단지': true } }
+    expect(removedHousingTypes(removing, workspace).map(type => type.key)).toEqual(['row:747', 'row:748'])
+    expect(assembledSheet(removing, workspace).housingTypes.map(type => type.key)).toEqual(['new:t0', 'new:t1', 'new:t2'])
+  })
+
+  it('이 PDF 단지는 공고 단지·연결 단지·단지 이름 중 하나만 같아도 이 PDF 단지로 보고, PDF에 없는 주택형을 지운다', () => {
+    const { review, workspace } = daegu()
+    workspace.detail.attachments = [{ attachmentId: 1, fileName: 'a.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: 'b.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }]
+    // 이름이 다른 지금 주택형도 PDF 단지와 같은 단지(41)에 연결돼 있으면 다른 단지가 아니다.
+    workspace.supply.sheet.housingTypes = workspace.supply.sheet.housingTypes.map(type => type.key === 'row:747' ? { ...type, complexName: '대구 테크노 4단지', announcementComplexId: null } : type)
+    expect(removedHousingTypes(review, workspace).map(type => type.key)).toEqual(['row:747'])
+  })
+
   it('확인 필요는 공급정보(단지 → 주택형 값 → 대상별 칸) 다음 일정 순서이고, 단지 확인은 단지 정하기로 옮긴다', () => {
     const ids = pendingItems(scenario('gwangju').review).map(item => item.id)
     expect(ids[0]).toBe('row:0')

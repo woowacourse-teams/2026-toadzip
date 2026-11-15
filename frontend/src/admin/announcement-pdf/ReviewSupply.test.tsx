@@ -82,11 +82,42 @@ it('지금 공급표와 이름이 다른 PDF 주택형은 새 주택형으로 �
   const { review, workspace, housing } = daegu()
   renderSupply({ review, workspace, housing, extraction: review.extraction })
   expect(within(rowList()).getAllByRole('row').slice(2).map(row => row.children[3].textContent)).toEqual(['새 주택형', '새 주택형', '새 주택형'])
-  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('PDF에 없는 주택형 2개 삭제')).toBeVisible()
+  // 공고문 PDF가 하나뿐이라 PDF에 없는 단지는 기본으로 지우고, 그 주택형은 단지 안내에서만 알린다.
+  const summary = within(screen.getByRole('list', { name: '안내 요약' }))
+  expect(summary.getByText('이 PDF에 없는 단지 1곳 삭제')).toBeVisible()
+  expect(summary.getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
-  expect(within(screen.getByRole('note', { name: 'PDF에 없는 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['대구테크노폴리스4 · 공공임대', '다른 단지 · 39'])
+  expect(within(screen.getByRole('note', { name: 'PDF에 없는 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['대구테크노폴리스4 · 공공임대'])
+  expect(screen.getByRole('checkbox', { name: '다른 단지 주택형 1개 지우기' })).toBeChecked()
   // 주택타입을 고르게 하지 않고 저장할 때 같은 이름·면적의 단지 주택타입에 연결한다고 미리 알린다.
   expect(screen.getByRole('region', { name: '주택형 1 검토' })).toHaveTextContent("연결 주택타입: 저장하면 '51A'(전용 51.98㎡)에 연결합니다.")
+})
+
+it('공고문 PDF가 둘이면 이 PDF에 없는 단지는 그대로 둔다고 알리고, 단지마다 지우기를 고르면 지울 주택형에 더한다', () => {
+  const { review, workspace, housing } = daegu()
+  workspace.detail.attachments = [{ attachmentId: 1, fileName: '대구 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: '다른 단지 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }]
+  const { changed } = renderSupply({ review, workspace, housing, extraction: review.extraction })
+  const summary = within(screen.getByRole('list', { name: '안내 요약' }))
+  expect(summary.getByText('이 PDF에 없는 단지 1곳 그대로 둠')).toBeVisible()
+  expect(summary.getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '안내 펼치기' }))
+  // 그대로 두는 단지 안내는 경고가 아닌 결정 상태로 보인다.
+  expect(screen.getByRole('group', { name: '이 PDF에 없는 단지' })).toHaveAttribute('data-tone', 'info')
+  fireEvent.click(within(screen.getByRole('group', { name: '이 PDF에 없는 단지' })).getByRole('checkbox', { name: '다른 단지 주택형 1개 지우기' }))
+  expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ removeComplexes: { 'n:다른 단지': true } }))
+  expect(summary.getByText('이 PDF에 없는 단지 1곳 삭제')).toBeVisible()
+  expect(screen.getByRole('group', { name: '이 PDF에 없는 단지' })).toHaveAttribute('data-tone', 'warning')
+  // 지우기로 고른 단지의 주택형은 PDF에서 빠진 주택형 안내에 겹쳐 세지 않는다.
+  expect(summary.getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
+  expect(within(screen.getByRole('note', { name: 'PDF에 없는 주택형' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['대구테크노폴리스4 · 공공임대'])
+})
+
+it('공고문 PDF 하나에 신청서 양식·정정 공고 PDF가 더 있어도 공고문 PDF는 하나로 보고, 이 PDF에 없는 단지를 기본으로 지운다', () => {
+  const { review, workspace, housing } = daegu()
+  workspace.detail.attachments = [{ attachmentId: 1, fileName: '대구 공고문.pdf', fileType: 'ANNOUNCEMENT', fileUrl: '' }, { attachmentId: 2, fileName: '신청서 양식.pdf', fileType: 'REFERENCE', fileUrl: '' },
+    { attachmentId: 3, fileName: '정정 공고.pdf', fileType: 'CORRECTION', fileUrl: '' }]
+  renderSupply({ review, workspace, housing, extraction: review.extraction })
+  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('이 PDF에 없는 단지 1곳 삭제')).toBeVisible()
 })
 
 it('금액은 대상별 칸 표와 대조 칸 모두 세 자리마다 쉼표를 넣어 보이고, 직접 입력 칸에는 쉼표 없는 원 단위 값을 둔다', () => {

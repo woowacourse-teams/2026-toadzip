@@ -16,7 +16,7 @@ import { useCorrectionDraft, type DraftStatus } from './useCorrectionDraft'
 import { evidenceContext, evidenceQuery, readExtraction, type Evidence } from './extraction'
 import { cancelExtraction, extractAnnouncementPdf, loadLatestExtraction, pdfFileProblem, pdfSha256, OtherPdfJobError, preferredPdf, rememberedJob, resumeExtraction, type ExtractionOptions, type ExtractionState, type PdfExtraction, type SavedExtraction } from './extractionApi'
 import { checkAnnouncement, type ComplexLabels, type HousingCandidates } from './matching'
-import { applicableCells, assembledSheet, assembleReview, fieldNeeds, groupOf, pendingField, pendingJumpTarget, serverFieldError, serverFieldsError, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, receptionCells, upgradeDraftReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
+import { applicableCells, assembledSheet, assembleReview, fieldNeeds, groupOf, pendingField, pendingJumpTarget, serverFieldError, serverFieldsError, rowPendingItems, rowOfReviewId, cellMatches, createReview, pendingChanges, pendingItems, rebaseReview, receptionCells, removedHousingTypes, showsComplexDecisions, upgradeDraftReview, ReviewError, reviewSection, type Cell, type ReleaseChoice, type PendingChange, type Review, type ReviewFilter, type ReviewSection } from './review'
 import { ReviewCells } from './ReviewCells'
 import { ReviewReception } from './ReviewReception'
 import { ReviewSupply } from './ReviewSupply'
@@ -357,12 +357,12 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   /**
    * 목록·이전·다음으로 고른 주택형은 그 주택형의 편집 영역 머리가 고정 막대 바로 아래에 오게 옮긴다.
-   * 다른 단지로 넘어가면 그 단지의 단지 정하기부터 보이게 단지 영역 맨 위로 간다.
+   * 다른 단지로 넘어갈 때 그 단지에 단지 정하기가 보이면 그것부터 보이게 단지 영역 맨 위로 간다.
    */
   function stepRow(index: number) {
     const crossing = review !== null && groupOf(review, index) !== groupOf(review, selectedRow)
     selectRow(index)
-    if (crossing) { scrollReviewTop(); return }
+    if (crossing && showsComplexDecisions(review, index)) { scrollReviewTop(); return }
     setJump(previous => ({ id: `row:${index}`, nonce: (previous?.nonce ?? 0) + 1, focus: false }))
   }
   // 키보드로 칸을 오갈 때도 포커스가 고정 막대 뒤에 숨지 않게 막대 높이만큼 스크롤 여백을 둔다. 막대 내용은 렌더마다, 폭은 창 크기마다 바뀐다.
@@ -425,7 +425,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   }
   function finishApplied(latest: JsonWorkspace, preview: JsonPreview) {
     setTypeResult({ housingTypes: preview.housingTypes, housingTypeWarnings: preview.housingTypeWarnings }); setPublished(Boolean(preview.publishes)); setUnchanged(Boolean(preview.unchanged)); setWorkspace(latest); setPhase('result'); setText(''); setBlocked(false); setUncertain(false)
-    setNotice(''); setRestoredNote('')
+    // 복원하지 않은 임시저장본은 적용한 보정보다 오래된 것이라 적용 결과에서 복원을 권하지 않는다. 지우지는 않아 다음에 열면 다시 고를 수 있다.
+    setNotice(''); setRestoredNote(''); setStoredDraft(null); setDraftChecked(true)
     // 적용을 확인한 뒤에만 초안을 지운다. 지우지 못해도 적용은 끝났고, 다음에 열면 이미 적용한 초안(stale)으로 보인다.
     void drafts.remove().catch(() => setDraftError('보정은 적용했지만 임시저장본을 지우지 못했습니다. 다음에 열 때 폐기하세요.'))
   }
@@ -464,6 +465,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
   const pending = review ? pendingItems(review, !supplyDraft, workspace ?? undefined, release) : []
   const changes = review ? pendingChanges(review, workspace) : []
+  // 지울 주택형과 검산 경고는 '확인 필요'로 세지 않으므로, 적용 버튼 옆 요약에 따로 보여 모른 채 저장하지 않게 한다.
+  const removedCount = review ? removedHousingTypes(review, workspace).length : 0, checkCount = review ? review.extraction.checks.length + workerWarnings.length : 0
   const counts = { changed: 0, new: 0 }
   if (review) for (const cell of applicableCells(review)) if (cell.extracted.state === 'changed' || cell.extracted.state === 'new') counts[cell.extracted.state] += 1
   const empty = `이 영역에는 ‘${filterLabels.find(([key]) => key === filter)?.[1]}’ 항목이 없습니다.`
@@ -499,7 +502,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
             <div className={styles.filters} role="group" aria-label="검토 항목 필터">{filterLabels.map(([key, label]) => <Button data-design-system key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}{key !== 'all' && ` ${key === 'pending' ? pending.length : counts[key]}`}</Button>)}</div>
           </div>
           {!eligibilityOpen && section === 'supply' && <SupplyNavigator review={review} view={supplyView(review, selectedRow, filter, pending)} pending={pending}
-            onSelectComplex={index => { selectRow(index); scrollReviewTop() }} onSelectRow={stepRow} onJump={goTo} />}
+            onSelectComplex={stepRow} onSelectRow={stepRow} onJump={goTo} />}
         </div>
         <fieldset disabled={busy || blocked} className={styles.reviewFields}><div role="tabpanel" id="pdf-review-panel" aria-labelledby="pdf-review-tab-active">
           {eligibilityOpen && <EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} onEvidence={item => evidence(item)} extracted={extractedEligibility}
@@ -515,7 +518,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       {/* 화면에서 하단 버튼 위에 놓이므로 문서 순서도 버튼 앞에 둬 Tab 이동이 보이는 순서를 따른다. */}
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
       {phase === 'review' && !supplyDraft && (reasonInput || reasonProblem) && <section className={styles.reason} aria-label="적용 근거 입력"><p role="status" className={styles.error}>{reasonProblem}</p><label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></section>}
-      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span></div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
+      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span>{removedCount > 0 && <span className={styles.removalNote}>{`저장하면 주택형 ${removedCount}개를 지웁니다.`}</span>}</div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}{checkCount > 0 && <Button data-design-system className={styles.pendingButton} onClick={() => goTo('notices')}>{`검산 경고 ${checkCount}건`}</Button>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
     </>}
     {phase === 'result' && unchanged && <section className={styles.result}><h2>저장할 변경이 없습니다.</h2><p>PDF와 지금 값이 같아 값은 그대로 두고, 공고문으로 확인한 것으로 남겼습니다.{failureReturn ? ' 이 공고의 미해결 오류를 해결로 바꿨습니다.' : ''}</p><div className={styles.actions}><Link to={back}>공고 상세로 돌아가기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div></section>}
     {phase === 'result' && !unchanged && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 보정을 다시 적용하면 공개됩니다.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>

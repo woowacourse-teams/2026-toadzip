@@ -49,7 +49,9 @@ export type RowReview = { source: number; key: string; existing: SheetHousingTyp
   priceTarget?: number | null }
 export type ScheduleReview = { proposal: ScheduleProposal; include: boolean; reviewed: boolean; cells: Cell[] }
 export type Review = { extraction: Extraction; rows: RowReview[]; labels: TargetLabelReview[]; shared: SharedReview[]; complexes: Record<string, ComplexReview>
-  schedules: ScheduleReview[]; metadata: Cell[]; reception: ReceptionReview[] }
+  schedules: ScheduleReview[]; metadata: Cell[]; reception: ReceptionReview[]
+  /** 이 PDF에 없는 단지마다(otherComplexes의 key) 저장할 때 지우는지. 고르지 않은 단지는 기본값을 따른다. */
+  removeComplexes?: Record<string, boolean> }
 export const cellStates: Record<Cell['state'], string> = { confirm: '확인 필요', unresolved: '미확인 · 현재값 유지', notApplicable: '해당 없음', invalid: '형식 확인 필요', same: '같음', changed: '변경', new: '추가' }
 /** 접수 방식·일정 유형의 화면 표기 */
 export const choices = {
@@ -628,14 +630,42 @@ export function pendingItems(review: Review, savesHousingTypes = true, workspace
 export function undecidedGroups(review: Review, only?: number[]) {
   return complexGroups(review).filter(group => group.indexes.some(index => (!only || only.includes(index)) && needsComplex(review, index)))
 }
+/** index 주택형의 PDF 단지에 단지 정하기를 보이는지. 정할 주택형이 남았거나 이미 운영자가 단지를 고른 단지다. */
+export function showsComplexDecisions(review: Review, index: number) {
+  const group = complexGroups(review)[groupOf(review, index)] as ReturnType<typeof complexGroups>[number] | undefined
+  return group !== undefined && (undecidedGroups(review, group.indexes).length > 0 || Boolean(review.complexes[group.key]?.chosen))
+}
 export function allCells(review: Review) {
   return [...review.metadata, ...review.reception.flatMap(entry => entry.cells), ...review.rows.flatMap(row => [...row.cells, ...row.targets.flatMap(target => target.cells)]),
     ...review.labels.flatMap(entry => entry.cells), ...review.shared.map(entry => entry.cell), ...review.schedules.flatMap(schedule => schedule.cells)]
 }
 export type PendingChange = { section: '기본정보' | '접수처' | '공급정보' | '일정'; scope: string; cell: Cell }
-/** 저장하면 PDF에 없어 지워지는 지금 공급표 주택형 */
-export function removedHousingTypes(review: Pick<Review, 'rows'>, workspace: JsonWorkspace) {
-  const kept = new Set(review.rows.flatMap(row => row.existing ? [row.existing.key] : []))
+export type OtherComplex = { key: string; name: string; types: SheetHousingType[]; remove: boolean }
+/**
+ * 이 PDF에 나오지 않는 단지의 지금 주택형을 단지별로 묶는다. 공고 단지·연결 단지·단지 이름이 PDF 주택형의 단지와 하나도 같지 않은 단지다.
+ * 공고문 PDF(종류가 공고문인 첨부)가 여럿인 공고는 단지마다 다른 PDF에 실릴 수 있어 기본은 그대로 두고, 하나뿐이면 PDF가 공고 전체라 기본은 지운다.
+ * 단지 이름 없는 PDF 주택형이 있으면 어느 단지인지 몰라 모든 단지를 이 PDF 단지로 본다.
+ */
+export function otherComplexes(review: Pick<Review, 'extraction' | 'complexes' | 'rows' | 'removeComplexes'>, workspace: JsonWorkspace): OtherComplex[] {
+  if (review.extraction.sheet.housingTypes.some(type => !complexKey(type.complexName))) return []
+  const pdf = review.rows.map((_, index) => complexFor(review, index))
+  const inPdf = (type: SheetHousingType) => pdf.some(complex => complex.announcementComplexId !== null && complex.announcementComplexId === type.announcementComplexId
+    || complex.housingComplexId !== null && complex.housingComplexId === type.housingComplexId || sameComplex(complex.complexName, type.complexName))
+  // 신청서 양식·정정 공고 같은 다른 PDF는 단지를 나눠 싣지 않으므로 공고문 PDF만 센다.
+  const removeByDefault = (workspace.detail.attachments ?? []).filter(file => /\.pdf(?:$|[?\s])/i.test(file.fileName) && (file.fileType === 'ANNOUNCEMENT' || file.fileType === '공고문')).length <= 1
+  const groups = new Map<string, OtherComplex>()
+  for (const type of [...workspace.supply.sheet.housingTypes].sort((left, right) => left.displayOrder - right.displayOrder)) {
+    if (inPdf(type)) continue
+    const key = type.announcementComplexId !== null ? `a:${type.announcementComplexId}` : `n:${complexKey(type.complexName)}`
+    const group = groups.get(key) ?? { key, name: type.complexName || type.housingComplexName || '단지 이름 없음', types: [], remove: review.removeComplexes?.[key] ?? removeByDefault }
+    group.types.push(type); groups.set(key, group)
+  }
+  return [...groups.values()]
+}
+/** 저장하면 지워지는 지금 공급표 주택형. 이 PDF 단지에서 PDF에 없는 주택형과, 지우기로 한 다른 단지의 주택형이다. */
+export function removedHousingTypes(review: Pick<Review, 'extraction' | 'complexes' | 'rows' | 'removeComplexes'>, workspace: JsonWorkspace) {
+  const kept = new Set([...review.rows.flatMap(row => row.existing ? [row.existing.key] : []),
+    ...otherComplexes(review, workspace).filter(group => !group.remove).flatMap(group => group.types.map(type => type.key))])
   return workspace.supply.sheet.housingTypes.filter(type => !kept.has(type.key))
 }
 /** 저장하면 실제로 바뀌는 값만 영역별로 모은다. 하단의 반영 개수와 영역별 요약에 쓴다. workspace가 있으면 지워질 주택형도 센다. */
@@ -798,9 +828,9 @@ const differs = (cell: Cell, value: unknown) => JSON.stringify(value ?? null) !=
 /** 공급표에 쓸 값. 공고문에 없는 값(해당 없음)은 직접 입력하지 않았으면 공고문을 따라 비우고, 그 밖에는 저장값(savedValue)이다. */
 const written = (cell: Cell, reviewId: string) => cell.extracted.state === 'notApplicable' && cell.mode !== 'manual' ? cell.extracted.value : savedCell(cell, reviewId)
 /**
- * 검토로 저장할 공고 공급표. PDF 공급표가 공급표 전체를 대신한다: 지금 공급표의 같은 주택형·공급대상·칸은 그 키를 쓰고, 없는 것은 새 키로 더하며,
+ * 검토로 저장할 공고 공급표. PDF 공급표가 그 PDF 단지의 공급표를 대신한다: 지금 공급표의 같은 주택형·공급대상·칸은 그 키를 쓰고, 없는 것은 새 키로 더하며,
  * PDF에 없는 지금 주택형은 넣지 않아 저장하면 지워진다. 수량 묶음·임대조건은 PDF 묶음을 그대로 옮긴 뒤, 관리자가 지금 값을 유지하거나
- * 직접 고친 칸만 그 값으로 바꾼다.
+ * 직접 고친 칸만 그 값으로 바꾼다. 이 PDF에 없는 단지 중 그대로 두기로 한 단지는 지금 공급표 그대로 옮긴다(otherComplexes).
  */
 export function assembledSheet(review: Review, workspace: JsonWorkspace): SupplySheet {
   const pdf = pdfSheet(review.extraction), current = workspace.supply.sheet, extracted = review.extraction.sheet
@@ -888,16 +918,45 @@ export function assembledSheet(review: Review, workspace: JsonWorkspace): Supply
     if (rest < 0) throw new ReviewError(`${rowName(review, index)}: 모집수 ${String(value)}세대가 대상별 모집 합보다 작습니다. 대상별 모집이나 모집수를 고치세요.`, `cell:housingTypes[${index}].count`)
     if (whole || rest > 0) sheet = setMembersCount(sheet, typeCells, 'WINNER', rest)
   }
-  // 8. 어느 칸도 쓰지 않는 공급대상은 뺀다.
+  // 8. 이 PDF에 없는 단지 중 그대로 둘 단지의 주택형을 칸·묶음·임대조건과 함께 옮긴다. 공급대상은 PDF 대상과 같으면 그 대상을 같이 쓴다.
+  const others = otherComplexes(review, workspace), outside = new Set(others.flatMap(group => group.types.map(type => type.key)))
+  sheet = withKeptTypes(sheet, current, others.filter(group => !group.remove).flatMap(group => group.types),
+    Math.min(...current.housingTypes.filter(type => !outside.has(type.key)).map(type => type.displayOrder)))
+  // 9. 어느 칸도 쓰지 않는 공급대상은 뺀다.
   const used = new Set(sheet.cells.map(cell => cell.target))
   return { ...sheet, targets: sheet.targets.filter(target => used.has(target.key)) }
+}
+/**
+ * 지금 공급표의 주택형(kept)을 칸·묶음·임대조건과 함께 sheet에 더한다. 묶음·임대조건은 옮기는 칸만 멤버로 남긴다.
+ * 순서는 지금 공급표에서 이 PDF 단지의 첫 주택형(first, 없으면 Infinity)보다 앞에 있던 주택형은 PDF 주택형 앞에, 나머지는 뒤에 둔다.
+ */
+function withKeptTypes(sheet: SupplySheet, current: SupplySheet, kept: SheetHousingType[], first: number): SupplySheet {
+  if (!kept.length) return sheet
+  const types = new Set(kept.map(type => type.key)), cells = current.cells.filter(cell => types.has(cell.housingType)), cellKeys = new Set(cells.map(cell => cell.key))
+  const targets = [...sheet.targets], targetOf = new Map<string, string>()
+  for (const cell of cells) {
+    if (targetOf.has(cell.target)) continue
+    const saved = current.targets.find(target => target.key === cell.target)!
+    let target = targets.find(item => item.key === saved.key) ?? targets.find(item => sameTarget(item, saved))
+    if (!target) { target = { ...saved, displayOrder: targets.length }; targets.push(target) }
+    targetOf.set(cell.target, target.key)
+  }
+  const within = <T extends { members: string[] }>(items: T[]) => items.flatMap(item => {
+    const members = item.members.filter(member => cellKeys.has(member))
+    return members.length ? [{ ...item, members }] : []
+  })
+  const housingTypes = [...kept.filter(type => type.displayOrder < first), ...sheet.housingTypes, ...kept.filter(type => type.displayOrder >= first)]
+    .map((type, displayOrder) => ({ ...type, displayOrder }))
+  return { housingTypes, targets, cells: [...sheet.cells, ...cells.map(cell => ({ ...cell, target: targetOf.get(cell.target)! }))],
+    quotas: [...sheet.quotas, ...within(current.quotas)], leaseTerms: [...sheet.leaseTerms, ...within(current.leaseTerms)] }
 }
 /** 미확정 공고를 보정과 함께 공개할 때 정하는 공급·모집 유형. 미확정 공고는 보정을 적용하면 곧바로 공개한다. */
 export type ReleaseChoice = { rentalType: string; recruitmentType: string }
 export function assembleReview(review: Review, workspace: JsonWorkspace, evidence: { reason: string; sourceUrl: string; sourcePage: string | null }, release?: ReleaseChoice): JsonUpdateInput {
   const sheet = assembledSheet(review, workspace)
-  const housingTypeValues = sheet.housingTypes.flatMap((type, index) => {
-    if (type.housingTypeId === null && !type.newHousingType) return []
+  const housingTypeValues = sheet.housingTypes.flatMap(type => {
+    const index = review.rows.findIndex(row => row.key === type.key)
+    if (index < 0 || type.housingTypeId === null && !type.newHousingType) return []
     const value = housingTypeValue(review, index, type.key)
     return value ? [value] : []
   })
@@ -993,6 +1052,7 @@ export function rebaseReview(previous: Review, workspace: JsonWorkspace, housing
     schedule = remapSchedule(next, index, old.proposal.existingIds.filter(id => workspace.events.some(event => event.id === id)), workspace)
     return { ...schedule, include: old.include, reviewed: old.reviewed, cells: schedule.cells.map(retain) }
   })
+  if (previous.removeComplexes) next.removeComplexes = previous.removeComplexes
   return next
 }
 

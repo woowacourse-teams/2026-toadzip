@@ -193,6 +193,22 @@ it('AI 워커가 원문과 대조한 경고를 검토 화면의 검산 확인에
   expect(checks).toHaveTextContent('근거 인용에 없는 주택형 이름(24A)')
 })
 
+it('검산 경고와 저장하면 지울 주택형은 확인 필요가 없어도 하단 요약에 따로 알리고, 검산 경고를 누르면 다른 탭에서도 공급정보 안내로 옮긴다', async () => {
+  // 지금 공급표에만 있는 59Z는 이 PDF 단지에 있지만 PDF 공급표에 없어 저장하면 지워진다.
+  const [first] = workspace.supply.sheet.housingTypes
+  api.loadJsonWorkspace.mockResolvedValue({ ...workspace, supply: { ...workspace.supply, sheet: { ...workspace.supply.sheet, housingTypes: [...workspace.supply.sheet.housingTypes, { ...first, key: 'extra', name: '59Z', displayOrder: 99 }] } } })
+  extractor.extractAnnouncementPdf.mockResolvedValue({ json: JSON.stringify(fixtures.hansville.extraction), pages: [1, 2], totalPages: 3, warnings: ['59Z(가)가 추출 결과에 없음'], usage: { promptTokens: 100, outputTokens: 50, thinkingTokens: null } })
+  renderPage()
+  await review()
+  const footer = screen.getByRole('button', { name: '보정 내용 적용' }).closest('footer')!
+  expect(footer).toHaveTextContent('저장하면 주택형 1개를 지웁니다.')
+  fireEvent.click(screen.getByRole('tab', { name: /^일정/ }))
+  fireEvent.click(within(footer).getByRole('button', { name: /^검산 경고 \d+건$/ }))
+  expect(screen.getByRole('tab', { name: /^공급정보/ })).toHaveAttribute('aria-selected', 'true')
+  expect(document.activeElement).toHaveAttribute('data-review-id', 'notices')
+  expect(within(screen.getByRole('list', { name: '안내 요약' })).getByText('PDF에 없는 주택형 1개 삭제')).toBeVisible()
+})
+
 it('주택형을 PDF 단지 이름별로 묶어 한 단지의 주택형을 한곳에 보여 주고, 쓰지 않는 변경 목록은 두지 않는다', async () => {
   await open()
   // 목록은 단지별로 모든 주택형을 한 줄씩 요약하고, 편집 영역은 고른 행 하나만 보인다.
@@ -629,6 +645,18 @@ it('저장된 초안이 있으면 바로 적용하지 않고, 공고가 바뀐 �
   await waitFor(() => expect(draftApi.deleteCorrectionDraft).toHaveBeenCalledWith('29', expect.any(Number)))
 })
 
+it('임시저장본을 복원하지 않고 새로 검토해 적용하면 적용 결과에는 그 임시저장본 복원 안내를 남기지 않고, 고르지 않은 임시저장본은 지우지 않는다', async () => {
+  draftApi.loadCorrectionDraft.mockResolvedValue(storedDraft({ revision: 7 }))
+  renderPage()
+  expect(await screen.findByRole('region', { name: '임시저장한 작업' })).toBeVisible()
+  await review()
+  await screen.findByRole('heading', { name: '공급정보' })
+  await applyCorrection()
+  await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
+  expect(screen.queryByRole('region', { name: '임시저장한 작업' })).not.toBeInTheDocument()
+  expect(draftApi.deleteCorrectionDraft).not.toHaveBeenCalledWith('29', 7)
+})
+
 it('돌아와 이어 기다리는 중에 임시저장본을 복원하면 기다리기를 멈춰 늦게 온 추출 결과가 복원한 초안을 덮지 않는다', async () => {
   window.sessionStorage.setItem('pdf-extraction-job:29', '31')
   let signal: AbortSignal | undefined
@@ -832,6 +860,21 @@ it('주택형 상태의 확인 필요는 남은 종류를 알리고 누르면 �
   showRow(5)
   expect(within(bar).getByText(/^5\. /)).toBeVisible()
   expect(within(bar).getByLabelText('이 단지 주택형 4개 중 2번째')).toHaveTextContent('2/4')
+})
+
+it('단지를 바꿀 때 그 단지에 단지 정하기가 없으면 맨 위가 아니라 그 단지 첫 주택형의 편집 영역으로 옮긴다', async () => {
+  const scroll = vi.fn()
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+  onTestFinished(() => { delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView })
+  // 이 공고문을 이미 반영해 모든 주택형이 단지에 연결된 공고라 어느 단지에도 단지 정하기가 없다.
+  const linked = scenario('gwangju', undefined, extracted => savedSheet(extracted, { id: 3055, name: '첨단' })).workspace
+  api.loadJsonWorkspace.mockResolvedValue({ ...linked, detail: { ...linked.detail, attachments: workspace.detail.attachments } })
+  await open(JSON.stringify(fixtures.gwangju.extraction))
+  expect(screen.queryByRole('group', { name: /단지 정하기/ })).not.toBeInTheDocument()
+  scroll.mockClear()
+  chooseComplex('첨단H-3BL')
+  expect(scroll).toHaveBeenCalled()
+  expect(scroll.mock.contexts.at(-1)).toBe(screen.getByRole('region', { name: '주택형 4 검토' }))
 })
 
 it('확인 필요 필터에서 이전·다음은 단지 순서대로 확인 행만 빠짐없이 지나고 마지막 행에서는 다음이 꺼진다', async () => {
