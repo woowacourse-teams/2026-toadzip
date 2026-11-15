@@ -167,6 +167,15 @@ public final class SupplySheet {
                         .sorted(CELL_ORDER).toList()));
     }
 
+    /**
+     * 이 칸이 든 가장 작은 묶음(멤버가 가장 적고, 같으면 먼저 만든 묶음)의 수. 그 칸만의 수가 있으면 그 수이고, 없으면 그 칸이 함께
+     * 쓰는 수다. 칸이 든 묶음이 없으면 null이다.
+     */
+    public Integer smallestCount(Cell cell, Kind kind) {
+        return quotasOf(cell, kind).stream().min(Comparator.comparingInt(quota -> quota.members().size()))
+                .map(Quota::count).orElse(null);
+    }
+
     public Optional<Lease> lease(Cell cell) {
         return Optional.ofNullable(leaseByCell.get(cell.id()));
     }

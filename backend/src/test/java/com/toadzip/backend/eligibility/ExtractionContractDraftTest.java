@@ -34,8 +34,9 @@ class ExtractionContractDraftTest {
 
         EligibilityContent content = ExtractedEligibilityDraft.build(new Source(LocalDate.of(2026, 9, 30),
                 new Document("notice.pdf", "https://apply.lh.or.kr/notice.pdf", 35, "a".repeat(64)),
-                List.of(new Unit(1, "인천부평", "16A", new BigDecimal("16.37"), null, null, "행복주택", List.of(),
-                        List.of(new Target("청년", 78)))),
+                List.of(new Unit("1", "인천부평", "16A", new BigDecimal("16.37"), null, null, "행복주택", List.of(),
+                        // 공고문 보정을 적용하면 공고 공급표에 워커 공급표의 대상(표기, 신청 조건)이 그대로 남는다.
+                        List.of(new Target("청년", "무주택세대구성원인 만 19~39세 미혼 청년", 78)))),
                 new ExtractedEligibilityReader(json).read(extraction),
                 Map.of("URBAN_WORKER_MONTHLY_INCOME:2025", 1L), name -> List.of())).content();
 

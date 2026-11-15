@@ -26,10 +26,20 @@ public record ExtractedEligibility(
         }
     }
 
-    /** 신청 자격 경로. supplyTargets는 워커가 맞춘 공급표 대상 이름 원문이다. */
-    public record Route(String name, List<String> supplyTargets, Group group) {
+    /**
+     * 신청 자격 경로. supplyTargets는 워커가 맞춘 공급표 대상 이름 원문이다. supplyTargetKeys는 워커가 이은 공급표 대상 키를 같은 추출의
+     * 공급표(data.supplySheet.targets)에서 찾은 (표기, 신청 조건)이다. 키가 있으면 공급대상은 이 키로만 잇는다.
+     */
+    public record Route(String name, List<String> supplyTargets, List<EligibilityContent.SupplyTarget> supplyTargetKeys,
+            Group group) {
         public Route {
             supplyTargets = EligibilityContent.immutable(supplyTargets);
+            supplyTargetKeys = EligibilityContent.immutable(supplyTargetKeys);
+        }
+
+        /** 공급표 대상 키가 없는 경로(이전 워커의 추출, 워커가 대상 이름을 맞추지 못한 경로). */
+        public Route(String name, List<String> supplyTargets, Group group) {
+            this(name, supplyTargets, List.of(), group);
         }
     }
 

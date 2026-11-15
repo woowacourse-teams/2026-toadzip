@@ -1,5 +1,6 @@
 package com.toadzip.backend.eligibility.domain;
 
+import com.toadzip.backend.announcement.domain.AnnouncementSupplyTarget;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.AccessMode;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.ApplicantKind;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.ApplicationOption;
@@ -15,6 +16,7 @@ import com.toadzip.backend.eligibility.domain.EligibilityContent.ProfileCheck;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.RecruitmentStatus;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.ReviewStatus;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.SourceDocument;
+import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyTarget;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.SupplyUnit;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.TargetScope;
 import com.toadzip.backend.eligibility.domain.ExtractedEligibility.Adjustment;
@@ -34,10 +36,12 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -96,9 +100,12 @@ public final class ExtractedEligibilityDraft {
 
     public record Document(String fileName, String downloadUrl, int pageCount, String sha256) {}
 
-    /** 관리자가 빼지 않은 공급행 하나. targets는 빼지 않은 공급대상이다. */
+    /**
+     * 관리자가 빼지 않은 공급행 하나. key는 신청 단위 ID(unit-{key})의 끝으로, 정본은 공급행 ID, 정본을 확정하기 전 준비 데이터는
+     * 'line-{준비 줄 ID}'다(두 ID가 같은 수여도 다른 단위로 남는다). targets는 그 행의 공급대상이다.
+     */
     public record Unit(
-            long rowId,
+            String key,
             String complexLabel,
             String typeLabel,
             BigDecimal exclusiveArea,
@@ -108,7 +115,29 @@ public final class ExtractedEligibilityDraft {
             List<String> regionCodes,
             List<Target> targets) {}
 
-    public record Target(String name, Integer supplyHouseholdCount) {}
+    /** 공급행의 공급대상 하나. (표기, 신청 조건)이 공고 안의 대상 자연 키({@link AnnouncementSupplyTarget#key})다. */
+    public record Target(String label, String applicationCondition, Integer supplyHouseholdCount) {
+        public Target {
+            applicationCondition = Objects.requireNonNullElse(applicationCondition, "");
+        }
+
+        /** 신청 조건이 없는 대상. */
+        public Target(String label, Integer supplyHouseholdCount) {
+            this(label, "", supplyHouseholdCount);
+        }
+
+        private String key() {
+            return AnnouncementSupplyTarget.key(label, applicationCondition);
+        }
+
+        private SupplyTarget reference() {
+            return new SupplyTarget(label.strip(), applicationCondition.strip());
+        }
+
+        private boolean everyone() {
+            return EVERYONE.equals(compact(label));
+        }
+    }
 
     private final Source source;
     private final Map<String, String> evidenceIds = new LinkedHashMap<>();
@@ -138,7 +167,8 @@ public final class ExtractedEligibilityDraft {
      * source.units()는 쓰지 않는다. 저장하지 않으므로 공급행 연결 안내는 돌려주지 않는다.
      */
     public static EligibilityContent preview(Source source) {
-        Unit everyone = new Unit(0, "미리보기", null, null, null, null, null, List.of(), List.of(new Target(EVERYONE, null)));
+        Unit everyone = new Unit("0", "미리보기", null, null, null, null, null, List.of(),
+                List.of(new Target(EVERYONE, null)));
         return build(new Source(source.referenceDate(), source.document(), List.of(everyone), source.eligibility(),
                 source.incomeTables(), source.regionCodes())).content();
     }
@@ -166,7 +196,7 @@ public final class ExtractedEligibilityDraft {
         for (Route route : routes) {
             for (Alternative alternative : alternatives(route, routes.size() == 1 && route.name() == null)) {
                 String pathId = "path-" + (paths.size() + 1);
-                List<ApplicationOption> connected = options(pathId, targetNames(route));
+                List<ApplicationOption> connected = options(pathId, target -> wants(route, target));
                 if (connected.isEmpty()) {
                     unmatched.add(alternative.label());
                     continue;
@@ -187,23 +217,24 @@ public final class ExtractedEligibilityDraft {
             }
         }
         // 경로를 하나도 잇지 못했으면 대상 이름이 어긋난 것이므로 공통 요건 경로로 덮지 않고 아래에서 초안을 막는다.
-        List<String> uncovered = paths.isEmpty() ? List.of() : uncoveredTargets(routes, paths);
-        for (String target : uncovered) {
+        List<Target> uncovered = paths.isEmpty() ? List.of() : uncoveredTargets(routes);
+        for (Target target : uncovered) {
             // 이어지는 경로가 없는 대상(표기 '일반' 등)도 공고 전체의 공통 요건(무주택세대구성원·소득·자산 등)으로 판정한다.
             // 빠뜨리면 그 대상의 사용자는 다른 대상의 경로로만 판정되어 공고 전체가 미충족으로 보인다.
             String pathId = "path-" + (paths.size() + 1);
-            List<ApplicationOption> connected = options(pathId, List.of(target));
+            List<ApplicationOption> connected = options(pathId, stored -> stored.key().equals(target.key()));
             if (connected.isEmpty()) {
                 continue;
             }
             Scope scope = new Scope(pathId, new GuidanceTarget(TargetScope.PATH, pathId, null),
                     source.eligibility().common().evidencePath());
-            if (!GENERAL_TARGETS.contains(compact(target))) {
-                scope.direct.add("신청 대상 '" + displayName(target) + "'에 해당하는지");
+            if (!GENERAL_TARGETS.contains(compact(target.label()))) {
+                scope.direct.add("신청 대상 '" + displayName(target.label()) + "'에 해당하는지");
             }
-            String label = limit(displayName(target), 300);
+            String label = limit(displayName(target.label()), 300);
             paths.add(new EligibilityPath(pathId, label, PathKind.APPLICATION, List.of(), List.of()));
-            fullLabels.add(label);
+            fullLabels.add(limit(String.join(" · ", nonBlank(displayName(target.label()),
+                    target.applicationCondition())), 300));
             options.addAll(connected);
             scopes.add(scope);
         }
@@ -235,7 +266,8 @@ public final class ExtractedEligibilityDraft {
             notices.add("공급대상과 잇지 못한 신청자격 경로: " + String.join(", ", unmatched));
         }
         if (!uncovered.isEmpty()) {
-            notices.add("신청자격 경로가 없는 공급대상(" + String.join(", ", uncovered)
+            List<String> labels = uncovered.stream().map(Target::label).distinct().toList();
+            notices.add("신청자격 경로가 없는 공급대상(" + String.join(", ", labels)
                     + ")에는 공통 요건만 담은 경로를 두었습니다. 공고문을 확인해 주세요.");
         }
         // scopeNote는 사용자 공고 상세에 그대로 보이고 비울 수 없으므로, AI 초안 안내 대신 사용자에게도 맞는 범위 설명을 둔다.
@@ -249,16 +281,14 @@ public final class ExtractedEligibilityDraft {
         return new Draft(content, List.copyOf(notices));
     }
 
-    /** 모집수가 있거나 모르는 공급대상 가운데 만든 경로 어디에도 이어지지 않은 대상. */
-    private List<String> uncoveredTargets(List<Route> routes, List<EligibilityPath> paths) {
-        Set<String> covered = new LinkedHashSet<>();
-        if (!paths.isEmpty()) {
-            routes.forEach(route -> covered.addAll(targetNames(route)));
-        }
-        return source.units().stream().flatMap(unit -> unit.targets().stream())
+    /** 모집수가 있거나 모르는 공급대상 가운데 어느 경로도 가리키지 않는 대상. 같은 표기라도 신청 조건이 다르면 따로 센다. */
+    private List<Target> uncoveredTargets(List<Route> routes) {
+        Map<String, Target> uncovered = new LinkedHashMap<>();
+        source.units().stream().flatMap(unit -> unit.targets().stream())
                 .filter(target -> target.supplyHouseholdCount() == null || target.supplyHouseholdCount() > 0)
-                .map(Target::name).filter(name -> !sameTarget(covered, name) && !EVERYONE.equals(compact(name)))
-                .distinct().toList();
+                .filter(target -> !target.everyone() && routes.stream().noneMatch(route -> wants(route, target)))
+                .forEach(target -> uncovered.putIfAbsent(target.key(), target));
+        return List.copyOf(uncovered.values());
     }
 
     /** 경로가 없으면(공급대상 구분이 없는 공고) 공급표의 모든 대상을 잇는 경로 하나로 본다. */
@@ -267,22 +297,25 @@ public final class ExtractedEligibilityDraft {
         boolean anyOpen = source.units().stream().anyMatch(ExtractedEligibilityDraft::open);
         boolean anyDivided = source.units().stream().anyMatch(unit -> !open(unit));
         for (Route route : source.eligibility().routes()) {
-            if (route.supplyTargets().isEmpty() && !anyOpen && route.name() == null) {
+            if (route.supplyTargets().isEmpty() && route.supplyTargetKeys().isEmpty() && !anyOpen
+                    && route.name() == null) {
                 unmatched.add(route.name());
                 continue;
             }
             // 워커가 대상을 맞추지 못한 경로는 대상 구분이 없는 행과 경로 이름이 맞는 대상에만 이어진다. 둘 다 없으면 빠진 연결을 알린다.
-            if (route.supplyTargets().isEmpty() && anyDivided && source.units().stream().filter(unit -> !open(unit))
-                    .flatMap(unit -> unit.targets().stream()).noneMatch(target -> sameTarget(targetNames(route), target.name()))) {
+            if (route.supplyTargets().isEmpty() && route.supplyTargetKeys().isEmpty() && anyDivided
+                    && source.units().stream().filter(unit -> !open(unit)).flatMap(unit -> unit.targets().stream())
+                            .noneMatch(target -> wants(route, target))) {
                 openOnly.add(route.name());
             }
             routes.add(route);
         }
         if (source.eligibility().routes().isEmpty()) {
-            List<String> all = source.units().stream().flatMap(unit -> unit.targets().stream()).map(Target::name)
-                    .distinct().toList();
+            List<SupplyTarget> all = source.units().stream().flatMap(unit -> unit.targets().stream())
+                    .map(Target::reference).distinct().toList();
             Group common = source.eligibility().common();
-            routes.add(new Route(null, all, new Group(common.evidencePath(), List.of(), common.qualifications())));
+            routes.add(new Route(null, List.of(), all,
+                    new Group(common.evidencePath(), List.of(), common.qualifications())));
         }
         return routes;
     }
@@ -314,12 +347,12 @@ public final class ExtractedEligibilityDraft {
         return result;
     }
 
-    private List<ApplicationOption> options(String pathId, Collection<String> wanted) {
+    /** 경로를 단위마다 잇는다. 선택지는 이은 공급대상(대상 구분이 없는 행은 그 행의 '전체' 대상)을 자연 키로 가리킨다. */
+    private List<ApplicationOption> options(String pathId, Predicate<Target> wanted) {
         List<ApplicationOption> options = new ArrayList<>();
         for (Unit unit : source.units()) {
             boolean open = open(unit);
-            List<Target> matched = open ? unit.targets()
-                    : unit.targets().stream().filter(target -> sameTarget(wanted, target.name())).toList();
+            List<Target> matched = open ? unit.targets() : unit.targets().stream().filter(wanted).toList();
             if (matched.isEmpty() && !open) {
                 continue;
             }
@@ -331,12 +364,41 @@ public final class ExtractedEligibilityDraft {
                 continue;
             }
             options.add(new ApplicationOption(pathId + "-" + unitId(unit), unitId(unit), pathId,
-                    recruiting ? RecruitmentStatus.RECRUITING : RecruitmentStatus.UNKNOWN));
+                    recruiting ? RecruitmentStatus.RECRUITING : RecruitmentStatus.UNKNOWN,
+                    matched.stream().map(Target::reference).distinct().toList()));
         }
         return options;
     }
 
-    /** 경로를 이을 공급대상 이름. 워커가 맞춘 이름이 없으면 경로 이름(목차 기호를 뗀)으로 맞춘다. */
+    /**
+     * 경로가 이 공급대상을 가리키는지. 워커가 이은 공급표 대상 키 가운데 하나라도 이 공고 공급표에 있으면 (표기, 신청 조건) 자연 키가
+     * 같은 대상만 가리킨다. 같은 표기라도 신청 조건이 다르면 다른 대상이다. 키가 없거나 어느 키도 공급표에 없는 경로는 대상 이름으로
+     * 맞춘다: 이전 워커의 추출, 확정 전 준비 데이터(신청 조건이 '공고문 참조'), 보정에서 관리자가 표기·조건을 고친 대상이 그렇다.
+     * 이름으로 맞출 때도 다른 경로가 키로 가리킨 대상은 그 경로의 대상이라 잇지 않는다. 키 일부만 공급표에 있는 경로는 남은 키의 대상을
+     * 이름으로도 잇지 않는다(그 대상은 공통 요건 경로를 받고 관리자에게 안내된다).
+     */
+    private boolean wants(Route route, Target target) {
+        if (keyed(route)) {
+            return pointed(route, target);
+        }
+        return sameTarget(targetNames(route), target.label())
+                && source.eligibility().routes().stream().filter(this::keyed).noneMatch(other -> pointed(other, target));
+    }
+
+    private static boolean pointed(Route route, Target target) {
+        return route.supplyTargetKeys().stream().anyMatch(wanted -> key(wanted).equals(target.key()));
+    }
+
+    private boolean keyed(Route route) {
+        return route.supplyTargetKeys().stream().anyMatch(wanted -> source.units().stream()
+                .flatMap(unit -> unit.targets().stream()).anyMatch(target -> key(wanted).equals(target.key())));
+    }
+
+    private static String key(SupplyTarget target) {
+        return AnnouncementSupplyTarget.key(target.label(), target.applicationCondition());
+    }
+
+    /** 키가 없는 경로를 이을 공급대상 이름. 워커가 맞춘 이름이 없으면 경로 이름(목차 기호를 뗀)으로 맞춘다. */
     private static List<String> targetNames(Route route) {
         if (!route.supplyTargets().isEmpty() || route.name() == null) {
             return route.supplyTargets();
@@ -378,7 +440,7 @@ public final class ExtractedEligibilityDraft {
 
     /** 공급표가 대상을 나누지 않은 공급행. 신청자격을 갖춘 누구나 신청할 수 있는 행으로 본다. */
     private static boolean open(Unit unit) {
-        return unit.targets().stream().allMatch(target -> EVERYONE.equals(compact(target.name())));
+        return unit.targets().stream().allMatch(Target::everyone);
     }
 
     private SupplyUnit supplyUnit(Unit unit) {
@@ -387,14 +449,14 @@ public final class ExtractedEligibilityDraft {
         List<PhysicalHousing> housing = unit.exclusiveArea() == null || unit.exclusiveArea().signum() <= 0
                 || unit.rentalType() == null
                 ? List.of()
-                : List.of(new PhysicalHousing("housing-" + unit.rowId(), limit(firstText(unit.complexLabel(), label), 300),
+                : List.of(new PhysicalHousing("housing-" + unit.key(), limit(firstText(unit.complexLabel(), label), 300),
                         limit(firstText(unit.typeLabel(), label), 100), unit.rentalType(), unit.exclusiveArea(),
                         unit.housingComplexId(), unit.housingTypeId()));
         return new SupplyUnit(unitId(unit), label, housing, unit.regionCodes().stream().distinct().toList());
     }
 
     private static String unitId(Unit unit) {
-        return "unit-" + unit.rowId();
+        return "unit-" + unit.key();
     }
 
     /** 범위(공고 전체 또는 경로)의 조건과, 조건으로 바꾸지 못한 요건을 모은 안내. */

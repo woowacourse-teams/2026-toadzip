@@ -33,7 +33,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * PDF 보정 화면의 최신 추출 결과(AI 신청자격)와 지금 공급행으로 신청자격을 만들어 곧바로 공개한다.
+ * PDF 보정 화면의 최신 추출 결과(AI 신청자격)와 지금 공급(확정한 공고는 정본, 확정 전 공고는 기관 준비 데이터)으로 신청자격을 만들어
+ * 곧바로 공개한다.
  * 저장·공개는 관리자 초안 저장·공개(EligibilityRuleSetService)를 그대로 타서 검증·잠금·관계형 투영을 함께 한다.
  */
 @Service
@@ -42,6 +43,7 @@ public class EligibilityExtractionDraftService {
     private final AnnouncementPdfExtractionService extractions;
     private final ExtractedEligibilityReader reader;
     private final EligibilityDraftSourceRepository sources;
+    private final EligibilityDraftUnits draftUnits;
     private final EligibilityRuleSetService ruleSets;
     private final EligibilityRegionMembership regions;
     private final RegionSearchRepository regionSearch;
@@ -50,12 +52,14 @@ public class EligibilityExtractionDraftService {
             AnnouncementPdfExtractionService extractions,
             ExtractedEligibilityReader reader,
             EligibilityDraftSourceRepository sources,
+            EligibilityDraftUnits draftUnits,
             EligibilityRuleSetService ruleSets,
             EligibilityRegionMembership regions,
             RegionSearchRepository regionSearch) {
         this.extractions = extractions;
         this.reader = reader;
         this.sources = sources;
+        this.draftUnits = draftUnits;
         this.ruleSets = ruleSets;
         this.regions = regions;
         this.regionSearch = regionSearch;
@@ -71,7 +75,7 @@ public class EligibilityExtractionDraftService {
         LocalDate referenceDate = sources.postedDate(announcementId).orElseThrow(() ->
                 new EligibilityDraftUnavailableException("모집공고일이 없어 신청자격 기준일을 정할 수 없습니다. 공고 정보를 먼저 채워 주세요."));
         ExtractedEligibilityDraft.Draft draft = ExtractedEligibilityDraft.build(source(latest, url, referenceDate,
-                sources.units(announcementId).stream().map(this::normalized).toList()));
+                draftUnits.units(announcementId).stream().map(this::normalized).toList()));
         try {
             RuleSet saved = ruleSets.save(announcementId,
                     new SaveDraft(request.expectedDraftId(), request.expectedRevision(), draft.content()));
@@ -126,7 +130,7 @@ public class EligibilityExtractionDraftService {
 
     /** 저장된 공급유형 코드를 화면 이름(행복주택 등)으로, 지역은 판정이 아는 코드만 남긴다. */
     private Unit normalized(Unit unit) {
-        return new Unit(unit.rowId(), unit.complexLabel(), unit.typeLabel(), unit.exclusiveArea(), unit.housingComplexId(),
+        return new Unit(unit.key(), unit.complexLabel(), unit.typeLabel(), unit.exclusiveArea(), unit.housingComplexId(),
                 unit.housingTypeId(), rentalLabel(unit.rentalType()),
                 unit.regionCodes().stream().filter(regions::isKnown).toList(), unit.targets());
     }

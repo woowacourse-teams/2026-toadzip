@@ -2,6 +2,8 @@ package com.toadzip.backend.eligibility.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.eligibility.BasicComparisonFixtures;
+import com.toadzip.backend.eligibility.domain.EligibilityContent;
 import com.toadzip.backend.eligibility.domain.EligibilityContent.RecruitmentStatus;
 import com.toadzip.backend.eligibility.domain.EligibilityDecision;
 import com.toadzip.backend.eligibility.domain.EligibilityDecision.OptionDecision;
@@ -25,5 +27,15 @@ class EligibilityJsonCodecTest {
 
         assertThat(stored).doesNotContain("reminderGuidanceIds");
         assertThat(codec.decision(stored).options().getFirst().reminderGuidanceIds()).isEmpty();
+    }
+
+    @Test
+    void 선택지가_공급대상을_가리키기_전에_저장한_신청자격도_읽는다() {
+        String stored = codec.write(BasicComparisonFixtures.sacheon())
+                .replaceAll(",?\"supplyTargets\":\\[[^\\]]*\\]", "");
+
+        assertThat(stored).doesNotContain("supplyTargets");
+        assertThat(codec.content(stored, EligibilityContent.SCHEMA_VERSION).options()).isNotEmpty()
+                .allSatisfy(option -> assertThat(option.supplyTargets()).isEmpty());
     }
 }

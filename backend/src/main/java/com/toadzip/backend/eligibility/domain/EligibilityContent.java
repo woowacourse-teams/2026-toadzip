@@ -168,8 +168,27 @@ public record EligibilityContent(
         }
     }
 
+    /**
+     * 선택지: 이 경로로 이 단위에 신청한다. supplyTargets는 이 선택지가 이은 단위의 공급대상이다. 비어 있으면(이 칸을 두기 전 스냅숏,
+     * 관리자가 직접 만든 선택지) 대상을 정하지 않은 선택지다.
+     */
     public record ApplicationOption(
-            String id, String supplyUnitId, String pathId, RecruitmentStatus recruitmentStatus) {}
+            String id, String supplyUnitId, String pathId, RecruitmentStatus recruitmentStatus,
+            List<SupplyTarget> supplyTargets) {
+        public ApplicationOption {
+            supplyTargets = immutable(supplyTargets);
+        }
+
+        public ApplicationOption(String id, String supplyUnitId, String pathId, RecruitmentStatus recruitmentStatus) {
+            this(id, supplyUnitId, pathId, recruitmentStatus, List.of());
+        }
+    }
+
+    /**
+     * 공고 공급대상을 가리키는 자연 키(표기, 신청 조건). 공고 공급표는 공고 안에서 이 둘이 같은 대상을 하나로 두고 대상 ID를 이 키로
+     * 유지하므로(공급표를 다시 써도 같다), 정본 대상 ID를 갖지 않는 확정 전 준비 데이터의 대상도 같은 방식으로 가리킨다.
+     */
+    public record SupplyTarget(String label, String applicationCondition) {}
 
     public record ProfileCheck(
             String id,
