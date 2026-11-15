@@ -188,7 +188,6 @@ class GhAnnouncementRefinementIntegrationTest {
                 WHERE source_announcement_identifier = 'GH:801'
                 """);
 
-        changeSupplyCount();
         collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
         var report = GhRefinementTestSupport.refineAll(refinement, sources);
         assertThat(report.updated()).isZero();
@@ -197,8 +196,6 @@ class GhAnnouncementRefinementIntegrationTest {
         var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
         assertThat(announcement.getName()).isEqualTo(ROW.title());
         assertThat(announcement.isSourceReviewRequired()).isTrue();
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("winner_count"))
-                .containsExactly(120, 60);
     }
 
     @Test
@@ -235,10 +232,10 @@ class GhAnnouncementRefinementIntegrationTest {
                 JOIN announcements a ON a.id = c.announcement_id
                 WHERE a.source_announcement_identifier = 'GH:801' ORDER BY c.id
                 """, String.class)).containsExactly("다산 센트럴파크6단지:true", "안양관양 경기행복주택:false");
-        var rows = supplyRows("GH:801");
-        assertThat(rows).extracting(row -> row.get("source_supply_row_identifier"))
+        var rows = lines("GH:801");
+        assertThat(rows).extracting(row -> row.get("source_line_key"))
                 .containsExactly("GH:801:다산 센트럴파크6단지:33A", "GH:801:다산 센트럴파크6단지:46A");
-        assertThat(rows).extracting(row -> row.get("winner_count")).containsExactly(120, 30);
+        assertThat(rows).extracting(row -> row.get("household_count")).containsExactly(120, 30);
         assertThat(rows).extracting(row -> row.get("announcement_complex_id")).containsOnly(jdbc.queryForObject("""
                 SELECT c.id FROM announcement_complexes c JOIN announcements a ON a.id = c.announcement_id
                 WHERE a.source_announcement_identifier = 'GH:801' AND c.source_complex_name = '다산 센트럴파크6단지'
@@ -342,103 +339,79 @@ class GhAnnouncementRefinementIntegrationTest {
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        var rows = supplyRows("GH:801");
-        assertThat(rows).extracting(row -> row.get("source_supply_row_identifier"))
+        var rows = lines("GH:801");
+        assertThat(rows).extracting(row -> row.get("source_line_key"))
                 .containsExactly("GH:801:다산 센트럴파크6단지:33A", "GH:801:다산 센트럴파크6단지:36A");
-        assertThat(rows).extracting(row -> row.get("source_housing_type_name")).containsExactly("33A", "36A 청년");
-        assertThat(rows).extracting(row -> row.get("winner_count")).containsExactly(120, 60);
+        assertThat(rows).extracting(row -> row.get("housing_type_name")).containsExactly("33A", "36A 청년");
+        assertThat(rows).extracting(row -> row.get("household_count")).containsExactly(120, 60);
         assertThat(rows).extracting(row -> row.get("housing_complex_id")).containsOnly(dasan);
-        assertThat(rows).extracting(row -> row.get("housing_type_id")).containsOnly((Object) null);
-        // 공급표는 정제가 직접 쓴다. 주택형마다 '전체' 칸이 원천 세대수를 갖는다.
-        assertThat(sheet("GH:801")).containsExactly("전체:WINNER:120", "전체:WINNER:60");
-        List<Long> cellIds = cellIds("GH:801");
+        // 정제는 기관 준비 줄만 쓰고 공고 공급표(정본)는 쓰지 않는다.
+        assertThat(canonicalRowCount("GH:801")).isZero();
 
         GhRefinementTestSupport.refineAll(refinement, sources);
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("id"))
+        assertThat(lines("GH:801")).extracting(row -> row.get("id"))
                 .containsExactlyElementsOf(rows.stream().map(row -> row.get("id")).toList());
-        assertThat(cellIds("GH:801")).isEqualTo(cellIds);
     }
 
     @Test
-    void 공급행_틀에_원천_주택형의_전용면적을_적고_면적_보정은_켜지_않는다() {
+    void 준비_줄에_원천_주택형의_전용면적을_적는다() {
         collect(ROW);
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        var rows = supplyRows("GH:801");
-        assertThat(rows).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
-                .usingElementComparator(BigDecimal::compareTo)
-                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
-        assertThat(rows).extracting(row -> row.get("area_override")).containsOnly(false);
-        assertThat(rows).extracting(row -> row.get("admin_modified")).containsOnly(false);
-    }
-
-    @Test
-    void 관리자가_손대지_않은_공고의_면적_없는_틀은_다시_정제하면_전용면적을_채운다() {
-        collect(ROW);
-        GhRefinementTestSupport.refineAll(refinement, sources);
-        var ids = supplyRows("GH:801").stream().map(row -> row.get("id")).toList();
-        jdbc.update("""
-                UPDATE supply_rows SET announcement_exclusive_area = NULL, area_override = false WHERE announcement_id =
-                    (SELECT id FROM announcements WHERE source_announcement_identifier = 'GH:801')
-                """);
-
-        GhRefinementTestSupport.refineAll(refinement, sources);
-
-        // 면적만 다르면 틀을 지우고 다시 만들지 않고 면적만 채운다. 행 ID가 바뀌면 작업실 초안이 낡은 것으로 보인다.
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("id")).containsExactlyElementsOf(ids);
-        assertThat(supplyRows("GH:801")).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+        assertThat(lines("GH:801")).extracting(row -> (BigDecimal) row.get("exclusive_area"))
                 .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
     }
 
     @Test
-    void 관리자가_맡은_공고는_면적_없는_틀도_다시_쓰지_않는다() {
+    void 면적_없는_준비_줄은_다시_정제하면_줄을_지키고_전용면적을_채운다() {
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);
+        var ids = lines("GH:801").stream().map(row -> row.get("id")).toList();
         jdbc.update("""
-                UPDATE supply_rows SET announcement_exclusive_area = NULL, area_override = false WHERE announcement_id =
+                UPDATE agency_supply_lines SET exclusive_area = NULL WHERE announcement_id =
                     (SELECT id FROM announcements WHERE source_announcement_identifier = 'GH:801')
                 """);
-        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("announcement_exclusive_area")).containsOnly((Object) null);
-        assertThat(jdbc.queryForObject("""
-                SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
-                """, Boolean.class)).isFalse();
+        // 면적만 다르면 줄을 지우고 다시 만들지 않고 면적만 채운다.
+        assertThat(lines("GH:801")).extracting(row -> row.get("id")).containsExactlyElementsOf(ids);
+        assertThat(lines("GH:801")).extracting(row -> (BigDecimal) row.get("exclusive_area"))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
     }
 
     @Test
-    void 관리자가_손대지_않은_공고는_원천_전용면적이_바뀌면_틀을_원천에_맞춘다() {
+    void 원천_전용면적이_바뀌면_준비_줄을_원천에_맞춘다() {
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);
-        var ids = supplyRows("GH:801").stream().map(row -> row.get("id")).toList();
+        var ids = lines("GH:801").stream().map(row -> row.get("id")).toList();
         changeExclusiveArea();
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("id")).containsExactlyElementsOf(ids);
-
-        assertThat(supplyRows("GH:801")).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+        assertThat(lines("GH:801")).extracting(row -> row.get("id")).containsExactlyElementsOf(ids);
+        assertThat(lines("GH:801")).extracting(row -> (BigDecimal) row.get("exclusive_area"))
                 .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.9"));
     }
 
     @Test
-    void 관리자가_맡은_공고는_원천_전용면적만_바뀌면_틀을_두고_공급_재확인도_켜지_않는다() {
-        // 면적은 지문에 넣지 않는다. 넣으면 배포 뒤 관리자가 맡은 GH 공고가 원천이 그대로여도 모두 재확인 대상이 된다.
+    void 정본을_확정한_공고는_원천_전용면적만_바뀌면_준비_줄만_맞추고_공급_재확인을_켜지_않는다() {
+        // 면적은 지문에 넣지 않는다. 넣으면 배포 뒤 확정한 GH 공고가 원천이 그대로여도 모두 재확인 대상이 된다.
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);
-        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+        confirmSupply("GH:801");
         changeExclusiveArea();
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> (BigDecimal) row.get("announcement_exclusive_area"))
+        assertThat(lines("GH:801")).extracting(row -> (BigDecimal) row.get("exclusive_area"))
                 .usingElementComparator(BigDecimal::compareTo)
-                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.8"));
+                .containsExactly(new BigDecimal("33.71"), new BigDecimal("36.9"));
+        assertThat(canonicalRowCount("GH:801")).isZero();
         assertThat(jdbc.queryForObject("""
                 SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
                 """, Boolean.class)).isFalse();
@@ -453,10 +426,10 @@ class GhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
-    void 관리자가_PDF_보정을_한_공고는_원천_주택형이_바뀌어도_공급행_틀을_다시_쓰지_않는다() {
+    void 정본을_확정한_공고는_원천_세대수가_바뀌면_정본을_쓰지_않고_공급_재확인을_켠다() {
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);
-        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+        confirmSupply("GH:801");
         jdbc.update("""
                 UPDATE gh_announcement_source SET districts = replace(districts, '"supplyCount":"120"',
                     '"supplyCount":"90"') WHERE pbanc_no = '801'
@@ -464,18 +437,18 @@ class GhAnnouncementRefinementIntegrationTest {
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("winner_count"))
-                .containsExactly(120, 60);
+        assertThat(lines("GH:801")).extracting(row -> row.get("household_count")).containsExactly(90, 60);
+        assertThat(canonicalRowCount("GH:801")).isZero();
         assertThat(jdbc.queryForObject("""
                 SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
                 """, Boolean.class)).isTrue();
     }
 
     @Test
-    void 관리자가_공급행을_맡은_뒤_원천이_그대로면_공급_재확인을_켜지_않는다() {
+    void 정본을_확정한_뒤_원천이_그대로면_공급_재확인을_켜지_않는다() {
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);
-        jdbc.update("UPDATE announcements SET admin_updated_at = now() WHERE source_announcement_identifier = 'GH:801'");
+        confirmSupply("GH:801");
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
@@ -485,7 +458,7 @@ class GhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
-    void 관리자가_손대지_않은_공고는_원천_세대수가_바뀌면_틀을_원천에_맞춘다() {
+    void 확정_전_공고는_원천_세대수가_바뀌면_준비_줄을_원천에_맞추고_공급_재확인을_켜지_않는다() {
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);
         jdbc.update("""
@@ -495,8 +468,10 @@ class GhAnnouncementRefinementIntegrationTest {
 
         GhRefinementTestSupport.refineAll(refinement, sources);
 
-        assertThat(supplyRows("GH:801")).extracting(row -> row.get("winner_count"))
-                .containsExactly(90, 60);
+        assertThat(lines("GH:801")).extracting(row -> row.get("household_count")).containsExactly(90, 60);
+        assertThat(jdbc.queryForObject("""
+                SELECT supply_recheck_required FROM announcements WHERE source_announcement_identifier = 'GH:801'
+                """, Boolean.class)).isFalse();
     }
 
     private void changeSupplyCount() {
@@ -506,39 +481,27 @@ class GhAnnouncementRefinementIntegrationTest {
                 """);
     }
 
-    /** 공급행 표시 순서대로 공급표 칸의 "대상:수량 종류:수". */
-    private List<String> sheet(String identifier) {
+    /** 공고의 기관 준비 줄을 표시 순서대로. 단지는 줄의 공고 단지가 고른 제품 단지다. */
+    private List<Map<String, Object>> lines(String identifier) {
         return jdbc.queryForList("""
-                SELECT t.label || ':' || q.kind || ':' || q.household_count
-                FROM supply_rows r
-                JOIN announcements a ON a.id = r.announcement_id
-                JOIN supply_row_targets c ON c.supply_row_id = r.id
-                JOIN announcement_supply_targets t ON t.id = c.supply_target_id
-                JOIN supply_quota_members m ON m.supply_row_target_id = c.id
-                JOIN supply_quotas q ON q.id = m.supply_quota_id
-                WHERE a.source_announcement_identifier = ? ORDER BY r.display_order, c.display_order, q.kind
-                """, String.class, identifier);
+                SELECT l.id, l.source_line_key, l.housing_type_name, l.household_count, l.exclusive_area,
+                    l.announcement_complex_id, c.housing_complex_id
+                FROM agency_supply_lines l JOIN announcements a ON a.id = l.announcement_id
+                LEFT JOIN announcement_complexes c ON c.id = l.announcement_complex_id
+                WHERE a.source_announcement_identifier = ? ORDER BY l.display_order
+                """, identifier);
     }
 
-    private List<Long> cellIds(String identifier) {
-        return jdbc.queryForList("""
-                SELECT c.id FROM supply_row_targets c JOIN supply_rows r ON r.id = c.supply_row_id
-                JOIN announcements a ON a.id = r.announcement_id
-                WHERE a.source_announcement_identifier = ? ORDER BY c.id
+    private long canonicalRowCount(String identifier) {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM supply_rows r JOIN announcements a ON a.id = r.announcement_id
+                WHERE a.source_announcement_identifier = ?
                 """, Long.class, identifier);
     }
 
-    private List<Map<String, Object>> supplyRows(String identifier) {
-        return jdbc.queryForList("""
-                SELECT r.id, r.source_supply_row_identifier, r.source_housing_type_name,
-                    (SELECT sum(q.household_count) FROM supply_quotas q WHERE q.kind = 'WINNER' AND EXISTS (
-                        SELECT 1 FROM supply_quota_members m JOIN supply_row_targets c ON c.id = m.supply_row_target_id
-                        WHERE m.supply_quota_id = q.id AND c.supply_row_id = r.id))::int AS winner_count,
-                    r.housing_complex_id, r.housing_type_id, r.announcement_complex_id, r.announcement_exclusive_area,
-                    r.area_override, r.admin_modified
-                FROM supply_rows r JOIN announcements a ON a.id = r.announcement_id
-                WHERE a.source_announcement_identifier = ? ORDER BY r.display_order
-                """, identifier);
+    private void confirmSupply(String identifier) {
+        jdbc.update("UPDATE announcements SET supply_confirmed_at = now() WHERE source_announcement_identifier = ?",
+                identifier);
     }
 
     private long complex(String name, String roadAddress, String pnu, String provider, String supplyType) {

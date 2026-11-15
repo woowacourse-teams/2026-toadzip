@@ -260,6 +260,6 @@ class SeoPageServiceTest {
                 new com.toadzip.backend.announcement.dto.response.AgencyResponse(AgencyCode.LH, "한국토지주택공사"),
                 LocalDate.of(2026, 11, 9), LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 17), 6,
                 LocalDate.of(2027, 1, 20), 0, List.of(), 1, 60, "https://apply.lh.or.kr/171", List.of(), List.of(),
-                List.of(), List.of(row), null, List.of(), null);
+                List.of(), List.of(row), null, List.of(), null, true);
     }
 }

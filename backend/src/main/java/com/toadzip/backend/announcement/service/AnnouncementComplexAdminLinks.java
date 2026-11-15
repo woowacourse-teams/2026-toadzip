@@ -124,6 +124,32 @@ class AnnouncementComplexAdminLinks {
     }
 
     /**
+     * 이번 저장에서 관리자가 공고 단지의 주택형을 모두 단지 없이 두면 그 공고 단지의 단지 연결을 푼다(관리자 결정으로 남겨 정제가 다시
+     * 잇지 않는다). 저장 전에 단지가 있던 주택형이 하나라도 있던 공고 단지만 본다. 처음부터 단지 없던 주택형만 있는 공고 단지는 관리자가
+     * 비운 것이 아니라서 건드리지 않는다. announcementComplexIds는 {@link #ensure}가 정한 주택형 key별 공고 단지 ID다.
+     */
+    void unlinkEmptied(Announcement announcement, SupplySheetPlan plan, Map<String, Long> announcementComplexIds,
+            String actor) {
+        Set<Long> linkedBefore = plan.before().housingTypes().stream()
+                .filter(type -> type.housingComplexId() != null && type.announcementComplexId() != null)
+                .map(SupplySheetView.HousingType::announcementComplexId).collect(Collectors.toSet());
+        Map<Long, Boolean> anyLinkedType = new LinkedHashMap<>();
+        plan.after().housingTypes().forEach(type -> anyLinkedType.merge(announcementComplexIds.get(type.key()),
+                type.housingComplexId() != null, Boolean::logicalOr));
+        for (var target : announcementComplexes.findAllByAnnouncementOrderByIdAsc(announcement)) {
+            if (target.getHousingComplex() == null || !linkedBefore.contains(target.getId())
+                    || !Boolean.FALSE.equals(anyLinkedType.get(target.getId()))) {
+                continue;
+            }
+            String before = linkData(target, List.of());
+            if (target.unlinkByAdmin(actor, clock.instant())) {
+                changes.save(new AdminDataChange("ANNOUNCEMENT_COMPLEX", target.getId(), "UNLINK_BY_ADMIN", actor, before,
+                        linkData(target, List.of())));
+            }
+        }
+    }
+
+    /**
      * 관리자 등록·JSON 등록의 공급행이 가리킬 공고 단지. (공고, 단지명)의 공고 단지를 찾거나 만들고, 고른 단지가 있으면 그 단지로
      * 관리자 연결한다. 이미 다른 단지에 이어진 공고 단지면 거절한다.
      */

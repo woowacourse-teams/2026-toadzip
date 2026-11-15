@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementHousingComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
@@ -50,7 +52,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -65,7 +66,10 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -97,13 +101,10 @@ class AnnouncementQueryServiceTest {
     private AnnouncementAttachmentRepository announcementAttachmentRepository;
 
     @Mock
-    private SupplyRowRepository supplyRowRepository;
-
-    @Mock
     private AnnouncementHousingComplexRepository links;
 
     @Mock
-    private SupplySheets supplySheets;
+    private AnnouncementSupplies supplies;
 
     @Mock
     private RegionCodeResolver regionCodeResolver;
@@ -115,16 +116,25 @@ class AnnouncementQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(supplySheets.read(any(), any())).thenAnswer(invocation -> sheet.sheet());
+        lenient().when(supplies.read(anyCollection())).thenAnswer(invocation -> {
+            Collection<Announcement> announcements = invocation.getArgument(0);
+            Map<Long, AnnouncementSupplies.AnnouncementSupply> result = new LinkedHashMap<>();
+            announcements.forEach(announcement -> result.put(announcement.getId(),
+                    new AnnouncementSupplies.AnnouncementSupply(true, sheet.sheet(announcement.getId()))));
+            return result;
+        });
+        lenient().when(supplies.read(any(Announcement.class))).thenAnswer(invocation -> {
+            Announcement announcement = invocation.getArgument(0);
+            return new AnnouncementSupplies.AnnouncementSupply(true, sheet.sheet(announcement.getId()));
+        });
         announcementQueryService = new AnnouncementQueryService(
                 announcementRepository,
                 applicationScheduleRepository,
                 announcementSearchRepository,
                 announcementScheduleRepository,
                 announcementAttachmentRepository,
-                supplyRowRepository,
                 links,
-                supplySheets,
+                supplies,
                 new AnnouncementResponseMapper(regionCodeResolver, new AnnouncementApplicationStatusCalculator()),
                 announcementCursorCodec,
                 fixedClock(),
@@ -234,9 +244,7 @@ class AnnouncementQueryServiceTest {
                 any(AnnouncementSearchCondition.class), isNull(), isNull(), isNull(), isNull(),
                 eq(21), eq(AnnouncementSort.LATEST)
         )).thenReturn(sortedRows(List.of(correction, applying, beforeApplication, closed)));
-        when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(
-                correction.getId(), applying.getId(), beforeApplication.getId(), closed.getId()
-        ))).thenReturn(supplyRows);
+        supplyRows.forEach(sheet::add);
         // 지역·단지 수·대표 이미지는 공고↔단지 연결(공고 단지)로 정한다. 공급행이 가리키는 단지가 아니다.
         List<AnnouncementHousingComplex> correctionLinks = List.of(link(correction, seoulComplex),
                 link(correction, busanComplex), link(correction, unresolvedComplex));
@@ -378,8 +386,8 @@ class AnnouncementQueryServiceTest {
         assertFalse(secondPage.hasNext());
         assertNull(secondPage.nextCursor());
         assertEquals(first.getId(), secondPage.items().getFirst().announcementId());
-        verify(supplyRowRepository).findAllByAnnouncementIdIn(List.of(second.getId()));
-        verify(supplyRowRepository).findAllByAnnouncementIdIn(List.of(first.getId()));
+        verify(supplies).read(List.of(second));
+        verify(supplies).read(List.of(first));
     }
 
     @Test
@@ -393,9 +401,8 @@ class AnnouncementQueryServiceTest {
                 announcementSearchRepository,
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
-                mock(SupplyRowRepository.class),
                 mock(AnnouncementHousingComplexRepository.class),
-                mock(SupplySheets.class),
+                mock(AnnouncementSupplies.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
                 fixedClock(),
@@ -474,9 +481,8 @@ class AnnouncementQueryServiceTest {
         )).thenReturn(sortedRows(List.of(first, second)));
         when(announcementResponseMapper.toListItemResponses(
                 org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyMap(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.any(LocalDate.class)
@@ -508,9 +514,8 @@ class AnnouncementQueryServiceTest {
         );
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),
-                org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(java.util.Map.of()),
-                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(java.util.Map.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 mapperTodayCaptor.capture()
@@ -625,8 +630,7 @@ class AnnouncementQueryServiceTest {
                 .thenReturn(List.of(earlierSchedule, laterSchedule));
         when(announcementAttachmentRepository.findAllByAnnouncementIdIn(List.of(detail.getId())))
                 .thenReturn(List.of(earlierAttachment, laterAttachment));
-        when(supplyRowRepository.findAllByAnnouncementIdIn(List.of(detail.getId())))
-                .thenReturn(List.of(matchedRow, complexOnlyRow, unmatchedRow, housingTypeOnlyRow));
+        List.of(matchedRow, complexOnlyRow, unmatchedRow, housingTypeOnlyRow).forEach(sheet::add);
         List<AnnouncementHousingComplex> detailLinks = List.of(link(detail, complex));
         when(links.findAllByAnnouncementIdInOrderByAnnouncementIdAscHousingComplexIdAsc(List.of(detail.getId())))
                 .thenReturn(detailLinks);
@@ -931,7 +935,7 @@ class AnnouncementQueryServiceTest {
             String sourceIdentifier,
             int displayOrder
     ) {
-        return SupplyRow.create(
+        SupplyRow row = SupplyRow.create(
                 announcement,
                 housingComplex,
                 housingType,
@@ -943,6 +947,14 @@ class AnnouncementQueryServiceTest {
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
                 matchingFailureReason(housingComplex));
+        // 공급행의 단지는 공고 단지가 이은 단지다.
+        AnnouncementComplex announcementComplex = AnnouncementComplex.observe(announcement,
+                "원문 단지 " + sourceIdentifier, null, null);
+        if (housingComplex != null) {
+            announcementComplex.linkByAdmin(housingComplex, "test", Instant.parse("2026-01-01T00:00:00Z"));
+        }
+        row.fillAnnouncementComplex(announcementComplex);
+        return row;
     }
 
     private String roadAddress(String provinceCode) {
@@ -1033,9 +1045,8 @@ class AnnouncementQueryServiceTest {
                 announcementSearchRepository,
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
-                mock(SupplyRowRepository.class),
                 mock(AnnouncementHousingComplexRepository.class),
-                mock(SupplySheets.class),
+                mock(AnnouncementSupplies.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
                 fixedClock(),

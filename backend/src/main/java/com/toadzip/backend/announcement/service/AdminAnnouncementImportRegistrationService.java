@@ -98,6 +98,8 @@ public class AdminAnnouncementImportRegistrationService {
         ensureJsonSize(originalJson);
 
         Announcement created = createAnnouncement(request);
+        // 등록은 공고 공급표(정본)를 쓴다. 저장 전에 확정해 등록 직후 버전이 0으로 남게 한다.
+        created.confirmSupply();
         Announcement announcement = announcementRepository.save(created);
         List<SupplyRow> supplyRows = saveSupplyRows(request, announcement, selectedComplexes, registeredBy);
         int supplyTargetCount = writeSupplySheet(request, announcement, supplyRows);

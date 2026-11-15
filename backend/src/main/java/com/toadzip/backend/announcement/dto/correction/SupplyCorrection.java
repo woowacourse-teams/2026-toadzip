@@ -17,11 +17,16 @@ public final class SupplyCorrection {
 
     /**
      * 공급 보정 작업실. snapshotToken은 공급표·공고 단지 연결·원천 참고 행을 덮는다. applicationTypeNames는 이 공고 주택형의 신청형 이름(중복 없음),
-     * sourceReference는 LH·GH 공급 원천 행으로 저장하지 않고 수량 검산에만 쓴다.
+     * sourceReference는 기관(LH·GH) 준비 줄로 저장하지 않고 수량 검산에만 쓴다. supplyConfirmed는 공고 공급표(정본)를 확정했는지다.
+     * 확정 전 공고의 sheet는 비어 있고 공개 화면은 준비 데이터를 보인다.
      */
-    public record Workspace(String snapshotToken, long version, SupplySheetView sheet,
+    /** stagingToken은 확정 전 공고의 준비 데이터 토큰이고, 확정된 공고는 null이다. */
+    public record Workspace(String snapshotToken, String stagingToken, long version, SupplySheetView sheet,
             List<AnnouncementComplexView> announcementComplexes, List<String> applicationTypeNames,
-            List<SourceReference> sourceReference, List<String> warnings) { }
+            List<SourceReference> sourceReference, List<String> warnings, boolean supplyConfirmed) { }
+    /** '준비 데이터로 정본 시작' 요청. 두 토큰 모두 작업실이 준 값이다. */
+    public record StartFromStaging(@NotBlank @Size(max = 200) String snapshotToken,
+            @NotBlank @Size(max = 200) String stagingToken) { }
     /** linkMethod는 AUTO·ADMIN·MIGRATED, 연결이 없으면(휴지통 단지 포함) null이다. rowCount는 이 공고 단지의 주택형 수다. */
     public record AnnouncementComplexView(long id, String name, String roadAddress, Long housingComplexId, String housingComplexName,
             String linkMethod, int rowCount) { }

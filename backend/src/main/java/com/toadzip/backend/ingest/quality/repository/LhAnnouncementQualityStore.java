@@ -28,12 +28,14 @@ public class LhAnnouncementQualityStore {
         this.jdbc = jdbc;
     }
 
-    public LhAnnouncementQualityResponse snapshot(Instant observedAt, CollectionCoverage supplyCollectionCoverage,
-            CollectionCoverage detailCollectionCoverage, Set<String> unlinkedCatalogSourceKeys) {
+    /** connection·amounts는 공급 읽기 입구로 센 공고 공급행 값이다(정본 또는 준비 데이터). */
+    public LhAnnouncementQualityResponse snapshot(Instant observedAt, Connection connection, Coverage amounts,
+            CollectionCoverage supplyCollectionCoverage, CollectionCoverage detailCollectionCoverage,
+            Set<String> unlinkedCatalogSourceKeys) {
         return new LhAnnouncementQualityResponse(
                 observedAt,
-                connection(),
-                amounts(),
+                connection,
+                amounts,
                 schedules(),
                 supplyCollectionCoverage,
                 detailCollectionCoverage,
@@ -43,51 +45,6 @@ public class LhAnnouncementQualityStore {
                 preservedReasons(),
                 heldRequests()
         );
-    }
-
-    private Connection connection() {
-        Connection counts = jdbc.sql("""
-                SELECT COUNT(*) AS total,
-                       COUNT(*) FILTER (WHERE row.housing_complex_id IS NOT NULL) AS complex_linked,
-                       COUNT(*) FILTER (WHERE row.housing_type_id IS NOT NULL) AS type_linked
-                FROM supply_rows row
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                """).query((result, index) -> new Connection(
-                result.getLong("total"), result.getLong("complex_linked"), result.getLong("type_linked"), Map.of()
-        )).single();
-        Map<String, Long> reasons = new LinkedHashMap<>();
-        jdbc.sql("""
-                SELECT COALESCE(NULLIF(row.matching_failure_reason, ''), '미연결 사유 없음') AS reason,
-                       COUNT(*) AS row_count
-                FROM supply_rows row
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                  AND (row.housing_complex_id IS NULL OR row.housing_type_id IS NULL)
-                GROUP BY 1 ORDER BY row_count DESC, reason
-                """).query((result, index) -> {
-            reasons.put(result.getString("reason"), result.getLong("row_count"));
-            return true;
-        }).list();
-        return new Connection(counts.total(), counts.complexLinked(), counts.housingTypeLinked(), reasons);
-    }
-
-    private Coverage amounts() {
-        return jdbc.sql("""
-                SELECT COUNT(*) AS total,
-                       COUNT(*) FILTER (WHERE EXISTS (
-                           SELECT 1 FROM supply_row_targets cell
-                           JOIN lease_term_members member ON member.supply_row_target_id = cell.id
-                           JOIN lease_terms lease ON lease.id = member.lease_terms_id
-                           WHERE cell.supply_row_id = row.id
-                             AND lease.rental_deposit IS NOT NULL AND lease.monthly_rent IS NOT NULL
-                       )) AS fulfilled
-                FROM supply_rows row
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                """).query((result, index) -> new Coverage(
-                result.getLong("total"), result.getLong("fulfilled")
-        )).single();
     }
 
     private Schedule schedules() {

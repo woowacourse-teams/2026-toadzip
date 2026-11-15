@@ -2,7 +2,6 @@ package com.toadzip.backend.announcement.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.announcement.domain.AnnouncementHousingComplex;
 import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -17,10 +16,20 @@ import org.junit.jupiter.api.Test;
 
 /**
  * V20261115_01이 공고 단지 없이 단지만 가리키던 공급행(공고 20·48·54처럼 관리자 등록·JSON 등록으로 만든 행)에 공고 단지를 만들어
- * 잇는지 본다. 공고↔단지 연결은 공고 단지로만 정하므로(AnnouncementHousingComplex.LINKS), 옮긴 뒤에도 행이 가리키던 단지가
+ * 잇는지 본다. 공고↔단지 연결은 공고 단지로만 정하므로(그 시점의 AnnouncementHousingComplex.LINKS), 옮긴 뒤에도 행이 가리키던 단지가
  * 그 공고의 연결로 남아야 한다.
  */
 class SupplyRowAnnouncementComplexesMigrationTest {
+
+    /** 이 이행 시점의 연결 규칙. 지금 규칙은 V20261115_02가 더한 정본 확정 열을 읽는다. */
+    private static final String LINKS_AT_20261115_01 = """
+            SELECT DISTINCT link.announcement_id, link.housing_complex_id
+            FROM announcement_complexes link
+            WHERE link.housing_complex_id IS NOT NULL
+              AND (NOT EXISTS (SELECT 1 FROM supply_rows link_row WHERE link_row.announcement_id = link.announcement_id)
+                   OR EXISTS (SELECT 1 FROM supply_rows link_row
+                       WHERE link_row.announcement_complex_id = link.id AND link_row.admin_excluded = false))
+            """;
 
     @Test
     void 공고_단지_없는_공급행에_같은_공고_같은_단지명이면_공고_단지_하나를_만들어_행의_단지로_잇는다() throws Exception {
@@ -35,7 +44,7 @@ class SupplyRowAnnouncementComplexesMigrationTest {
                     assertThat(links(seed)).containsExactly("61 905");
                 }
 
-                Flyway flyway = migration(database).load();
+                Flyway flyway = migration(database).target("20261115.01").load();
                 assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
                 flyway.validate();
 
@@ -126,7 +135,7 @@ class SupplyRowAnnouncementComplexesMigrationTest {
 
     private static List<String> links(Statement query) throws SQLException {
         return rows(query, "SELECT announcement_id || ' ' || housing_complex_id FROM ("
-                + AnnouncementHousingComplex.LINKS + ") link ORDER BY announcement_id, housing_complex_id");
+                + LINKS_AT_20261115_01 + ") link ORDER BY announcement_id, housing_complex_id");
     }
 
     private static List<String> rows(Statement query, String sql) throws SQLException {

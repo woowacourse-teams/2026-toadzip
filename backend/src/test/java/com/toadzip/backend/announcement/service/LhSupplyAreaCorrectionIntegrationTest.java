@@ -273,7 +273,7 @@ class LhSupplyAreaCorrectionIntegrationTest {
         supplies(supply("059.9100A", "59.9100", "26"), supply("059.9300B", "59.9300", "15"));
         refinement.refineAll();
         assertThat(supplyCorrections.workspace(id).sheet()).isEqualTo(saved);
-        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+        assertThat(supplyConfirmed(id)).isTrue();
     }
 
     private SupplyCorrection.Request request(SupplyCorrection.Workspace workspace, SupplySheetInput sheet) {
@@ -319,11 +319,17 @@ class LhSupplyAreaCorrectionIntegrationTest {
         details(PAN_ID);
         supplies(rows);
         refinement.refineAll();
-        return announcements.findAllByLhPanIdOrderByIdAsc(PAN_ID).getFirst().getId();
+        long id = announcements.findAllByLhPanIdOrderByIdAsc(PAN_ID).getFirst().getId();
+        // 정제는 준비 줄만 쓴다. 보정은 준비 데이터로 시작한 공고 공급표(정본)를 고친다.
+        var workspace = supplyCorrections.workspace(id);
+        supplyCorrections.startFromStaging(id,
+                new SupplyCorrection.StartFromStaging(workspace.snapshotToken(), workspace.stagingToken()), "operator");
+        return id;
     }
 
-    private String supplyOwner(long id) {
-        return jdbc.sql("SELECT supply_owner FROM announcements WHERE id = :id").param("id", id).query(String.class).single();
+    private boolean supplyConfirmed(long id) {
+        return jdbc.sql("SELECT supply_confirmed_at IS NOT NULL FROM announcements WHERE id = :id").param("id", id)
+                .query(Boolean.class).single();
     }
 
     private void publish(String panId) {

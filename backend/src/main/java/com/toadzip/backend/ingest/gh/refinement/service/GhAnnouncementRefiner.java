@@ -25,8 +25,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * GH 원천 하나를 미확정 공고로 정제한다. 식별자는 원천 키(`GH:{공고 번호}`)다. 공개는 관리자가 PDF 보정에서 요청할 때만 하므로
  * 정제는 공개하지 않고 새 공고 알림도 쌓지 않는다. 공고문 PDF는 원천 첨부 식별자로 한 번만 붙이고, 첨부를 못 읽은 원천은 이미 붙인
- * 첨부를 그대로 둔다. 지구는 공고 단지로 맞추고 GH 제품 단지를 미리 고르며 주택형마다 공급행 틀을 만든다. 지구를 못 읽은 원천은
- * 공고 단지와 공급행을 그대로 둔다.
+ * 첨부를 그대로 둔다. 지구는 공고 단지로 맞추고 GH 제품 단지를 미리 고르며 주택형마다 기관 준비 줄을 쓴다. 지구를 못 읽은 원천은
+ * 공고 단지와 준비 줄을 그대로 둔다.
  */
 @Component
 @RequiredArgsConstructor
@@ -37,7 +37,7 @@ class GhAnnouncementRefiner {
     private final AnnouncementRepository announcements;
     private final SourceAttachmentWriter attachmentWriter;
     private final GhAnnouncementComplexLinker complexLinker;
-    private final GhSupplyRowWriter supplyRowWriter;
+    private final GhSupplyLineWriter supplyLineWriter;
     private final BoardRevisionLinker revisionLinker;
 
     BoardRefinementOutcome refine(GhAnnouncementSource source, GhComplexIndex index, BoardRefinementAttempt attempt) {
@@ -66,7 +66,7 @@ class GhAnnouncementRefiner {
         if (source.getDistricts() != null) {
             JsonNode districts = JSON.readTree(source.getDistricts());
             Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, districts, supplyType, index);
-            if (supplyRowWriter.write(announcement, source.getTitle(), districts, complexes)) {
+            if (supplyLineWriter.write(announcement, source.getTitle(), districts, complexes)) {
                 attempt.requireSupplyRecheck();
             }
         }

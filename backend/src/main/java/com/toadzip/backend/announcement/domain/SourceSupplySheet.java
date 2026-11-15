@@ -27,7 +27,8 @@ import java.util.Set;
  *   <li>임대조건: 금액이 하나라도 있는 칸마다 하나. 금액이 같아도 합치지 않는다.</li>
  * </ol>
  *
- * <p>공급행은 이미 저장된 것이어야 한다(공급행 ID로 쓴다). 주택형 값은 {@link SupplyRow#sourceSheetRow}이다.
+ * <p>저장된 공급행(정제 전 등록·JSON 등록)은 그 ID로 쓰고 주택형 값은 {@link SupplyRow#sourceSheetRow}이다. 저장하지 않은 주택형
+ * (기관 준비 데이터, {@link AgencySupplySheet})은 draft 주택형 값을 그대로 받는다.
  */
 public final class SourceSupplySheet {
 
@@ -37,8 +38,9 @@ public final class SourceSupplySheet {
     }
 
     public static SupplySheetDraft draft(List<Row> rows) {
-        List<Row> sorted = rows.stream().sorted(Comparator.comparingInt((Row row) -> row.row().getDisplayOrder())
-                .thenComparing(row -> row.row().getId())).toList();
+        List<Row> sorted = rows.stream().sorted(Comparator.comparingInt((Row row) -> row.housingType().displayOrder())
+                .thenComparing(row -> row.housingType().supplyRowId(), Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
         Targets targets = new Targets();
         Map<Row, Map<String, CellValues>> cellsByRow = new LinkedHashMap<>();
         for (Row row : sorted) {
@@ -60,7 +62,7 @@ public final class SourceSupplySheet {
         quotas.addAll(rests);
         List<Cell> cells = cellsByRow.values().stream().flatMap(row -> row.values().stream())
                 .map(cell -> new Cell(cell.key(), cell.housingTypeKey(), cell.targetKey(), cell.order())).toList();
-        return SupplySheetDraft.of(sorted.stream().map(row -> row.row().sourceSheetRow(housingTypeKey(row))).toList(),
+        return SupplySheetDraft.of(sorted.stream().map(Row::housingType).toList(),
                 targets.list(), cells, quotas, leases);
     }
 
@@ -101,27 +103,41 @@ public final class SourceSupplySheet {
             cells.put(everyone, CellValues.empty(cellKey(row, everyone), housingTypeKey(row), everyone, EVERYONE_ORDER));
         }
         return Optional.of(new Quota(SupplyQuota.Kind.WINNER, total - counted,
-                cells.values().stream().map(CellValues::key).toList(), row.row().isAdminModified()));
+                cells.values().stream().map(CellValues::key).toList(), row.adminModified()));
     }
 
     private static String housingTypeKey(Row row) {
-        return "row:" + row.row().getId();
+        return row.housingType().key();
     }
 
     private static String cellKey(Row row, String targetKey) {
-        return "cell:" + row.row().getId() + ":" + targetKey;
+        return "cell:" + row.housingType().key() + ":" + targetKey;
     }
 
     /**
-     * 저장된 공급행 하나와 그 공급: 모집수(모르면 null)와 대상들. 대상이 없으면 '전체' 칸 하나가 모집수를 갖는다.
+     * 공급행(주택형) 하나와 그 공급: 모집수(모르면 null)와 대상들. 대상이 없으면 '전체' 칸 하나가 모집수를 갖는다. adminModified는 행
+     * 모집수 묶음의 관리자 수정 표시다.
      */
-    public record Row(SupplyRow row, Integer householdCount, List<Target> targets) {
+    public record Row(SupplySheetDraft.HousingTypeRow housingType, boolean adminModified, Integer householdCount,
+            List<Target> targets) {
 
         public Row {
+            if (housingType == null) {
+                throw new IllegalArgumentException("주택형이 필요하다.");
+            }
+            targets = List.copyOf(targets);
+        }
+
+        /** 저장된 공급행 하나. 주택형 키는 `row:{공급행 ID}`다. */
+        public Row(SupplyRow saved, Integer householdCount, List<Target> targets) {
+            this(saved(saved).sourceSheetRow("row:" + saved.getId()), saved.isAdminModified(), householdCount, targets);
+        }
+
+        private static SupplyRow saved(SupplyRow row) {
             if (row == null || row.getId() == null) {
                 throw new IllegalArgumentException("저장된 공급행이 필요하다.");
             }
-            targets = List.copyOf(targets);
+            return row;
         }
     }
 

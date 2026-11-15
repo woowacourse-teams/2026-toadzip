@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
+import com.toadzip.backend.announcement.service.AnnouncementSupplies;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.fixture.MyHomeSourceViews;
 import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
@@ -48,7 +49,7 @@ import tools.jackson.databind.json.JsonMapper;
         MyHomeAnnouncementSourceFixtures.class,
         MyHomeAnnouncementSourceReader.class,
         LhAnnouncementCatalogSourceReader.class,
-        LhAnnouncementQualityStore.class, LhAnnouncementQualityService.class,
+        LhAnnouncementQualityStore.class, LhAnnouncementQualityService.class, AnnouncementSupplies.class,
         LhAnnouncementCollectedAtReader.class,
         LhAnnouncementCollectionProgressStore.class, LhAnnouncementCollectionCandidateResolver.class,
         LhAnnouncementCollectionPolicy.class,
@@ -82,10 +83,10 @@ class LhAnnouncementQualityStoreTest {
                     (application_end_date, application_start_date, name, original_url, posted_date,
                      provider, recruitment_type, source_announcement_identifier, status, supply_type,
                      view_count, winner_announcement_date, application_schedule_reviewed, lh_pan_id_reviewed,
-                     lh_reception_place_owned)
+                     lh_reception_place_owned, supply_confirmed_at)
                 VALUES (DATE '2026-10-02', DATE '2026-10-01', '품질 확인 공고', 'https://apply.lh.or.kr',
                         DATE '2026-09-28', 'LH', 'NEW', 'quality-test-announcement', 'ORIGINAL',
-                        'PERMANENT_RENTAL', 0, DATE '2026-10-10', true, false, false)
+                        'PERMANENT_RENTAL', 0, DATE '2026-10-10', true, false, false, CURRENT_TIMESTAMP)
                 RETURNING id
                 """).query(Long.class).single();
         long linkedRow = row(announcementId, "linked", null);
@@ -110,7 +111,8 @@ class LhAnnouncementQualityStoreTest {
 
         assertThat(result.connection().total()).isEqualTo(2);
         assertThat(result.connection().housingTypeLinked()).isZero();
-        assertThat(result.connection().unlinkedReasons()).containsEntry("주택형 후보 모호", 1L);
+        // 공급행은 미연결 사유를 두지 않는다(원천 매칭 실패 사유는 읽지 않는다).
+        assertThat(result.connection().unlinkedReasons()).containsEntry("미연결 사유 없음", 2L);
         assertThat(result.amounts()).isEqualTo(new LhAnnouncementQualityResponse.Coverage(2, 1));
         assertThat(result.schedules().reviewed()).isOne();
         assertThat(result.supplyCollection().collectedRequests()).isOne();

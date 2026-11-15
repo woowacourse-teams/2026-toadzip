@@ -19,6 +19,7 @@ import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexDetailRow;
+import com.toadzip.backend.housing.repository.CurrentAnnouncementRow;
 import com.toadzip.backend.housing.repository.ComplexSummaryCursor;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
@@ -38,6 +39,8 @@ public class HousingComplexQueryService {
 
     private final HousingComplexDetailMapper detailMapper;
 
+    private final ComplexCurrentSupplies currentSupplies;
+
     private final HousingComplexCursorCodec cursorCodec;
 
     private final HousingComplexSearchRequestNormalizer requestNormalizer;
@@ -50,6 +53,7 @@ public class HousingComplexQueryService {
             HousingComplexSummaryMapper summaryMapper,
             ComplexDetailQueryRepository detailRepository,
             HousingComplexDetailMapper detailMapper,
+            ComplexCurrentSupplies currentSupplies,
             HousingComplexSearchRequestNormalizer requestNormalizer,
             Clock clock
     ) {
@@ -57,6 +61,7 @@ public class HousingComplexQueryService {
         this.summaryMapper = summaryMapper;
         this.detailRepository = detailRepository;
         this.detailMapper = detailMapper;
+        this.currentSupplies = currentSupplies;
         this.cursorCodec = new HousingComplexCursorCodec();
         this.requestNormalizer = requestNormalizer;
         this.clock = clock;
@@ -68,7 +73,7 @@ public class HousingComplexQueryService {
             HousingComplexSearchRequestNormalizer requestNormalizer,
             Clock clock
     ) {
-        this(repository, summaryMapper, null, null, requestNormalizer, clock);
+        this(repository, summaryMapper, null, null, null, requestNormalizer, clock);
     }
 
     @Transactional(readOnly = true)
@@ -106,12 +111,14 @@ public class HousingComplexQueryService {
         ComplexDetailRow complex = detailRepository.findComplex(complexId)
                 .orElseThrow(HousingComplexNotFoundException::new);
         long resolvedId = complex.complexId();
+        List<CurrentAnnouncementRow> announcements = detailRepository.findCurrentAnnouncements(resolvedId, today);
+        ComplexCurrentSupplies.Result supplies = currentSupplies.read(resolvedId, announcements);
         return detailMapper.toResponse(
                 complex,
                 detailRepository.findHousingTypes(resolvedId),
-                detailRepository.findCurrentSupplyConditions(resolvedId, today),
-                detailRepository.findCurrentAnnouncements(resolvedId, today),
-                detailRepository.findCurrentAnnouncementTargets(resolvedId, today),
+                supplies.conditions(),
+                announcements,
+                supplies.targets(),
                 today
         );
     }

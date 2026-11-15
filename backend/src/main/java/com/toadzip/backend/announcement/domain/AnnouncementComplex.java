@@ -102,12 +102,15 @@ public class AnnouncementComplex {
         return true;
     }
 
-    /** 정제는 아직 연결이 없는 공고 단지만 연결한다. 이미 붙은 연결은 정제가 다시 계산하지 않는다. */
+    /**
+     * 정제는 아직 연결이 없는 공고 단지만 연결한다. 이미 붙은 연결은 정제가 다시 계산하지 않고, 관리자가 연결을 푼 공고 단지
+     * ({@link #unlinkByAdmin})도 다시 잇지 않는다.
+     */
     public boolean linkBySource(HousingComplex complex, ComplexLinkMethod method, String actor, Instant at) {
         if (method == ComplexLinkMethod.ADMIN) {
             throw new IllegalArgumentException("관리자 연결은 PDF 보정에서 정합니다.");
         }
-        if (housingComplex != null || complex == null) {
+        if (housingComplex != null || linkMethod == ComplexLinkMethod.ADMIN || complex == null) {
             return false;
         }
         housingComplex = complex;
@@ -130,6 +133,21 @@ public class AnnouncementComplex {
             return false;
         }
         housingComplex = complex;
+        linkMethod = ComplexLinkMethod.ADMIN;
+        linkedBy = actor;
+        linkedAt = at;
+        return true;
+    }
+
+    /**
+     * 관리자가 PDF·공급 보정에서 이 공고 단지의 모든 행을 단지 없이 저장했다. 연결을 풀고 관리자 결정(ADMIN)으로 남겨 정제가 다시 잇지
+     * 않게 한다. 바뀐 것이 있으면 true다.
+     */
+    public boolean unlinkByAdmin(String actor, Instant at) {
+        if (housingComplex == null && linkMethod == ComplexLinkMethod.ADMIN) {
+            return false;
+        }
+        housingComplex = null;
         linkMethod = ComplexLinkMethod.ADMIN;
         linkedBy = actor;
         linkedAt = at;

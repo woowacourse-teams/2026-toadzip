@@ -1,11 +1,17 @@
 package com.toadzip.backend.ingest.quality.service;
 
+import com.toadzip.backend.announcement.domain.SupplySheet;
+import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.service.AnnouncementSupplies;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectedAtReader;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
+import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Connection;
+import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Coverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import com.toadzip.backend.ingest.quality.repository.LhAnnouncementQualityStore;
 import java.time.Clock;
@@ -14,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -26,16 +33,21 @@ public class LhAnnouncementQualityService {
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final LhAnnouncementCollectedAtReader collectedAtReader;
     private final LhAnnouncementCollectionLinkRepository linkRepository;
+    private final AnnouncementRepository announcements;
+    private final AnnouncementSupplies supplies;
     private final Clock clock;
 
     public LhAnnouncementQualityService(LhAnnouncementQualityStore store,
             LhAnnouncementCollectionCandidateResolver candidateResolver,
             LhAnnouncementCollectedAtReader collectedAtReader,
-            LhAnnouncementCollectionLinkRepository linkRepository, Clock clock) {
+            LhAnnouncementCollectionLinkRepository linkRepository, AnnouncementRepository announcements,
+            AnnouncementSupplies supplies, Clock clock) {
         this.store = store;
         this.candidateResolver = candidateResolver;
         this.collectedAtReader = collectedAtReader;
         this.linkRepository = linkRepository;
+        this.announcements = announcements;
+        this.supplies = supplies;
         this.clock = clock;
     }
 
@@ -53,10 +65,47 @@ public class LhAnnouncementQualityService {
                 .filter(key -> !linkedKeys.contains(key))
                 .map(key -> key.substring(LhAnnouncementCollectionCandidateResolver.CATALOG_SOURCE_PREFIX.length()))
                 .collect(Collectors.toSet());
-        return store.snapshot(now,
+        List<SupplySheet> sheets = supplies.read(announcements.findAllByProviderAndAdminDeletedFalse(AgencyCode.LH))
+                .values().stream().map(AnnouncementSupplies.AnnouncementSupply::sheet).toList();
+        return store.snapshot(now, connection(sheets), amounts(sheets),
                 collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, requestHashes),
                 collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requestHashes),
                 unlinkedCatalogSourceKeys);
+    }
+
+    /**
+     * 공고 공급행(정본 또는 준비 데이터를 공급표로 바꾼 행)의 단지·주택타입 연결 수. 공급행에는 미연결 사유를 두지 않아 미연결 행은 모두
+     * '미연결 사유 없음'이다.
+     */
+    private static Connection connection(List<SupplySheet> sheets) {
+        long total = 0;
+        long complexLinked = 0;
+        long typeLinked = 0;
+        long unlinked = 0;
+        for (SupplySheet sheet : sheets) {
+            for (SupplySheet.Row row : sheet.rows()) {
+                total++;
+                complexLinked += row.complex() == null ? 0 : 1;
+                typeLinked += row.housingType() == null ? 0 : 1;
+                unlinked += row.complex() == null || row.housingType() == null ? 1 : 0;
+            }
+        }
+        return new Connection(total, complexLinked, typeLinked, unlinked == 0 ? Map.of() : Map.of("미연결 사유 없음", unlinked));
+    }
+
+    /** 보증금과 월세가 모두 있는 칸이 하나라도 있는 공급행 수. */
+    private static Coverage amounts(List<SupplySheet> sheets) {
+        long total = 0;
+        long fulfilled = 0;
+        for (SupplySheet sheet : sheets) {
+            for (SupplySheet.Row row : sheet.rows()) {
+                total++;
+                boolean priced = sheet.cells(row.id()).stream().map(sheet::lease).flatMap(Optional::stream)
+                        .anyMatch(lease -> lease.amounts().rentalDeposit() != null && lease.amounts().monthlyRent() != null);
+                fulfilled += priced ? 1 : 0;
+            }
+        }
+        return new Coverage(total, fulfilled);
     }
 
     private CollectionCoverage collectionCoverage(ExternalDataSource source, Set<String> requestHashes) {

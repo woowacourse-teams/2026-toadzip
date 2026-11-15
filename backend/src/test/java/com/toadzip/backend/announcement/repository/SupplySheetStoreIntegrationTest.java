@@ -57,8 +57,6 @@ class SupplySheetStoreIntegrationTest {
     void setUp() {
         fixtures = new NotificationFixtures(entities, jdbc);
         announcement = fixtures.announcement();
-        // 공급표 쓰기는 관리자 보정처럼 공고문이 주인인 공고를 기준으로 본다. 원천 소유 공고의 이름 규칙은 따로 확인한다.
-        announcement.takeSupplyFromDocument();
         housing = fixtures.complex("11140", "1114010100");
         type55 = HousingType.createFromMyHome(housing, UUID.randomUUID().toString(), "55A", new BigDecimal("55.1200"),
                 null);
@@ -69,9 +67,12 @@ class SupplySheetStoreIntegrationTest {
     }
 
     @Test
-    void 새_공급표를_쓰면_주택형_대상_칸_묶음_임대조건이_draft대로_저장된다() {
+    void 새_공급표를_쓰면_주택형_대상_칸_묶음_임대조건이_draft대로_저장되고_정본이_확정된다() {
+        assertThat(announcement.isSupplyConfirmed()).isFalse();
         SupplySheetStore.Saved saved = replace(sheet());
 
+        assertThat(jdbc.queryForObject("SELECT supply_confirmed_at IS NOT NULL FROM announcements WHERE id = ?",
+                Boolean.class, announcement.getId())).isTrue();
         assertThat(saved.housingTypes()).containsOnlyKeys("h1", "h2", "h3");
         assertThat(saved.cells()).containsOnlyKeys("c1", "c2", "c3", "c4", "c5");
         assertThat(rows("""
@@ -132,35 +133,6 @@ class SupplySheetStoreIntegrationTest {
         SupplyRow row = entities.find(SupplyRow.class, lhRow.getId());
         assertThat(row.getSourceHousingTypeName()).isEqualTo("26A");
         assertThat(row.getAnnouncementHousingTypeName()).isEqualTo("26A");
-    }
-
-    @Test
-    void 원천_소유_공고는_원천_주택형명과_같은_신청형_이름을_공고_표시명으로_적지_않아_공개_이름이_연결_주택형명으로_남는다() {
-        Announcement lhOwned = fixtures.announcement();
-        HousingType type26 = HousingType.createFromMyHome(housing, UUID.randomUUID().toString(), "26A",
-                new BigDecimal("26.3700"), null);
-        entities.persist(type26);
-        SupplyRow same = SupplyRow.create(lhOwned, housing, type26, "LH:26A(청년)", 0, "행복단지", "26A(청년)", null, null,
-                SupplyCategory.NEW_SUPPLY, null);
-        SupplyRow renamed = SupplyRow.create(lhOwned, housing, type26, "LH:26A(고령자)", 1, "행복단지", "26A(고령자)", null,
-                null, SupplyCategory.NEW_SUPPLY, null);
-        entities.persist(same);
-        entities.persist(renamed);
-        entities.flush();
-
-        store.replace(lhOwned, SupplySheetDraft.of(List.of(
-                new SupplySheetDraft.HousingTypeRow("a", same.getId(), null, housing.getId(), type26.getId(), "행복단지",
-                        "26A(청년)", null, null, null, null, SupplyCategory.NEW_SUPPLY, 0),
-                new SupplySheetDraft.HousingTypeRow("b", renamed.getId(), null, housing.getId(), type26.getId(), "행복단지",
-                        "26A 고령자", null, null, null, null, SupplyCategory.NEW_SUPPLY, 1)),
-                List.of(), List.of(), List.of(), List.of()));
-        entities.flush();
-        entities.clear();
-
-        SupplyRow sameRow = entities.find(SupplyRow.class, same.getId());
-        assertThat(sameRow.getAnnouncementHousingTypeName()).isNull();
-        assertThat(sameRow.displayHousingTypeName()).isEqualTo("26A");
-        assertThat(entities.find(SupplyRow.class, renamed.getId()).displayHousingTypeName()).isEqualTo("26A 고령자");
     }
 
     @Test

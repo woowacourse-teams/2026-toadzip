@@ -118,7 +118,7 @@ public class AdminHousingComplexManagementService {
                                 enumName(announcement.getRecruitmentType()), announcement.getPostedDate(),
                                 announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
                                 announcement.getWinnerAnnouncementDate(), announcement.getStatus().name(),
-                                announcement.origin().name(), announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name()))).toList();
+                                announcement.origin().name(), announcement.isSupplyConfirmed(), announcement.getReleaseStatus().name()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }

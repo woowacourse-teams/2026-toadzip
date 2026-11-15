@@ -9,7 +9,6 @@ import com.toadzip.backend.announcement.domain.SourceSupplySheet;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyQuota.Kind;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyRowTarget;
 import com.toadzip.backend.announcement.domain.SupplySheet;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft;
 import com.toadzip.backend.announcement.domain.SupplySheetDraft.Cell;
@@ -19,7 +18,6 @@ import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -29,7 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 공급표 쓰기(SupplySheetStore)로 저장한 공급표를 공개 응답과 신청자격 초안이 읽는 수(행 모집수, 칸만의 수, 함께 쓰는 수, 공고 합계)로
+ * 공급표 쓰기(SupplySheetStore)로 저장한 정본 공급표를 공급 읽기 입구(AnnouncementSupplies)로 공개 응답이 읽는 수(행 모집수, 칸만의 수, 함께 쓰는 수, 공고 합계)로
  * 읽는다. 정제·등록이 쓰는 규칙(SourceSupplySheet)으로 쓴 공급표와, 그 규칙이 만들지 않는 함께 쓰는 수량 묶음을 쓴 공급표를 함께 본다.
  */
 @SpringBootTest
@@ -38,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 class SupplySheetReadTest {
 
     @Autowired private EntityManager entities;
-    @Autowired private SupplySheets sheets;
+    @Autowired private AnnouncementSupplies supplies;
     @Autowired private SupplySheetStore store;
 
     @Test
@@ -50,7 +48,7 @@ class SupplySheetReadTest {
 
         SupplySheet sheet = read(announcement, row);
 
-        List<SupplyRowTarget> cells = sheet.cells(row.getId());
+        List<SupplySheet.Cell> cells = sheet.cells(row.getId());
         assertThat(labels(cells)).containsExactly("청년", "신혼부부");
         assertThat(sheet.rowCount(row.getId(), Kind.WINNER)).isEqualTo(10);
         assertThat(sheet.ownCount(cells.get(0), Kind.WINNER)).isEqualTo(3);
@@ -60,7 +58,7 @@ class SupplySheetReadTest {
         assertThat(sheet.lease(cells.get(1))).isEmpty();
         // 나머지 7은 두 대상이 함께 쓰는 행 모집수라 대상끼리 함께 쓰는 수로 보이지 않는다.
         assertThat(sheet.sharedInRow(cells.get(1), Kind.WINNER)).isEmpty();
-        assertThat(sheet.total(Kind.WINNER, id -> true)).isEqualTo(10);
+        assertThat(sheet.total(Kind.WINNER)).isEqualTo(10);
     }
 
     @Test
@@ -71,7 +69,7 @@ class SupplySheetReadTest {
 
         SupplySheet sheet = read(announcement, row);
 
-        List<SupplyRowTarget> cells = sheet.cells(row.getId());
+        List<SupplySheet.Cell> cells = sheet.cells(row.getId());
         assertThat(labels(cells)).containsExactly("청년", "전체");
         assertThat(sheet.ownCount(cells.get(0), Kind.WINNER)).isEqualTo(3);
         assertThat(sheet.rowCount(row.getId(), Kind.WINNER)).isEqualTo(10);
@@ -91,7 +89,7 @@ class SupplySheetReadTest {
         assertThat(sheet.ownCount(sheet.cells(plain.getId()).getFirst(), Kind.WINNER)).isEqualTo(8);
         assertThat(labels(sheet.cells(unknown.getId()))).containsExactly("전체");
         assertThat(sheet.rowCount(unknown.getId(), Kind.WINNER)).isNull();
-        assertThat(sheet.total(Kind.WINNER, id -> true)).isEqualTo(8);
+        assertThat(sheet.total(Kind.WINNER)).isEqualTo(8);
         // 모집수를 모르는 행에는 수량 묶음을 남기지 않아 공고 단위로 묶음을 더해도 모르는 수가 0으로 들지 않는다.
         assertThat(((Number) entities.createNativeQuery("SELECT count(*) FROM supply_quotas WHERE announcement_id = :id")
                 .setParameter("id", announcement.getId()).getSingleResult()).longValue()).isEqualTo(1);
@@ -120,7 +118,7 @@ class SupplySheetReadTest {
 
         SupplySheet sheet = read(announcement, row);
 
-        List<SupplyRowTarget> cells = sheet.cells(row.getId());
+        List<SupplySheet.Cell> cells = sheet.cells(row.getId());
         assertThat(sheet.sharedInRow(cells.get(0), Kind.RESERVE)).hasValueSatisfying(shared -> {
             assertThat(shared.count()).isEqualTo(20);
             assertThat(labels(shared.members())).containsExactly("청년(소득 없음)", "청년(소득 있음)");
@@ -142,11 +140,11 @@ class SupplySheetReadTest {
         SupplySheet sheet = read(announcement, first, second);
 
         assertThat(sheet.sharedAcrossRows(first.getId(), Kind.WINNER)).hasValueSatisfying(
-                quota -> assertThat(quota.getHouseholdCount()).isEqualTo(103));
-        assertThat(sheet.sharedAcrossRows(second.getId(), Kind.WINNER).map(quota -> quota.getId()))
-                .isEqualTo(sheet.sharedAcrossRows(first.getId(), Kind.WINNER).map(quota -> quota.getId()));
+                quota -> assertThat(quota.count()).isEqualTo(103));
+        assertThat(sheet.sharedAcrossRows(second.getId(), Kind.WINNER).map(SupplySheet.Quota::id))
+                .isEqualTo(sheet.sharedAcrossRows(first.getId(), Kind.WINNER).map(SupplySheet.Quota::id));
         assertThat(sheet.rowCount(first.getId(), Kind.WINNER)).isNull();
-        assertThat(sheet.total(Kind.WINNER, id -> true)).isEqualTo(103);
+        assertThat(sheet.total(Kind.WINNER)).isEqualTo(103);
     }
 
     @Test
@@ -161,7 +159,7 @@ class SupplySheetReadTest {
 
         SupplySheet sheet = read(announcement, row);
 
-        List<SupplyRowTarget> cells = sheet.cells(row.getId());
+        List<SupplySheet.Cell> cells = sheet.cells(row.getId());
         assertThat(sheet.sharedInRow(cells.get(0), Kind.WINNER)).hasValueSatisfying(shared -> {
             assertThat(shared.count()).isEqualTo(10);
             assertThat(labels(shared.members())).containsExactly("청년", "대학생");
@@ -177,7 +175,7 @@ class SupplySheetReadTest {
         SupplyRow row = row(announcement, 0);
         writeSource(announcement, new SourceSupplySheet.Row(row, 10, List.of(target("청년", 3, null, null, 0),
                 target("신혼부부", 2, null, null, 1))));
-        List<Long> before = read(announcement, row).cells(row.getId()).stream().map(SupplyRowTarget::getId).toList();
+        List<Long> before = read(announcement, row).cells(row.getId()).stream().map(SupplySheet.Cell::id).toList();
 
         SupplyRow reloaded = entities.find(SupplyRow.class, row.getId());
         writeSource(entities.find(Announcement.class, announcement.getId()), new SourceSupplySheet.Row(reloaded, 12,
@@ -185,7 +183,7 @@ class SupplySheetReadTest {
                         target("고령자", 1, null, null, 2))));
         SupplySheet sheet = read(announcement, row);
 
-        List<Long> after = sheet.cells(row.getId()).stream().map(SupplyRowTarget::getId).toList();
+        List<Long> after = sheet.cells(row.getId()).stream().map(SupplySheet.Cell::id).toList();
         assertThat(after).hasSize(3).startsWith(before.toArray(Long[]::new));
         assertThat(after.get(2)).isNotNull().isNotIn(before);
         assertThat(sheet.rowCount(row.getId(), Kind.WINNER)).isEqualTo(12);
@@ -198,11 +196,15 @@ class SupplySheetReadTest {
     private SupplySheet read(Announcement announcement, SupplyRow... rows) {
         entities.flush();
         entities.clear();
-        return sheets.read(List.of(announcement.getId()), Arrays.stream(rows).map(SupplyRow::getId).toList());
+        var supply = supplies.read(entities.find(Announcement.class, announcement.getId()));
+        assertThat(supply.confirmed()).isTrue();
+        assertThat(supply.sheet().rows()).extracting(SupplySheet.Row::id)
+                .containsExactly(java.util.Arrays.stream(rows).map(SupplyRow::getId).toArray(Long[]::new));
+        return supply.sheet();
     }
 
-    private static List<String> labels(List<SupplyRowTarget> cells) {
-        return cells.stream().map(cell -> cell.getTarget().getLabel()).toList();
+    private static List<String> labels(List<SupplySheet.Cell> cells) {
+        return cells.stream().map(SupplySheet.Cell::label).toList();
     }
 
     private static SourceSupplySheet.Target target(String label, Integer winner, Integer reserve, String deposit,

@@ -31,6 +31,9 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
 
     Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
 
+    /** 기관의 휴지통이 아닌 공고(품질 패널). */
+    List<Announcement> findAllByProviderAndAdminDeletedFalse(AgencyCode provider);
+
     /** 같은 LH 공고 ID의 공고. 휴지통이 아닌 가장 작은 ID가 LH 공고 정제를 이어받는다. */
     List<Announcement> findAllByLhPanIdOrderByIdAsc(String lhPanId);
 

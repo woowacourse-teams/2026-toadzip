@@ -59,6 +59,15 @@ public class SupplyCorrectionController {
         }
     }
 
+    /** 정본을 확정하지 않은 공고의 기관 준비 데이터를 공고 공급표(정본)로 복사해 확정한다. */
+    @PostMapping("/start-from-staging")
+    public ApiResponse<SupplyCorrection.Workspace> startFromStaging(@PathVariable long id,
+            @Valid @RequestBody SupplyCorrection.StartFromStaging request, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.startFromStaging(id, request, principal.getName()));
+        }
+    }
+
     @PostMapping
     public ApiResponse<SupplyCorrection.Applied> apply(@PathVariable long id,
             @Valid @RequestBody SupplyCorrection.Apply request, Principal principal) {

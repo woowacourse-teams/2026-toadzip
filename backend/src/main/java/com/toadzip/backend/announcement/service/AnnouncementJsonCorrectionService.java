@@ -112,7 +112,7 @@ public class AnnouncementJsonCorrectionService {
         if (!plan.preview().fields().isEmpty()) {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
         }
-        announcement.recordAdminSupplyChange();
+        announcement.recordAdminDocumentReview();
         writeEvents(announcement, plan.preview().schedules());
         writeAttachments(announcement, plan.preview().attachments());
         if (plan.preview().publishes()) {
@@ -138,11 +138,12 @@ public class AnnouncementJsonCorrectionService {
     }
 
     /**
-     * 공고문과 지금 값이 같다고 확인한 보정. 값은 쓰지 않지만 공고문으로 확인한 것은 적용과 같다: 공급정보를 공고문 소유로 바꾸고
-     * 재확인 표시를 지우며, 남은 정제·보강 실패를 해결하고, '변경 없음 확인' 이력을 한 건 남긴다. 그래야 같은 공고가 다시 확인 대상으로 돌아오지 않는다.
+     * 공고문과 지금 값이 같다고 확인한 보정. 값은 쓰지 않지만 공고문으로 확인한 것은 적용과 같다: 확정한 공고는 재확인 표시를 지우고,
+     * 남은 정제·보강 실패를 해결하고, '변경 없음 확인' 이력을 한 건 남긴다. 그래야 같은 공고가 다시 확인 대상으로 돌아오지 않는다.
+     * 확정 전 공고는 공급표가 비어 있어 같다고 확인해도 확정하지 않는다(준비 데이터가 계속 보인다).
      */
     private Workspace confirmUnchanged(Announcement announcement, long id, Prepared plan, Request request, String actor) {
-        announcement.recordAdminSupplyChange();
+        announcement.recordAdminDocumentReview();
         announcements.flush();
         var after = workspace(id);
         var audit = new LinkedHashMap<String, Object>();

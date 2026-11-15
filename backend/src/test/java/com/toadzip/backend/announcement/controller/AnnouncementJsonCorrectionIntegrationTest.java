@@ -8,8 +8,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
@@ -17,6 +19,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
@@ -142,7 +145,7 @@ class AnnouncementJsonCorrectionIntegrationTest {
     void 바뀐_것이_없는_PDF_보정은_거절하지_않고_값은_그대로_둔_채_공고문으로_확인한_것으로_남긴다() throws Exception {
         var announcement = fixture();
         long id = announcement.getId();
-        jdbc.update("UPDATE announcements SET supply_owner = 'LH_SOURCE', supply_recheck_required = true WHERE id = ?", id);
+        jdbc.update("UPDATE announcements SET supply_recheck_required = true WHERE id = ?", id);
         var request = request(id);
         ((ArrayNode) request.path("fields")).removeAll();
 
@@ -151,12 +154,42 @@ class AnnouncementJsonCorrectionIntegrationTest {
         apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.detail.data.name").value(announcement.getName()));
 
-        assertThat(jdbc.queryForMap("SELECT name, supply_owner, supply_recheck_required FROM announcements WHERE id = ?", id))
-                .containsEntry("name", announcement.getName()).containsEntry("supply_owner", "ANNOUNCEMENT_DOCUMENT")
+        // 정본을 확정한 공고를 공고문으로 확인했으니 공급 재확인 표시를 끈다.
+        assertThat(jdbc.queryForMap("SELECT name, supply_confirmed_at IS NOT NULL AS confirmed, supply_recheck_required"
+                + " FROM announcements WHERE id = ?", id))
+                .containsEntry("name", announcement.getName()).containsEntry("confirmed", true)
                 .containsEntry("supply_recheck_required", false);
         assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id = ?", String.class, id))
                 .containsExactly("CONFIRM_FROM_PDF");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_supply_corrections WHERE announcement_id = ?", Long.class, id))
+                .isZero();
+    }
+
+    @Test
+    void 확정_전_공고는_공급표_없이_기본정보만_적용하거나_변경_없음을_확인해도_확정하지_않고_준비_데이터를_보인다() throws Exception {
+        var announcement = new NotificationFixtures(entities, jdbc).announcement();
+        var complex = AnnouncementComplex.observe(announcement, "행복단지", null, null);
+        entities.persist(complex);
+        entities.persist(AgencySupplyLine.create(announcement, AgencyCode.LH, new AgencySupplyLine.Values("LH:1", 0,
+                complex, "행복단지", "26A", null, null, null, 7, null, null, null, SupplyCategory.NEW_SUPPLY)));
+        entities.flush();
+        long id = announcement.getId();
+
+        var named = request(id);
+        assertThat(named.at("/correction/sheet/housingTypes")).isEmpty();
+        apply(id, named, preview(id, named).path("confirmationToken").asText()).andExpect(status().isOk());
+        var unchanged = request(id);
+        ((ArrayNode) unchanged.path("fields")).removeAll();
+        apply(id, unchanged, preview(id, unchanged).path("confirmationToken").asText()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.detail.summary.announcement.supplyConfirmed").value(false));
+        entities.flush(); entities.clear();
+
+        // 확정하지 않았으니 공개 조회(AnnouncementSupplies)는 계속 준비 줄을 보인다.
+        assertThat(jdbc.queryForMap("SELECT name, supply_confirmed_at FROM announcements WHERE id = ?", id))
+                .containsEntry("name", "JSON으로 확인한 공고").containsEntry("supply_confirmed_at", null);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agency_supply_lines WHERE announcement_id = ?", Long.class, id))
+                .isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_rows WHERE announcement_id = ?", Long.class, id))
                 .isZero();
     }
 
@@ -514,11 +547,8 @@ class AnnouncementJsonCorrectionIntegrationTest {
         request.withArray("schedules").addObject().put("inputIndex", 0).put("existingId", event.getId());
         request.withArray("attachments").addObject().put("inputIndex", 0).put("existingId", attachment.getId());
         var preview = preview(announcement.getId(), request);
-        assertThat(supplyOwner(announcement.getId())).isEqualTo("LH_SOURCE");
         apply(announcement.getId(), request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
         entities.flush(); entities.clear();
-        // PDF 보정은 공급행을 고치지 않아도 공고문으로 확인한 것이므로 공고문 소유가 된다(마이그레이션 백필과 같은 기준).
-        assertThat(supplyOwner(announcement.getId())).isEqualTo("ANNOUNCEMENT_DOCUMENT");
         var storedEvent = entities.find(AnnouncementSchedule.class, event.getId());
         var storedAttachment = entities.find(AnnouncementAttachment.class,
                 attachment.getId());
@@ -681,7 +711,4 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .content(body.toString()));
     }
 
-    private String supplyOwner(long id) {
-        return jdbc.queryForObject("SELECT supply_owner FROM announcements WHERE id = ?", String.class, id);
-    }
 }

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -46,6 +48,10 @@ class HousingComplexDetailQueryTest {
 
     private ComplexDetailQueryRepository detailRepository;
 
+    private List<CurrentSupplyConditionRow> conditions = List.of();
+
+    private List<CurrentAnnouncementTargetRow> targets = List.of();
+
     private HousingComplexQueryService service;
 
     @BeforeEach
@@ -61,12 +67,16 @@ class HousingComplexDetailQueryTest {
         };
         HousingComplexCodeMapper codeMapper = new HousingComplexCodeMapper();
         HousingComplexDetailMapper detailMapper = new HousingComplexDetailMapper(codeMapper, regionCodeResolver);
+        ComplexCurrentSupplies currentSupplies = mock(ComplexCurrentSupplies.class);
+        when(currentSupplies.read(eq(COMPLEX_ID), anyList()))
+                .thenAnswer(invocation -> new ComplexCurrentSupplies.Result(conditions, targets));
         RegionCodeResolver noOpSearchRegionCodeResolver = (provinceCode, cityCountyDistrictCode) -> Optional.empty();
         service = new HousingComplexQueryService(
                 summaryRepository,
                 summaryMapper,
                 detailRepository,
                 detailMapper,
+                currentSupplies,
                 new HousingComplexSearchRequestNormalizer(noOpSearchRegionCodeResolver, CLOCK),
                 CLOCK
         );
@@ -226,7 +236,7 @@ class HousingComplexDetailQueryTest {
 
     @Test
     void 소수_금액은_longValueExact_변환에_실패한다() {
-        when(detailRepository.findCurrentSupplyConditions(COMPLEX_ID, TODAY)).thenReturn(List.of(
+        conditions = List.of(
                 new CurrentSupplyConditionRow(
                         201L,
                         301L,
@@ -238,7 +248,7 @@ class HousingComplexDetailQueryTest {
                         null,
                         TODAY
                 )
-        ));
+        );
 
         assertThrows(ArithmeticException.class, () -> service.getComplex(COMPLEX_ID));
     }
@@ -349,7 +359,7 @@ class HousingComplexDetailQueryTest {
                         null, null, null, null, null, null
                 )
         ));
-        when(detailRepository.findCurrentSupplyConditions(COMPLEX_ID, TODAY)).thenReturn(List.of(
+        conditions = List.of(
                 new CurrentSupplyConditionRow(
                         202L,
                         302L,
@@ -383,7 +393,7 @@ class HousingComplexDetailQueryTest {
                         null,
                         TODAY
                 )
-        ));
+        );
         when(detailRepository.findCurrentAnnouncements(COMPLEX_ID, TODAY)).thenReturn(List.of(
                 new CurrentAnnouncementRow(
                         202L,
@@ -408,11 +418,11 @@ class HousingComplexDetailQueryTest {
                         TODAY
                 )
         ));
-        when(detailRepository.findCurrentAnnouncementTargets(COMPLEX_ID, TODAY)).thenReturn(List.of(
+        targets = List.of(
                 new CurrentAnnouncementTargetRow(202L, 302L, 403L, "청년"),
                 new CurrentAnnouncementTargetRow(202L, 303L, 404L, "신혼부부"),
                 new CurrentAnnouncementTargetRow(201L, 301L, 401L, "대학생")
-        ));
+        );
     }
 
     private ComplexDetailRow complexRow(

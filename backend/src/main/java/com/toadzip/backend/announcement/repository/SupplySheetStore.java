@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
  * 임대조건은 JdbcClient로 정한 순서대로 쓴다. Hibernate는 flush에서 삽입을 삭제보다 먼저 보내 "칸 하나에 임대조건 하나" 유일 제약에
  * 걸리기 때문이다.
  *
- * <p>정제·등록은 원천 식별자를 가진 공급행을 먼저 만들어 저장하고 그 ID를 draft에 실어 부른다. 행을 새로 만드는 것은 부르는 쪽이지만,
+ * <p>등록은 원천 식별자를 가진 공급행을 먼저 만들어 저장하고 그 ID를 draft에 실어 부른다. 행을 새로 만드는 것은 부르는 쪽이지만,
  * 칸·묶음·임대조건과 draft에 없는 공급행의 삭제는 여기서만 한다. 공급행을 지우면 그 칸이 cascade로 지워져 묶음·임대조건 멤버가
  * 빠지므로, 공급행을 직접 지우는 쪽은 같은 트랜잭션에서 바로 이 메서드로 공고의 묶음·임대조건을 다시 써야 한다.
  *
@@ -40,6 +40,9 @@ import org.springframework.stereotype.Component;
  * 수량 묶음과 임대조건은 공고 단위로 지우고 다시 넣는다.
  *
  * <p>JDBC로 쓰므로 같은 영속성 컨텍스트에 이미 읽어 둔 공급표 엔티티(공급대상·칸·묶음·임대조건)는 낡는다. 쓴 뒤 공급표를 다시 읽으려면 영속성 컨텍스트를 비우고 읽는다.
+ *
+ * <p>공급표를 쓰면 공고의 정본이 확정된다({@link Announcement#confirmSupply}). 그 뒤 공개·관리 조회는 기관 준비 데이터 대신 이 공급표를
+ * 읽는다. 공급표를 쓰는 곳은 관리자 등록·JSON 등록·작업실·PDF 보정 적용·'준비 데이터로 정본 시작'이고, 정제는 쓰지 않는다.
  *
  * <p>{@code @Repository}의 예외 변환을 받지 않게 {@code @Component}로 둔다. 다른 공고의 공급행 거부는 IllegalArgumentException 그대로 전한다.
  */
@@ -58,6 +61,7 @@ public class SupplySheetStore {
         long announcementId = announcement.getId();
         // 같은 공고를 함께 쓰면 자연 키로 찾지 못한 주택형이 두 번 생긴다. 공고 행을 잠가 차례로 쓴다.
         jdbc.sql("SELECT 1 FROM announcements WHERE id = ? FOR NO KEY UPDATE").param(announcementId).query().singleRow();
+        announcement.confirmSupply();
         Rows rows = writeRows(announcement, draft.housingTypes());
         entities.flush();
         Map<String, Long> targetIds = upsertTargets(announcementId, draft.targets());

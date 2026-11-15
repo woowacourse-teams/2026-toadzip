@@ -10,9 +10,8 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.LeaseTerms;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
-import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyRowTarget;
 import com.toadzip.backend.announcement.domain.SupplySheet;
+import com.toadzip.backend.announcement.service.AnnouncementSupplies.AnnouncementSupply;
 import com.toadzip.backend.announcement.dto.response.AgencyResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
@@ -32,8 +31,6 @@ import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -54,23 +51,23 @@ final class AnnouncementResponseMapper {
         this.applicationStatusCalculator = applicationStatusCalculator;
     }
 
-    /** linkedComplexes는 공고별 연결 단지(공고↔단지 연결 규칙)다. 지역·단지 수·대표 이미지는 연결 단지로 정한다. */
+    /**
+     * linkedComplexes는 공고별 연결 단지(공고↔단지 연결 규칙)다. 지역·단지 수·대표 이미지는 연결 단지로 정한다. supplies는 공고별 공급
+     * ({@link AnnouncementSupplies})이고, 정본을 확정하기 전 공고는 준비 데이터를 같은 모양으로 보인다.
+     */
     List<AnnouncementListItemResponse> toListItemResponses(
             List<Announcement> announcements,
-            List<SupplyRow> supplyRows,
+            Map<Long, AnnouncementSupply> supplies,
             Map<Long, List<HousingComplex>> linkedComplexes,
-            SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             List<AnnouncementSchedule> schedules,
             LocalDate today
     ) {
-        Map<Long, List<SupplyRow>> rowsByAnnouncementId = groupRowsByAnnouncementId(supplyRows);
         return announcements.stream()
                 .map(announcement -> toListItem(
                         announcement,
-                        rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
+                        supplies.get(announcement.getId()),
                         linkedComplexes.getOrDefault(announcement.getId(), List.of()),
-                        sheet,
                         applicationSchedules.stream().filter(schedule ->
                                 schedule.getAnnouncement().getId().equals(announcement.getId())).toList(),
                         resultAnnouncementDate(announcement, schedules),
@@ -83,14 +80,13 @@ final class AnnouncementResponseMapper {
             Announcement announcement,
             List<AnnouncementSchedule> schedules,
             List<AnnouncementAttachment> attachments,
-            List<SupplyRow> supplyRows,
+            AnnouncementSupply supply,
             List<HousingComplex> linkedComplexes,
-            SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate today
     ) {
-        ListAggregate aggregate = aggregate(supplyRows, linkedComplexes, sheet);
-        SupplyComposition supplyComposition = composeSupplyRows(supplyRows, sheet);
+        ListAggregate aggregate = aggregate(linkedComplexes, supply.sheet());
+        SupplyComposition supplyComposition = composeSupplyRows(supply.sheet());
         return new AnnouncementDetailResponse(
                 announcement.getId(),
                 announcement.getStatus(),
@@ -120,32 +116,20 @@ final class AnnouncementResponseMapper {
                         announcement.getPredictedCompetitionRate()
                 ),
                 applicationSchedules.stream().map(this::applicationScheduleResponse).toList(),
-                revisionResponse(announcement)
+                revisionResponse(announcement),
+                supply.confirmed()
         );
-    }
-
-    private Map<Long, List<SupplyRow>> groupRowsByAnnouncementId(List<SupplyRow> supplyRows) {
-        Map<Long, List<SupplyRow>> rowsByAnnouncementId = new LinkedHashMap<>();
-        for (SupplyRow supplyRow : supplyRows) {
-            if (supplyRow.isAdminExcluded()) { continue; }
-            rowsByAnnouncementId.computeIfAbsent(
-                    supplyRow.getAnnouncement().getId(),
-                    ignored -> new ArrayList<>()
-            ).add(supplyRow);
-        }
-        return rowsByAnnouncementId;
     }
 
     private AnnouncementListItemResponse toListItem(
             Announcement announcement,
-            List<SupplyRow> supplyRows,
+            AnnouncementSupply supply,
             List<HousingComplex> linkedComplexes,
-            SupplySheet sheet,
             List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate resultAnnouncementDate,
             LocalDate today
     ) {
-        ListAggregate aggregate = aggregate(supplyRows, linkedComplexes, sheet);
+        ListAggregate aggregate = aggregate(linkedComplexes, supply.sheet());
         LocalDate start = announcement.getApplicationStartDate();
         LocalDate end = announcement.getApplicationEndDate();
         if (announcement.isApplicationScheduleReviewed()) {
@@ -173,7 +157,8 @@ final class AnnouncementResponseMapper {
                 announcement.getActualCompetitionRate(),
                 announcement.getPredictedCompetitionRate(),
                 aggregate.thumbnailImageUrl(),
-                applicationSchedules.stream().map(this::applicationScheduleResponse).toList()
+                applicationSchedules.stream().map(this::applicationScheduleResponse).toList(),
+                supply.confirmed()
         );
     }
 
@@ -248,45 +233,42 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyComposition composeSupplyRows(List<SupplyRow> supplyRows, SupplySheet sheet) {
+    private SupplyComposition composeSupplyRows(SupplySheet sheet) {
         List<SupplyRowResponse> responses = new ArrayList<>();
         Set<String> targets = new LinkedHashSet<>();
-        for (SupplyRow supplyRow : supplyRows) {
-            if (supplyRow.isAdminExcluded()) { continue; }
+        for (SupplySheet.Row row : sheet.rows()) {
             // 대상 구분이 없는 표의 '전체' 칸은 대상이 아니다. 금액이나 따로 센 수가 있을 때만 그 값을 보이려고 남긴다.
-            List<SupplyRowTarget> cells = sheet.cells(supplyRow.getId()).stream()
-                    .filter(cell -> !cell.getTarget().everyone() || carriesValues(cell, sheet))
+            List<SupplySheet.Cell> cells = sheet.cells(row.id()).stream()
+                    .filter(cell -> !cell.everyone() || carriesValues(cell, sheet))
                     .toList();
             List<SupplyTargetResponse> targetResponses = cells.stream()
                     .map(cell -> supplyTargetResponse(cell, sheet))
                     .toList();
-            responses.add(supplyRowResponse(supplyRow, sheet, targetResponses));
-            cells.stream().filter(cell -> !cell.getTarget().everyone())
-                    .map(cell -> cell.getTarget().getLabel()).forEach(targets::add);
+            responses.add(supplyRowResponse(row, sheet, targetResponses));
+            cells.stream().filter(cell -> !cell.everyone()).map(SupplySheet.Cell::label).forEach(targets::add);
         }
         return new SupplyComposition(List.copyOf(responses), List.copyOf(targets));
     }
 
     private SupplyRowResponse supplyRowResponse(
-            SupplyRow supplyRow,
+            SupplySheet.Row row,
             SupplySheet sheet,
             List<SupplyTargetResponse> targetResponses
     ) {
         return new SupplyRowResponse(
-                supplyRow.getId(),
-                supplyRow.getSourceComplexName(),
-                supplyRow.getSourceHousingTypeName(),
-                supplyComplexResponse(supplyRow.getHousingComplex()),
-                housingTypeResponse(supplyRow.getHousingType()),
-                supplyRow.getExpectedMoveInMonth(),
-                supplyRow.getSupplyCategory().toSupplyType(),
-                sheet.rowCount(supplyRow.getId(), SupplyQuota.Kind.WINNER),
+                row.id(),
+                row.sourceComplexName(),
+                row.sourceHousingTypeName(),
+                supplyComplexResponse(row.complex()),
+                housingTypeResponse(row.housingType()),
+                row.expectedMoveInMonth(),
+                row.supplyCategory().toSupplyType(),
+                sheet.rowCount(row.id(), SupplyQuota.Kind.WINNER),
                 targetResponses,
-                sheet.sharedAcrossRows(supplyRow.getId(), SupplyQuota.Kind.WINNER)
-                        .map(quota -> new SupplyRowResponse.SharedRecruitment(quota.getId(), quota.getHouseholdCount()))
+                sheet.sharedAcrossRows(row.id(), SupplyQuota.Kind.WINNER)
+                        .map(quota -> new SupplyRowResponse.SharedRecruitment(quota.id(), quota.count()))
                         .orElse(null),
-                supplyRow.effectiveExclusiveArea(), supplyRow.effectiveSupplyArea(), supplyRow.isAdminModified(),
-                supplyRow.displayHousingTypeName()
+                row.exclusiveArea(), row.supplyArea(), row.adminModified(), row.displayTypeName()
         );
     }
 
@@ -317,34 +299,34 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyTargetResponse supplyTargetResponse(SupplyRowTarget cell, SupplySheet sheet) {
-        LeaseTerms.Amounts amounts = sheet.lease(cell).map(LeaseTerms::amounts)
+    private SupplyTargetResponse supplyTargetResponse(SupplySheet.Cell cell, SupplySheet sheet) {
+        LeaseTerms.Amounts amounts = sheet.lease(cell).map(SupplySheet.Lease::amounts)
                 .orElse(new LeaseTerms.Amounts(null, null, null));
         return new SupplyTargetResponse(
-                cell.getId(),
-                cell.getTarget().getLabel(),
+                cell.id(),
+                cell.label(),
                 null,
                 sheet.ownCount(cell, SupplyQuota.Kind.WINNER),
                 sheet.ownCount(cell, SupplyQuota.Kind.RESERVE),
                 exactLong(amounts.rentalDeposit()),
                 exactLong(amounts.monthlyRent()),
                 exactLong(amounts.convertedDeposit()),
-                blankToNull(cell.getTarget().getApplicationCondition()),
+                blankToNull(cell.applicationCondition()),
                 sharedCount(sheet, cell, SupplyQuota.Kind.WINNER),
                 sharedCount(sheet, cell, SupplyQuota.Kind.RESERVE)
         );
     }
 
-    private SupplyTargetResponse.SharedCount sharedCount(SupplySheet sheet, SupplyRowTarget cell, SupplyQuota.Kind kind) {
+    private SupplyTargetResponse.SharedCount sharedCount(SupplySheet sheet, SupplySheet.Cell cell, SupplyQuota.Kind kind) {
         return sheet.sharedInRow(cell, kind)
                 .map(shared -> new SupplyTargetResponse.SharedCount(shared.count(), shared.members().stream()
-                        .map(member -> member.getTarget().getLabel()).toList()))
+                        .map(SupplySheet.Cell::label).toList()))
                 .orElse(null);
     }
 
-    private static boolean carriesValues(SupplyRowTarget cell, SupplySheet sheet) {
+    private static boolean carriesValues(SupplySheet.Cell cell, SupplySheet sheet) {
         return sheet.lease(cell).isPresent() || sheet.ownCount(cell, SupplyQuota.Kind.RESERVE) != null
-                || sheet.ownCount(cell, SupplyQuota.Kind.WINNER) != null && sheet.cells(cell.getSupplyRow().getId()).size() > 1;
+                || sheet.ownCount(cell, SupplyQuota.Kind.WINNER) != null && sheet.cells(cell.rowId()).size() > 1;
     }
 
     private static String blankToNull(String value) {
@@ -358,8 +340,7 @@ final class AnnouncementResponseMapper {
         return amount.longValueExact();
     }
 
-    private ListAggregate aggregate(List<SupplyRow> supplyRows, List<HousingComplex> linkedComplexes,
-            SupplySheet sheet) {
+    private ListAggregate aggregate(List<HousingComplex> linkedComplexes, SupplySheet sheet) {
         Set<String> regionNames = new LinkedHashSet<>();
         String thumbnailImageUrl = null;
         for (HousingComplex housingComplex : linkedComplexes) {
@@ -368,12 +349,10 @@ final class AnnouncementResponseMapper {
                 thumbnailImageUrl = housingComplex.getImageUrl();
             }
         }
-        Set<Long> visibleRows = new HashSet<>();
-        supplyRows.stream().filter(row -> !row.isAdminExcluded()).forEach(row -> visibleRows.add(row.getId()));
         return new ListAggregate(
                 List.copyOf(regionNames),
                 linkedComplexes.size(),
-                sheet.total(SupplyQuota.Kind.WINNER, visibleRows::contains),
+                sheet.total(SupplyQuota.Kind.WINNER),
                 thumbnailImageUrl
         );
     }

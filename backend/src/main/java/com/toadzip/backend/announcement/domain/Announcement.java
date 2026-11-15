@@ -144,13 +144,13 @@ public class Announcement {
 
     private String lhPanId;
 
-    /** 이전 아티팩트가 만든 공고는 정제가 공급행을 덮지 않도록 공고문 소유로 둔다. */
-    @Enumerated(EnumType.STRING)
-    @org.hibernate.annotations.ColumnDefault("'ANNOUNCEMENT_DOCUMENT'")
-    @Column(nullable = false, length = 30)
-    private SupplyOwner supplyOwner;
+    /**
+     * 공고 공급표(정본)를 관리자가 처음 쓴 시각(PDF 보정·작업실 적용, 등록, JSON 등록, 준비 데이터로 정본 시작). 비어 있으면 공개·관리
+     * 조회는 기관 준비 데이터(agency_supply_lines)를 보인다. 한번 세우면 정본 행을 다 지워도 준비 데이터로 돌아가지 않는다.
+     */
+    private java.time.Instant supplyConfirmedAt;
 
-    /** 공고문 소유 공고가 확정할 때 본 LH·GH 공급 원천 지문. 그 뒤 원천이 바뀌었는지 판단하는 기준이다. 한 공고는 한 기관 원천만 가진다. */
+    /** 마지막 정제가 본 LH·GH 공급 원천 지문. 정본을 확정한 뒤 원천이 바뀌었는지 판단하는 기준이다. 한 공고는 한 기관 원천만 가진다. */
     @Column(length = 64)
     private String lhSupplyFingerprint;
 
@@ -218,8 +218,6 @@ public class Announcement {
         validateNonNegativeIfPresent(actualCompetitionRate, "실제 경쟁률");
         validateNonNegativeIfPresent(predictedCompetitionRate, "예상 경쟁률");
         this.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
-        supplyOwner = AnnouncementOrigin.of(sourceAnnouncementIdentifier, null) == AnnouncementOrigin.ADMIN_ENTRY
-                ? SupplyOwner.ANNOUNCEMENT_DOCUMENT : SupplyOwner.LH_SOURCE;
         this.previousSourceAnnouncementIdentifier = previousSourceAnnouncementIdentifier;
         this.previousAnnouncement = previousAnnouncement;
         this.name = name;
@@ -353,7 +351,6 @@ public class Announcement {
         announcement.provider = provider;
         announcement.postedDate = postedDate;
         announcement.originalUrl = originalUrl;
-        announcement.supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
         announcement.releaseStatus = AnnouncementReleaseStatus.UNCONFIRMED;
         return announcement;
     }
@@ -456,44 +453,26 @@ public class Announcement {
         return AnnouncementOrigin.of(sourceAnnouncementIdentifier, lhPanId);
     }
 
-    /**
-     * 관리자가 공급정보를 고치면 공고문이 주인이 된다. 정제는 이 공고의 공급행을 원천 값으로 다시 만들지 않는다. 기준 지문은 관리자가
-     * 보고 저장한 LH 원천, 곧 마지막 정제가 남긴 지문을 그대로 둔다. 저장 전에 새로 수집된 LH 변경도 다음 정제가 재확인으로 알린다.
-     */
-    public void takeSupplyFromDocument() {
-        supplyOwner = SupplyOwner.ANNOUNCEMENT_DOCUMENT;
-        supplyRecheckRequired = false;
+    /** 공고 공급표(정본)가 쓰였음을 남긴다. 이미 확정한 공고는 처음 확정한 시각을 지킨다. */
+    public void confirmSupply() {
+        if (supplyConfirmedAt == null) {
+            supplyConfirmedAt = java.time.Instant.now();
+        }
     }
 
-    public boolean suppliedByLh() {
-        return supplyOwner == SupplyOwner.LH_SOURCE;
+    public boolean isSupplyConfirmed() {
+        return supplyConfirmedAt != null;
     }
 
     /**
-     * GH 공급행 틀의 원천 지문을 본다. 관리자가 공급행을 맡기 전에는 정제가 틀을 원천에 맞추므로 기준만 바꾸고, 맡은 뒤 원천이 바뀌면 공급
-     * 재확인 대상으로 표시한다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
+     * 매 정제가 이번 기관(LH·GH) 원천 공급의 지문을 받는다. 정본을 확정하기 전에는 준비 데이터가 원천을 따르므로 기준만 바꾼다. 확정한
+     * 뒤 기준과 다르면 공급 재확인 대상으로 표시하고 기준을 이번 지문으로 바꾼다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다.
+     * 재확인이 새로 켜졌을 때 true다.
      */
-    public boolean observeAgencySupply(String fingerprint, boolean adminOwned) {
+    public boolean observeAgencySupply(String fingerprint) {
         String previous = lhSupplyFingerprint;
         lhSupplyFingerprint = fingerprint;
-        if (!adminOwned || previous == null || previous.equals(fingerprint) || supplyRecheckRequired) {
-            return false;
-        }
-        supplyRecheckRequired = true;
-        return true;
-    }
-
-    /**
-     * 매 정제가 이번 LH 원천 공급의 지문을 받는다. LH 소유 공고는 지문을 기준으로 남기기만 한다. 공고문 소유 공고는 기준과 다르면 재확인
-     * 대상이 되고 기준을 이번 지문으로 바꾼다. 기준이 없던 공고는 이번 지문을 기준으로 남긴다. 재확인이 새로 켜졌을 때 true다.
-     */
-    public boolean observeLhSupply(String fingerprint) {
-        if (suppliedByLh() || lhSupplyFingerprint == null || lhSupplyFingerprint.equals(fingerprint)) {
-            lhSupplyFingerprint = fingerprint;
-            return false;
-        }
-        lhSupplyFingerprint = fingerprint;
-        if (supplyRecheckRequired) {
+        if (!isSupplyConfirmed() || previous == null || previous.equals(fingerprint) || supplyRecheckRequired) {
             return false;
         }
         supplyRecheckRequired = true;
@@ -507,7 +486,6 @@ public class Announcement {
                 values.postedDate(), values.applicationStartDate(), values.applicationEndDate(),
                 values.winnerAnnouncementDate(), values.originalUrl(), null, 0, null, null, null);
         announcement.lhPanId = panId;
-        announcement.supplyOwner = SupplyOwner.LH_SOURCE;
         return announcement;
     }
 
@@ -608,12 +586,28 @@ public class Announcement {
         return source;
     }
 
+    /**
+     * 관리자가 공급정보를 보고 저장했다. 정본을 확정하고 재확인 표시를 끈다. 기준 지문은 마지막 정제가 남긴 지문을 그대로 둔다. 저장 전에
+     * 새로 수집된 원천 변경도 다음 정제가 재확인으로 알린다.
+     */
     public void recordAdminSupplyChange() {
-        takeSupplyFromDocument();
+        confirmSupply();
+        supplyRecheckRequired = false;
         adminUpdatedAt = java.time.Instant.now();
     }
 
-    /** 접수 일정은 공급정보가 아니므로 공급정보 소유를 바꾸지 않는다. */
+    /**
+     * 관리자가 공고문(PDF)으로 공고를 확인했다. 확정한 공고는 공급정보도 확인한 것이라 재확인 표시를 끈다. 확정 전 공고는 확정하지
+     * 않는다: 공급표를 쓰지 않은 확인으로 빈 정본을 확정하면 공개 화면의 준비 데이터가 사라진다. 공급표를 쓰면 쓰기가 확정한다.
+     */
+    public void recordAdminDocumentReview() {
+        if (isSupplyConfirmed()) {
+            supplyRecheckRequired = false;
+        }
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    /** 접수 일정은 공급정보가 아니므로 공급 확정을 바꾸지 않는다. */
     public void recordAdminScheduleChange() {
         adminUpdatedAt = java.time.Instant.now();
     }

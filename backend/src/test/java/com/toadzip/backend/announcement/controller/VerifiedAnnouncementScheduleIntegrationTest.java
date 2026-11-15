@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
-import com.toadzip.backend.announcement.domain.SupplyOwner;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
@@ -106,10 +105,9 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                                    "sourceUrl":"https://apply.lh.or.kr/lhapply/lhFile.do?fileid=68429633"}]}
                                 """))
                 .andExpect(status().isNoContent());
-        // 접수 일정은 공급정보가 아니어서 확정해도 정제가 공급행을 계속 원천 값으로 만든다.
+        // 접수 일정은 공급정보가 아니어서 확정해도 공급표는 확정하지 않고 준비 데이터를 계속 보인다.
         entityManager.flush(); entityManager.clear();
-        assertThat(entityManager.find(Announcement.class, announcement.getId()).getSupplyOwner())
-                .isEqualTo(SupplyOwner.LH_SOURCE);
+        assertThat(entityManager.find(Announcement.class, announcement.getId()).isSupplyConfirmed()).isFalse();
         mvc.perform(get("/api/v1/announcements/{id}", announcement.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.applicationSchedules[0].sourcePage").isEmpty());

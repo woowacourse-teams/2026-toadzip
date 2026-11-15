@@ -126,7 +126,8 @@ class SupplySheetOnlyMigrationTest {
                 try (Connection connection = connect(database); Statement seed = connection.createStatement()) {
                     seedOverlaps(seed);
                 }
-                migration(database).load().migrate();
+                // 공급 소유 열은 V20261115_02가 정본 확정 시각으로 바꾼다. 이 이행이 정한 소유는 그 전 시점에서 본다.
+                migration(database).target("20261114.01").load().migrate();
 
                 try (Connection connection = connect(database); Statement query = connection.createStatement()) {
                     // 공고 3: 행 301(59A + 59A1)과 행 302(59A1 + 59A)는 서로의 주택형을 가리킨다. 나누면 59A·59A1이 두 번씩

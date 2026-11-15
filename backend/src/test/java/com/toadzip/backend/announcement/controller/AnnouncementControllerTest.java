@@ -373,7 +373,8 @@ class AnnouncementControllerTest {
                 new BigDecimal("2.5000"),
                 null,
                 null,
-                List.of()
+                List.of(),
+                true
         );
         return new AnnouncementListResponse(List.of(item), null, false, 1);
     }
@@ -472,7 +473,8 @@ class AnnouncementControllerTest {
                 List.of(matchedRow, unmatchedRow),
                 new CompetitionResponse(new BigDecimal("2.5000"), null),
                 List.of(),
-                null
+                null,
+                true
         );
     }
 
@@ -500,7 +502,8 @@ class AnnouncementControllerTest {
                       "actualCompetitionRate": 2.5000,
                       "predictedCompetitionRate": null,
                       "thumbnailImageUrl": null,
-                      "applicationSchedules": []
+                      "applicationSchedules": [],
+                      "supplyConfirmed": true
                     }],
                     "nextCursor": null,
                     "hasNext": false,
@@ -608,6 +611,7 @@ class AnnouncementControllerTest {
                     "competition": {"actualRate": 2.5000, "predictedRate": null},
                     "applicationSchedules": [],
                     "revision": null,
+                    "supplyConfirmed": true,
                     "listPhase": "NONE"
                   }
                 }

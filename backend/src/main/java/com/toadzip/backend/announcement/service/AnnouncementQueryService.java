@@ -8,7 +8,6 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementSort;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
-import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.request.AnnouncementSearchRequest;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementListItemResponse;
@@ -24,7 +23,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
-import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
@@ -56,9 +54,8 @@ public class AnnouncementQueryService {
     private final AnnouncementSearchRepository announcementSearchRepository;
     private final AnnouncementScheduleRepository announcementScheduleRepository;
     private final AnnouncementAttachmentRepository announcementAttachmentRepository;
-    private final SupplyRowRepository supplyRowRepository;
     private final AnnouncementHousingComplexRepository links;
-    private final SupplySheets supplySheets;
+    private final AnnouncementSupplies supplies;
     private final AnnouncementResponseMapper announcementResponseMapper;
     private final AnnouncementCursorCodec announcementCursorCodec;
     private final Clock clock;
@@ -70,9 +67,8 @@ public class AnnouncementQueryService {
             AnnouncementSearchRepository announcementSearchRepository,
             AnnouncementScheduleRepository announcementScheduleRepository,
             AnnouncementAttachmentRepository announcementAttachmentRepository,
-            SupplyRowRepository supplyRowRepository,
             AnnouncementHousingComplexRepository links,
-            SupplySheets supplySheets,
+            AnnouncementSupplies supplies,
             AnnouncementResponseMapper announcementResponseMapper,
             AnnouncementCursorCodec announcementCursorCodec,
             Clock clock,
@@ -83,9 +79,8 @@ public class AnnouncementQueryService {
         this.announcementSearchRepository = announcementSearchRepository;
         this.announcementScheduleRepository = announcementScheduleRepository;
         this.announcementAttachmentRepository = announcementAttachmentRepository;
-        this.supplyRowRepository = supplyRowRepository;
         this.links = links;
-        this.supplySheets = supplySheets;
+        this.supplies = supplies;
         this.announcementResponseMapper = announcementResponseMapper;
         this.announcementCursorCodec = announcementCursorCodec;
         this.clock = clock;
@@ -165,12 +160,10 @@ public class AnnouncementQueryService {
     private List<AnnouncementListItemResponse> listItems(List<Announcement> announcements,
             AnnouncementSearchCondition condition, LocalDate today) {
         List<Long> announcementIds = announcementIds(announcements);
-        List<SupplyRow> supplyRows = findSupplyRows(announcementIds);
         return announcementResponseMapper.toListItemResponses(
                 announcements,
-                supplyRows,
+                supplies.read(announcements),
                 linkedComplexes(announcementIds),
-                supplySheets.read(announcementIds, supplyRowIds(supplyRows)),
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds).stream()
                         .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
                                 || matchesRegion(condition.regionCodes(), schedule.getHousingComplex().getAddress()))
@@ -192,14 +185,12 @@ public class AnnouncementQueryService {
         List<AnnouncementAttachment> attachments = announcementAttachmentRepository.findAllByAnnouncementIdIn(
                 announcementIds
         );
-        List<SupplyRow> supplyRows = findSupplyRows(announcementIds);
         return announcementResponseMapper.toDetailResponse(
                 announcement,
                 schedules,
                 attachments,
-                supplyRows,
+                supplies.read(announcement),
                 linkedComplexes(announcementIds).getOrDefault(announcement.getId(), List.of()),
-                supplySheets.read(announcementIds, supplyRowIds(supplyRows)),
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds),
                 today
         ).withListPhase(listPhase(announcement.getId(), today));
@@ -340,17 +331,6 @@ public class AnnouncementQueryService {
 
     private List<Long> announcementIds(List<Announcement> announcements) {
         return announcements.stream().map(Announcement::getId).toList();
-    }
-
-    private List<Long> supplyRowIds(List<SupplyRow> supplyRows) {
-        return supplyRows.stream().map(SupplyRow::getId).toList();
-    }
-
-    private List<SupplyRow> findSupplyRows(Collection<Long> announcementIds) {
-        if (announcementIds.isEmpty()) {
-            return List.of();
-        }
-        return supplyRowRepository.findAllByAnnouncementIdIn(announcementIds);
     }
 
     private Map<Long, List<HousingComplex>> linkedComplexes(Collection<Long> announcementIds) {

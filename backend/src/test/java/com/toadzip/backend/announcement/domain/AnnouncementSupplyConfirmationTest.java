@@ -7,26 +7,46 @@ import com.toadzip.backend.housing.domain.RentalType;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
-class AnnouncementSupplyOwnerTest {
+class AnnouncementSupplyConfirmationTest {
 
     @Test
-    void 정제가_만든_공고는_원천_소유이고_직접_등록_공고는_공고문_소유다() {
-        assertThat(announcement("21026").getSupplyOwner()).isEqualTo(SupplyOwner.LH_SOURCE);
-        assertThat(announcement("ADMIN_ENTRY-ANNOUNCEMENT-a").getSupplyOwner())
-                .isEqualTo(SupplyOwner.ANNOUNCEMENT_DOCUMENT);
+    void 새_공고는_공급표를_쓰기_전까지_확정하지_않는다() {
+        assertThat(announcement("21026").isSupplyConfirmed()).isFalse();
+        assertThat(announcement("ADMIN_ENTRY-ANNOUNCEMENT-a").isSupplyConfirmed()).isFalse();
     }
 
     @Test
-    void 관리자가_공급정보를_고치면_공고문_소유가_되고_일정만_확정하면_원천_소유로_남는다() {
+    void 관리자가_공급정보를_고치면_확정하고_일정만_확정하거나_공고문만_확인하면_확정하지_않는다() {
         Announcement schedule = announcement("21026");
         schedule.recordAdminScheduleChange();
-        assertThat(schedule.getSupplyOwner()).isEqualTo(SupplyOwner.LH_SOURCE);
+        assertThat(schedule.isSupplyConfirmed()).isFalse();
         assertThat(schedule.getAdminUpdatedAt()).isNotNull();
+
+        Announcement review = announcement("21028");
+        review.recordAdminDocumentReview();
+        assertThat(review.isSupplyConfirmed()).isFalse();
 
         Announcement supply = announcement("21027");
         supply.recordAdminSupplyChange();
-        assertThat(supply.getSupplyOwner()).isEqualTo(SupplyOwner.ANNOUNCEMENT_DOCUMENT);
+        assertThat(supply.isSupplyConfirmed()).isTrue();
         assertThat(supply.getAdminUpdatedAt()).isNotNull();
+    }
+
+    @Test
+    void 확정한_뒤에만_원천_지문_변경이_재확인을_켠다() {
+        Announcement staged = announcement("21026");
+        staged.observeAgencySupply("a");
+        assertThat(staged.observeAgencySupply("b")).isFalse();
+        assertThat(staged.isSupplyRecheckRequired()).isFalse();
+
+        Announcement confirmed = announcement("21027");
+        confirmed.observeAgencySupply("a");
+        confirmed.recordAdminSupplyChange();
+        assertThat(confirmed.observeAgencySupply("a")).isFalse();
+        assertThat(confirmed.observeAgencySupply("b")).isTrue();
+        assertThat(confirmed.isSupplyRecheckRequired()).isTrue();
+        confirmed.recordAdminDocumentReview();
+        assertThat(confirmed.isSupplyRecheckRequired()).isFalse();
     }
 
     @Test

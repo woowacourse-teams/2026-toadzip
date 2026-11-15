@@ -188,7 +188,7 @@ public class AdminAnnouncementManagementService {
                         announcement.getOriginalUrl(), enumName(announcement.getRecruitmentType()),
                         announcement.getPostedDate(), start, end, announcement.getWinnerAnnouncementDate(),
                         announcement.getStatus().name(), announcement.origin().name(),
-                        announcement.getSupplyOwner().name(), announcement.getReleaseStatus().name(),
+                        announcement.isSupplyConfirmed(), announcement.getReleaseStatus().name(),
                         applicationStatus, reasons));
     }
 

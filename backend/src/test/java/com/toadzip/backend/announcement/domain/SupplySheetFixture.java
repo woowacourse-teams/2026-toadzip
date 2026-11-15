@@ -3,13 +3,16 @@ package com.toadzip.backend.announcement.domain;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** 저장소 없이 단위 테스트에서 공급표(대상·칸·수량 묶음·임대조건)를 만든다. ID는 1_000_000부터 붙인다. */
 public final class SupplySheetFixture {
 
+    private final Set<SupplyRow> rows = new LinkedHashSet<>();
     private final Map<String, AnnouncementSupplyTarget> targets = new HashMap<>();
     private final List<SupplyRowTarget> cells = new ArrayList<>();
     private final List<SupplyQuota> quotas = new ArrayList<>();
@@ -21,6 +24,7 @@ public final class SupplySheetFixture {
         AnnouncementSupplyTarget target = targets.computeIfAbsent(
                 announcement.getId() + "|" + AnnouncementSupplyTarget.key(label, condition),
                 ignored -> withId(AnnouncementSupplyTarget.create(announcement, label, condition, targets.size())));
+        rows.add(row);
         SupplyRowTarget cell = withId(SupplyRowTarget.create(row, target, order));
         cells.add(cell);
         return cell;
@@ -54,8 +58,18 @@ public final class SupplySheetFixture {
         return cell;
     }
 
-    public SupplySheet sheet() {
-        return SupplySheet.of(cells, quotas, leases);
+    /** 칸 없는 공급행도 공급표에 넣는다. */
+    public void add(SupplyRow row) {
+        rows.add(row);
+    }
+
+    /** 공고 하나의 정본 공급표. */
+    public SupplySheet sheet(long announcementId) {
+        return SupplySheet.of(
+                rows.stream().filter(row -> row.getAnnouncement().getId() == announcementId).toList(),
+                cells.stream().filter(cell -> cell.getSupplyRow().getAnnouncement().getId() == announcementId).toList(),
+                quotas.stream().filter(quota -> quota.getAnnouncement().getId() == announcementId).toList(),
+                leases.stream().filter(lease -> lease.getAnnouncement().getId() == announcementId).toList());
     }
 
     private <T> T withId(T entity) {

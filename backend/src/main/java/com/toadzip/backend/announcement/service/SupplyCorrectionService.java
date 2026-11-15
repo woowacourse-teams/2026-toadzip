@@ -5,12 +5,12 @@ import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.exception.AdminDataStaleException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementOrigin;
 import com.toadzip.backend.announcement.domain.SupplyCorrectionRecord;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetView;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
+import com.toadzip.backend.announcement.repository.AgencySupplyLineRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyCorrectionRecordRepository;
@@ -20,11 +20,7 @@ import com.toadzip.backend.announcement.repository.SupplySheetViewQueryRepositor
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
-import com.toadzip.backend.ingest.gh.collection.repository.GhAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.lh.refinement.service.LhCurrentSupplies;
 import jakarta.persistence.EntityManager;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -66,12 +62,16 @@ public class SupplyCorrectionService {
     private final AdminDataChangeRepository changes;
     private final AnnouncementComplexAdminLinks adminLinks;
     private final AnnouncementComplexRepository announcementComplexes;
-    private final LhCurrentSupplies lhSupplies;
-    private final GhAnnouncementSourceRepository ghSources;
+    private final AgencySupplyLineRepository agencyLines;
+    private final AnnouncementSupplies supplies;
     private final EntityManager entities;
     private final ObjectMapper json;
 
-    /** 작업실. 토큰은 공급표·공고 단지 연결·원천 참고 행을 덮어, 화면이 본 뒤 그중 하나가 바뀌면 저장을 거절한다. */
+    /**
+     * 작업실. snapshotToken은 공급표·공고 단지 연결·원천 참고 행을 덮어, 화면이 본 뒤 그중 하나가 바뀌면 저장을 거절한다.
+     * stagingToken은 확정 전 공고에서 '준비 데이터로 정본 시작'이 복사할 공급표(금액·대상·고른 주택타입 포함)를 덮는다. 정제가 준비
+     * 데이터를 고쳐도 보정·연결 저장은 거절하지 않도록 두 토큰을 나눈다. 확정된 공고는 stagingToken이 null이다.
+     */
     public SupplyCorrection.Workspace workspace(long id) {
         var announcement = find(id);
         var sheet = sheetViews.read(id);
@@ -81,8 +81,12 @@ public class SupplyCorrectionService {
         List<String> warnings = new ArrayList<>();
         sheet.housingTypes().stream().filter(type -> type.category() == null).forEach(type ->
                 warnings.add(type.complexName() + " · " + type.name() + ": 공급 구분이 없습니다. 저장하려면 정해 주세요."));
-        return new SupplyCorrection.Workspace(hash(List.of(sheet, complexViews, sourceReference)), announcement.getVersion(),
-                sheet, complexViews, names, sourceReference, List.copyOf(warnings));
+        var draft = announcement.isSupplyConfirmed() ? null : supplies.staging(announcement).draft();
+        var stagingToken = draft == null ? null
+                : hash(List.of(draft.housingTypes(), draft.targets(), draft.cells(), draft.quotas(), draft.leases()));
+        return new SupplyCorrection.Workspace(hash(List.of(sheet, complexViews, sourceReference,
+                announcement.isSupplyConfirmed())), stagingToken, announcement.getVersion(), sheet, complexViews, names,
+                sourceReference, List.copyOf(warnings), announcement.isSupplyConfirmed());
     }
 
     private List<SupplyCorrection.AnnouncementComplexView> announcementComplexes(Announcement announcement, SupplySheetView sheet) {
@@ -97,18 +101,44 @@ public class SupplyCorrectionService {
     }
 
     /**
-     * LH·GH 공급 원천 행. 저장하지 않고 화면이 수량을 검산할 때만 쓴다. GH 공고는 수집한 단지별 주택형 줄이고, LH 공고 ID가 없는
-     * 다른 공고는 비어 있다.
+     * 기관(LH·GH) 준비 줄. 저장하지 않고 화면이 수량을 검산할 때만 쓴다. 준비 줄이 없는 공고(SH·등록 공고)는 비어 있다.
      */
     private List<SupplyCorrection.SourceReference> sourceReference(Announcement announcement) {
-        if (announcement.origin() == AnnouncementOrigin.GH_SOURCE) {
-            return ghSources.findBySourceKey(announcement.getSourceAnnouncementIdentifier())
-                    .map(GhAnnouncementSource::getDistricts).map(this::ghSourceReference).orElse(List.of());
+        return agencyLines.findAllByAnnouncementIdIn(List.of(announcement.getId())).stream()
+                .map(line -> new SupplyCorrection.SourceReference(line.getComplexName(), line.getHousingTypeName(),
+                        line.getExclusiveArea() == null ? null : SupplySheetViewQueryRepository.area(line.getExclusiveArea()),
+                        line.getHouseholdCount()))
+                .toList();
+    }
+
+    /**
+     * 정본을 확정하지 않은 공고의 기관 준비 줄을 그대로 정본 공급표로 쓰고 확정한다. 정본은 PDF 보정·작업실 적용·등록으로만 생기므로,
+     * 공고문 PDF가 없는 공고가 준비 데이터에서 정본을 시작할 때 쓴다. 화면이 본 뒤 공급정보가 바뀌었으면 거절한다.
+     */
+    @Transactional
+    public SupplyCorrection.Workspace startFromStaging(long id, SupplyCorrection.StartFromStaging request, String actor) {
+        var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
+        if (announcement.isAdminDeleted()) { throw new AdminDataConflictException("공고를 복구한 뒤 보정하세요."); }
+        if (announcement.isSupplyConfirmed()) {
+            throw new AdminDataConflictException("이미 공고 공급표가 있습니다. 공급정보 보정으로 고치세요.");
         }
-        String panId = announcement.getLhPanId();
-        if (panId == null || panId.isBlank()) { return List.of(); }
-        return lhSupplies.of(panId).stream().map(supply -> new SupplyCorrection.SourceReference(supply.getComplexLabel(),
-                supply.getTypeName(), area(supply.getExclusiveArea()), count(supply.getSuppliedUnitCount()))).toList();
+        var current = workspace(id);
+        if (!current.snapshotToken().equals(request.snapshotToken())
+                || !request.stagingToken().equals(current.stagingToken())) {
+            throw new AdminDataStaleException("공급정보가 바뀌었습니다. 최신 값을 다시 불러온 뒤 시작하세요.");
+        }
+        var staging = supplies.staging(announcement);
+        if (staging.draft().housingTypes().isEmpty()) {
+            throw new IllegalArgumentException("준비 데이터가 없는 공고입니다. 공급정보를 직접 입력하세요.");
+        }
+        store.replace(announcement, staging.draft());
+        announcement.recordAdminSupplyChange();
+        announcements.flush();
+        var after = workspace(id);
+        changes.save(new AdminDataChange("ANNOUNCEMENT", id, "START_SUPPLY_FROM_STAGING", actor,
+                json.writeValueAsString(Map.of("sheet", current.sheet())),
+                json.writeValueAsString(Map.of("sheet", after.sheet()))));
+        return after;
     }
 
     /**
@@ -223,7 +253,6 @@ public class SupplyCorrectionService {
      */
     private Map<String, Long> write(Announcement announcement, SupplySheetPlan plan, SupplyCorrection.Request request,
             String actor) {
-        // 공급표를 쓰기 전에 공고문 소유로 바꾼다. 원천 소유 공고는 원천명과 같은 신청형 이름을 공고 표시명으로 적지 않기 때문이다.
         announcement.recordAdminSupplyChange();
         announcements.flush();
         rows.deleteAll(rows.findAllByAnnouncement(announcement).stream().filter(SupplyRow::isAdminExcluded).toList());
@@ -234,6 +263,7 @@ public class SupplyCorrectionService {
         Map<String, SupplyRow> written = new LinkedHashMap<>();
         saved.housingTypes().forEach((key, rowId) -> written.put(key, rows.findById(rowId).orElseThrow()));
         adminLinks.apply(plan.links(), written, actor);
+        adminLinks.unlinkEmptied(announcement, plan, announcementComplexIds, actor);
         announcements.flush();
         List<Long> modified = new ArrayList<>();
         List<Long> unmodified = new ArrayList<>();
@@ -270,28 +300,6 @@ public class SupplyCorrectionService {
         var result = announcements.findById(id).orElseThrow(AnnouncementNotFoundException::new);
         if (result.isAdminDeleted()) { throw new AdminDataConflictException("공고를 복구한 뒤 보정하세요."); }
         return result;
-    }
-
-    private List<SupplyCorrection.SourceReference> ghSourceReference(String districts) {
-        var result = new ArrayList<SupplyCorrection.SourceReference>();
-        for (var district : json.readTree(districts)) {
-            for (var type : district.path("housingTypes")) {
-                result.add(new SupplyCorrection.SourceReference(district.path("name").asString("").strip(),
-                        type.path("name").asString(""), area(type.path("exclusiveArea").asString("").replace(",", "")),
-                        count(type.path("supplyCount").asString("").replace(",", ""))));
-            }
-        }
-        return result;
-    }
-
-    private static BigDecimal area(String value) {
-        if (value == null || !value.strip().matches("[0-9]{1,6}(\\.[0-9]{1,4})?")) { return null; }
-        return SupplySheetViewQueryRepository.area(new BigDecimal(value.strip()));
-    }
-
-    private static Integer count(String value) {
-        if (value == null || !value.strip().matches("[0-9]{1,9}")) { return null; }
-        return Integer.valueOf(value.strip());
     }
 
     private static String shortToken(String token) {

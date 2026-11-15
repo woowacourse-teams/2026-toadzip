@@ -91,23 +91,6 @@ public class SupplyRow {
         adminModified = true;
     }
 
-    /**
-     * 기관 원천(GH 공급행 틀)이 준 주택형 전용면적을 공고 면적 칸에 적어 둔다. PDF 추출이 틀 행과 PDF 행을 맞출 때 읽는다.
-     * 면적 보정(areaOverride)은 켜지 않아 화면·공개 면적(effective*Area)은 그대로 연결 주택형을 따른다. 관리자 수정으로 보지 않는다.
-     */
-    public void recordSourceArea(BigDecimal exclusiveArea) {
-        if (exclusiveArea != null && exclusiveArea.signum() < 0) {
-            throw new IllegalArgumentException("면적은 음수일 수 없습니다.");
-        }
-        announcementExclusiveArea = exclusiveArea;
-    }
-
-    /** GH 공고 정제가 만든 공급행 틀이면 true다. 틀의 행 키는 `{공고 식별자}:{지구명}:{주택형 코드}`이고, 관리자가 추가한 행은 MANUAL: 키다. */
-    public boolean ghFrameRow() {
-        return announcement.origin() == AnnouncementOrigin.GH_SOURCE
-                && sourceSupplyRowIdentifier.startsWith(announcement.getSourceAnnouncementIdentifier() + ":");
-    }
-
     public void reorder(int order) {
         validateNonNegative(order, "표시 순서");
         displayOrder = order;
@@ -218,6 +201,8 @@ public class SupplyRow {
         validateNotBlankIfPresent(supplyPnu, "공급 PNU");
         validateRequired(supplyCategory, "공급구분");
         validateNotBlankIfPresent(matchingFailureReason, "매칭 실패 사유");
+        // 공고 공급표(정본) 행이 생기면 그 공고는 정본을 보인다. 확정 전 공고에 정본 행이 남아 준비 데이터와 섞이지 않게 한다.
+        announcement.confirmSupply();
         this.announcement = announcement;
         this.housingComplex = housingComplex;
         this.housingType = housingType;
@@ -260,23 +245,6 @@ public class SupplyRow {
     }
 
     /**
-     * LH 공급의 (공고 단지, 전용면적) 묶음으로 공급행을 만든다. 단지는 공고 단지의 연결 단지, 대표 주택형은 그 단지에서 LH 전용면적과
-     * 같은 면적의 주택형이다. lhSourceSupplyRowIdentifier는 묶음의 첫 LH 줄이다. LH 원천 소유 공고에서만 쓴다.
-     */
-    public static SupplyRow createFromLh(Announcement announcement, AnnouncementComplex complex, HousingType type,
-            String sourceSupplyRowIdentifier, String lhSourceSupplyRowIdentifier, int displayOrder, String typeName,
-            BigDecimal lhExclusiveArea, YearMonth expectedMoveInMonth, SupplyCategory supplyCategory,
-            LhSupplyMatchStatus status) {
-        SupplyRow row = new SupplyRow(announcement, complex.linkedComplex(), type, sourceSupplyRowIdentifier,
-                displayOrder, complex.getSourceComplexName(), typeName, null, expectedMoveInMonth, supplyCategory, null);
-        row.announcementComplex = complex;
-        row.lhExclusiveArea = lhExclusiveArea;
-        row.lhMatchStatus = status;
-        row.lhSourceSupplyRowIdentifier = lhSourceSupplyRowIdentifier;
-        return row;
-    }
-
-    /**
      * 공고 공급표 쓰기(SupplySheetStore)가 처음 만드는 주택형. 원천 주택형명은 필수라 신청형 이름으로 채우고, 공급표가 정하지 않는 열은
      * 비워 둔다.
      */
@@ -306,11 +274,8 @@ public class SupplyRow {
         housingComplex = housing;
         housingType = type;
         sourceComplexName = values.complexName();
-        // 원천이 주인인 공고에서 신청형 이름이 원천 주택형명 그대로면 공고 표시명을 따로 두지 않는다. 공개 화면은 전처럼 연결한 단지
-        // 주택형명을 보인다(LH 원천명 '59A(청년) · 59A(고령자)' 대신 '59A'). 공고문이 주인이면 신청형 이름이 공고 표시명이다.
-        boolean sourceName = announcement.suppliedByLh() && values.typeName().equals(sourceHousingTypeName.strip());
-        announcementHousingTypeName = sourceName ? null : values.typeName();
-        // 면적 보정이 전후 모두 없으면 원천이 적어 둔 공고 면적 칸(recordSourceArea)을 지우지 않는다.
+        announcementHousingTypeName = values.typeName();
+        // 면적 보정이 전후 모두 없으면 공고 면적 칸을 그대로 둔다.
         if (areaOverride || values.overridesArea()) {
             areaOverride = values.overridesArea();
             announcementExclusiveArea = values.exclusiveArea();
@@ -351,38 +316,7 @@ public class SupplyRow {
         return sourceComplexName.strip().equals(values.complexName());
     }
 
-    /**
-     * LH 원천 소유 공고의 공급행을 이번 LH 묶음으로 맞춘다. 관리자가 고친 행은 값을 두고 첫 LH 줄 식별자만 옮긴다.
-     * 휴지통 공고는 바꾸지 않는다. 바뀌었으면 true다.
-     */
-    public boolean updateFromLh(SupplyRow incoming) {
-        if (announcement.isAdminDeleted()) {
-            return false;
-        }
-        if (adminModified) {
-            if (Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)) {
-                return false;
-            }
-            lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
-            return true;
-        }
-        if (hasSameSourceValues(incoming) && Objects.equals(idOf(announcementComplex), idOf(incoming.announcementComplex))
-                && Objects.equals(lhExclusiveArea, incoming.lhExclusiveArea) && lhMatchStatus == incoming.lhMatchStatus
-                && Objects.equals(lhSourceSupplyRowIdentifier, incoming.lhSourceSupplyRowIdentifier)) {
-            return false;
-        }
-        applySourceValues(incoming);
-        announcementComplex = incoming.announcementComplex;
-        lhExclusiveArea = incoming.lhExclusiveArea;
-        lhMatchStatus = incoming.lhMatchStatus;
-        lhSourceSupplyRowIdentifier = incoming.lhSourceSupplyRowIdentifier;
-        return true;
-    }
-
-    /**
-     * 비어 있는 공고 단지 참조만 채운다. 정제는 공고문 소유 공급행의 값·단지·주택형을 바꾸지 않고 이것만 채워 PDF가 정한 연결을 덮지
-     * 않는다. 관리자 등록·JSON 등록도 새 행을 (공고, 단지명) 공고 단지에 이것으로 넣는다.
-     */
+    /** 비어 있는 공고 단지 참조만 채운다. 관리자 등록·JSON 등록이 새 행을 (공고, 단지명) 공고 단지에 이것으로 넣는다. */
     public boolean fillAnnouncementComplex(AnnouncementComplex complex) {
         if (announcementComplex != null || complex == null) {
             return false;
@@ -393,30 +327,6 @@ public class SupplyRow {
 
     private static Long idOf(AnnouncementComplex complex) {
         return complex == null ? null : complex.getId();
-    }
-
-    private boolean hasSameSourceValues(SupplyRow incoming) {
-        return Objects.equals(housingComplex, incoming.housingComplex)
-                && Objects.equals(housingType, incoming.housingType)
-                && displayOrder == incoming.displayOrder
-                && sourceComplexName.equals(incoming.sourceComplexName)
-                && sourceHousingTypeName.equals(incoming.sourceHousingTypeName)
-                && Objects.equals(supplyPnu, incoming.supplyPnu)
-                && Objects.equals(expectedMoveInMonth, incoming.expectedMoveInMonth)
-                && supplyCategory == incoming.supplyCategory
-                && Objects.equals(matchingFailureReason, incoming.matchingFailureReason);
-    }
-
-    private void applySourceValues(SupplyRow incoming) {
-        housingComplex = incoming.housingComplex;
-        housingType = incoming.housingType;
-        displayOrder = incoming.displayOrder;
-        sourceComplexName = incoming.sourceComplexName;
-        sourceHousingTypeName = incoming.sourceHousingTypeName;
-        supplyPnu = incoming.supplyPnu;
-        expectedMoveInMonth = incoming.expectedMoveInMonth;
-        supplyCategory = incoming.supplyCategory;
-        matchingFailureReason = incoming.matchingFailureReason;
     }
 
     private void validateRequired(Object value, String fieldName) {

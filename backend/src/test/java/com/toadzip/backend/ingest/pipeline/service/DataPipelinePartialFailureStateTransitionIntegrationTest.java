@@ -470,9 +470,9 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
 
     private LhAnnouncementRefinementReport lhRefinementReport() {
         return new LhAnnouncementRefinementReport(
-                1, 1, 0, 0, Map.of(), 0, 0, 0, 1, 0,
-                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 0, 1, 0),
-                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0, 1, 0, 0, 1, Map.of())
+                1, 1, 0, 0, Map.of(), 0, 0, 1, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 1, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0)
         );
     }
 

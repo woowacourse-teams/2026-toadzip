@@ -8,6 +8,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import java.time.LocalDate;
 import java.util.List;
 
+/** supplyConfirmed가 false면 공급정보(공급행·대상·모집수)는 공고문으로 확인하기 전의 기관 준비 데이터다. */
 public record AnnouncementDetailResponse(
         long announcementId,
         AnnouncementPublicationType publicationType,
@@ -35,6 +36,7 @@ public record AnnouncementDetailResponse(
         CompetitionResponse competition,
         List<ApplicationScheduleResponse> applicationSchedules,
         LhRevisionResponse revision,
+        boolean supplyConfirmed,
         AnnouncementListPhase listPhase
 ) {
 
@@ -61,13 +63,13 @@ public record AnnouncementDetailResponse(
             List<ReceptionPlaceResponse> receptionPlaces, List<AnnouncementScheduleResponse> schedules,
             List<AnnouncementAttachmentResponse> attachments, List<SupplyRowResponse> supplyRows,
             CompetitionResponse competition, List<ApplicationScheduleResponse> applicationSchedules,
-            LhRevisionResponse revision
+            LhRevisionResponse revision, boolean supplyConfirmed
     ) {
         this(announcementId, publicationType, correctionOrCancellationReason, applicationStatus, rentalType,
                 recruitmentType, title, regionNames, agency, publishedAt, applicationStartAt, applicationEndAt, dDay,
                 winnerAnnouncementAt, viewCount, targets, supplyComplexCount, supplyHouseholdCount, documentLinkUrl,
                 receptionPlaces, schedules, attachments, supplyRows, competition, applicationSchedules, revision,
-                AnnouncementListPhase.NONE);
+                supplyConfirmed, AnnouncementListPhase.NONE);
     }
 
     public AnnouncementDetailResponse withListPhase(AnnouncementListPhase phase) {
@@ -75,6 +77,6 @@ public record AnnouncementDetailResponse(
                 applicationStatus, rentalType, recruitmentType, title, regionNames, agency, publishedAt,
                 applicationStartAt, applicationEndAt, dDay, winnerAnnouncementAt, viewCount, targets,
                 supplyComplexCount, supplyHouseholdCount, documentLinkUrl, receptionPlaces, schedules, attachments,
-                supplyRows, competition, applicationSchedules, revision, phase);
+                supplyRows, competition, applicationSchedules, revision, supplyConfirmed, phase);
     }
 }

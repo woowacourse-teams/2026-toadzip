@@ -26,21 +26,22 @@ import org.hibernate.annotations.Synchronize;
 @Entity
 @Immutable
 @Subselect(AnnouncementHousingComplex.LINKS)
-@Synchronize({"announcement_complexes", "supply_rows"})
+@Synchronize({"announcement_complexes", "announcements", "supply_rows"})
 @IdClass(AnnouncementHousingComplex.Key.class)
 @NoArgsConstructor(access = PROTECTED)
 public class AnnouncementHousingComplex {
 
     /**
-     * (announcement_id, housing_complex_id) 연결 집합. 단지에 이어진 공고 단지가 연결이다. 다만 공고에 정본 공급행이 하나라도 있으면
-     * 그 공고 단지에 제외하지 않은 공급행이 있을 때만 연결로 본다(관리자가 한 단지의 행을 모두 제외하면 그 단지가 빠진다). 공급행이 없는
-     * 공고는 이어진 공고 단지 전부다. '정본 공급행이 있음' 판단은 여기에만 둔다. 한 공고가 같은 단지를 여러 공고 단지로 가리켜도 한 번만 낸다.
+     * (announcement_id, housing_complex_id) 연결 집합. 단지에 이어진 공고 단지가 연결이다. 다만 공고 공급표(정본)를 확정한 공고는 그 공고
+     * 단지에 제외하지 않은 공급행이 있을 때만 연결로 본다(관리자가 한 단지의 행을 모두 제외하거나 지우면 그 단지가 빠진다). 확정 전 공고는
+     * 이어진 공고 단지 전부다(준비 데이터를 보이는 동안). 이 판단은 여기에만 둔다. 한 공고가 같은 단지를 여러 공고 단지로 가리켜도 한 번만 낸다.
      */
     public static final String LINKS = """
             SELECT DISTINCT link.announcement_id, link.housing_complex_id
             FROM announcement_complexes link
+            JOIN announcements link_announcement ON link_announcement.id = link.announcement_id
             WHERE link.housing_complex_id IS NOT NULL
-              AND (NOT EXISTS (SELECT 1 FROM supply_rows link_row WHERE link_row.announcement_id = link.announcement_id)
+              AND (link_announcement.supply_confirmed_at IS NULL
                    OR EXISTS (SELECT 1 FROM supply_rows link_row
                        WHERE link_row.announcement_complex_id = link.id AND link_row.admin_excluded = false))
             """;

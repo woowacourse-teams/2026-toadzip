@@ -11,12 +11,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.admin.quality.domain.QualityResource;
 import com.toadzip.backend.admin.quality.service.QualityComparisonService;
+import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
+import com.toadzip.backend.announcement.domain.AnnouncementComplexSeed;
+import com.toadzip.backend.announcement.domain.ComplexLinkMethod;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplySheetSeed;
 import com.toadzip.backend.announcement.fixture.SupplySheetInputs;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.notification.NotificationFixtures;
@@ -113,7 +118,6 @@ class SupplyCorrectionIntegrationTest {
         assertThat(preview.at("/after/housingTypes/0/key").asText()).isEqualTo("row:" + row.getId());
         assertThat(preview.at("/after/housingTypes/0/adminModified").asBoolean()).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_data_changes", Long.class)).isZero();
-        assertThat(supplyOwner(id)).isEqualTo("LH_SOURCE");
         assertThat(workspace(id).get("sheet")).isEqualTo(before);
 
         apply(id, request, preview).andExpect(status().isOk())
@@ -121,8 +125,8 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(jsonPath("$.data.workspace.sheet.housingTypes[0].name").value("26A"));
         entities.flush(); entities.clear();
 
-        // 관리자가 저장한 공급정보는 공고문이 주인이라 정제가 공급표를 다시 만들지 않는다.
-        assertThat(supplyOwner(id)).isEqualTo("ANNOUNCEMENT_DOCUMENT");
+        // 관리자가 저장한 공급표는 정본으로 확정되어 정제가 다시 만들지 않는다.
+        assertThat(supplyConfirmed(id)).isTrue();
         var after = workspace(id).get("sheet");
         // 주택형·공급대상·칸은 같은 ID로 남는다. 신청자격 단위(unit-{공급행 ID})와 공개 응답의 행 ID가 그대로다.
         for (var list : List.of("housingTypes", "targets", "cells")) {
@@ -501,6 +505,93 @@ class SupplyCorrectionIntegrationTest {
                 .content(json.writeValueAsString(update))).andExpect(status().isConflict());
     }
 
+    @Test
+    void 준비_데이터로_정본_시작은_준비_줄을_공고_공급표로_복사해_확정하고_이력을_남긴다() throws Exception {
+        long id = stagedAnnouncement();
+        var before = workspace(id);
+        assertThat(before.get("supplyConfirmed").asBoolean()).isFalse();
+        // 정본이 없으니 작업실 공급표는 비어 있고, 준비 데이터는 원천 참고로만 보인다.
+        assertThat(before.at("/sheet/housingTypes")).isEmpty();
+
+        startFromStaging(id, before).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.supplyConfirmed").value(true))
+                // 주택형(신청형) 이름은 원천 형명이다. 단지 주택타입 이름(26A)을 쓰지 않는다.
+                .andExpect(jsonPath("$.data.sheet.housingTypes[0].name").value("26A(청년) · 26A(고령자)"))
+                .andExpect(jsonPath("$.data.sheet.targets[0].label").value("청년"))
+                .andExpect(jsonPath("$.data.sheet.targets[1].label").value("고령자"));
+        entities.flush(); entities.clear();
+
+        assertThat(supplyConfirmed(id)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM supply_rows WHERE announcement_id = ?", Long.class, id))
+                .isEqualTo(1);
+        // 준비 줄의 세대수·금액이 정본 모집수·임대조건으로 복사된다.
+        assertThat(jdbc.queryForList("SELECT household_count FROM supply_quotas WHERE announcement_id = ? AND kind = 'WINNER'"
+                + " ORDER BY household_count", Integer.class, id)).containsExactly(3, 5);
+        assertThat(jdbc.queryForList("SELECT rental_deposit::bigint || '/' || monthly_rent::bigint FROM lease_terms"
+                + " WHERE announcement_id = ?", String.class, id)).containsOnly("1000000/10000");
+        assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_id = ?", String.class, id))
+                .containsExactly("START_SUPPLY_FROM_STAGING");
+        // 준비 줄은 그대로 남아 다음 정제의 원천 참고가 된다.
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agency_supply_lines WHERE announcement_id = ?",
+                Long.class, id)).isEqualTo(2);
+    }
+
+    @Test
+    void 확정_전_공고는_정제가_준비_데이터를_바꿔도_화면이_본_작업실_토큰으로_연결을_저장한다() throws Exception {
+        long staged = stagedAnnouncement();
+        var seen = workspace(staged);
+        jdbc.update("UPDATE agency_supply_lines SET monthly_rent = 20000 WHERE announcement_id = ?", staged);
+        entities.clear();
+
+        var complex = seen.at("/announcementComplexes/0");
+        mvc.perform(post(root(staged) + "/announcement-complexes/" + complex.get("id").asLong() + "/link")
+                        .with(user("admin").roles("ADMIN")).with(csrf()).contentType("application/json")
+                        .content(json.writeValueAsString(json.createObjectNode()
+                                .put("snapshotToken", seen.get("snapshotToken").asText())
+                                .put("housingComplexId", complex.get("housingComplexId").asLong()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.announcementComplexes[0].linkMethod").value("ADMIN"));
+        // 준비 데이터 토큰만 바뀐다.
+        assertThat(workspace(staged).get("stagingToken").asText()).isNotEqualTo(seen.get("stagingToken").asText());
+    }
+
+    @Test
+    void 준비_데이터로_정본_시작은_이미_확정했거나_화면이_낡았거나_준비_데이터가_없으면_거절한다() throws Exception {
+        long staged = stagedAnnouncement();
+        var seen = workspace(staged);
+        startFromStaging(staged, "stale", seen.get("stagingToken").asText()).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
+        // 화면이 본 뒤 정제가 준비 줄의 금액만 바꿔도(원천 참고에 보이지 않는 값) 낡은 화면으로 시작하지 못한다.
+        jdbc.update("UPDATE agency_supply_lines SET monthly_rent = 20000 WHERE announcement_id = ?", staged);
+        entities.clear();
+        startFromStaging(staged, seen).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ADMIN_DATA_STALE"));
+        startFromStaging(staged, workspace(staged)).andExpect(status().isOk());
+        startFromStaging(staged, workspace(staged).get("snapshotToken").asText(), "confirmed")
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADMIN_DATA_CONFLICT"));
+
+        var empty = new NotificationFixtures(entities, jdbc).announcement();
+        startFromStaging(empty.getId(), workspace(empty.getId())).andExpect(status().isBadRequest());
+        assertThat(supplyConfirmed(empty.getId())).isFalse();
+    }
+
+    @Test
+    void 공고_단지의_모든_주택형을_단지_없이_저장하면_그_공고_단지의_단지_연결을_푼다() throws Exception {
+        var row = fixture(); long id = row.getAnnouncement().getId();
+        AnnouncementComplexSeed.place(entities, row);
+        entities.flush();
+        long announcementComplexId = row.getAnnouncementComplex().getId();
+        var request = request(id);
+        type(request, 0).putNull("housingComplexId").putNull("housingTypeId");
+
+        apply(id, request, preview(id, request)).andExpect(status().isOk());
+        entities.flush(); entities.clear();
+
+        assertThat(jdbc.queryForMap("SELECT housing_complex_id, link_method FROM announcement_complexes WHERE id = ?",
+                announcementComplexId)).containsEntry("housing_complex_id", null).containsEntry("link_method", "ADMIN");
+        assertThat(jdbc.queryForList("SELECT action FROM admin_data_changes WHERE resource_type = 'ANNOUNCEMENT_COMPLEX'"
+                + " AND resource_id = ?", String.class, announcementComplexId)).containsExactly("UNLINK_BY_ADMIN");
+    }
+
     private String impactToken(String path) throws Exception {
         return json.readTree(mvc.perform(get(path + "/impact").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows[0].supplyRowId").isNumber())
@@ -633,7 +724,37 @@ class SupplyCorrectionIntegrationTest {
 
     private String root(long id) { return "/api/admin/announcements/" + id + "/supply-corrections"; }
 
-    private String supplyOwner(long id) {
-        return jdbc.queryForObject("SELECT supply_owner FROM announcements WHERE id = ?", String.class, id);
+    private boolean supplyConfirmed(long id) {
+        return jdbc.queryForObject("SELECT supply_confirmed_at IS NOT NULL FROM announcements WHERE id = ?",
+                Boolean.class, id);
+    }
+
+    /** 정본이 없는 LH 공고와 단지에 이어진 공고 단지 하나, 그 공고 단지의 준비 줄 둘(같은 신청형의 청년·고령자). */
+    private long stagedAnnouncement() {
+        var fixtures = new NotificationFixtures(entities, jdbc);
+        var announcement = fixtures.announcement(); var complex = fixtures.complex("11140", "1114010100");
+        entities.persist(HousingType.createFromMyHome(complex, UUID.randomUUID().toString(), "26A",
+                new BigDecimal("26.4673"), null));
+        var announcementComplex = AnnouncementComplex.observe(announcement, complex.getName(), null, null);
+        entities.persist(announcementComplex);
+        announcementComplex.linkBySource(complex, ComplexLinkMethod.AUTO, "refiner", java.time.Instant.now());
+        for (var line : List.of(new Object[] {"LH:1", 0, "26A(청년)", 5}, new Object[] {"LH:2", 1, "26A(고령자)", 3})) {
+            entities.persist(AgencySupplyLine.create(announcement, AgencyCode.LH, new AgencySupplyLine.Values(
+                    (String) line[0], (int) line[1], announcementComplex, complex.getName(), (String) line[2],
+                    new BigDecimal("26.4673"), null, null, (Integer) line[3], new BigDecimal("1000000"),
+                    new BigDecimal("10000"), null, SupplyCategory.NEW_SUPPLY)));
+        }
+        entities.flush();
+        return announcement.getId();
+    }
+
+    private ResultActions startFromStaging(long id, JsonNode workspace) throws Exception {
+        return startFromStaging(id, workspace.get("snapshotToken").asText(), workspace.get("stagingToken").asText());
+    }
+
+    private ResultActions startFromStaging(long id, String snapshotToken, String stagingToken) throws Exception {
+        return mvc.perform(post(root(id) + "/start-from-staging").with(user("admin").roles("ADMIN")).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(json.createObjectNode()
+                        .put("snapshotToken", snapshotToken).put("stagingToken", stagingToken))));
     }
 }
