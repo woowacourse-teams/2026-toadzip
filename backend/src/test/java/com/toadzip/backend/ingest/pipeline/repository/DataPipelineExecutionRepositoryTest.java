@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -75,7 +76,8 @@ class DataPipelineExecutionRepositoryTest {
         executionStateService.create(refreshedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
         executionStateService.startStep(refreshedId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
         executionStateService.create(completedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
-        executionStateService.fail(completedId, null, "이미 실패한 실행", null, startedAt.plusSeconds(1));
+        executionStateService.fail(completedId, null, "이미 실패한 실행", null, DataPipelineFailureCause.INTERNAL, null,
+                startedAt.plusSeconds(1));
         Long refreshedRowId = executionRepository.findByExecutionId(refreshedId).orElseThrow().getId();
         executionRepository.updateHeartbeat(refreshedRowId, now.minusSeconds(30));
         entityManager.clear();

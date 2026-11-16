@@ -97,10 +97,16 @@ public class DataPipelineExecutionMapper {
         if (execution.getFailureMessage() == null) {
             return null;
         }
+        String cause = null;
+        if (execution.getFailureCause() != null) {
+            cause = execution.getFailureCause().name();
+        }
         return new DataPipelineFailureResponse(
                 stepName(execution.getFailedStep()),
                 execution.getFailureMessage(),
-                deserializeReport(execution.getFailureServerResponse())
+                deserializeReport(execution.getFailureServerResponse()),
+                cause,
+                execution.getFailureDetail()
         );
     }
 

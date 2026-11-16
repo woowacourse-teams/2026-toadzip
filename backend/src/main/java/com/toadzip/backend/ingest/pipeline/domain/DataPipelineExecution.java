@@ -107,6 +107,14 @@ public class DataPipelineExecution {
     @Column(columnDefinition = "text")
     private String failureServerResponse;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private DataPipelineFailureCause failureCause;
+
+    /** 원인 요약. 외부 기관 오류는 비밀값을 가린 메시지, 내부 오류는 예외 종류만 담는다. */
+    @Column(length = 500)
+    private String failureDetail;
+
     @Column(nullable = false)
     private Instant startedAt;
 
@@ -292,14 +300,21 @@ public class DataPipelineExecution {
             DataPipelineStep failedStep,
             String message,
             String serverResponse,
+            DataPipelineFailureCause cause,
+            String detail,
             Instant failedAt
     ) {
         requireRunning();
+        if (cause == null) {
+            throw new IllegalArgumentException("실패 원인은 필수입니다.");
+        }
         status = DataPipelineExecutionStatus.FAILED;
         currentStep = failedStep;
         this.failedStep = failedStep;
         failureMessage = message;
         failureServerResponse = serverResponse;
+        failureCause = cause;
+        failureDetail = detail;
         finishedAt = failedAt;
     }
 

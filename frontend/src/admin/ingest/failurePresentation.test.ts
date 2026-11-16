@@ -14,6 +14,11 @@ it('일일 한도와 속도 제한을 구분하고 HTTP 429만으로 제한 종�
   expect(collectionCause({...row,detail:'HTTP 429, resultCode=23'}).title).toBe('요청 속도 제한')
   expect(collectionCause({...row,detail:'HTTP 429'}).title).toBe('외부 API 호출 제한')
 })
+it('SH·GH 게시판 요청을 원천 이름과 공고 번호·목록 페이지로 표현한다', () => {
+  expect(failureTarget({...row,source:'SH_ANNOUNCEMENT',target:'seq=301234'})).toEqual({title:'공고 301234', context:null, source:'SH 공고 게시판'})
+  expect(failureTarget({...row,source:'GH_ANNOUNCEMENT',target:'pbancNo=2026-77'}).title).toBe('공고 2026-77')
+  expect(failureTarget({...row,source:'GH_ANNOUNCEMENT',target:'board=RENT&page=3'})).toEqual({title:'공고 목록', context:'요청 3페이지', source:'GH 공고 게시판'})
+})
 it('원천 정제 대상은 원래 이름을 유지한다', () => {
   expect(failureTarget({...row,source:null,target:'수서6단지'}).title).toBe('수서6단지')
 })

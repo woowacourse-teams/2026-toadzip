@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import java.time.Clock;
 import java.time.Duration;
@@ -53,7 +54,8 @@ public class DataPipelineHeartbeat {
             executionStateService.heartbeat(execution.getId(), Instant.now(clock));
         }
         catch (IngestOwnershipLostException exception) {
-            failures.recordAtCurrentStep(execution.getExecutionId(), execution.getType(), exception.getMessage());
+            failures.recordAtCurrentStep(execution.getExecutionId(), execution.getType(), exception.getMessage(),
+                    DataPipelineFailureCause.TRANSIENT, null);
         }
         catch (RuntimeException exception) {
             log.error(

@@ -21,9 +21,11 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.exception.exception.IngestServiceKeyMissingException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.exception.exception.RetiredIngestOperationException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -234,9 +236,29 @@ class DataPipelineExecutionServiceTest {
         }).when(runner).run(any(), any());
         service.start(DataPipelineType.COMPLEX_COLLECTION);
 
-        assertThat(query.findLatest(DataPipelineType.COMPLEX_COLLECTION).status())
-                .isEqualTo(DataPipelineExecutionStatus.FAILED);
+        var status = query.findLatest(DataPipelineType.COMPLEX_COLLECTION);
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        // 내부 오류 메시지는 SQL·값이 섞일 수 있어 화면에 남기지 않고 예외 종류만 남긴다.
+        assertThat(status.failure().cause()).isEqualTo("INTERNAL");
+        assertThat(status.failure().detail()).isEqualTo("IllegalStateException");
+        assertThat(status.failure().message()).doesNotContain("수집 실패");
         verify(lease).close();
+    }
+
+    @Test
+    void 외부_기관_오류로_멈춘_실행은_다시_실행하면_되는_실패로_남기고_serviceKey를_가린다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        doAnswer(invocation -> {
+            throw new IllegalStateException("감싼 오류", new ExternalDataRequestException(
+                    "GH 목록 응답을 읽지 못했습니다: /list?serviceKey=secret-value&page=1"));
+        }).when(runner).run(any(), any());
+
+        service.start(DataPipelineType.COMPLEX_COLLECTION);
+
+        var failure = query.findLatest(DataPipelineType.COMPLEX_COLLECTION).failure();
+        assertThat(failure.cause()).isEqualTo("TRANSIENT");
+        assertThat(failure.detail()).isEqualTo("GH 목록 응답을 읽지 못했습니다: /list?serviceKey=[REDACTED]&page=1");
     }
 
     @Test
@@ -429,6 +451,7 @@ class DataPipelineExecutionServiceTest {
         var status = query.find(accepted.executionId());
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("LH 공고 정제");
+        assertThat(status.failure().cause()).isEqualTo("TRANSIENT");
     }
 
     @Test
@@ -457,6 +480,7 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.failure().stepName()).isEqualTo("LH 공고 정제");
         assertThat(status.failure().serverResponse())
                 .isEqualTo(Map.of("failedAnnouncementCount", 3));
+        assertThat(status.failure().cause()).isEqualTo("PARTIAL");
         assertThat(status.partiallyFailedSteps()).singleElement().satisfies(failure -> {
             assertThat(failure.step()).isEqualTo(DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
             assertThat(failure.report())
@@ -527,6 +551,7 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("LH 공고 목록 수집");
         assertThat(status.failure().message()).contains("LH 공고 API 장애", "재실행");
+        assertThat(status.failure().cause()).isEqualTo("TRANSIENT");
         verify(lease).close();
     }
 
@@ -554,6 +579,8 @@ class DataPipelineExecutionServiceTest {
                 org.mockito.ArgumentMatchers.isNull(),
                 any(),
                 org.mockito.ArgumentMatchers.isNull(),
+                any(),
+                any(),
                 any()
         );
     }
@@ -573,6 +600,8 @@ class DataPipelineExecutionServiceTest {
                     staleExecution.fail(
                             staleExecution.getCurrentStep(),
                             invocation.getArgument(2),
+                            null,
+                            DataPipelineFailureCause.TRANSIENT,
                             null,
                             invocation.getArgument(1)
                     );
@@ -725,13 +754,17 @@ class DataPipelineExecutionServiceTest {
                         invocation.getArgument(1),
                         invocation.getArgument(2),
                         invocation.getArgument(3),
-                        invocation.getArgument(4)
+                        invocation.getArgument(4),
+                        invocation.getArgument(5),
+                        invocation.getArgument(6)
                 );
             }
             return null;
         }).when(executionStateService).fail(
                 any(),
                 org.mockito.ArgumentMatchers.nullable(DataPipelineStep.class),
+                any(),
+                org.mockito.ArgumentMatchers.nullable(String.class),
                 any(),
                 org.mockito.ArgumentMatchers.nullable(String.class),
                 any()

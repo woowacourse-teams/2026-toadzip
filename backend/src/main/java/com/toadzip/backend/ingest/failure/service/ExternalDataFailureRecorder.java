@@ -105,7 +105,8 @@ public class ExternalDataFailureRecorder {
         return sanitized;
     }
 
-    private String redactSecrets(String value) {
+    /** 요청 설명·오류 메시지에 들어간 serviceKey 값을 가린다. */
+    public static String redactSecrets(String value) {
         return SERVICE_KEY_PATTERN.matcher(value).replaceAll("$1[REDACTED]");
     }
 

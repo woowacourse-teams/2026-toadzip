@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestExcept
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
@@ -33,8 +34,6 @@ public class DataPipelineExecutionService {
 
     private static final String ALREADY_RUNNING_MESSAGE =
             "데이터 수집·정제 작업이 이미 실행 중입니다.";
-    private static final String INTERNAL_FAILURE_MESSAGE =
-            "현재 단계를 처리하는 중 서버 오류가 발생했습니다.";
 
     private final DataPipelineRunner runner;
     private final DataPipelineExecutionLock executionLock;
@@ -117,7 +116,7 @@ public class DataPipelineExecutionService {
         }
         catch (RuntimeException exception) {
             lease.close();
-            failures.record(executionId, type, null, INTERNAL_FAILURE_MESSAGE, null);
+            failures.recordStartFailure(executionId, type, exception);
             throw exception;
         }
         try {
@@ -127,7 +126,7 @@ public class DataPipelineExecutionService {
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
             lease.close();
-            failures.record(executionId, type, null, INTERNAL_FAILURE_MESSAGE, null);
+            failures.recordStartFailure(executionId, type, exception);
             throw exception;
         }
         return acceptedResponse;
@@ -156,7 +155,8 @@ public class DataPipelineExecutionService {
             runAndRecordOutcome(executionId, type, actor, identifiers);
         }
         catch (IngestOwnershipLostException exception) {
-            failures.recordAtCurrentStep(executionId, type, exception.getMessage());
+            failures.recordAtCurrentStep(executionId, type, exception.getMessage(), DataPipelineFailureCause.TRANSIENT,
+                    null);
             log.warn("데이터 수집·정제 실행 소유권 소실: executionId={}", executionId);
         }
         catch (DataPipelinePartialFailureException exception) {
@@ -165,17 +165,19 @@ public class DataPipelineExecutionService {
                     type,
                     exception.getStep(),
                     exception.getMessage(),
-                    exception.getServerResponse()
+                    exception.getServerResponse(),
+                    DataPipelineFailureCause.PARTIAL,
+                    null
             );
         }
         catch (LhAnnouncementUnavailableException exception) {
             DataPipelineStep failedStep = failures.currentStep(executionId);
-            failures.record(executionId, type, failedStep, exception.getMessage(), null);
+            failures.record(executionId, type, failedStep, exception.getMessage(), null,
+                    DataPipelineFailureCause.TRANSIENT, null);
             log.warn("LH 공고 API 장애로 수집을 중단했습니다: type={}, step={}", type, failedStep);
         }
         catch (RuntimeException exception) {
-            DataPipelineStep failedStep = failures.currentStep(executionId);
-            failures.record(executionId, type, failedStep, INTERNAL_FAILURE_MESSAGE, null);
+            DataPipelineStep failedStep = failures.recordUnexpected(executionId, type, exception);
             log.error(
                     "데이터 수집·정제 단계 실행에 실패했습니다: type={}, step={}",
                     type,
