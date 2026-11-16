@@ -57,4 +57,42 @@ public interface PdfExtractionJobRepository extends JpaRepository<PdfExtractionJ
     @Query(VIEW + " AND job.status = :status ORDER BY job.completedAt DESC, job.id DESC")
     List<PdfExtractionJobView> findLatestViews(String kind, long announcementId, PdfExtractionJobStatus status,
             Limit limit);
+
+    /**
+     * 큐 요약. 대기는 PENDING·RETRY이고 가장 오래된 대기는 넣은 시각으로 잰다. 성공·실패와 처리 시간은 since 이후에 끝난 작업만
+     * 센다. 처리 시간은 워커가 처음 꺼낸 때(started_at, 재시도해도 바뀌지 않음)부터 성공한 때까지라 재시도 대기가 들어간다.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FILTER (WHERE status = 'PENDING') AS pending,
+                COUNT(*) FILTER (WHERE status = 'RETRY') AS retrying,
+                COUNT(*) FILTER (WHERE status = 'RUNNING') AS running,
+                MIN(created_at) FILTER (WHERE status IN ('PENDING', 'RETRY')) AS oldestWaitingSince,
+                COUNT(*) FILTER (WHERE status = 'SUCCEEDED') AS succeeded,
+                COUNT(*) FILTER (WHERE status = 'FAILED') AS failed,
+                AVG(EXTRACT(EPOCH FROM completed_at - started_at)) FILTER (WHERE status = 'SUCCEEDED')
+                    AS averageProcessingSeconds,
+                MAX(EXTRACT(EPOCH FROM completed_at - started_at)) FILTER (WHERE status = 'SUCCEEDED')
+                    AS maxProcessingSeconds
+            FROM ai_jobs
+            WHERE kind = :kind AND (status IN ('PENDING', 'RETRY', 'RUNNING') OR completed_at >= :since)
+            """, nativeQuery = true)
+    QueueSummary summarizeQueue(String kind, Instant since);
+
+    interface QueueSummary {
+        long getPending();
+
+        long getRetrying();
+
+        long getRunning();
+
+        Instant getOldestWaitingSince();
+
+        long getSucceeded();
+
+        long getFailed();
+
+        Double getAverageProcessingSeconds();
+
+        Double getMaxProcessingSeconds();
+    }
 }
