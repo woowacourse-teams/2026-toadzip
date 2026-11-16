@@ -35,10 +35,25 @@ describe('실제 신청자격 API 연결', () => {
 })
 
 it('지역에 맞는 선택지가 없으면 공고 전체가 ELIGIBLE이어도 지역 필터에서 제외한다', async () => {
-  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...current, eligibleOptionIdsInRegion: [] }))
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response([{ ...current, eligibleOptionIdsInRegion: [] }]))
   const result = await createEligibilityRepository(fetcher).loadListResults([{ ...ref, region: '41465' }])
-  expect(String(fetcher.mock.calls[0][0])).toMatch(/eligibility\?region=41465$/)
+  expect(String(fetcher.mock.calls[0][0])).toMatch(/\/eligibility\/announcements\?announcementIds=5&region=41465$/)
   expect(result.get('5')).toMatchObject({ best: { status: 'ELIGIBLE' }, eligibleInRegion: false })
+})
+
+it('목록 판정은 공고마다 부르지 않고 100개씩 묶어 요청한 공고 ID로 결과를 돌려준다', async () => {
+  const refs = Array.from({ length: 101 }, (_, index) => ({ ...ref, announcementId: String(index + 1) }))
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    const ids = new URL(String(input), 'http://localhost').searchParams.get('announcementIds')!.split(',')
+    // 정정된 공고는 최신 공고 ID가 요청 ID와 다르다. 목록 카드는 요청 ID로 결과를 찾는다.
+    return response(ids.map((id) => ({ ...current, requestedAnnouncementId: Number(id), announcementId: Number(id) + 1000 })))
+  })
+  const result = await createEligibilityRepository(fetcher).loadListResults(refs)
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(String(fetcher.mock.calls[0][0])).not.toMatch(/region=/)
+  expect(new URL(String(fetcher.mock.calls[1][0]), 'http://localhost').searchParams.get('announcementIds')).toBe('101')
+  expect(result.size).toBe(101)
+  expect(result.get('7')).toMatchObject({ announcementId: '1007', best: { label: '일반입주자 신청자격', status: 'ELIGIBLE' }, eligibleInRegion: true })
 })
 
 it('수치 미충족의 기준·방향·입력값을 보존하며 다른 정보 부족과 구분한다', async () => {

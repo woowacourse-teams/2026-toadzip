@@ -8,7 +8,9 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,6 +29,15 @@ public class EligibilityResultRepository {
     public Optional<StoredEligibilityResult> find(long userId, long rootId) {
         return jdbc.sql("SELECT * FROM comparison_latest_results WHERE user_id = ? AND announcement_id = ?")
                 .params(userId, rootId).query(this::result).optional();
+    }
+
+    public Map<Long, StoredEligibilityResult> findAll(long userId, List<Long> rootIds) {
+        Map<Long, StoredEligibilityResult> found = new HashMap<>();
+        jdbc.sql("SELECT * FROM comparison_latest_results WHERE user_id = ? AND announcement_id = ANY(?::bigint[])")
+                .params(userId, rootIds.toArray(Long[]::new))
+                .query(this::result).list()
+                .forEach(stored -> found.put(stored.basis().rootAnnouncementId(), stored));
+        return found;
     }
 
     public void save(StoredEligibilityResult stored) {

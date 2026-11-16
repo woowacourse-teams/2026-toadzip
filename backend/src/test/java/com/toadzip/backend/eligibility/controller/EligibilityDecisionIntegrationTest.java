@@ -13,6 +13,7 @@ import com.toadzip.backend.eligibility.domain.EligibilityProfile;
 import com.toadzip.backend.eligibility.domain.FamilyDetailsState;
 import com.toadzip.backend.eligibility.domain.InputValue;
 import com.toadzip.backend.eligibility.domain.ProfileField;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -85,6 +86,85 @@ class EligibilityDecisionIntegrationTest extends EligibilityIntegrationSupport {
                         .with(user(Long.toString(USER)).roles("USER")))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void 여러_공고를_한번에_조회하면_요청_순서대로_단건_조회와_같은_결과를_반환한다() throws Exception {
+        long structured = announcement();
+        publish(structured, saveDraft(structured, null, 0, EligibilityFixtures.d01()))
+                .andExpect(status().isOk());
+        long unstructured = announcement();
+        profile(new EligibilityProfile(FamilyDetailsState.NOT_STARTED, Map.of(
+                ProfileField.BIRTH_DATE, InputValue.provided("1997-01-10"),
+                ProfileField.FAMILY_TYPE, InputValue.provided("UNMARRIED"))));
+        var member = user(Long.toString(USER)).roles("USER");
+
+        var batch = response(mvc.perform(get(BATCH).param("announcementIds", unstructured + "," + structured)
+                        .param("region", "41463").with(member))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store")));
+
+        assertThat(batch.size()).isEqualTo(2);
+        assertThat(batch.get(0).path("requestedAnnouncementId").asLong()).isEqualTo(unstructured);
+        assertThat(batch.get(1).path("eligibleOptionIdsInRegion").get(0).asString()).isEqualTo("giheung-youth");
+        assertThat(batch.get(0)).isEqualTo(response(mvc.perform(get(path(unstructured)).param("region", "41463")
+                .with(member)).andExpect(status().isOk())));
+        assertThat(batch.get(1)).isEqualTo(response(mvc.perform(get(path(structured)).param("region", "41463")
+                .with(member)).andExpect(status().isOk())));
+    }
+
+    @Test
+    void 여러_공고_조회는_정정된_공고와_중복_ID도_단건_조회와_같은_결과를_반환한다() throws Exception {
+        long original = announcement();
+        long correction = announcement();
+        publish(correction, saveDraft(correction, null, 0, EligibilityFixtures.d01())).andExpect(status().isOk());
+        long other = announcement();
+        publish(other, saveDraft(other, null, 0, EligibilityFixtures.d05())).andExpect(status().isOk());
+        jdbc.update("UPDATE announcements SET previous_announcement_id = ?, status = 'CORRECTION' WHERE id = ?",
+                original, correction);
+        profile(new EligibilityProfile(FamilyDetailsState.NOT_STARTED, Map.of(
+                ProfileField.BIRTH_DATE, InputValue.provided("1997-01-10"),
+                ProfileField.FAMILY_TYPE, InputValue.provided("UNMARRIED"))));
+        for (int index = 0; index < 4; index++) {
+            worker.runOnce(com.toadzip.backend.eligibility.domain.EligibilityWork.Kind.NOTICE);
+        }
+        var member = user(Long.toString(USER)).roles("USER");
+        List<Long> requested = List.of(original, correction, original, other);
+
+        var batch = response(mvc.perform(get(BATCH).param("announcementIds",
+                        requested.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")))
+                .with(member)).andExpect(status().isOk()));
+
+        assertThat(batch.size()).isEqualTo(4);
+        assertThat(batch.get(0).path("requestedAnnouncementId").asLong()).isEqualTo(original);
+        assertThat(batch.get(0).path("announcementId").asLong()).isEqualTo(correction);
+        assertThat(batch.get(0).path("content").isObject()).isTrue();
+        for (int index = 0; index < requested.size(); index++) {
+            assertThat(batch.get(index)).isEqualTo(response(mvc.perform(get(path(requested.get(index))).with(member))
+                    .andExpect(status().isOk())));
+        }
+    }
+
+    @Test
+    void 여러_공고_조회에도_회원인증과_개수_지역_검증을_적용한다() throws Exception {
+        long announcement = announcement();
+        var member = user(Long.toString(USER)).roles("USER");
+        mvc.perform(get(BATCH).param("announcementIds", Long.toString(announcement)))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get(BATCH).param("announcementIds", Long.toString(announcement))
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(BATCH).param("announcementIds", "").with(member)).andExpect(status().isBadRequest());
+        String tooMany = java.util.stream.LongStream.rangeClosed(1, 101).mapToObj(Long::toString)
+                .collect(java.util.stream.Collectors.joining(","));
+        mvc.perform(get(BATCH).param("announcementIds", tooMany).with(member)).andExpect(status().isBadRequest());
+        mvc.perform(get(BATCH).param("announcementIds", announcement + "," + Long.MAX_VALUE).with(member))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(BATCH).param("announcementIds", Long.toString(announcement)).param("region", "unknown")
+                        .with(member))
+                .andExpect(status().isBadRequest());
+    }
+
+    private static final String BATCH = "/api/v2/eligibility/announcements";
 
     private String path(long announcement) {
         return "/api/v2/announcements/" + announcement + "/eligibility";

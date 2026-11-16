@@ -29,6 +29,16 @@ USER 세션 인증이 필요하고 `{"data": ...}` 응답과 `Cache-Control: no-
 이전 result를 숨긴다. RECHECKING을 정보 부족이나 직접 확인 필요로 표시하지 않는다.
 지역 안의 지원 가능 ID도 현재 완료 결과가 있을 때만 반환한다.
 
+## 여러 공고 조회
+
+`GET /api/v2/eligibility/announcements?announcementIds=11,12,13&region=41465`
+
+목록이 공고마다 단건 조회를 따로 부르지 않게 한 번에 조회한다. `announcementIds`는 1~100개이고
+벗어나면 400이다. 인증·`region` 검증·no-store는 단건 조회와 같다. 응답 `data`는 요청 순서대로 놓인
+단건 조회 응답의 배열이며, 모든 공고를 같은 DB 스냅샷에서 읽는다. 서버는 공고마다 쿼리를
+반복하지 않고 ID 목록으로 한 번씩 읽어, 공고 수와 관계없이 같은 횟수의 SQL을 보낸다. 목록은 각 항목의
+`requestedAnnouncementId`로 카드 결과를 찾는다. 없는 공고 ID가 하나라도 있으면 단건 조회처럼 404다.
+
 이전 API를 소비하는 화면의 연결 상태와 해석 한계는 [호환 계약](compatibility.md)을 따른다.
 
 ## 저장 완료·재판정 완료·새 지원 가능 안내

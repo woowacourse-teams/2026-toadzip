@@ -577,7 +577,7 @@ export function PublicHousingExplorer({
   // 접수마감 공고는 지원할 수 없으니 내 조건과 비교하지 않는다.
   const announcementClosed = announcementFilters.closed === true
   const conditionList = useConditionListResults(
-    announcementClosed ? NO_ANNOUNCEMENTS : announcementResults.state.items, announcementFilters.regionCode)
+    announcementClosed ? NO_ANNOUNCEMENTS : announcementResults.state.items, announcementFilters.regionCode, announcementFiltersKey)
   const conditionsCompared = conditions.mode === 'member' && conditions.hasProfile
 
   // 데스크톱에서 공고 상세 주소로 처음 들어오면 그 공고가 보이는 목록 탭(모집 중·접수마감)을 펼친다.

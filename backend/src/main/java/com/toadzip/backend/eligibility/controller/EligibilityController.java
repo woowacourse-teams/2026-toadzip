@@ -5,6 +5,7 @@ import com.toadzip.backend.eligibility.dto.EligibilityProcessingResponses.Discov
 import com.toadzip.backend.eligibility.dto.EligibilityProcessingResponses.Progress;
 import com.toadzip.backend.eligibility.service.EligibilityQueryService;
 import com.toadzip.backend.global.response.ApiResponse;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -48,5 +49,12 @@ public class EligibilityController {
             @PathVariable long announcementId, @RequestParam(required = false) String region) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new ApiResponse<>(
                 queries.detail(Long.parseLong(authentication.getName()), announcementId, region)));
+    }
+
+    @GetMapping("/api/v2/eligibility/announcements")
+    public ResponseEntity<ApiResponse<List<EligibilityDetail>>> details(Authentication authentication,
+            @RequestParam List<Long> announcementIds, @RequestParam(required = false) String region) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new ApiResponse<>(
+                queries.details(Long.parseLong(authentication.getName()), announcementIds, region)));
     }
 }
