@@ -510,7 +510,7 @@ class LhAnnouncementRefinementIntegrationTest {
         inTransaction(() -> assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P0").getFirst()
                 .getPreviousAnnouncement()).isNull());
         run.refineBundle(List.of("P1"), List.of(sourceKeyOf("P1")));
-        run.finish(java.time.Instant.MAX, List.of("P0", "P1"));
+        run.finish(java.time.Instant.MAX, List.of("P0", "P1"), true);
 
         var report = run.report();
         assertThat(report.linkedRevisionCount()).isOne();

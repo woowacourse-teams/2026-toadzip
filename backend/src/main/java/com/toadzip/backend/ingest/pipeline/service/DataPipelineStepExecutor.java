@@ -96,7 +96,8 @@ class DataPipelineStepExecutor {
         var refinement = lhAnnouncementRefinementService.begin();
         var collection = collecting(() -> collectionService.collectBundles(refinement::refineBundle),
                 refinement::abandon);
-        refinement.finish(executionStartedAt(), collection.selectedPanIds());
+        refinement.finish(executionStartedAt(), collection.selectedPanIds(),
+                collection.supply().failedRequestCount() + collection.detail().failedRequestCount() == 0);
         return resultAdapter.adapt(new LhCollectionRefinementReport(
                 collection.supply(), collection.detail(), refinement.report()));
     }
@@ -111,7 +112,7 @@ class DataPipelineStepExecutor {
         var refinement = shAnnouncementRefinementService.begin();
         var collection = collecting(() -> shAnnouncementCollectionService.collect(refinement::refinePage),
                 refinement::abandon);
-        refinement.finish();
+        refinement.finish(collection.failedRequestCount() == 0);
         return resultAdapter.adapt(new BoardCollectionRefinementReport(collection, refinement.report()));
     }
 
@@ -119,7 +120,7 @@ class DataPipelineStepExecutor {
         var refinement = ghAnnouncementRefinementService.begin();
         var collection = collecting(() -> ghAnnouncementCollectionService.collect(refinement::refinePage),
                 refinement::abandon);
-        refinement.finish();
+        refinement.finish(collection.failedRequestCount() == 0);
         return resultAdapter.adapt(new BoardCollectionRefinementReport(collection, refinement.report()));
     }
 

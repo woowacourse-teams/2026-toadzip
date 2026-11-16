@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -143,10 +144,24 @@ public final class SourceRefinementRun<O extends Enum<O>> {
      * 바꾸고, 다른 기관이나 이번에 다루지 않은 원천의 실패는 그대로 둔다. 실행을 마칠 때 한 번 부른다.
      */
     public void recordFailures() {
+        recordFailures(true);
+    }
+
+    /**
+     * everyRequestRead는 정제할 원천을 고른 수집이 모든 요청을 실패 없이 읽었는지다. 아니면(호출 제한·상한이나 요청 실패로
+     * 일부만 읽음) 읽지 않은 묶음이 있을 수 있어 이번에 다룬 키의 실패만 맞춘다.
+     */
+    public void recordFailures(boolean everyRequestRead) {
         transactions.executeWithoutResult(status -> {
             ownershipGuard.verifyWrite();
-            failureStore.reconcile(provider, Set.copyOf(attemptedKeys), List.copyOf(observedFailures),
-                    IngestExecutionScope.currentExecutionId().orElse(null));
+            UUID executionId = IngestExecutionScope.currentExecutionId().orElse(null);
+            if (everyRequestRead) {
+                failureStore.reconcile(provider, Set.copyOf(attemptedKeys), List.copyOf(observedFailures), executionId);
+            }
+            else {
+                failureStore.reconcileStopped(provider, Set.copyOf(attemptedKeys), List.copyOf(observedFailures),
+                        executionId);
+            }
         });
     }
 
@@ -156,11 +171,7 @@ public final class SourceRefinementRun<O extends Enum<O>> {
      */
     public void recordFailuresAfter(RuntimeException stopped) {
         try {
-            transactions.executeWithoutResult(status -> {
-                ownershipGuard.verifyWrite();
-                failureStore.reconcileStopped(provider, Set.copyOf(attemptedKeys), List.copyOf(observedFailures),
-                        IngestExecutionScope.currentExecutionId().orElse(null));
-            });
+            recordFailures(false);
         }
         catch (RuntimeException recording) {
             stopped.addSuppressed(recording);

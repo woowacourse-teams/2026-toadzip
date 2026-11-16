@@ -519,7 +519,7 @@ class DataPipelineRunnerTest {
         InOrder order = inOrder(lhAnnouncementCatalogCollectionService, collectionService, run);
         order.verify(lhAnnouncementCatalogCollectionService).collect();
         order.verify(collectionService).collectBundles(any());
-        order.verify(run).finish(any(), any());
+        order.verify(run).finish(any(), any(), eq(true));
         verify(lhAnnouncementRefinementService, never()).refineAll();
         verify(executionStateService).completeStep(eq(executionId),
                 eq(DataPipelineStep.COLLECT_REFINE_LH_ANNOUNCEMENTS), any());

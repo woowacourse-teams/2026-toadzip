@@ -178,6 +178,43 @@ class BoardAnnouncementPipelineIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
+    void 지난_묶음_읽기_실패는_호출제한으로_멈춘_실행에서는_남고_모든_요청을_읽은_실행에서_해결된다(DataPipelineType type) {
+        jdbc.update("""
+                INSERT INTO announcement_refinement_failures (provider, source_key, reason, detail, status,
+                    occurred_at, last_occurred_at, occurrence_count, recurrence_count)
+                VALUES (?, ?, 'SOURCE_LOOKUP_FAILED', '조회 실패', 'PENDING', now(), now(), 1, 0)
+                """, agency(type), agency(type) + " 페이지 999");
+        boardList(type, 1, 11, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110);
+        boardList(type, 2, 11, 111);
+        for (int id = 101; id <= 111; id++) {
+            boardDetail(type, id);
+        }
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            doThrow(ExternalDataRequestException.rateLimited("호출 제한")).when(shExternal).fetchDetail("111");
+        }
+        else {
+            doThrow(ExternalDataRequestException.rateLimited("호출 제한")).when(ghExternal)
+                    .fetchDetail(RENTAL_HOUSE, "111", "01");
+        }
+
+        var limited = service.start(type);
+        task.get().run();
+        assertThat(query.find(limited.executionId()).status())
+                .isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
+        assertThat(jdbc.queryForObject("SELECT status FROM announcement_refinement_failures", String.class))
+                .isEqualTo("PENDING");
+
+        boardDetail(type, 111);
+        var complete = service.start(type);
+        task.get().run();
+        assertThat(query.find(complete.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(jdbc.queryForMap("SELECT status, last_resolved_execution_id FROM announcement_refinement_failures"))
+                .containsEntry("status", "RESOLVED")
+                .containsEntry("last_resolved_execution_id", complete.executionId());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
     void 한_원천_정제가_실패해도_다른_공고_커밋과_실패_보고서는_보존한다(DataPipelineType type) {
         String rejected = "GH:801";
         if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
