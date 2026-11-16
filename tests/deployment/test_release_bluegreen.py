@@ -74,8 +74,13 @@ class Runner:
     def workers(self):
         return {}
 
-    def check_http(self):
+    def check_http(self, previous=False):
         pass
+
+    def check_schema(self, active, candidate):
+        self.events.append('schema-' + active + '-' + candidate[:1])
+        if self.failure() == 'schema':
+            raise bluegreen.DeploymentError('Candidate migrations break the active backend')
 
     def container(self, name):
         return name
@@ -152,7 +157,8 @@ class ReleaseTests(unittest.TestCase):
 
     def test_preflight_and_all_builds_finish_before_backend_then_frontend_then_worker(self):
         result = self.release.run()
-        self.assertEqual(self.events, ['preflight-backend', 'preflight-frontend', 'build-backend', 'build-frontend',
+        self.assertEqual(self.events, ['preflight-backend', 'schema-backend-blue-a', 'preflight-frontend',
+                                       'build-backend', 'build-frontend',
                                        'build-ai-worker', 'deploy-backend', 'deploy-frontend',
                                        'check---rm -T --no-deps --pull never ai-worker --check',
                                        'image-sha256:' + '3' * 64, 'deploy-ai-worker', 'wait-True',
@@ -253,6 +259,17 @@ class ReleaseTests(unittest.TestCase):
             self.release.run()
         self.assertFalse(any(event.startswith('deploy-') for event in self.events))
 
+    def test_incompatible_migrations_stop_before_any_build(self):
+        self.failure = 'schema'
+        with self.assertRaisesRegex(bluegreen.DeploymentError, 'Candidate migrations'):
+            self.release.run()
+        self.assertEqual(self.events, ['preflight-backend', 'schema-backend-blue-a'])
+
+    def test_incompatible_schema_flag_reaches_both_deployments(self):
+        options = argparse.Namespace(**vars(self.options), allow_incompatible_schema=True)
+        release = module.Release(options)
+        self.assertTrue(all(runner.options.allow_incompatible_schema for runner in release.runners.values()))
+
     def test_inherited_descriptor_keeps_parent_lock_after_release(self):
         lock = self.runtime / 'deploy.lock'
         with lock.open('a') as handle:
@@ -285,6 +302,12 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn('git checkout --detach "$CI_COMMIT"', text)
             self.assertLess(text.index('flock --nonblock 9'), text.index('git fetch'))
             self.assertIn('--lock-fd 9', text)
+            # Push runs never allow incompatible migrations; only a manual run with the input does.
+            self.assertIn('ALLOW_INCOMPATIBLE_SCHEMA: ${{ inputs.allow_incompatible_schema || false }}', text)
+            self.assertIn('default: false', text)
+            self.assertIn('if [[ "$ALLOW_INCOMPATIBLE_SCHEMA" == true ]]; then special+=(--allow-incompatible-schema); fi', text)
+            self.assertLess(text.index('special+=('), text.index('scripts/release-bluegreen.py'))
+            self.assertIn('--compose-override compose.notification-credentials.yaml \\\n            ${special[@]+"${special[@]}"}\n', text)
             self.assertNotIn('docker compose up', text)
             self.assertNotIn('git pull', text)
             self.assertNotIn('git reset --hard', text)

@@ -90,6 +90,15 @@ class Runner:
 
 
 class RollbackTests(unittest.TestCase):
+    def test_rollback_options_never_enable_incompatible_schema(self):
+        # Rollback has no --allow-incompatible-schema; the target's in-container query then stays strict.
+        self.builder.stop()
+        try:
+            rollback = module.Rollback(self.options)
+        finally:
+            self.builder.start()
+        self.assertFalse(any(runner.allow_incompatible for runner in rollback.runners.values()))
+
     def setUp(self):
         (ROOT / '.local').mkdir(exist_ok=True)
         self.temporary = tempfile.TemporaryDirectory(dir=ROOT / '.local', prefix='rollback-test-')

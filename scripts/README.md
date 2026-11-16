@@ -106,6 +106,8 @@ Edge에는 설정 디렉터리와 별도로 `/var/cache/toadzip/assets` 읽기 �
   실제 Linux 컨테이너에서 Bash 명령을 실행하는 백엔드 통합 시험은 [검증 안내](../tests/README.md#실제-백엔드-bluegreen-로컬-검증)를 따릅니다.
 - 백엔드 후보 기동 시 Flyway가 먼저 실행됩니다. 자동 복구는 **요청 전달 설정만** 되돌리며 이미 반영된
   DB 변경은 취소하지 않습니다. 서로 다른 릴리스의 공존·앱 원복 가능성은 후보 기동 전에 확인합니다.
+  후보가 실행 중인 백엔드가 쓸 수 없는 마이그레이션을 가져오면 기동 전에 멈추며, 특별 배포 절차를 마친 뒤에만
+  `--allow-incompatible-schema`로 진행합니다([검사 범위와 허용 실행](../docs/operations/deployment.md#실행-중인-백엔드가-쓸-수-없는-마이그레이션)).
   [특별 DB 배포](../docs/operations/deployment.md#db-전환계약-변경이-필요한-특별-배포)와
   [알림 동시 실행](../docs/operations/notifications.md#bluegreen-동시-실행)의 플래그·ADC 전달 조건을 따릅니다.
 

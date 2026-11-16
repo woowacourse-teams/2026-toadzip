@@ -3,6 +3,7 @@
 import argparse
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -23,6 +24,8 @@ upstream backend_metrics_active {
 }
 """
 
+CANDIDATE = "sha256:" + "a" * 64
+
 
 class Harness(module.Deployment):
     def __init__(self, options):
@@ -36,6 +39,11 @@ class Harness(module.Deployment):
         self.failed_once = False
         self.stopped = set()
         self.started = []
+        # Containers whose announcement query fails, e.g. an old backend after the shared schema changed.
+        self.broken = set()
+        self.breaks_on_start = set()
+        self.images = {}
+        self.labels = {}
 
     def compose(self, *args, environment=None, timeout=30):
         self.commands.append(args)
@@ -47,6 +55,8 @@ class Harness(module.Deployment):
             self.recreations.append((args[-1], environment))
             if self.failure == "candidate":
                 raise module.DeploymentError("candidate failed")
+            # The candidate runs Flyway against the database both colors share.
+            self.broken |= self.breaks_on_start
             return ""
         raise AssertionError(args)
 
@@ -61,10 +71,12 @@ class Harness(module.Deployment):
                 self.probe[self.served] = path
             return 404, b""
         if path == "/api/health":
+            if self.failure == "health":
+                return 503, b'{"status":"DOWN"}'
             return 200, b'{"status":"UP"}'
         if path == "/api/v1/announcements?size=1":
-            if self.failure == "query" and self.served.endswith("-green"):
-                return 503, b'{}'
+            if (self.failure == "query" and self.served.endswith("-green")) or self.served in self.broken:
+                return 500, b'{}'
             return 200, b'{"data":{}}'
         return 200, b"{}"
 
@@ -101,8 +113,12 @@ class Harness(module.Deployment):
             if self.failure == "unhealthy" and args[-1] == self.service + "-green":
                 return "unhealthy"
             return "healthy"
+        if args[:3] == ("inspect", "--format", "{{.Image}}"):
+            return self.images.get(args[-1], CANDIDATE)
+        if module.REVISION_LABEL in args:
+            return self.labels.get(args[-1], "")
         if args[:2] == ("image", "inspect"):
-            return "sha256:" + "a" * 64
+            return CANDIDATE
         if args[0] == "logs":
             return self.probe.get(args[-1], "")
         if args[0] == "exec":
@@ -130,6 +146,10 @@ class Harness(module.Deployment):
                 return ""
             if args[2] == "wget":
                 return ""
+            if args[2] == "curl" and args[-1].endswith("/api/v1/announcements?size=1"):
+                if args[1] in self.broken:
+                    raise module.DeploymentError("Docker command failed: exec " + args[1] + " curl")
+                return '{"data":{}}'
             if args[2] == "curl":
                 return '{"status":"DOWN"}' if self.failure == "management" else '{"status":"UP"}'
         raise AssertionError(args)
@@ -421,6 +441,152 @@ class BackendDeploymentTests(DeploymentTests):
             with self.assertRaisesRegex(module.DeploymentError, "Another deployment"):
                 self.runner.run()
         self.assertEqual(self.runner.recreations, [])
+
+
+
+class IncompatibleSchemaTests(unittest.TestCase):
+    """The 2026-11-16 development failure: the candidate's Flyway dropped a column the active backend maps."""
+    service = "backend"
+
+    def setUp(self):
+        DeploymentTests.setUp(self)
+        self.repository = self.runner.runtime / "repository"
+        (self.repository / module.MIGRATIONS).mkdir(parents=True)
+        self.git("init", "--quiet")
+        self.active = self.commit("V1__announcements.sql", "CREATE TABLE announcements (id bigint, supply_owner text);")
+        self.runner.repository = self.repository
+        self.runner.images["backend-blue"] = "sha256:" + "b" * 64
+        self.runner.labels["backend-blue"] = self.active
+
+    tearDown = DeploymentTests.tearDown
+
+    def git(self, *arguments):
+        return subprocess.run(["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+                               "-c", "commit.gpgsign=false", *arguments], cwd=self.repository,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, name, sql):
+        (self.repository / module.MIGRATIONS / name).write_text(sql)
+        self.git("add", "--all")
+        self.git("commit", "--quiet", "-m", name)
+        return self.git("rev-parse", "HEAD")
+
+    def release(self, sql, breaks_active=True):
+        self.runner.labels[CANDIDATE] = self.commit("V2__release.sql", sql)
+        if breaks_active:
+            self.runner.breaks_on_start = {"backend-blue"}
+
+    def assert_untouched(self):
+        self.assertEqual(self.runner.recreations, [])
+        self.assertEqual(self.runner.config.read_text(), CONFIG)
+        self.assertEqual(self.runner.served, "backend-blue")
+        self.assertEqual(self.runner.broken, set())
+
+    def test_incompatible_migration_stops_before_candidate_runs_flyway(self):
+        self.release("-- 이전 버전은 supply_owner를 매핑한다.\nALTER TABLE announcements DROP COLUMN supply_owner;")
+        with self.assertRaisesRegex(module.DeploymentError, r"V2__release\.sql: DROP COLUMN.*--allow-incompatible-schema"):
+            self.runner.run()
+        self.assert_untouched()
+
+    def test_undetected_incompatibility_still_halts_with_active_backend_broken(self):
+        # What happened on the development server; the scan only narrows this to statements it does not know.
+        self.release("ALTER TABLE announcements ADD COLUMN note text;")
+        with self.assertRaisesRegex(module.DeploymentError, "Backend announcement query is unavailable"):
+            self.runner.run()
+        self.assertEqual(self.runner.recreations[0][0], "backend-green")
+        self.assertEqual(self.runner.config.read_text(), CONFIG)
+        self.assertIn("backend-blue", self.runner.broken)
+
+    def test_allowed_release_switches_to_candidate_that_serves_the_new_schema(self):
+        self.runner.allow_incompatible = True
+        self.release("ALTER TABLE announcements DROP COLUMN supply_owner;")
+        self.runner.run()
+        self.assertEqual(self.runner.served, "backend-green")
+        self.assertEqual(self.runner.stopped, {"backend-blue"})
+        candidate_query = next(index for index, args in enumerate(self.runner.commands)
+                               if args[:3] == ("exec", "backend-green", "curl") and "announcements" in args[-1])
+        reload = next(index for index, args in enumerate(self.runner.commands) if args[2:5] == ("nginx", "-s", "reload"))
+        self.assertLess(candidate_query, reload)
+
+    def test_allowed_release_does_not_switch_to_candidate_that_cannot_query(self):
+        self.runner.allow_incompatible = True
+        self.release("ALTER TABLE announcements DROP COLUMN supply_owner;")
+        self.runner.breaks_on_start = {"backend-blue", "backend-green"}
+        with self.assertRaisesRegex(module.DeploymentError, "Target backend announcement query is unavailable"):
+            self.runner.run()
+        self.assertEqual(self.runner.config.read_text(), CONFIG)
+        self.assertEqual(self.runner.stopped, set())
+
+    def test_flag_recovers_route_when_active_backend_is_already_broken(self):
+        # Development server state after the failed run: Blue serves 500 on the migrated schema.
+        self.release("ALTER TABLE announcements DROP COLUMN supply_owner;", breaks_active=False)
+        self.runner.broken = {"backend-blue"}
+        with self.assertRaisesRegex(module.DeploymentError, "Backend announcement query is unavailable"):
+            self.runner.run()
+        self.assertEqual(self.runner.recreations, [])
+        self.runner.allow_incompatible = True
+        self.runner.run()
+        self.assertEqual(self.runner.served, "backend-green")
+
+    def test_compatible_statements_and_comments_deploy_without_flag(self):
+        self.release("""-- 다음 릴리스에서 DROP COLUMN legacy_note 예정
+/* RENAME TO 설명 */
+ALTER TABLE announcements ADD COLUMN note text;
+ALTER TABLE announcements DROP CONSTRAINT IF EXISTS ck_note;
+ALTER TABLE announcements ALTER COLUMN note DROP NOT NULL;
+ALTER TABLE announcements ALTER COLUMN note DROP DEFAULT;
+ALTER TABLE announcements RENAME CONSTRAINT ck_old TO ck_new;
+CREATE TEMPORARY TABLE staged ON COMMIT DROP AS SELECT 1;""", breaks_active=False)
+        self.runner.run()
+        self.assertEqual(self.runner.served, "backend-green")
+
+    def test_each_breaking_statement_is_reported(self):
+        statements = {
+            "DROP TABLE": "DROP TABLE supply_row_groups;",
+            "DROP COLUMN": "ALTER TABLE announcements DROP supply_owner;",
+            "RENAME": "ALTER TABLE supply_rows RENAME COLUMN announcement_exclusive_area TO exclusive_area;",
+            "ALTER COLUMN TYPE": "ALTER TABLE announcements ALTER COLUMN id TYPE text;",
+            "SET NOT NULL": "ALTER TABLE announcements ALTER COLUMN supply_owner SET NOT NULL;",
+        }
+        for kind, sql in statements.items():
+            with self.subTest(kind=kind):
+                revision = self.commit("V2__release.sql", sql)
+                self.assertEqual(self.runner.schema_changes("backend-blue", revision), ["V2__release.sql: " + kind])
+
+    def test_unknown_active_revision_fails_closed(self):
+        self.release("ALTER TABLE announcements ADD COLUMN note text;", breaks_active=False)
+        for labels, reason in (({}, "labels are missing"), ({"backend-blue": "c" * 40}, "not in this checkout")):
+            with self.subTest(reason=reason):
+                self.runner.labels = {CANDIDATE: self.runner.labels[CANDIDATE], **labels}
+                with self.assertRaisesRegex(module.DeploymentError, reason):
+                    self.runner.run()
+                self.assert_untouched()
+
+    def test_flag_still_requires_active_backend_health(self):
+        self.runner.allow_incompatible = True
+        self.release("ALTER TABLE announcements DROP COLUMN supply_owner;", breaks_active=False)
+        self.runner.failure = "health"
+        with self.assertRaisesRegex(module.DeploymentError, "health response is not UP"):
+            self.runner.run()
+        self.assert_untouched()
+
+    def test_flag_keeps_checks_after_switch_strict(self):
+        # The candidate answers inside its container but fails through Edge: the switch is undone,
+        # and the report says the restored backend is still broken.
+        self.runner.allow_incompatible = True
+        self.release("ALTER TABLE announcements DROP COLUMN supply_owner;")
+        self.runner.failure = "query"
+        with self.assertRaisesRegex(module.DeploymentError,
+                                    "previous route restored; its announcement query still fails"):
+            self.runner.run()
+        self.assertEqual(self.runner.config.read_text(), CONFIG)
+        self.assertEqual(self.runner.stopped, set())
+
+    def test_same_image_skips_comparison(self):
+        self.runner.images["backend-blue"] = CANDIDATE
+        self.runner.labels = {}
+        self.runner.run()
+        self.assertEqual(self.runner.served, "backend-green")
 
 
 if __name__ == "__main__":
