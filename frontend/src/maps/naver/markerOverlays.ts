@@ -16,7 +16,7 @@ interface MarkerFocusTarget {
 export interface CreatedMarker {
   readonly button: HTMLButtonElement
   readonly dispose: () => void
-  readonly isInteracting: () => boolean
+  isInteracting: () => boolean
   readonly overlay: naver.maps.Marker
   readonly rendered: RenderedMarker
   presentation: MarkerPresentation | null
@@ -98,22 +98,23 @@ export function createMarker({
     position: new maps.LatLng(marker.marker.latitude, marker.marker.longitude),
     title,
   })
-  const isInteracting = marker.kind === 'complex'
-    ? bindMarkerHighlight(button, marker.marker.id, (complexId) => {
-      overlay.setZIndex(complexId !== null ? 40
-        : button.classList.contains('is-selected') ? 30
-          : button.classList.contains('is-highlighted') ? 20 : 10)
-      onMarkerHighlight?.(complexId)
-    }, controller.signal, previewScopeId, interactionGroup)
-    : () => false
-  return {
+  const created: CreatedMarker = {
     button,
     dispose: () => controller.abort(),
-    isInteracting,
+    isInteracting: () => false,
     overlay,
     rendered: marker,
     presentation: null,
   }
+  if (marker.kind === 'complex') {
+    created.isInteracting = bindMarkerHighlight(button, marker.marker.id, (complexId) => {
+      // 펼친 마커는 맨 위로 올리고, 접으면 겹침 순서에서 원래 자리로 돌려놓는다.
+      overlay.setZIndex(complexId !== null ? INTERACTING_Z_INDEX
+        : created.presentation?.zIndex ?? COMPLEX_BAND * RANK_SPAN)
+      onMarkerHighlight?.(complexId)
+    }, controller.signal, previewScopeId, interactionGroup)
+  }
+  return created
 }
 
 function createMarkerContent(
@@ -346,12 +347,13 @@ export function applyMarkerPresentation(
   const highlightedIds = new Set(
     markers.filter(({ highlighted }) => highlighted).map(({ id }) => id),
   )
+  const ranks = stackingRanks(createdMarkers)
   createdMarkers.forEach((created) => {
     const { button, overlay, rendered, presentation } = created
     const selected = rendered.kind === 'complex'
       && selectedIds.has(rendered.marker.id)
     const highlighted = markerIsHighlighted(rendered, highlightedIds)
-    const zIndex = markerZIndex(rendered, selected, highlighted)
+    const zIndex = markerZIndex(rendered, selected, highlighted) * RANK_SPAN + (ranks.get(created) ?? 0)
     if (presentation?.selected === selected
       && presentation.highlighted === highlighted
       && presentation.zIndex === zIndex) {
@@ -383,17 +385,44 @@ function markerIsHighlighted(
   return highlightedIds.has(marker.marker.id)
 }
 
+// 겹친 마커의 순서는 지도 SDK가 마커를 만든 순서(나중에 만든 것이 위)를 따른다.
+// 줌·이동으로 일부만 다시 만들면 순서가 뒤바뀌므로, 같은 층 안에서는 아래 규칙으로 순위를 매겨 고정한다.
+const AGGREGATE_BAND = 0
+const COMPLEX_BAND = 10
+const HIGHLIGHTED_BAND = 20
+const SELECTED_BAND = 30
+const INTERACTING_BAND = 40
+/** 한 층 안에 매길 수 있는 순위 수. 화면에 이보다 많은 마커가 뜨지 않는다. */
+const RANK_SPAN = 100_000
+const INTERACTING_Z_INDEX = INTERACTING_BAND * RANK_SPAN
+
 function markerZIndex(marker: RenderedMarker, selected: boolean, highlighted: boolean) {
   if (selected) {
-    return 30
+    return SELECTED_BAND
   }
   if (highlighted) {
-    return 20
+    return HIGHLIGHTED_BAND
   }
   if (marker.kind === 'aggregate') {
-    return 0
+    return AGGREGATE_BAND
   }
-  return 10
+  return COMPLEX_BAND
+}
+
+/** 지역 묶음은 단지가 많은 곳을, 단지 마커는 남쪽(화면 아래)에 있는 것을 위에 둔다. */
+function stackingRanks(createdMarkers: readonly CreatedMarker[]) {
+  const ordered = [...createdMarkers].sort((left, right) =>
+    compareStacking(left.rendered, right.rendered))
+  return new Map(ordered.map((created, rank) => [created, rank]))
+}
+
+function compareStacking(left: RenderedMarker, right: RenderedMarker) {
+  if (left.kind === 'aggregate' && right.kind === 'aggregate') {
+    return left.marker.uniqueComplexCount - right.marker.uniqueComplexCount
+      || right.marker.groupKey.localeCompare(left.marker.groupKey)
+  }
+  return right.marker.latitude - left.marker.latitude
+    || renderedMarkerId(left).localeCompare(renderedMarkerId(right))
 }
 
 export function sameRenderedMarkers(

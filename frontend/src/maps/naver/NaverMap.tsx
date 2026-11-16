@@ -30,6 +30,8 @@ import {
 } from './markerOverlays.ts'
 import type { NaverMapCameraTarget, NaverMapProps } from './naverMapTypes.ts'
 import { clearBoundaryOverlays, createRegionBoundaryOverlay } from './regionBoundaryOverlay.ts'
+import { speedUpWheelZoom } from './mapWheelZoom.ts'
+import { retryFailedRasterTiles } from './rasterTileRetry.ts'
 import {
   loadNaverMapsSdk,
   NaverMapsSdkError,
@@ -288,6 +290,7 @@ export default function NaverMap({
     let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
     let initListener: naver.maps.MapEventListener | null = null
+    let stopRasterTileRetry = () => {}
     let mapSurface: HTMLDivElement | null = null
     let wheelListener: (() => void) | null = null
     setStatus({ kind: 'loading' })
@@ -331,6 +334,7 @@ export default function NaverMap({
       removeInitListener()
       removeIdleListener()
       removeTransitionInterruptListeners()
+      stopRasterTileRetry()
       const failedMap = mapInstance
       mapInstance = null
       mapInstanceRef.current = null
@@ -390,6 +394,9 @@ export default function NaverMap({
           initListener = maps.Event.once(createdMap, 'init', () => {
             initListener = null
             if (!cancelled && mapInstance === createdMap) {
+              // 내부 Mapbox는 init 뒤에야 생기므로 이때 휠 배율을 맞춘다.
+              speedUpWheelZoom(createdMap)
+              stopRasterTileRetry = retryFailedRasterTiles(createdMap)
               setInitializedAttempt(attempt)
             }
           })
@@ -482,6 +489,7 @@ export default function NaverMap({
       removeInitListener()
       removeIdleListener()
       removeTransitionInterruptListeners()
+      stopRasterTileRetry()
       clearMarkers(createdMarkersRef.current)
       clearCurrentLocationMarker()
       clearBoundaryOverlays(boundaryOverlaysRef.current)
