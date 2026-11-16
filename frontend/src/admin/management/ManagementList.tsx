@@ -1,5 +1,5 @@
 import { ListFilters } from '../shared/ListFilters'
-import { applicationStatuses, attentionReasons } from './listFilterLabels'
+import { applicationStatusFilters, attentionReasons, processingStages } from './listFilterLabels'
 import { ListPagination } from './ListPagination'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
@@ -92,12 +92,13 @@ export function ManagementList({ resource, embedded = false, compact = false, re
       if (!value) return []
       const label = key === 'region' ? provinces.find(([code]) => code === value)?.[1] ?? value
         : key === 'verification' ? verificationStatusLabels[value as keyof typeof verificationStatusLabels] ?? value
-        : applicationStatuses[value] ?? labels[value] ?? value
+        : applicationStatusFilters[value] ?? labels[value] ?? value
       return [{ key, label }]
     }),
     ...[['review', '재검토'], ['recruiting', '모집중'], ['missingCoordinates', '좌표 미확인']].flatMap(([key, label]) =>
       activeParams.get(key) === 'true' ? [{ key, label }] : []),
     ...(attention ? [{ key: 'attention', label: attentionReasons[attention] ?? attention }] : []),
+    ...(activeParams.get('stage') ? [{ key: 'stage', label: processingStages[activeParams.get('stage') ?? ''] ?? activeParams.get('stage') ?? '' }] : []),
     ...(activeParams.get('complexId') ? [{ key: 'complexId', label: '연결 단지' }] : []),
   ]
   const providerFilter = <label>기관<select value={activeParams.get('provider') ?? ''} onChange={event => filter('provider', event.target.value)}>
@@ -122,7 +123,9 @@ export function ManagementList({ resource, embedded = false, compact = false, re
       onSearch={value => filter('keyword', value)} applied={applied} onRemove={key => filter(key, '')} onReset={reset}
       primary={<>{providerFilter}{resource === 'complexes' ? regionFilter : <label>접수 상태<select
         value={activeParams.get('applicationStatus') ?? ''} onChange={event => filter('applicationStatus', event.target.value)}>
-        <option value="">전체 상태</option>{Object.entries(applicationStatuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        <option value="">전체 상태</option>{Object.entries(applicationStatusFilters).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></label>}{resource === 'announcements' && <label>처리 단계<select value={activeParams.get('stage') ?? ''} onChange={event => filter('stage', event.target.value)}>
+        <option value="">전체 단계</option>{Object.entries(processingStages).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>}</>}
       more={<>
         {resource === 'announcements' && regionFilter}

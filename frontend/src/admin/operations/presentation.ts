@@ -11,6 +11,15 @@ export function operationCount(value: number | null | undefined, query: Operatio
   return value == null ? '미집계' : value.toLocaleString('ko-KR')
 }
 
+/** 기다린 시간을 분 단위로 줄여 보인다. 1분이 안 되면 초로 보인다. */
+export function operationDuration(seconds: number | null | undefined) {
+  if (seconds == null) return '—'
+  if (seconds < 60) return `${seconds}초`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}분`
+  return `${Math.floor(minutes / 60)}시간 ${minutes % 60}분`
+}
+
 export function comparison(value: number | null | undefined, previous: number | null | undefined) {
   if (value == null || previous == null) return '비교 불가'
   if (value === previous) return '변화 없음'

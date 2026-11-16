@@ -2,7 +2,11 @@ package com.toadzip.backend.admin.controller;
 
 import com.toadzip.backend.announcement.domain.AgencySupplyLine;
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.PdfExtractionJob;
+import com.toadzip.backend.announcement.domain.PdfExtractionSource;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
@@ -14,12 +18,15 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.user.domain.User;
+import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +36,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -306,6 +315,90 @@ class AdminOperationsControllerIntegrationTest {
                         .value(org.hamcrest.Matchers.contains("2026-11-06T01:00:00Z")));
     }
 
+    @Test
+    void 처리할_일은_마감_전_공고의_처리_단계를_세고_목록_필터와_같은_공고를_고른다() throws Exception {
+        LocalDate today = LocalDate.now(clock);
+        attach(announcement("PDF 없음"), "공고문.hwpx");
+        attach(announcement("추출 전"), "공고문.PDF");
+        var extracting = attach(announcement("추출 중"), "공고문.pdf");
+        job(extracting, "SUCCEEDED");
+        job(extracting, "PENDING");
+        var failed = attach(announcement("추출 실패"), "공고문.pdf");
+        job(failed, "SUCCEEDED");
+        job(failed, "FAILED");
+        // 마감일 당일은 아직 마감 전이다.
+        var review = attach(announcement("검토 대기 마감일 당일"), "공고문.pdf");
+        job(review, "FAILED");
+        job(review, "SUCCEEDED");
+        schedule(review, today.minusDays(3), today);
+        var confirmed = announcement("확정");
+        job(confirmed, "FAILED");
+        var recheck = announcement("재확인 필요");
+        // 마감일이 어제면 마감이라 집계에서 빠지지만 목록 단계 필터에는 남는다.
+        var closed = attach(announcement("마감된 검토 대기"), "공고문.pdf");
+        job(closed, "SUCCEEDED");
+        schedule(closed, today.minusDays(3), today.minusDays(1));
+        var deleted = announcement("휴지통 PDF 없음");
+        entities.flush();
+        jdbc.sql("UPDATE announcements SET supply_confirmed_at = now() WHERE id IN (:ids)")
+                .param("ids", List.of(confirmed.getId(), recheck.getId())).update();
+        jdbc.sql("UPDATE announcements SET supply_recheck_required = true WHERE id = :id")
+                .param("id", recheck.getId()).update();
+        jdbc.sql("UPDATE announcements SET admin_deleted = true WHERE id = :id").param("id", deleted.getId()).update();
+        entities.clear();
+
+        String tasks = mockMvc.perform(get("/api/admin/operations/tasks").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stages.length()").value(7))
+                .andReturn().getResponse().getContentAsString();
+        var expected = Map.of("PDF_MISSING", "PDF 없음", "NOT_EXTRACTED", "추출 전",
+                "EXTRACTING", "추출 중", "EXTRACTION_FAILED", "추출 실패", "REVIEW_PENDING", "검토 대기 마감일 당일",
+                "CONFIRMED", "확정", "RECHECK_REQUIRED", "재확인 필요");
+        for (var stage : expected.entrySet()) {
+            int count = JsonPath.read(tasks, "$.data.stages." + stage.getKey());
+            assertThat(count).as(stage.getKey()).isEqualTo(1);
+            mockMvc.perform(get("/api/admin/announcements").param("applicationStatus", "OPEN")
+                            .param("stage", stage.getKey()).with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.totalElements").value(count))
+                    .andExpect(jsonPath("$.data.items[0].name").value(stage.getValue()))
+                    .andExpect(jsonPath("$.data.items[0].announcement.processingStage").value(stage.getKey()));
+        }
+        mockMvc.perform(get("/api/admin/announcements").param("stage", "REVIEW_PENDING")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].name", containsInAnyOrder(
+                        "검토 대기 마감일 당일", "마감된 검토 대기")));
+        mockMvc.perform(get("/api/admin/announcements").param("stage", "DONE")
+                .with(user("admin").roles("ADMIN"))).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 처리할_일은_AI_작업_큐와_공고_쪽_미해결_실패_수를_함께_보인다() throws Exception {
+        var waiting = announcement("대기");
+        job(waiting, "PENDING");
+        job(announcement("최근 실패"), "FAILED");
+        entities.flush();
+        jdbc.sql("""
+                INSERT INTO announcement_refinement_failures (provider, source_key, source_announcement_identifier,
+                    reason, detail, status, occurred_at, last_occurred_at, occurrence_count, recurrence_count)
+                VALUES ('SH', 'SH:1', 'SH:1', 'SOURCE_REFINEMENT_FAILED', '정제 실패', :status, now(), now(), 1, 0)
+                """).param("status", "PENDING").update();
+        jdbc.sql("""
+                INSERT INTO announcement_refinement_failures (provider, source_key, source_announcement_identifier,
+                    reason, detail, status, occurred_at, last_occurred_at, occurrence_count, recurrence_count)
+                VALUES ('SH', 'SH:2', 'SH:2', 'SOURCE_REFINEMENT_FAILED', '정제 실패', :status, now(), now(), 1, 0)
+                """).param("status", "RESOLVED").update();
+
+        mockMvc.perform(get("/api/admin/operations/tasks").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.queue.waiting").value(1))
+                .andExpect(jsonPath("$.data.queue.running").value(0))
+                .andExpect(jsonPath("$.data.queue.oldestWaitSeconds").isNumber())
+                .andExpect(jsonPath("$.data.queue.recentFailed").value(1))
+                .andExpect(jsonPath("$.data.unresolvedFailures").value(1));
+    }
+
     private HousingComplex complex(String provider) {
         var address = Address.create("테스트 도로 1", null, "1111010100", "11", "11110",
                 new BigDecimal("37.5"), new BigDecimal("127.0"));
@@ -327,6 +420,35 @@ class AdminOperationsControllerIntegrationTest {
 
     private void supply(Announcement announcement, HousingComplex complex) {
         entities.persist(SupplyRowSeed.create(entities, announcement, complex, null, 0, "단지", "주택형", null, null, SupplyCategory.NEW_SUPPLY));
+    }
+
+    private Announcement attach(Announcement announcement, String fileName) {
+        entities.persist(AnnouncementAttachment.create(announcement, fileName,
+                AttachmentType.ANNOUNCEMENT, "https://example.com/file", 0));
+        return announcement;
+    }
+
+    /** 작업을 넣은 순서가 id 순서다. 끝난 작업은 지금 끝난 것으로 둔다. */
+    private void job(Announcement announcement, String status) {
+        entities.flush();
+        var job = PdfExtractionJob.requestedByAdmin(announcement.getId(),
+                "admin", PdfExtractionSource.of("공고문.pdf", new byte[] {1}),
+                "{}", clock.instant());
+        entities.persist(job);
+        entities.flush();
+        jdbc.sql("""
+                UPDATE ai_jobs SET status = :status,
+                    completed_at = CASE WHEN :status IN ('SUCCEEDED', 'FAILED') THEN now() END,
+                    pdf = CASE WHEN :status IN ('SUCCEEDED', 'FAILED') THEN NULL ELSE pdf END,
+                    result = CASE WHEN :status = 'SUCCEEDED' THEN CAST('{}' AS jsonb) END,
+                    error_code = CASE WHEN :status = 'FAILED' THEN 'MODEL_UNAVAILABLE' END WHERE id = :id
+                """).param("status", status).param("id", job.getId()).update();
+    }
+
+    private void schedule(Announcement announcement, LocalDate start, LocalDate end) {
+        entities.flush();
+        jdbc.sql("UPDATE announcements SET application_start_date = :start, application_end_date = :end WHERE id = :id")
+                .param("start", start).param("end", end).param("id", announcement.getId()).update();
     }
 
     private void execution(String status, String at) {

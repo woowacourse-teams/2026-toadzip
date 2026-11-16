@@ -1,4 +1,4 @@
-import { applicationStatuses, attentionReasons } from './listFilterLabels'
+import { applicationStatuses, attentionReasons, processingStages } from './listFilterLabels'
 import { Link, useMatch } from 'react-router'
 import type { ManagementResource, ManagementSummary } from './managementContract'
 import { labels } from './fields'
@@ -14,7 +14,8 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
   const columns: Column[] = [
     { key: 'agencyCode', label: '공급 기관', width: 80, read: item => item.provider },
     { key: 'rentalType', label: '공급 유형', width: 128, read: item => item.rental },
-    ...(resource === 'complexes' ? [...complexColumns, { key: 'verificationStatus', label: '검토 상태', width: 112, read: () => null, kind: 'verification' as const }] : announcementColumns),
+    ...(resource === 'complexes' ? [...complexColumns, { key: 'verificationStatus', label: '검토 상태', width: 112, read: () => null, kind: 'verification' as const }]
+      : announcementColumns(items.some(item => item.announcement?.processingStage != null))),
     { key: 'deleted·modified·reviewRequired', label: '확인할 상태', width: 128, read: () => null, kind: 'status' },
   ]
   const title = resource === 'complexes' ? '단지' : '공고'
@@ -44,8 +45,10 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
 const complexColumns: Column[] = [
   { key: 'totalHouseholdCount', label: '세대수', width: 88, read: item => item.complex?.totalHouseholdCount, kind: 'number' },
 ]
-const announcementColumns: Column[] = [
+/** 처리 단계는 공고 관리 목록만 채운다. 단지 상세의 연결 공고 표처럼 단계가 없는 표에는 열을 두지 않는다. */
+const announcementColumns = (withStage: boolean): Column[] => [
   { key: 'applicationStatus', label: '접수 상태', width: 104, read: item => item.announcement?.applicationStatus ? applicationStatuses[item.announcement.applicationStatus] : null },
+  ...(withStage ? [{ key: 'processingStage', label: '처리 단계', width: 128, read: (item: ManagementSummary) => processingStages[item.announcement?.processingStage ?? ''] }] : []),
   { key: 'publicationType', label: '공고 구분', width: 80, read: () => null, kind: 'publication' },
   { key: 'postedDate', label: '게시일', width: 112, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
   { key: 'applicationPeriod', label: '접수 기간', width: 196, read: item => applicationPeriod(item) },

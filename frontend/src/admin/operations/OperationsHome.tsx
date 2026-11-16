@@ -6,6 +6,7 @@ import { loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, 
 import { OperationsIcon } from './OperationsIcon'
 import { OperationsMetric } from './OperationsMetric'
 import { OperationsNotifications } from './OperationsNotifications'
+import { OperationsTasks } from './OperationsTasks'
 import { OperationsTrend } from './OperationsTrend'
 import { CheckedAt, OperationsStatus } from './OperationsStatus'
 import { comparison, operationCount, operationTime } from './presentation'
@@ -14,6 +15,7 @@ import styles from './OperationsHome.module.css'
 
 const loadFeedback = (signal: AbortSignal) => listFeedback(new URLSearchParams({ status: 'OPEN', page: '0', size: '1' }), signal)
 const helpText = {
+  tasks: ['처리할 일', '휴지통을 제외한 마감 전 공고(접수마감·공고취소가 아닌 공고)를 공고문 PDF 처리 단계로 나눠 셉니다. 공급표를 확정한 공고는 확정이며 확정 뒤 기관 원천 공급이 바뀌었으면 재확인 필요입니다. 확정 전 공고는 마지막 추출 작업이 진행 중이면 추출 대기·처리 중, 성공했으면 검토 대기, 실패했으면 추출 실패입니다. 추출한 적이 없으면 PDF 첨부가 있을 때 추출 전, 없으면 PDF 없음입니다. 강조한 단계는 관리자가 처리해야 넘어갑니다. AI 추출 대기는 공고문 PDF 추출 작업의 대기·재시도 수이고, 미해결 실패는 공고 쪽 수집·정제 실패 중 해결되지 않은 수입니다. 기존 확인 필요 집계는 전체 공고 기준이라 숫자가 다를 수 있습니다.'],
   complex: ['단지 집계', '휴지통을 제외한 현재 단지를 집계합니다. 모집중은 공개된 공고중·접수중 공고가 연결된 단지이며, 정정·취소 공고로 대체된 공고는 제외합니다. 여러 공고가 연결돼도 단지는 한 번만 셉니다. 좌표 미확인은 위도 또는 경도가 없는 단지, 재검토는 원천 변경 확인이 필요한 단지입니다. 기간 선택은 적용하지 않습니다.'],
   announcement: ['공고 집계', '휴지통을 제외한 전체 공고의 접수 상태를 기존 일정 판정 기준으로 집계합니다. 검토된 일정은 확정·조건부 접수를 구분하고, 일정을 정할 수 없으면 일정 미정으로 표시합니다. 접수 상태와 검토·공개 상태는 별도입니다. 최근 수집의 마지막 성공은 수집·정제 실행 전체가 성공한 종료 시각입니다. 일부 실패·건너뜀·중지·실패는 성공 시각을 갱신하지 않습니다. 모든 시각은 한국 시각입니다.'],
   review: ['확인 필요', '전체는 중복을 제외한 공고 수입니다. 사유별 건수는 중복될 수 있습니다. 일정 누락은 접수 시작·종료일이 없거나 검토된 접수 일정이 없는 경우, 공급정보 누락은 제외되지 않은 공급 행이 없는 경우, 미확정은 공개 전 확인이 필요한 공고입니다.'],
@@ -45,6 +47,7 @@ export function OperationsHome() {
       {info('period', '기간 적용 기준')}<button type="button" className={styles.info} aria-label="현황 새로고침" onClick={() => setRevision(value => value + 1)}><OperationsIcon name="refresh" /></button>
     </div></header>
     <div className={styles.grid}>
+      <OperationsTasks revision={revision} onHelp={openHelp} />
       <section className={`${styles.panel} ${styles.complexes}`} aria-label="단지">
         <div className={styles.panelTop}><div className={styles.panelTitle}><OperationsIcon name="building" /><h2>단지</h2>{info('complex', '단지 집계 기준')}</div><Link to="/admin/complexes">관리 ↗</Link></div>
         <div className={styles.panelBody}>

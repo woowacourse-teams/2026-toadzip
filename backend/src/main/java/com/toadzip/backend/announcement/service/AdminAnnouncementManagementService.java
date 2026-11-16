@@ -21,6 +21,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementApplicationSchedu
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementProcessingStageSql;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplySheetViewQueryRepository;
 import java.time.Clock;
@@ -64,18 +65,19 @@ public class AdminAnnouncementManagementService {
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId) {
-        return search(search, complexId, "", "");
+        return search(search, complexId, "", "", "");
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search, long complexId, String applicationStatus,
-            String attention) {
-        if (!List.of("", "BEFORE_APPLICATION", "APPLYING", "CLOSED", "CONDITIONAL", "CANCELLED", "UNKNOWN")
+            String attention, String stage) {
+        if (!List.of("", "OPEN", "BEFORE_APPLICATION", "APPLYING", "CLOSED", "CONDITIONAL", "CANCELLED", "UNKNOWN")
                 .contains(applicationStatus)
-                || !List.of("", "ANY", "SCHEDULE_MISSING", "SUPPLY_MISSING", "UNCONFIRMED").contains(attention)) {
+                || !List.of("", "ANY", "SCHEDULE_MISSING", "SUPPLY_MISSING", "UNCONFIRMED").contains(attention)
+                || !(stage.isEmpty() || AnnouncementProcessingStageSql.STAGES.contains(stage))) {
             throw new IllegalArgumentException("조회 조건이 올바르지 않습니다.");
         }
         LocalDate today = clock.instant().atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
-        var page = adminQueries.searchAdmin(search, complexId, applicationStatus, attention, today);
+        var page = adminQueries.searchAdmin(search, complexId, applicationStatus, attention, stage, today);
         var statuses = adminQueries.adminStatuses(page.stream().map(Announcement::getId).toList(), today).stream()
                 .collect(Collectors.toMap(AnnouncementSearchRepository.AdminStatus::id, value -> value));
         return new AdminPage<>(page.stream().map(value -> summary(value, statuses.get(value.getId()))).toList(),
@@ -174,11 +176,13 @@ public class AdminAnnouncementManagementService {
         LocalDate end = announcement.getApplicationEndDate();
         String applicationStatus = null;
         List<String> reasons = null;
+        String processingStage = null;
         if (status != null) {
             start = status.startDate();
             end = status.endDate();
             applicationStatus = status.applicationStatus();
             reasons = status.attentionReasons();
+            processingStage = status.processingStage();
         }
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
@@ -189,7 +193,7 @@ public class AdminAnnouncementManagementService {
                         announcement.getPostedDate(), start, end, announcement.getWinnerAnnouncementDate(),
                         announcement.getStatus().name(), announcement.origin().name(),
                         announcement.isSupplyConfirmed(), announcement.getReleaseStatus().name(),
-                        applicationStatus, reasons));
+                        applicationStatus, reasons, processingStage));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {

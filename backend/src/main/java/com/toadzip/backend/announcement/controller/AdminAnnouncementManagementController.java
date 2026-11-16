@@ -41,8 +41,9 @@ public class AdminAnnouncementManagementController {
     public ApiResponse<AdminPage<AdminDataSummary>> search(@Valid @ModelAttribute AdminSearch search,
             @RequestParam(defaultValue = "0") @Min(0) long complexId,
             @RequestParam(defaultValue = "") String applicationStatus,
-            @RequestParam(defaultValue = "") String attention) {
-        return new ApiResponse<>(service.search(search, complexId, applicationStatus, attention));
+            @RequestParam(defaultValue = "") String attention,
+            @RequestParam(defaultValue = "") String stage) {
+        return new ApiResponse<>(service.search(search, complexId, applicationStatus, attention, stage));
     }
 
     @GetMapping("/{id}")
