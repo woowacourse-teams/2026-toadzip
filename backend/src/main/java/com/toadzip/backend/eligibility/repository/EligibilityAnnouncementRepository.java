@@ -11,7 +11,9 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public class EligibilityAnnouncementRepository {
@@ -80,6 +82,41 @@ public class EligibilityAnnouncementRepository {
                 .orElseThrow(EligibilityNotFoundException::new);
     }
 
+    /**
+     * 요청 ID마다 정정 체인의 첫 공고(root)·최신 공고·공개 내용·접수 상태를 한 쿼리로 읽는다.
+     * {@link #rootId}, {@link #latest}, {@link #applicationStatus}를 공고마다 부르는 것과 같은 결과다. 없는 ID는 결과에 없다.
+     */
+    public Map<Long, Latest> latestByRequest(List<Long> announcementIds, LocalDate today) {
+        Map<Long, Latest> latest = new HashMap<>();
+        jdbc.sql("""
+                        WITH RECURSIVE requested AS (
+                            SELECT DISTINCT id AS requested_id, comparison_root_id(id) AS root_id
+                            FROM unnest(CAST(:ids AS bigint[])) AS t(id)
+                        ), chain AS (
+                            SELECT root_id, root_id AS id, ARRAY[root_id] AS visited
+                            FROM (SELECT DISTINCT root_id FROM requested WHERE root_id IS NOT NULL) roots
+                            UNION ALL
+                            SELECT c.root_id, a.id, c.visited || a.id FROM announcements a
+                            JOIN chain c ON a.previous_announcement_id = c.id WHERE NOT a.id = ANY(c.visited)
+                        ), newest AS (
+                            SELECT DISTINCT ON (root_id) root_id, id FROM chain
+                            ORDER BY root_id, cardinality(visited) DESC, id DESC
+                        )
+                        SELECT q.requested_id, n.root_id, a.*, r.id AS rule_set_id, r.version AS rule_set_version,
+                            r.schema_version AS content_schema_version, r.content::text AS snapshot,
+                            COALESCE(%s, 'UNKNOWN') AS current_application_status
+                        FROM requested q JOIN newest n ON n.root_id = q.root_id
+                        JOIN announcements a ON a.id = n.id
+                        LEFT JOIN basic_comparison_rule_sets r ON r.announcement_id = a.id AND r.status = 'PUBLISHED'
+                        """.formatted(ApplicationScheduleSql.status("a", null)))
+                .param("ids", announcementIds.toArray(Long[]::new))
+                .param("today", today)
+                .query((row, index) -> latest.put(row.getLong("requested_id"), new Latest(row.getLong("root_id"),
+                        map(row, index), row.getString("current_application_status"))))
+                .list();
+        return latest;
+    }
+
     /** Keyset batches using the same verified-date policy as announcement search. */
     public List<Current> activeAfter(long afterId, Instant now, int batchSize) {
         return jdbc.sql(
@@ -145,6 +182,8 @@ public class EligibilityAnnouncementRepository {
                 result.getObject("content_schema_version", Integer.class),
                 result.getString("snapshot"));
     }
+
+    public record Latest(long rootId, Current current, String applicationStatus) {}
 
     public record Current(
             long id,

@@ -7,7 +7,9 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -64,6 +66,17 @@ public class EligibilityWorkRepository {
         }
         return jdbc.sql(sql).param(rootId).query((row, index) -> new NoticeState(
                 row.getLong("generation"), row.getBoolean("retired"), row.getString("observed_basis"))).optional();
+    }
+
+    public Map<Long, NoticeState> notices(List<Long> rootIds) {
+        Map<Long, NoticeState> notices = new HashMap<>();
+        jdbc.sql("SELECT announcement_id, generation, retired, observed_basis FROM comparison_notice_rechecks"
+                        + " WHERE announcement_id = ANY(?::bigint[])")
+                .param(rootIds.toArray(Long[]::new))
+                .query((row, index) -> notices.put(row.getLong("announcement_id"), new NoticeState(
+                        row.getLong("generation"), row.getBoolean("retired"), row.getString("observed_basis"))))
+                .list();
+        return notices;
     }
 
     public boolean checkpoint(EligibilityWork work, long cursor, Instant now) {

@@ -2,6 +2,7 @@ package com.toadzip.backend.eligibility.service;
 
 import com.toadzip.backend.eligibility.domain.EligibilityBasis;
 import com.toadzip.backend.eligibility.domain.EligibilityDecision;
+import com.toadzip.backend.eligibility.domain.StoredEligibilityResult;
 import com.toadzip.backend.eligibility.dto.EligibilityDetail;
 import com.toadzip.backend.eligibility.dto.EligibilityProcessingResponses.Discoveries;
 import com.toadzip.backend.eligibility.dto.EligibilityProcessingResponses.Discovery;
@@ -12,10 +13,12 @@ import com.toadzip.backend.eligibility.repository.EligibilityProfileRepository;
 import com.toadzip.backend.eligibility.repository.EligibilityRegionMembership;
 import com.toadzip.backend.eligibility.repository.EligibilityResultRepository;
 import com.toadzip.backend.eligibility.repository.EligibilityWorkRepository;
+import com.toadzip.backend.eligibility.service.EligibilitySnapshotService.Snapshot;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -26,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 @PreAuthorize("hasRole('USER')")
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class EligibilityQueryService {
+    private static final int MAX_BATCH_SIZE = 100;
+
     private final EligibilitySnapshotService snapshots;
     private final EligibilityProfileRepository profiles;
     private final EligibilityRegionMembership regions;
@@ -45,12 +50,42 @@ public class EligibilityQueryService {
     }
 
     public EligibilityDetail detail(long userId, long announcementId, String selectedRegion) {
+        requireKnownRegion(selectedRegion);
+        var snapshot = snapshots.snapshot(userId, announcementId);
+        var stored = results.find(userId, snapshot.basis().rootAnnouncementId());
+        return read(snapshot, stored, announcementId, selectedRegion);
+    }
+
+    /**
+     * 목록이 공고마다 단건 조회를 따로 부르지 않게, 같은 스냅샷에서 요청 순서대로 단건 조회와 같은 결과를 돌려준다.
+     * DB도 공고 수와 관계없이 같은 횟수의 쿼리로 읽는다.
+     */
+    public List<EligibilityDetail> details(long userId, List<Long> announcementIds, String selectedRegion) {
+        if (announcementIds.isEmpty() || announcementIds.size() > MAX_BATCH_SIZE) {
+            throw new InvalidEligibilityException("공고 ID를 1~" + MAX_BATCH_SIZE + "개 보내 주세요.");
+        }
+        requireKnownRegion(selectedRegion);
+        var found = snapshots.snapshots(userId, announcementIds);
+        var stored = results.findAll(userId,
+                found.stream().map(snapshot -> snapshot.basis().rootAnnouncementId()).distinct().toList());
+        List<EligibilityDetail> details = new ArrayList<>();
+        for (int index = 0; index < found.size(); index++) {
+            var snapshot = found.get(index);
+            details.add(read(snapshot, Optional.ofNullable(stored.get(snapshot.basis().rootAnnouncementId())),
+                    announcementIds.get(index), selectedRegion));
+        }
+        return List.copyOf(details);
+    }
+
+    private void requireKnownRegion(String selectedRegion) {
         if (selectedRegion != null && !regions.isKnown(selectedRegion)) {
             throw new InvalidEligibilityException("지역 카탈로그에 등록된 탐색 지역을 선택해 주세요.");
         }
-        var snapshot = snapshots.snapshot(userId, announcementId);
+    }
+
+    private EligibilityDetail read(Snapshot snapshot, Optional<StoredEligibilityResult> stored, long announcementId,
+            String selectedRegion) {
         var basis = snapshot.basis();
-        var stored = results.find(userId, basis.rootAnnouncementId());
         List<String> reasons = new ArrayList<>();
         EligibilityDecision decision = null;
         Instant evaluatedAt = null;

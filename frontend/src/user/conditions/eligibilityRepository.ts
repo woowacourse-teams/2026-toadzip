@@ -331,6 +331,8 @@ function mapComparison(value: unknown): ComparisonView {
   }) }
 }
 
+const LIST_BATCH_SIZE = 100
+
 export function createEligibilityRepository(fetcher: typeof fetch = (...args) => globalThis.fetch(...args)): ConditionsRepository {
   const base = `${getApiBaseUrl()}/api/v2`
   async function request(path: string, signal?: AbortSignal, init: RequestInit = {}) {
@@ -366,18 +368,22 @@ export function createEligibilityRepository(fetcher: typeof fetch = (...args) =>
     loadComparison,
     async loadListResults(refs, signal) {
       const results = new Map<string, ListConditionResult>()
-      // Limit concurrent requests when the loaded list grows.
-      for (let start = 0; start < refs.length; start += 4) {
-        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-        const batch = await Promise.all(refs.slice(start, start + 4).map(async (ref) => {
-          const view = await loadComparison(ref, signal)
-          const best = [...view.types].sort((left, right) => TYPE_STATUS_ORDER[left.status] - TYPE_STATUS_ORDER[right.status])[0]
-          return [ref.announcementId, { announcementId: view.announcementId, availability: view.availability, freshness: view.freshness,
-            best: best ? { label: best.label, status: best.status } : null,
-            eligibleInRegion: view.freshness === 'CURRENT' && view.eligibleOptionIdsInRegion.length > 0,
-            missingInputs: [...new Set(view.types.flatMap((item) => item.missingInputs ?? []))] }] as const
-        }))
-        batch.forEach(([id, result]) => results.set(id, result))
+      // 공고마다 단건 조회를 부르지 않고 지역별로 묶어 한 번에 조회한다. 서버가 한 요청에 받는 공고 수는 100개까지다.
+      const byRegion = new Map<string, AnnouncementRef[]>()
+      refs.forEach((ref) => byRegion.set(ref.region ?? '', [...(byRegion.get(ref.region ?? '') ?? []), ref]))
+      for (const [region, group] of byRegion) {
+        for (let start = 0; start < group.length; start += LIST_BATCH_SIZE) {
+          const ids = group.slice(start, start + LIST_BATCH_SIZE).map((ref) => encodeURIComponent(ref.announcementId)).join(',')
+          const query = `announcementIds=${ids}${region ? `&region=${encodeURIComponent(region)}` : ''}`
+          for (const raw of list(envelope(await request(`/eligibility/announcements?${query}`, signal)))) {
+            const view = mapComparison(raw)
+            const best = [...view.types].sort((left, right) => TYPE_STATUS_ORDER[left.status] - TYPE_STATUS_ORDER[right.status])[0]
+            results.set(String(number(object(raw).requestedAnnouncementId)), { announcementId: view.announcementId, availability: view.availability,
+              freshness: view.freshness, best: best ? { label: best.label, status: best.status } : null,
+              eligibleInRegion: view.freshness === 'CURRENT' && view.eligibleOptionIdsInRegion.length > 0,
+              missingInputs: [...new Set(view.types.flatMap((item) => item.missingInputs ?? []))] })
+          }
+        }
       }
       return results
     },
