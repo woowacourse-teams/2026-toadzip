@@ -78,6 +78,20 @@ public interface PdfExtractionJobRepository extends JpaRepository<PdfExtractionJ
             """, nativeQuery = true)
     QueueSummary summarizeQueue(String kind, Instant since);
 
+    /**
+     * id 작업보다 먼저 처리될 작업 수다. 지금 처리 중인 작업(lease가 살아 있는 RUNNING)과, 워커가 이 작업보다 먼저 꺼낼 작업을
+     * 센다. 워커는 종류를 가리지 않고 id 순서로 꺼내므로 다른 종류의 작업도 센다. 먼저 꺼낼 작업의 조건은 ai-worker
+     * jobs.claim의 꺼내기 조건과 같아야 하며, 한쪽을 바꾸면 다른 쪽도 바꾼다.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM ai_jobs
+            WHERE (status = 'RUNNING' AND lease_until > :now)
+               OR (id < :id AND created_at > :claimableSince
+                   AND ((status IN ('PENDING', 'RETRY') AND next_attempt_at <= :now)
+                       OR (status = 'RUNNING' AND lease_until <= :now AND attempts < :maxAttempts)))
+            """, nativeQuery = true)
+    long countAhead(long id, Instant now, Instant claimableSince, int maxAttempts);
+
     interface QueueSummary {
         long getPending();
 

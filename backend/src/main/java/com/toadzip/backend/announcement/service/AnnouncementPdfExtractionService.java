@@ -4,6 +4,7 @@ import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.domain.PdfExtractionJob;
 import com.toadzip.backend.announcement.domain.PdfExtractionJobStatus;
 import com.toadzip.backend.announcement.domain.PdfExtractionJobView;
+import com.toadzip.backend.announcement.domain.PdfExtractionQueue;
 import com.toadzip.backend.announcement.domain.PdfExtractionSource;
 import com.toadzip.backend.announcement.domain.TemporaryAttachment;
 import com.toadzip.backend.announcement.dto.response.AnnouncementPdfExtraction;
@@ -53,6 +54,7 @@ public class AnnouncementPdfExtractionService {
     private final PdfExtractionJobRepository jobs;
     private final PdfExtractionInputs inputs;
     private final AnnouncementAttachmentService attachments;
+    private final PdfExtractionQueueService queue;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -61,6 +63,7 @@ public class AnnouncementPdfExtractionService {
             PdfExtractionJobRepository jobs,
             PdfExtractionInputs inputs,
             AnnouncementAttachmentService attachments,
+            PdfExtractionQueueService queue,
             ObjectMapper objectMapper,
             Clock clock
     ) {
@@ -68,6 +71,7 @@ public class AnnouncementPdfExtractionService {
         this.jobs = jobs;
         this.inputs = inputs;
         this.attachments = attachments;
+        this.queue = queue;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -198,7 +202,19 @@ public class AnnouncementPdfExtractionService {
 
     private PdfExtractionJobResponse response(PdfExtractionJobView job) {
         return new PdfExtractionJobResponse(job.id(), job.status().name(), job.fileName(), job.pdfSha256(),
-                job.attempts(), job.createdAt(), job.completedAt(), failure(job), retryReason(job), extraction(job));
+                job.attempts(), job.createdAt(), job.completedAt(), failure(job), retryReason(job), extraction(job),
+                queue(job));
+    }
+
+    private PdfExtractionJobResponse.Queue queue(PdfExtractionJobView job) {
+        if (job.status() != PdfExtractionJobStatus.PENDING && job.status() != PdfExtractionJobStatus.RETRY) {
+            return null;
+        }
+        PdfExtractionQueue.Position position = queue.position(job.id());
+        if (position.estimatedWait() == null) {
+            return new PdfExtractionJobResponse.Queue(position.ahead(), null);
+        }
+        return new PdfExtractionJobResponse.Queue(position.ahead(), position.estimatedWait().toSeconds());
     }
 
     private static PdfExtractionJobResponse.Failure failure(PdfExtractionJobView job) {

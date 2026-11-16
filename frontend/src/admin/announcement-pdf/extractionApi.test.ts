@@ -64,6 +64,41 @@ test('처리가 시작되지 않은 채 오래 기다리면 알리고, 워커가
   expect(onNotice.mock.calls).toEqual([['아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인하거나 추출 취소 후 다시 요청해 주세요.'], [null]])
 })
 
+test('앞선 작업이 있으면 몇 건인지와 추정 시간을 알리고, 앞선 작업이 줄면 안내를 바꾼다', async () => {
+  mocks.request.mockResolvedValueOnce(job('PENDING', { queue: { ahead: 2, estimatedWaitSeconds: 130 } }))
+    .mockResolvedValueOnce(job('PENDING', { queue: { ahead: 1, estimatedWaitSeconds: 40 } }))
+    .mockResolvedValueOnce(job('PENDING', { queue: { ahead: 1, estimatedWaitSeconds: null } }))
+    .mockResolvedValueOnce(job('RUNNING')).mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+  const onNotice = vi.fn()
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onNotice })
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 4)
+
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
+  expect(onNotice.mock.calls).toEqual([
+    ['앞선 추출 2건을 처리한 뒤 시작합니다 · 약 2분 뒤 시작할 것으로 보입니다'],
+    ['앞선 추출 1건을 처리한 뒤 시작합니다 · 1분 안에 시작할 것으로 보입니다'],
+    ['앞선 추출 1건을 처리한 뒤 시작합니다'],
+    [null],
+  ])
+})
+
+test('추정 시간보다 1분 넘게 시작하지 않으면 워커가 멈췄을 수 있다고 알린다', async () => {
+  const queue = { ahead: 1, estimatedWaitSeconds: 30 }
+  const polls = (30_000 + NOT_STARTED_NOTICE_MS) / JOB_POLL_MS
+  for (let poll = 0; poll <= polls; poll++) mocks.request.mockResolvedValueOnce(job('PENDING', { queue }))
+  mocks.request.mockResolvedValueOnce(job('SUCCEEDED', { extraction }))
+  const onNotice = vi.fn()
+
+  const result = extractAnnouncementPdf('29', pdf, '공고문.pdf', undefined, { onNotice })
+  await vi.advanceTimersByTimeAsync(30_000 + NOT_STARTED_NOTICE_MS - JOB_POLL_MS)
+  expect(onNotice.mock.calls).toEqual([['앞선 추출 1건을 처리한 뒤 시작합니다 · 1분 안에 시작할 것으로 보입니다']])
+  await vi.advanceTimersByTimeAsync(JOB_POLL_MS * 2)
+
+  await expect(result).resolves.toEqual({ ...extraction, jobId: expect.any(Number) })
+  expect(onNotice.mock.calls[1]).toEqual([expect.stringContaining('아직 처리가 시작되지 않았습니다.')])
+})
+
 test('작업이 실패하면 워커가 남긴 사유로 실패한다', async () => {
   mocks.request.mockResolvedValueOnce(job('FAILED', { failure: { code: 'PDF_INVALID', message: 'PDF를 읽지 못했습니다.' } }))
 

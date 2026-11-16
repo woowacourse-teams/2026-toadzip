@@ -111,7 +111,7 @@ class AnnouncementPdfExtractionControllerTest {
     void 실패한_작업은_실패_사유를_돌려준다() throws Exception {
         when(service.job(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "FAILED", "공고문.pdf",
                 "ab".repeat(32), 3, CREATED, CREATED.plusSeconds(600),
-                new PdfExtractionJobResponse.Failure("MODEL_UNAVAILABLE", "AI 모델 호출에 계속 실패했습니다."), null, null));
+                new PdfExtractionJobResponse.Failure("MODEL_UNAVAILABLE", "AI 모델 호출에 계속 실패했습니다."), null, null, null));
 
         mockMvc.perform(get(PATH + "/jobs/31"))
                 .andExpect(status().isOk())
@@ -126,7 +126,7 @@ class AnnouncementPdfExtractionControllerTest {
         when(service.cancel(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "FAILED", "공고문.pdf",
                 "ab".repeat(32), 0, CREATED, CREATED.plusSeconds(60),
                 new PdfExtractionJobResponse.Failure("CANCELLED_BY_ADMIN", "관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다."),
-                null, null));
+                null, null, null));
 
         mockMvc.perform(post(PATH + "/jobs/31/cancel"))
                 .andExpect(status().isOk())
@@ -139,7 +139,7 @@ class AnnouncementPdfExtractionControllerTest {
     void 재시도_대기_작업은_재시도_사유를_돌려준다() throws Exception {
         when(service.job(7L, 31L)).thenReturn(new PdfExtractionJobResponse(31L, "RETRY", "공고문.pdf",
                 "ab".repeat(32), 1, CREATED, null, null,
-                new PdfExtractionJobResponse.Failure("UPSTREAM_TIMEOUT", "추출 서비스 응답이 늦습니다."), null));
+                new PdfExtractionJobResponse.Failure("UPSTREAM_TIMEOUT", "추출 서비스 응답이 늦습니다."), null, null));
 
         mockMvc.perform(get(PATH + "/jobs/31"))
                 .andExpect(status().isOk())
@@ -181,7 +181,9 @@ class AnnouncementPdfExtractionControllerTest {
 
         mockMvc.perform(get(PATH + "/jobs/active"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.jobId").value(31));
+                .andExpect(jsonPath("$.data.jobId").value(31))
+                .andExpect(jsonPath("$.data.queue.ahead").value(2))
+                .andExpect(jsonPath("$.data.queue.estimatedWaitSeconds").value(60));
     }
 
     @Test
@@ -213,6 +215,6 @@ class AnnouncementPdfExtractionControllerTest {
 
     private static PdfExtractionJobResponse pending(long jobId) {
         return new PdfExtractionJobResponse(jobId, "PENDING", "공고문.pdf", "ab".repeat(32), 0, CREATED, null,
-                null, null, null);
+                null, null, null, new PdfExtractionJobResponse.Queue(2, 60L));
     }
 }

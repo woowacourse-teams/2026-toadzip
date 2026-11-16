@@ -15,6 +15,7 @@ import com.toadzip.backend.announcement.domain.PdfExtractionInput;
 import com.toadzip.backend.announcement.domain.PdfExtractionJob;
 import com.toadzip.backend.announcement.domain.PdfExtractionJobStatus;
 import com.toadzip.backend.announcement.domain.PdfExtractionJobView;
+import com.toadzip.backend.announcement.domain.PdfExtractionQueue;
 import com.toadzip.backend.announcement.domain.PdfExtractionSource;
 import com.toadzip.backend.announcement.domain.TemporaryAttachment;
 import com.toadzip.backend.announcement.dto.response.AttachmentContent;
@@ -28,12 +29,14 @@ import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.hibernate.exception.ConstraintViolationException;
 import org.mockito.ArgumentCaptor;
@@ -55,8 +58,15 @@ class AnnouncementPdfExtractionServiceTest {
     private final PdfExtractionJobRepository jobs = mock(PdfExtractionJobRepository.class);
     private final PdfExtractionInputs inputs = mock(PdfExtractionInputs.class);
     private final AnnouncementAttachmentService attachments = mock(AnnouncementAttachmentService.class);
+    private final PdfExtractionQueueService queue = mock(PdfExtractionQueueService.class);
     private final AnnouncementPdfExtractionService service = new AnnouncementPdfExtractionService(
-            announcements, jobs, inputs, attachments, JsonMapper.builder().build(), Clock.fixed(NOW, ZoneOffset.UTC));
+            announcements, jobs, inputs, attachments, queue, JsonMapper.builder().build(),
+            Clock.fixed(NOW, ZoneOffset.UTC));
+
+    @BeforeEach
+    void 큐_위치는_기본으로_앞선_작업이_없다() {
+        when(queue.position(anyLong())).thenReturn(new PdfExtractionQueue.Position(0, null));
+    }
 
     @Test
     void PDF와_입력_스냅숏을_담은_대기_작업을_넣는다() throws Exception {
@@ -217,7 +227,30 @@ class AnnouncementPdfExtractionServiceTest {
                 PdfExtractionJobStatus.RUNNING, "공고문.pdf", "ab".repeat(32), 2, NOW, null, "UPSTREAM_TIMEOUT",
                 "추출 서비스 응답이 늦습니다.", null)));
 
-        assertThat(service.job(7L, 31L).retryReason()).isNull();
+        PdfExtractionJobResponse job = service.job(7L, 31L);
+
+        assertThat(job.retryReason()).isNull();
+        assertThat(job.queue()).isNull();
+    }
+
+    @Test
+    void 기다리는_작업은_앞선_작업_수와_시작까지의_추정_시간을_초로_돌려준다() {
+        when(announcements.existsById(7L)).thenReturn(true);
+        when(jobs.findView(PdfExtractionJob.KIND, 7L, 31L)).thenReturn(Optional.of(new PdfExtractionJobView(31L,
+                PdfExtractionJobStatus.PENDING, "공고문.pdf", "ab".repeat(32), 0, NOW, null, null, null, null)));
+        when(queue.position(31L)).thenReturn(new PdfExtractionQueue.Position(2, Duration.ofMillis(53_400)));
+
+        assertThat(service.job(7L, 31L).queue()).isEqualTo(new PdfExtractionJobResponse.Queue(2, 53L));
+    }
+
+    @Test
+    void 최근_처리_시간을_모르면_추정_시간을_비우고_앞선_작업_수만_돌려준다() {
+        when(announcements.existsById(7L)).thenReturn(true);
+        when(jobs.findView(PdfExtractionJob.KIND, 7L, 31L)).thenReturn(Optional.of(new PdfExtractionJobView(31L,
+                PdfExtractionJobStatus.RETRY, "공고문.pdf", "ab".repeat(32), 1, NOW, null, null, null, null)));
+        when(queue.position(31L)).thenReturn(new PdfExtractionQueue.Position(3, null));
+
+        assertThat(service.job(7L, 31L).queue()).isEqualTo(new PdfExtractionJobResponse.Queue(3, null));
     }
 
     private static TemporaryAttachment file(byte[] content, AtomicBoolean closed) throws Exception {

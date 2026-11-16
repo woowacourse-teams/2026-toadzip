@@ -49,7 +49,9 @@ export const NOT_STARTED_NOTICE_MS = 60 * 1000
 const NOT_STARTED_NOTICE = '아직 처리가 시작되지 않았습니다. 앞선 추출을 처리 중일 수 있으니, 계속 그대로면 AI 워커가 실행 중인지 확인하거나 추출 취소 후 다시 요청해 주세요.'
 
 type Reason = { code: string; message: string }
-type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; extraction: unknown }
+/** 기다리는 작업의 큐 위치. ahead는 먼저 처리될 작업 수(처리 중 포함), estimatedWaitSeconds는 서버가 최근 처리 시간으로 어림한 시작까지의 시간이다. */
+type Queue = { ahead: number; estimatedWaitSeconds: number | null }
+type ExtractionJob = { jobId: number; status: string; fileName: string; pdfSha256: string; failure: Reason | null; retryReason: Reason | null; queue: Queue | null; extraction: unknown }
 
 /** attachmentId가 있으면 서버가 그 공고 첨부를 받아 작업을 넣는다. onNotice는 기다리는 동안 보일 안내(재시도 사유, 처리 미시작)가 바뀔 때마다 받는다. */
 export type ExtractionOptions = { attachmentId?: string; onNotice?: (message: string | null) => void; onJob?: (jobId: number) => void }
@@ -61,8 +63,11 @@ function parseJob(value: unknown): ExtractionJob {
     throw new Error('추출 작업 응답 형식이 올바르지 않습니다.')
   }
   return { jobId: value.jobId as number, status: value.status, fileName: value.fileName, pdfSha256: value.pdfSha256,
-    failure: parseReason(value.failure), retryReason: parseReason(value.retryReason), extraction: value.extraction }
+    failure: parseReason(value.failure), retryReason: parseReason(value.retryReason), queue: parseQueue(value.queue), extraction: value.extraction }
 }
+
+const parseQueue = (value: unknown): Queue | null => isRecord(value) && count(value.ahead) !== null
+  ? { ahead: value.ahead as number, estimatedWaitSeconds: count(value.estimatedWaitSeconds) } : null
 
 const parseReason = (value: unknown): Reason | null => isRecord(value) && typeof value.code === 'string' && typeof value.message === 'string'
   ? { code: value.code, message: value.message } : null
@@ -171,10 +176,24 @@ async function requestBefore(deadline: number, path: string, signal?: AbortSigna
   }
 }
 
+/**
+ * 앞선 작업이 있으면 몇 건인지와 추정 시간을 보인다. 추정 시간보다 1분 넘게 더 기다려도 시작하지 않으면 워커가 멈췄을 수 있어
+ * 처리 미시작 안내로 바꾼다. 추정 시간을 모르면 앞선 작업이 없을 때와 같이 1분 뒤에 바꾼다.
+ */
 function waitingNotice(job: ExtractionJob, waited: number) {
   if (job.status === 'RETRY' && job.retryReason) return `잠시 뒤 다시 시도합니다 · ${job.retryReason.message}`
-  if (job.status === 'PENDING' && waited >= NOT_STARTED_NOTICE_MS) return NOT_STARTED_NOTICE
+  if (job.status !== 'PENDING') return null
+  const expected = (job.queue?.estimatedWaitSeconds ?? 0) * 1000
+  if (waited >= expected + NOT_STARTED_NOTICE_MS) return NOT_STARTED_NOTICE
+  if (job.queue && job.queue.ahead > 0) return queueNotice(job.queue)
   return null
+}
+
+function queueNotice(queue: Queue) {
+  const notice = `앞선 추출 ${queue.ahead}건을 처리한 뒤 시작합니다`
+  if (queue.estimatedWaitSeconds === null) return notice
+  if (queue.estimatedWaitSeconds < 60) return `${notice} · 1분 안에 시작할 것으로 보입니다`
+  return `${notice} · 약 ${Math.round(queue.estimatedWaitSeconds / 60)}분 뒤 시작할 것으로 보입니다`
 }
 
 function upload(file: Blob, fileName: string) {

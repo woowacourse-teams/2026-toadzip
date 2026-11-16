@@ -22,4 +22,8 @@ public record PdfExtractionQueue(
     public long waiting() {
         return pending + retrying;
     }
+
+    /** 기다리는 작업 하나의 큐 위치. ahead는 먼저 처리될 작업 수, estimatedWait는 시작까지의 추정 시간(모르면 null)이다. */
+    public record Position(long ahead, Duration estimatedWait) {
+    }
 }
