@@ -1,6 +1,8 @@
 @import "./design-system/tokens.css";
 
 :root {
+  /* 다크 테마가 없으므로 브라우저·웹뷰의 자동 다크모드가 지도 타일 등 일부만 반전하지 않게 한다. */
+  color-scheme: light;
   font-family: var(--ds-font-family-base);
   color: var(--ds-color-text-base);
   background: var(--ds-color-page);
