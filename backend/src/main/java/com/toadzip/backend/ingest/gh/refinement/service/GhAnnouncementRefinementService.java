@@ -83,6 +83,11 @@ public class GhAnnouncementRefinementService {
         }
 
         /** 정제 때 원공고를 찾지 못한 정정공고를, 이번 실행에서 원공고가 정제된 뒤 다시 잇고 정제 실패를 실패 목록에 맞춘다. */
+        /** 수집이 예외로 멈췄을 때 그때까지 정제하며 본 실패를 실패 목록에 남긴다. */
+        public void abandon(RuntimeException stopped) {
+            run.recordFailuresAfter(stopped);
+        }
+
         public void finish() {
             revisionLinker.relinkUnlinked(run, revisions, BoardRevisionName::gh);
             run.recordFailures();

@@ -38,6 +38,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -320,6 +322,9 @@ class AdminOperationsControllerIntegrationTest {
         LocalDate today = LocalDate.now(clock);
         attach(announcement("PDF 없음"), "공고문.hwpx");
         attach(announcement("추출 전"), "공고문.PDF");
+        // 받는 주소 뒤 물음표까지는 PDF로 보고, 압축 파일이나 이름에 pdf가 든 다른 형식은 PDF로 보지 않는다.
+        attach(announcement("추출 전 내려받기 주소"), "공고문.pdf?dl=1");
+        attach(attach(announcement("PDF 없음 압축"), "공고문.pdf.zip"), "pdf없음.hwp");
         var extracting = attach(announcement("추출 중"), "공고문.pdf");
         job(extracting, "SUCCEEDED");
         job(extracting, "PENDING");
@@ -339,31 +344,43 @@ class AdminOperationsControllerIntegrationTest {
         job(closed, "SUCCEEDED");
         schedule(closed, today.minusDays(3), today.minusDays(1));
         var deleted = announcement("휴지통 PDF 없음");
+        var cancelled = announcement("공고취소 PDF 없음");
         entities.flush();
         jdbc.sql("UPDATE announcements SET supply_confirmed_at = now() WHERE id IN (:ids)")
                 .param("ids", List.of(confirmed.getId(), recheck.getId())).update();
         jdbc.sql("UPDATE announcements SET supply_recheck_required = true WHERE id = :id")
                 .param("id", recheck.getId()).update();
         jdbc.sql("UPDATE announcements SET admin_deleted = true WHERE id = :id").param("id", deleted.getId()).update();
+        jdbc.sql("UPDATE announcements SET status = 'CANCELLATION' WHERE id = :id")
+                .param("id", cancelled.getId()).update();
         entities.clear();
 
         String tasks = mockMvc.perform(get("/api/admin/operations/tasks").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stages.length()").value(7))
                 .andReturn().getResponse().getContentAsString();
-        var expected = Map.of("PDF_MISSING", "PDF 없음", "NOT_EXTRACTED", "추출 전",
-                "EXTRACTING", "추출 중", "EXTRACTION_FAILED", "추출 실패", "REVIEW_PENDING", "검토 대기 마감일 당일",
-                "CONFIRMED", "확정", "RECHECK_REQUIRED", "재확인 필요");
+        var expected = Map.of("PDF_MISSING", List.of("PDF 없음", "PDF 없음 압축"),
+                "NOT_EXTRACTED", List.of("추출 전", "추출 전 내려받기 주소"),
+                "EXTRACTING", List.of("추출 중"), "EXTRACTION_FAILED", List.of("추출 실패"),
+                "REVIEW_PENDING", List.of("검토 대기 마감일 당일"), "CONFIRMED", List.of("확정"),
+                "RECHECK_REQUIRED", List.of("재확인 필요"));
         for (var stage : expected.entrySet()) {
             int count = JsonPath.read(tasks, "$.data.stages." + stage.getKey());
-            assertThat(count).as(stage.getKey()).isEqualTo(1);
+            assertThat(count).as(stage.getKey()).isEqualTo(stage.getValue().size());
             mockMvc.perform(get("/api/admin/announcements").param("applicationStatus", "OPEN")
                             .param("stage", stage.getKey()).with(user("admin").roles("ADMIN")))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.totalElements").value(count))
-                    .andExpect(jsonPath("$.data.items[0].name").value(stage.getValue()))
-                    .andExpect(jsonPath("$.data.items[0].announcement.processingStage").value(stage.getKey()));
+                    .andExpect(jsonPath("$.data.items[*].name", containsInAnyOrder(stage.getValue().toArray())))
+                    .andExpect(jsonPath("$.data.items[*].announcement.processingStage",
+                            everyItem(is(stage.getKey()))));
         }
+        // 공고취소는 마감 전이 아니라 집계와 마감 전 목록에서 빠지지만 단계 필터에는 남는다.
+        mockMvc.perform(get("/api/admin/announcements").param("stage", "PDF_MISSING")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].name", containsInAnyOrder(
+                        "PDF 없음", "PDF 없음 압축", "공고취소 PDF 없음")));
         mockMvc.perform(get("/api/admin/announcements").param("stage", "REVIEW_PENDING")
                         .with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())

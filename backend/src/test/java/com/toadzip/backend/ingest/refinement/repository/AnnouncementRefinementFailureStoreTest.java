@@ -72,6 +72,38 @@ class AnnouncementRefinementFailureStoreTest {
     }
 
     @Test
+    void 묶음_읽기_실패는_키가_바뀐_다음_실행이_끝까지_돌면_해결되고_그_실행에서_다시_난_읽기_실패만_남는다() {
+        UUID resolvedBy = UUID.randomUUID();
+        store.reconcile(AgencyCode.SH, Set.of("SH 페이지 12345"),
+                List.of(failure(AgencyCode.SH, "SH 페이지 12345", SOURCE_LOOKUP_FAILED)), UUID.randomUUID());
+        store.reconcile(AgencyCode.GH, Set.of("GH 페이지 7"),
+                List.of(failure(AgencyCode.GH, "GH 페이지 7", SOURCE_LOOKUP_FAILED)), UUID.randomUUID());
+
+        store.reconcile(AgencyCode.SH, Set.of("SH 페이지 12346", "SH 페이지 12300"),
+                List.of(failure(AgencyCode.SH, "SH 페이지 12300", SOURCE_LOOKUP_FAILED)), resolvedBy);
+
+        assertThat(repository.findAll()).extracting(failure -> failure.getSourceKey(), failure -> failure.getStatus(),
+                        failure -> failure.getLastResolvedExecutionId())
+                .containsExactlyInAnyOrder(tuple("SH 페이지 12345", RESOLVED, resolvedBy),
+                        tuple("SH 페이지 12300", PENDING, null), tuple("GH 페이지 7", PENDING, null));
+    }
+
+    @Test
+    void 도중에_멈춘_실행은_다룬_원천의_실패만_맞추고_지난_묶음_읽기_실패는_그대로_둔다() {
+        UUID stopped = UUID.randomUUID();
+        store.reconcile(AgencyCode.SH, Set.of("SH 페이지 12345", "SH:1"), List.of(
+                failure(AgencyCode.SH, "SH 페이지 12345", SOURCE_LOOKUP_FAILED), failure(AgencyCode.SH, "SH:1")),
+                UUID.randomUUID());
+
+        store.reconcileStopped(AgencyCode.SH, Set.of("SH:1", "SH:2"), List.of(failure(AgencyCode.SH, "SH:2")),
+                stopped);
+
+        assertThat(repository.findAll()).extracting(failure -> failure.getSourceKey(), failure -> failure.getStatus())
+                .containsExactlyInAnyOrder(tuple("SH 페이지 12345", PENDING), tuple("SH:1", RESOLVED),
+                        tuple("SH:2", PENDING));
+    }
+
+    @Test
     void 해결한_원천이_다시_실패하면_새로_만들지_않고_재발로_센다() {
         UUID first = UUID.randomUUID();
         UUID recurred = UUID.randomUUID();

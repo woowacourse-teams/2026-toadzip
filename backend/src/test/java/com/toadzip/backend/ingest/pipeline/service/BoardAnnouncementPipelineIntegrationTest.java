@@ -213,6 +213,39 @@ class BoardAnnouncementPipelineIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
+    void 다음_페이지_원천_저장이_예외로_끝나도_앞_페이지에서_난_원천_정제_실패는_실패_목록에_남는다(DataPipelineType type) {
+        // 외부 기관 오류는 수집이 기록하고 이어 가지만 원천 저장(DB) 실패는 수집을 예외로 끝낸다.
+        boardList(type, 1, 11, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110);
+        boardList(type, 2, 11, 111);
+        for (int id = 101; id <= 111; id++) {
+            boardDetail(type, id);
+        }
+        String rejected = agency(type) + ":105";
+        String sourceTable = agency(type).toLowerCase() + "_announcement_source";
+        jdbc.execute("ALTER TABLE announcements ADD CONSTRAINT board_pipeline_test_failure "
+                + "CHECK (source_announcement_identifier <> '" + rejected + "') NOT VALID");
+        jdbc.execute("ALTER TABLE " + sourceTable + " ADD CONSTRAINT board_pipeline_store_failure "
+                + "CHECK (source_key <> '" + agency(type) + ":111') NOT VALID");
+        try {
+            var accepted = service.start(type);
+            task.get().run();
+            var result = query.find(accepted.executionId());
+
+            assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+            assertThat(count("announcements")).isEqualTo(9);
+            assertThat(jdbc.queryForMap("SELECT source_key, reason, status, last_execution_id "
+                    + "FROM announcement_refinement_failures"))
+                    .containsEntry("source_key", rejected).containsEntry("reason", "SOURCE_REFINEMENT_FAILED")
+                    .containsEntry("status", "PENDING").containsEntry("last_execution_id", accepted.executionId());
+        }
+        finally {
+            jdbc.execute("ALTER TABLE announcements DROP CONSTRAINT board_pipeline_test_failure");
+            jdbc.execute("ALTER TABLE " + sourceTable + " DROP CONSTRAINT board_pipeline_store_failure");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
     void 페이지의_정제_대상을_읽다_실패해도_수집_보고서와_저장한_원천은_보존하고_실패로_기록한다(DataPipelineType type) {
         twoSources(type);
         RefinementLookupFailure.enabled = true;

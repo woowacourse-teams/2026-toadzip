@@ -22,6 +22,8 @@ import com.toadzip.backend.ingest.sh.collection.service.ShAnnouncementCollection
 import com.toadzip.backend.ingest.sh.refinement.service.ShAnnouncementRefinementService;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -92,7 +94,8 @@ class DataPipelineStepExecutor {
     private DataPipelineStepResult collectAndRefineLh() {
         // 수집이 요청 묶음을 마칠 때마다 그 공고를 정제한다. 외부 호출만 병렬이고 정제는 이 스레드에서 차례로 한다.
         var refinement = lhAnnouncementRefinementService.begin();
-        var collection = collectionService.collectBundles(refinement::refineBundle);
+        var collection = collecting(() -> collectionService.collectBundles(refinement::refineBundle),
+                refinement::abandon);
         refinement.finish(executionStartedAt(), collection.selectedPanIds());
         return resultAdapter.adapt(new LhCollectionRefinementReport(
                 collection.supply(), collection.detail(), refinement.report()));
@@ -106,15 +109,28 @@ class DataPipelineStepExecutor {
 
     private DataPipelineStepResult collectAndRefineSh() {
         var refinement = shAnnouncementRefinementService.begin();
-        var collection = shAnnouncementCollectionService.collect(refinement::refinePage);
+        var collection = collecting(() -> shAnnouncementCollectionService.collect(refinement::refinePage),
+                refinement::abandon);
         refinement.finish();
         return resultAdapter.adapt(new BoardCollectionRefinementReport(collection, refinement.report()));
     }
 
     private DataPipelineStepResult collectAndRefineGh() {
         var refinement = ghAnnouncementRefinementService.begin();
-        var collection = ghAnnouncementCollectionService.collect(refinement::refinePage);
+        var collection = collecting(() -> ghAnnouncementCollectionService.collect(refinement::refinePage),
+                refinement::abandon);
         refinement.finish();
         return resultAdapter.adapt(new BoardCollectionRefinementReport(collection, refinement.report()));
+    }
+
+    /** 수집이 예외로 멈춰도 그때까지 정제하며 본 실패는 실패 목록에 남기고 멈춘 원인을 그대로 던진다. */
+    private static <T> T collecting(Supplier<T> collection, Consumer<RuntimeException> abandon) {
+        try {
+            return collection.get();
+        }
+        catch (RuntimeException stopped) {
+            abandon.accept(stopped);
+            throw stopped;
+        }
     }
 }

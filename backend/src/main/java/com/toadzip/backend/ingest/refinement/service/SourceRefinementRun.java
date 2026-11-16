@@ -150,6 +150,23 @@ public final class SourceRefinementRun<O extends Enum<O>> {
         });
     }
 
+    /**
+     * 수집이 예외로 멈춘 실행에서 그때까지 본 실패를 기록한다. 기록마저 실패하면(실행 잠금을 잃은 경우 등) 멈춘 원인을 가리지
+     * 않도록 그 예외에 덧붙인다.
+     */
+    public void recordFailuresAfter(RuntimeException stopped) {
+        try {
+            transactions.executeWithoutResult(status -> {
+                ownershipGuard.verifyWrite();
+                failureStore.reconcileStopped(provider, Set.copyOf(attemptedKeys), List.copyOf(observedFailures),
+                        IngestExecutionScope.currentExecutionId().orElse(null));
+            });
+        }
+        catch (RuntimeException recording) {
+            stopped.addSuppressed(recording);
+        }
+    }
+
     private <T> Optional<T> attempt(String sourceKey, AnnouncementRefinementFailureReason reason, Supplier<T> work) {
         IngestExecutionScope.checkStopRequested();
         attemptedKeys.add(sourceKey);

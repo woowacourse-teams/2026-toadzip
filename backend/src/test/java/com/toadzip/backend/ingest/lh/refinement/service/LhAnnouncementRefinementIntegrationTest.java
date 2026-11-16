@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -122,7 +123,8 @@ class LhAnnouncementRefinementIntegrationTest {
     void setUp() {
         jdbc.sql("""
                 TRUNCATE housing_complexes, announcements, lh_announcement_catalog_entries,
-                    lh_announcement_query_sources, admin_data_changes, notification_outbox_events CASCADE
+                    lh_announcement_query_sources, admin_data_changes, notification_outbox_events,
+                    announcement_refinement_failures CASCADE
                 """).update();
         complex = complex("동탄 행복주택", "complex-1", ADDRESS, "HAPPY_HOUSING");
         area59 = types.save(HousingType.createFromMyHome(complex, "complex-1:59", "59A", new BigDecimal("59.9800"), null));
@@ -338,7 +340,7 @@ class LhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
-    void 정제_보고서는_성공한_공고만_집계하고_실패한_공고의_중간_집계는_버린다() {
+    void 정제_보고서는_성공한_공고만_집계하고_실패한_공고의_중간_집계는_버리며_실패는_공고_ID와_함께_실패_목록에_남는다() {
         publish("P1", "동탄 행복주택 입주자 모집", today().minusDays(1));
         details("P1", "동탄 행복주택 단지", ADDRESS);
         supplies("P1", supply("동탄 행복주택 단지", "59A", "59.9800", "10", "30000000", "200000"));
@@ -357,6 +359,21 @@ class LhAnnouncementRefinementIntegrationTest {
                 new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 1, 0),
                 new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0)));
         assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P2")).isEmpty();
+        assertThat(refinementFailures()).containsExactly(Map.of("pan_id", "P2",
+                "reason", "SOURCE_REFINEMENT_FAILED", "status", "PENDING"));
+
+        reset(scheduleWriter);
+        refinement.refineAll();
+
+        assertThat(announcements.findAllByLhPanIdOrderByIdAsc("P2")).hasSize(1);
+        assertThat(refinementFailures()).containsExactly(Map.of("pan_id", "P2",
+                "reason", "SOURCE_REFINEMENT_FAILED", "status", "RESOLVED"));
+    }
+
+    private List<Map<String, Object>> refinementFailures() {
+        return jdbc.sql("""
+                SELECT pan_id, reason, status FROM announcement_refinement_failures WHERE provider = 'LH'
+                """).query().listOfRows();
     }
 
     @Test

@@ -8,11 +8,20 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.PdfExtractionQueue;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 class PdfExtractionQueueMetricsTest {
@@ -59,6 +68,30 @@ class PdfExtractionQueueMetricsTest {
         clock.now = NOW.plus(PdfExtractionQueueMetrics.REUSE);
 
         assertThat(gauge("toadzip.ai.jobs", "status", "pending")).isNaN();
+    }
+
+    @Test
+    void Grafana_대시보드가_읽는_시계열_이름을_Prometheus_수집_결과가_모두_내보낸다() throws IOException {
+        when(queue.current()).thenReturn(new PdfExtractionQueue(3, 1, 1, Duration.ofMinutes(12), 20, 2,
+                Duration.ofMillis(26_500), Duration.ofSeconds(90), Duration.ofHours(24), NOW));
+        PrometheusMeterRegistry prometheus = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        new PdfExtractionQueueMetrics(queue, Clock.fixed(NOW, ZoneOffset.UTC), prometheus);
+        Set<String> exported = new TreeSet<>();
+        for (String line : prometheus.scrape().split("\n")) {
+            if (!line.startsWith("#") && !line.isBlank()) {
+                exported.add(line.split("[{ ]")[0]);
+            }
+        }
+
+        Set<String> used = new TreeSet<>();
+        Matcher names = Pattern.compile("toadzip_ai_jobs[a-z_]*")
+                .matcher(Files.readString(Path.of("../infra/grafana/dashboards/ai-jobs.json")));
+        while (names.find()) {
+            used.add(names.group());
+        }
+
+        assertThat(used).isNotEmpty();
+        assertThat(exported).containsAll(used);
     }
 
     private double gauge(String name, String tag, String value) {

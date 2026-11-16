@@ -94,6 +94,11 @@ public class LhAnnouncementRefinementService {
                             .filter(view -> catalogSourceKeys.contains(view.getSourceKey())).toList());
         }
 
+        /** 수집이 예외로 멈췄을 때 그때까지 정제하며 본 실패를 실패 목록에 남긴다. */
+        public void abandon(RuntimeException stopped) {
+            run.recordFailuresAfter(stopped);
+        }
+
         /**
          * 마무리: 이번 실행에서 목록 값이 바뀌었지만 묶음 수집 대상이 아니었던 공고(종료 정책 밖 공고)를 정제하고, 정제 때
          * 원공고를 찾지 못한 정정·취소공고를 원공고가 정제된 뒤 다시 잇는다. 수집 대상으로 골랐지만 묶음을 다 받지 못한
