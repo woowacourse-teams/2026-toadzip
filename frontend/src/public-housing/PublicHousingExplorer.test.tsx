@@ -1490,7 +1490,7 @@ describe('PublicHousingExplorer', () => {
     expect(search.getAll('complexAgencyCodes')).toEqual(['LH', 'GH'])
   })
 
-  it('연속 지도 이동은 마지막 idle로부터 100ms 후 한 번만 조회한다', async () => {
+  it('지도 이동은 idle마다 기다리지 않고 바로 조회한다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository)
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
@@ -1499,25 +1499,37 @@ describe('PublicHousingExplorer', () => {
     vi.useFakeTimers()
 
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(50))
-    fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(99))
-    expect(repository.findMap).toHaveBeenCalledOnce()
-    await act(async () => vi.advanceTimersByTimeAsync(1))
-
-    // Precision changes the zoom as well; the final idle alone is queried.
+    await act(async () => vi.advanceTimersByTimeAsync(0))
     expect(repository.findMap).toHaveBeenCalledTimes(2)
-    expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ zoom: 14.256 }), expect.any(AbortSignal))
-    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(99))
-    expect(repository.findMap).toHaveBeenCalledTimes(2)
-    await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(repository.findMap).toHaveBeenCalledTimes(3)
     expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ bounds: NEXT_BOUNDS }), expect.any(AbortSignal))
+
+    fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(repository.findMap).toHaveBeenCalledTimes(3)
+    expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ zoom: 14.256 }), expect.any(AbortSignal))
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
   })
 
-  it('서버 지도는 마지막 idle 100ms 뒤 조회하고 느린 목록을 기다리지 않고 마커를 표시한다', async () => {
+  it('이어진 idle은 앞 지도 요청을 취소하고 마지막 영역만 반영한다', async () => {
+    vi.useFakeTimers()
+    const repository = createRepository()
+    const mapRepository = createMapRepository(individualMapResult())
+    const first = createDeferred<HousingMapIndividualResult>()
+    mapRepository.findMap.mockReturnValueOnce(first.promise)
+    renderSearchedExplorer(repository, '/', undefined, undefined, mapRepository)
+
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(mapRepository.findMap).toHaveBeenCalledOnce()
+    const firstSignal = mapRepository.findMap.mock.calls[0][1] as AbortSignal
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    expect(firstSignal.aborted).toBe(true)
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(mapRepository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ bounds: NEXT_BOUNDS }), expect.any(AbortSignal))
+  })
+
+  it('서버 지도는 idle 직후 조회하고 느린 목록을 기다리지 않고 마커를 표시한다', async () => {
     vi.useFakeTimers()
     const repository = createRepository()
     const pendingList = createDeferred<ComplexPage>()
@@ -1528,11 +1540,9 @@ describe('PublicHousingExplorer', () => {
     renderSearchedExplorer(repository, '/', undefined, undefined, mapRepository)
 
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(50))
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(99))
     expect(mapRepository.findMap).not.toHaveBeenCalled()
-    await act(async () => vi.advanceTimersByTimeAsync(1))
+    await act(async () => vi.advanceTimersByTimeAsync(0))
 
     expect(mapRepository.findMap).toHaveBeenCalledExactlyOnceWith({
       bounds: NEXT_BOUNDS,
@@ -3227,6 +3237,8 @@ describe('PublicHousingExplorer', () => {
       expect(within(panel).queryByRole('button', { name: /단지 더 보기/ })).not.toBeInTheDocument()
       const observer = observers.findLast(entry => panel.contains(entry.root))!
       expect(observer).toBeDefined()
+      // 끝 표시가 보이기 전, 아래쪽 여유 안에 들어오면 미리 요청한다.
+      expect(observer.rootMargin).toBe('0px 0px 600px 0px')
       const scroll = observer.root as HTMLElement
       scroll.scrollTop = 1200
       act(() => { observer.notify(true); observer.notify(true) })
@@ -3273,6 +3285,7 @@ describe('PublicHousingExplorer', () => {
       expect(within(panel).queryByRole('button', { name: '공고 더 보기' })).not.toBeInTheDocument()
       const observer = observers.find((entry) => panel.contains(entry.root))
       expect(observer).toBeDefined()
+      expect(observer!.rootMargin).toBe('0px 0px 600px 0px')
       const scroll = observer!.root as HTMLElement
       scroll.scrollTop = 1200
       act(() => observer!.notify(false))
@@ -4870,11 +4883,11 @@ describe('PublicHousingExplorer 지도 영역 거리뷰', () => {
 })
 
 function installAnnouncementIntersectionObserver() {
-  const observers: Array<{ root: Element; notify: (isIntersecting: boolean) => void }> = []
+  const observers: Array<{ root: Element; rootMargin?: string; notify: (isIntersecting: boolean) => void }> = []
   vi.stubGlobal('IntersectionObserver', class {
     constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void, options?: IntersectionObserverInit) {
       if (options?.root instanceof Element) {
-        observers.push({ root: options.root, notify: (isIntersecting) => callback([{ isIntersecting }]) })
+        observers.push({ root: options.root, rootMargin: options.rootMargin, notify: (isIntersecting) => callback([{ isIntersecting }]) })
       }
     }
     observe() {}

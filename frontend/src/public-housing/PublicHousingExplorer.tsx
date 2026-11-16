@@ -136,6 +136,8 @@ import { useRegionBoundary } from './regions/useRegionBoundary.ts'
 import { RegionBoundaryControl } from './regions/RegionBoundaryControl.tsx'
 
 const EMPTY_MAP_ITEMS: readonly MapComplex[] = []
+// 목록 끝 몇 장 전에 다음 페이지를 요청해 스크롤이 로딩 문구에서 멈추지 않게 한다.
+const LIST_PREFETCH_ROOT_MARGIN = '0px 0px 600px 0px'
 // Match the BASIC_REGION → INDIVIDUAL expansion in the map policy.
 const REGION_FOCUS_ZOOM = 12.6
 const COMPLEX_FOCUS_ZOOM = 12.7
@@ -650,7 +652,7 @@ export function PublicHousingExplorer({
     let active = true
     const observer = new IntersectionObserver(entries => {
       if (active && entries.some(entry => entry.isIntersecting)) loadMore()
-    }, { root })
+    }, { root, rootMargin: LIST_PREFETCH_ROOT_MARGIN })
     observer.observe(end)
     return () => { active = false; observer.disconnect() }
   }, [mobile, showListPage, activeResultTab, complexResults.status, complexResults.hasNext,
@@ -674,7 +676,7 @@ export function PublicHousingExplorer({
       if (active && entries.some((entry) => entry.isIntersecting)) {
         loadMoreAnnouncements()
       }
-    }, { root })
+    }, { root, rootMargin: LIST_PREFETCH_ROOT_MARGIN })
     observer.observe(end)
     return () => {
       active = false
@@ -1351,7 +1353,8 @@ export function PublicHousingExplorer({
       if (clusterTransitionRef.current && (outcome === 'applied' || outcome === 'ignored')) {
         finishClusterTransition()
       }
-    }, 100)
+      // 지도가 멈추면(idle) 기다리지 않고 바로 핀을 받는다. 이어서 또 움직이면 앞 요청은 위에서 취소된다.
+    }, 0)
   }, [cancelServerMapRequest, complexFilters, finishClusterTransition, requestServerMap])
 
   const handleStarterPlaceSelect = useCallback((place: StarterPlace) => {

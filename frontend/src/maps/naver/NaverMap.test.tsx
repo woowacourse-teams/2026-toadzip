@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MapMarkerPresentation } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import type { RegionBoundary } from '../../public-housing/regions/regionBoundary.ts'
 import type { MarkerHoverAnalytics, MarkerHoverAttribution } from '../../analytics/markerHoverAnalytics'
+import { WHEEL_ZOOM_RATE } from './mapWheelZoom.ts'
 import NaverMap, {
   type NaverMapAggregateMarker,
   type NaverMapMarker,
@@ -28,12 +29,15 @@ vi.mock('./loadNaverMapsSdk.ts', async () => {
 })
 
 interface FakeSdk {
+  setWheelZoomRate: ReturnType<typeof vi.fn>
   addListener: ReturnType<typeof vi.fn>
   autoResizeMap: ReturnType<typeof vi.fn>
   destroyMap: ReturnType<typeof vi.fn>
   emitDragStart: () => void
   emitIdle: () => void
   emitInit: () => void
+  mapboxOn: ReturnType<typeof vi.fn>
+  mapboxOff: ReturnType<typeof vi.fn>
   fitBoundsMap: ReturnType<typeof vi.fn>
   fromCoordToOffset: ReturnType<typeof vi.fn>
   fromOffsetToCoord: ReturnType<typeof vi.fn>
@@ -71,6 +75,7 @@ function createFakeSdk(): FakeSdk {
   }
   let currentZoom = 14
   const destroyMap = vi.fn()
+  const setWheelZoomRate = vi.fn()
   const autoResizeMap = vi.fn()
   const panToMap = vi.fn((coordinate: unknown) => {
     currentCenter = coordinate as typeof currentCenter
@@ -149,8 +154,13 @@ function createFakeSdk(): FakeSdk {
       return { eventName } as unknown as naver.maps.MapEventListener
     },
   )
+  const mapboxOn = vi.fn()
+  const mapboxOff = vi.fn()
+  let mapboxReady = false
+  const mapbox = { on: mapboxOn, off: mapboxOff, getSource: () => undefined, scrollZoom: { setWheelZoomRate } }
   const mapInstance = {
     autoResize: autoResizeMap,
+    getMapbox: () => (mapboxReady ? mapbox : null),
     destroy: destroyMap,
     fitBounds: fitBoundsMap,
     getBounds: getBoundsMap,
@@ -240,10 +250,14 @@ function createFakeSdk(): FakeSdk {
   return {
     addListener,
     autoResizeMap,
+    setWheelZoomRate,
     destroyMap,
     emitDragStart: () => dragStartListener?.(),
     emitIdle: () => idleListener?.(),
+    mapboxOn,
+    mapboxOff,
     emitInit: () => {
+      mapboxReady = true
       const listener = initListener
       initListener = null
       listener?.()
@@ -617,6 +631,10 @@ describe('NaverMap', () => {
       37.5666103,
       126.9783882,
     )
+    // 마우스 휠 한 칸에 확대가 너무 적어 느리게 느껴지지 않도록, 내부 Mapbox가 생기는 init 뒤 휠 배율을 올린다.
+    expect(fakeSdk.setWheelZoomRate).not.toHaveBeenCalled()
+    act(() => fakeSdk.emitInit())
+    expect(fakeSdk.setWheelZoomRate).toHaveBeenCalledExactlyOnceWith(WHEEL_ZOOM_RATE)
     expect(fakeSdk.mapConstructor.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
         gl: true,
@@ -665,6 +683,21 @@ describe('NaverMap', () => {
     fakeSdk.getMinZoomMap.mockReturnValue(14)
     fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
     expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14, true)
+  })
+
+  it('지도 init 뒤에만 배경 타일 재요청 감시를 켜고 unmount에서 끈다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { unmount } = render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    expect(fakeSdk.mapboxOn).not.toHaveBeenCalled()
+
+    act(() => fakeSdk.emitInit())
+    expect(fakeSdk.mapboxOn).toHaveBeenCalledOnce()
+    expect(fakeSdk.mapboxOn).toHaveBeenCalledWith('error', expect.any(Function))
+
+    unmount()
+    expect(fakeSdk.mapboxOff).toHaveBeenCalledWith('error', fakeSdk.mapboxOn.mock.calls[0]?.[1])
   })
 
   it('init 전에 unmount하면 초기화 리스너를 제거하고 bounds를 적용하지 않는다', async () => {
@@ -1546,7 +1579,7 @@ describe('NaverMap', () => {
     expect(a).not.toHaveClass('is-previewing')
     expect(b).toHaveClass('is-previewing')
     expect(onHighlight).toHaveBeenLastCalledWith('b')
-    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(4_000_000)
 
     // After lifting, the emulated mouse events and focus of a tap must not expand it again.
     fireEvent[release](b, { pointerType: 'touch' })
@@ -1555,7 +1588,7 @@ describe('NaverMap', () => {
     await act(() => new Promise(resolve => setTimeout(resolve, MARKER_HOVER_DELAY_MS)))
     expect(b).not.toHaveClass('is-previewing')
     expect(onHighlight).toHaveBeenLastCalledWith(null)
-    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(10)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(1_000_001)
   })
 
   it.each(['touch', 'pen'])('호버 수집이 연결되어도 모바일 %s 선택은 손을 떼면 접히고 호버 정보를 붙이지 않는다', async pointerType => {
@@ -1578,8 +1611,8 @@ describe('NaverMap', () => {
     const b = createdMarkerButton(fakeSdk, 1)
     focusWithKeyboard(a)
     fireEvent.pointerDown(b, { pointerType })
-    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(10)
-    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(40)
+    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(1_000_000)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(4_000_000)
     fireEvent.pointerUp(b, { pointerType })
     const click = new MouseEvent('click', { bubbles: true, detail: 1 })
     Object.defineProperty(click, 'pointerType', { value: pointerType })
@@ -1627,7 +1660,7 @@ describe('NaverMap', () => {
 
     expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
     expect(markerButton).toHaveClass('is-highlighted')
-    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(4_000_000)
     act(() => fakeSdk.emitIdle())
     expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
     expect(markerButton).toHaveFocus()
@@ -1758,17 +1791,17 @@ describe('NaverMap', () => {
       expect(fakeSdk.markerSetMap).not.toHaveBeenCalled()
       expect(a).toHaveClass('is-selected')
       expect(a).toHaveAttribute('aria-pressed', 'true')
-      expect(aOverlay.setZIndex).toHaveBeenLastCalledWith(30)
+      expect(aOverlay.setZIndex).toHaveBeenLastCalledWith(3_000_000)
       expect(bOverlay.setZIndex).not.toHaveBeenCalled()
       expect(cOverlay.setZIndex).not.toHaveBeenCalled()
 
       rerender(renderMap('b', nextMarkerSelect))
       expect(a).not.toHaveClass('is-selected')
       expect(a).toHaveAttribute('aria-pressed', 'false')
-      expect(aOverlay.setZIndex).toHaveBeenLastCalledWith(10)
+      expect(aOverlay.setZIndex).toHaveBeenLastCalledWith(1_000_000)
       expect(b).toHaveClass('is-selected', 'is-highlighted')
       expect(b).toHaveAttribute('aria-pressed', 'true')
-      expect(bOverlay.setZIndex).toHaveBeenLastCalledWith(30)
+      expect(bOverlay.setZIndex).toHaveBeenLastCalledWith(3_000_001)
       fireEvent.click(b)
       expect(nextMarkerSelect).toHaveBeenCalledExactlyOnceWith('b')
       expect(onMarkerSelect).not.toHaveBeenCalled()
@@ -1777,7 +1810,7 @@ describe('NaverMap', () => {
       expect(b).not.toHaveClass('is-selected')
       expect(b).toHaveAttribute('aria-pressed', 'false')
       expect(b).toHaveClass('is-highlighted')
-      expect(bOverlay.setZIndex).toHaveBeenLastCalledWith(20)
+      expect(bOverlay.setZIndex).toHaveBeenLastCalledWith(2_000_001)
       const updateCount = fakeSdk.markerSetZIndex.mock.calls.length
       rerender(renderMap(null))
       act(() => fakeSdk.emitIdle())
@@ -1867,12 +1900,12 @@ describe('NaverMap', () => {
     const button = await screen.findByRole('button', { name: /면적 확인 단지/ })
     expect(button).toHaveTextContent('전용 36㎡')
     await hoverWithMouse(button)
-    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(4_000_000)
     focusWithKeyboard(button)
     fireEvent.pointerLeave(button, { pointerType: 'mouse' })
-    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(4_000_000)
     button.blur()
-    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(10)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(1_000_000)
     rerender(<NaverMap representation="INDIVIDUAL" markers={[{ ...marker, exclusiveAreaLabel: '36 ~ 44㎡' }]} />)
     expect(screen.getByRole('button', { name: /전용면적 36 ~ 44㎡/ })).toHaveTextContent('전용 36 ~ 44㎡')
   })
@@ -1894,7 +1927,7 @@ describe('NaverMap', () => {
     await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
     const firstButton = createdMarkerButton(fakeSdk, 0)
     expect(firstButton).toHaveClass('is-selected')
-    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(30)
+    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(3_000_000)
     rerender(<NaverMap representation="INDIVIDUAL"
       markers={[{ ...marker, selected: false }]} />)
     rerender(<NaverMap representation="INDIVIDUAL"
@@ -1912,7 +1945,7 @@ describe('NaverMap', () => {
     expect(firstButton).not.toBeInTheDocument()
     expect(createdMarkerButton(fakeSdk, 1)).toHaveTextContent('월24만~')
     expect(createdMarkerButton(fakeSdk, 1)).toHaveClass('is-selected')
-    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(30)
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(3_000_000)
     rerender(<NaverMap representation="INDIVIDUAL" markers={[]} />)
     expect(fakeSdk.markerSetMap).toHaveBeenCalledTimes(2)
     expect(createdMarkerButton(fakeSdk, 1)).not.toBeInTheDocument()
@@ -2136,6 +2169,61 @@ describe('NaverMap', () => {
       .toHaveClass('housing-marker-enter')
   })
 
+  it('줌으로 일부 마커만 다시 만들어도 겹침 순서는 단지 수와 위치로 고정한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const lastZIndex = (name: RegExp) => {
+      const index = fakeSdk.markerInstances.findLastIndex((_, i) =>
+        createdMarkerButton(fakeSdk, i).isConnected
+        && name.test(createdMarkerButton(fakeSdk, i).textContent ?? ''))
+      return fakeSdk.markerInstances[index].setZIndex.mock.lastCall?.[0] as number
+    }
+    const seoul = { ...aggregateMarker, groupKey: 'METROPOLITAN:11', groupLabel: '서울', uniqueComplexCount: 1014 }
+    const gyeonggi = { ...aggregateMarker, uniqueComplexCount: 653 }
+    const { rerender } = render(<NaverMap representation="AGGREGATE"
+      aggregateMarkers={[gyeonggi, seoul]} onAggregateMarkerSelect={vi.fn()} />)
+    await screen.findByRole('button', { name: /^서울 1014곳,/ })
+    expect(lastZIndex(/서울/)).toBeGreaterThan(lastZIndex(/경기/))
+
+    // 서울만 새로 만들어져 SDK에는 나중에 추가되고, 경기는 그대로 남는다.
+    rerender(<NaverMap representation="AGGREGATE"
+      aggregateMarkers={[gyeonggi, { ...seoul, latitude: 37.56 }]} onAggregateMarkerSelect={vi.fn()} />)
+    expect(lastZIndex(/서울/)).toBeGreaterThan(lastZIndex(/경기/))
+    // 경기만 새로 만들어져 나중에 추가되어도 서울 아래에 둔다.
+    rerender(<NaverMap representation="AGGREGATE"
+      aggregateMarkers={[{ ...gyeonggi, latitude: 37.4 }, { ...seoul, latitude: 37.56 }]} onAggregateMarkerSelect={vi.fn()} />)
+    expect(lastZIndex(/서울/)).toBeGreaterThan(lastZIndex(/경기/))
+
+    const north = { ...markerPresentation, id: 'n', latitude: 37.51, longitude: 127, name: '북쪽' }
+    const south = { ...markerPresentation, id: 's', latitude: 37.5, longitude: 127, name: '남쪽' }
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[north, south]} />)
+    await screen.findByRole('button', { name: /^북쪽,/ })
+    expect(lastZIndex(/남쪽/)).toBeGreaterThan(lastZIndex(/북쪽/))
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[{ ...north, exclusiveAreaLabel: '44㎡' }, south]} />)
+    expect(lastZIndex(/남쪽/)).toBeGreaterThan(lastZIndex(/북쪽/))
+    // 선택한 마커는 순위와 상관없이 위에 둔다.
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[{ ...north, exclusiveAreaLabel: '44㎡', selected: true }, south]} />)
+    expect(lastZIndex(/북쪽/)).toBeGreaterThan(lastZIndex(/남쪽/))
+  })
+
+  it('펼친 동안 순위가 바뀌면 접을 때 바뀐 순위 자리로 돌아간다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const north = { ...markerPresentation, id: 'n', latitude: 37.51, longitude: 127, name: '북쪽' }
+    const middle = { ...markerPresentation, id: 'm', latitude: 37.505, longitude: 127, name: '가운데' }
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[middle]} />)
+    const button = await screen.findByRole('button', { name: /^가운데,/ })
+    await hoverWithMouse(button)
+    const overlay = fakeSdk.markerInstances[0]
+    expect(overlay.setZIndex).toHaveBeenLastCalledWith(4_000_000)
+
+    // 펼친 동안 북쪽 마커가 들어와 가운데 마커의 순위가 0에서 1로 오른다.
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[north, middle]} />)
+    expect(overlay.setZIndex).toHaveBeenLastCalledWith(4_000_000)
+    fireEvent.pointerLeave(button, { pointerType: 'mouse' })
+    expect(overlay.setZIndex).toHaveBeenLastCalledWith(1_000_001)
+  })
+
   it('선택이나 줌만 바뀌면 등장 효과를 재생하지 않고 새 조회 마커에만 적용한다', async () => {
     const fakeSdk = createFakeSdk()
     const markers = ['a', 'b'].map((id, index) => ({
@@ -2199,7 +2287,7 @@ describe('NaverMap', () => {
     expect(markerButton).toHaveAttribute('aria-pressed', 'true')
     expect(markerButton).toHaveClass('is-highlighted', 'is-selected')
     await waitFor(() =>
-      expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(30),
+      expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(3_000_000),
     )
     expect(Array.from(markerButton.querySelectorAll('.housing-map-marker__name'))
       .map((node) => node.textContent)).toEqual(['LH', '국민'])
