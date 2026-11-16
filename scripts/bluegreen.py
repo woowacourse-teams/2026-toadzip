@@ -22,9 +22,26 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUNTIME = ROOT / "infra/runtime/bluegreen"
+MIGRATIONS = "backend/src/main/resources/db/migration"
+REVISION_LABEL = '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+# Statements after which the running backend's mapped tables or writes no longer work. The candidate applies
+# them to the shared database before the switch, so the active backend breaks while it still takes traffic.
+INCOMPATIBLE_SQL = {
+    "DROP TABLE": re.compile(r"\bDROP\s+TABLE\b", re.I),
+    "DROP COLUMN": re.compile(
+        r"\bALTER\s+TABLE\b[^;]*?\bDROP\b(?!\s+(?:CONSTRAINT|DEFAULT|NOT\s+NULL|IDENTITY|EXPRESSION)\b)", re.I),
+    "RENAME": re.compile(r"\bALTER\s+TABLE\b[^;]*?\bRENAME\b(?!\s+CONSTRAINT\b)", re.I),
+    "ALTER COLUMN TYPE": re.compile(r"\bALTER\s+COLUMN\s+\S+\s+(?:SET\s+DATA\s+)?TYPE\b", re.I),
+    "SET NOT NULL": re.compile(r"\bSET\s+NOT\s+NULL\b", re.I),
+}
+SQL_COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
 
 
 class DeploymentError(RuntimeError):
+    pass
+
+
+class IncomparableSchema(DeploymentError):
     pass
 
 
@@ -98,6 +115,9 @@ class Deployment:
             self.files.extend(["-f", str(overlay.resolve(strict=True))])
         self.edge = None
         self.opener = urllib.request.build_opener(NoRedirect())
+        self.repository = ROOT
+        # Rollback builds options without this flag; it never accepts a broken active backend.
+        self.allow_incompatible = getattr(options, "allow_incompatible_schema", False)
 
     def compose(self, *arguments, environment=None, timeout=30):
         return docker(
@@ -204,7 +224,10 @@ class Deployment:
         except (urllib.error.URLError, TimeoutError) as error:
             raise DeploymentError(f"HTTP request failed: {path}") from error
 
-    def check_http(self):
+    def check_http(self, previous=False):
+        """Check the public route; previous=True marks the route that is about to be replaced.
+
+        Returns True when a broken previous backend was let through by --allow-incompatible-schema."""
         if self.request("/manifest.webmanifest")[0] != 200:
             raise DeploymentError("Frontend manifest is unavailable")
         status, body = self.request("/api/health")
@@ -221,7 +244,13 @@ class Deployment:
             except (ValueError, AttributeError):
                 valid = False
             if not valid:
+                if previous and self.allow_incompatible:
+                    # The old backend may already run against the new schema; health and routing are still required.
+                    print("WARNING: Active backend announcement query is unavailable; continuing because "
+                          "--allow-incompatible-schema was given", file=sys.stderr)
+                    return True
                 raise DeploymentError("Backend announcement query is unavailable")
+        return False
 
     def verify_route(self, target):
         since = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -295,6 +324,16 @@ class Deployment:
                 healthy = False
             if not healthy:
                 raise DeploymentError("Target backend management health is not UP")
+            # Health does not read announcement tables; prove the target works with the current schema
+            # before it takes traffic, whatever the active backend does.
+            try:
+                body = docker("exec", target, "curl", "--fail", "--silent", "--show-error", "--max-time", "4",
+                              "http://127.0.0.1:8080/api/v1/announcements?size=1")
+                valid = isinstance(json.loads(body).get("data"), dict)
+            except (DeploymentError, ValueError, AttributeError):
+                valid = False
+            if not valid:
+                raise DeploymentError("Target backend announcement query is unavailable")
         else:
             docker("exec", target, "wget", "--quiet", "--output-document=/dev/null",
                    "http://127.0.0.1:8080/manifest.webmanifest")
@@ -397,11 +436,53 @@ class Deployment:
         docker("exec", self.edge, "nginx", "-t")
         docker("exec", self.edge, "nginx", "-s", "reload")
 
+    def git(self, *arguments):
+        result = subprocess.run(["git", *arguments], cwd=self.repository, text=True, capture_output=True, timeout=30)
+        if result.returncode:
+            raise DeploymentError(f"Git command failed: git {arguments[0]}")
+        return result.stdout
+
+    def schema_changes(self, active, candidate):
+        """List migrations up to the candidate revision that the active backend cannot keep serving with.
+
+        Raises IncomparableSchema when the two revisions cannot be compared."""
+        current = docker("inspect", "--format", REVISION_LABEL, active)
+        if not all(re.fullmatch(r"[0-9a-f]{40}", revision) for revision in (current, candidate)):
+            raise IncomparableSchema("image revision labels are missing")
+        try:
+            names = self.git("diff", "--name-only", "--diff-filter=AM", current, candidate, "--", MIGRATIONS)
+        except DeploymentError as error:
+            raise IncomparableSchema(f"active revision {current} is not in this checkout") from error
+        changes = []
+        for name in names.splitlines():
+            if not name.endswith(".sql"):
+                continue
+            text = SQL_COMMENT.sub("", self.git("show", f"{candidate}:{name}"))
+            kinds = [kind for kind, pattern in INCOMPATIBLE_SQL.items() if pattern.search(text)]
+            if kinds:
+                changes.append(f"{Path(name).name}: {', '.join(kinds)}")
+        return changes
+
+    def check_schema(self, active, candidate):
+        # Runs before the candidate starts: once Flyway runs, the shared database cannot be switched back.
+        try:
+            changes = self.schema_changes(active, candidate)
+            message = "Candidate migrations break the active backend (" + "; ".join(changes) + ")"
+        except IncomparableSchema as reason:
+            changes = [reason]
+            message = f"Cannot compare candidate migrations with the active backend ({reason})"
+        if not changes:
+            return
+        if not self.allow_incompatible:
+            raise DeploymentError(message + "; follow the special deployment procedure, "
+                                  "then rerun with --allow-incompatible-schema")
+        print("WARNING: " + message + "; continuing because --allow-incompatible-schema was given", file=sys.stderr)
+
     def switch(self, color, before):
         target_service = self.service + "-" + color
         target = self.check_target(target_service)
         previous = self.container(active_service(before, self.service))
-        self.check_http()
+        self.check_http(previous=True)
         self.verify_route(previous)
         self.archive_assets(previous)
         self.archive_assets(target)
@@ -421,10 +502,11 @@ class Deployment:
                 self.write_config(before)
                 self.reload()
                 self.verify_route(previous)
-                self.check_http()
+                degraded = self.check_http(previous=True)
             except (Exception, KeyboardInterrupt) as recovery:
                 raise DeploymentError(f"Switch and recovery failed; backup: {backup}") from recovery
-            raise DeploymentError(f"Switch failed ({failure}); previous route restored; backup: {backup}") from failure
+            state = "previous route restored" + ("; its announcement query still fails" if degraded else "")
+            raise DeploymentError(f"Switch failed ({failure}); {state}; backup: {backup}") from failure
         self.retire(previous, target)
         print(f"{self.service.capitalize()} route verified: {target_service}; backup: {backup}")
 
@@ -443,11 +525,14 @@ class Deployment:
             self.switch(self.options.color, before)
             return
         color = "green" if active == self.service + "-blue" else "blue"
-        self.check_http()
+        self.check_http(previous=True)
         self.verify_route(self.container(active))
         image = docker("image", "inspect", "--format", "{{.Id}}", self.options.image)
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
             raise DeploymentError("Expected a local immutable image ID")
+        previous = self.container(active)
+        if self.service == "backend" and docker("inspect", "--format", "{{.Image}}", previous) != image:
+            self.check_schema(previous, docker("image", "inspect", "--format", REVISION_LABEL, image))
         self.archive_assets(self.container(active))
         inactive = self.find_container(self.service + "-" + color, include_stopped=True)
         if inactive:
@@ -472,6 +557,8 @@ def main():
     parser.add_argument("--image", help="Existing local image tag or ID for the selected service")
     parser.add_argument("--color", choices=["blue", "green"])
     parser.add_argument("--drain-timeout", type=int, default=330, help="Seconds to wait for old Nginx workers")
+    parser.add_argument("--allow-incompatible-schema", action="store_true",
+                        help="After backup and approval: deploy migrations the active backend cannot use")
     options = parser.parse_args()
     if options.drain_timeout < 1:
         parser.error("--drain-timeout must be positive")

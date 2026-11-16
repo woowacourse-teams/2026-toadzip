@@ -143,6 +143,7 @@ CI에서 실행하는 빠른 배포 검사는 `tests/deployment/test_bluegreen.p
 2. Actions에서 **Rollback Blue/Green → Run workflow**를 선택하고 환경에 맞는 브랜치와
    `environment`, `target_revision`을 지정한다. `target_revision`은 40자리 전체 SHA다.
 3. 워크플로는 양쪽 서비스의 반대 색상에 보관된 이미지가 모두 지정 SHA인지 확인하고 healthy를 확인한다.
+   백엔드는 컨테이너 안에서 공고 목록 조회도 성공해야 하므로 현재 스키마를 쓸 수 없는 버전으로는 전환하지 않는다.
    대상이 없거나 다른 커밋이면 트래픽 전환 전에 중단한다. 초기 legacy → Blue 전환 직후에는
    반대 Green 컨테이너가 없으므로 이 기능으로 legacy 컨테이너를 복구할 수 없다.
 4. 준비된 두 대상의 upstream을 한 설정으로 함께 전환하고 실제 요청 경로·health·공고 조회와 기존 요청 종료를 확인한다.
@@ -192,6 +193,44 @@ python3 -B scripts/rollback-bluegreen.py \
 신청자격 저장 구조 전환은 [신청자격 DB 전환](database/eligibility-upgrade.md)의 writer 중단·투영 검증·재판정 기동 순서를 따른다.
 알림 스키마의 별도 읽기 전용 점검은 [알림 운영](notifications.md)을 따른다.
 운영 DB에 대한 실행·복구 승인은 문서 수정이나 CI 성공으로 대신하지 않는다.
+
+### 실행 중인 백엔드가 쓸 수 없는 마이그레이션
+
+두 색상은 같은 DB를 쓰고 후보가 기동하면서 Flyway를 먼저 적용한다. 새 마이그레이션이 이전 버전이 매핑한
+열·테이블을 지우거나 바꾸면 전환 전부터 이전 백엔드가 요청에 실패한다. 전환 직전 검사가 이전 경로를 다시 확인하므로
+배포는 멈추고, 재실행·롤백도 같은 이유로 복구하지 못한다. 롤백은 DB를 되돌리지 않는다.
+
+- 릴리스는 빌드 전 사전 검사에서 실행 중인 백엔드 이미지의 `org.opencontainers.image.revision`과 배포할 커밋을 비교한다.
+  `bluegreen.py` 단독 배포는 후보를 기동하기 전에 후보 이미지의 같은 라벨과 비교한다. 그 사이에 추가·수정된 `backend/src/main/resources/db/migration/*.sql`에서 주석을 뺀 본문에 `DROP TABLE`,
+  `ALTER TABLE … DROP`(제약·기본값·NOT NULL 해제는 제외), `ALTER TABLE … RENAME`(제약 이름 변경 제외),
+  `ALTER COLUMN … TYPE`, `SET NOT NULL`이 있으면 `Candidate migrations break the active backend`로 멈춘다.
+  빌드·DB 변경·세 서비스 배포 모두 하지 않는다. `bluegreen.py` 단독 배포에서 두 이미지가 같으면 비교하지 않는다.
+  라벨이 없거나 실행 중인 리비전이 서버 체크아웃 이력에 없으면 `Cannot compare candidate migrations`로 멈춘다.
+- 이 검사는 문장 형태만 본다. 이전 버전이 쓰지 않는 열을 지우는 정리 단계도 멈추고, 목록에 없는 비호환(예: 이전 버전이
+  쓰는 값을 막는 새 CHECK 제약)은 통과시킨다. 통과한 비호환은 지금처럼 전환 직전 검사에서 멈추므로 릴리스마다 공존 가능성을 따로 확인한다.
+- 멈춘 릴리스는 아래 절차를 마친 뒤 **Deploy Dev/Prod → Run workflow**에서 `allow_incompatible_schema`를 켜고 같은 커밋을 다시 실행한다.
+  SSH에서는 `release-bluegreen.py`·`bluegreen.py`에 `--allow-incompatible-schema`를 붙인다. push로 시작한 실행은 항상 이 값이 꺼져 있다.
+- 허용 실행은 이전 경로의 공고 조회 실패를 원인과 관계없이 경고로 넘긴다. Edge·health·이전 컨테이너 도달은 그대로 확인한다.
+  전환이 실패해 이전 경로로 되돌렸는데 그 백엔드도 조회에 실패하면 오류에 `its announcement query still fails`를 붙인다.
+  후보는 전환 전에 컨테이너 안에서 공고 목록 조회까지 성공해야 하며(일반 배포·롤백도 같다), 실패하면 경로를 바꾸지 않는다.
+  전환 뒤 검사는 허용 여부와 관계없이 엄격하다. 이미 이전 버전이 깨진 개발 서버도 같은 허용 실행으로 새 버전에 전환해 복구한다.
+
+운영 순서는 다음과 같다. 운영 DB 실행은 승인된 운영자만 한다.
+
+1. 릴리스 PR을 병합하기 전에 정비 시간을 정한다. 병합으로 시작한 자동 배포는 위 검사에서 멈추는 것이 정상이며,
+   실패 단계가 `preflight`이고 오류에 `Candidate migrations break the active backend`가 있는지, 경로가 그대로인지 확인한다.
+2. 운영 서버에서 주 DB 전체를 `pg_dump -Fc`로 백업한다. 그 백업을 네트워크 없는 격리 PostgreSQL에 복원하고
+   새 백엔드 이미지를 연결해 미적용 마이그레이션 전체와 기동·공고 조회가 성공하는지 확인한다(복원 명령은 [Flyway 절차](database/flyway.md)).
+   운영 데이터에서만 실패하는 `SET NOT NULL`·데이터 이동을 여기서 찾는다. 실패하면 운영 반영을 하지 않고 마이그레이션을 고친다.
+3. 정비 직전에 진행 중인 관리자 수집·PDF 보정이 없는지 확인하고, `ai_jobs`에 `PENDING`·`RUNNING`·`RETRY`가 없을 때
+   AI 워커를 멈춘다. 결과 계약이 바뀐 릴리스에서 이전 워커가 만든 결과를 새 백엔드가 읽지 않게 한다. 릴리스가 마지막에 새 워커를 띄운다.
+4. 정비 직전에 2의 백업을 다시 만든다. 허용 실행을 시작하고, 첫 비호환 마이그레이션이 커밋된 때부터 백엔드 전환까지
+   이전 백엔드의 해당 조회가 실패한다. 이 시간은 남은 Flyway·백엔드 기동·전환 검사 시간이다.
+   백엔드 전환부터 프론트 전환까지는 이전 화면이 새 API를 호출하므로 API 계약 변경도 이 사이에 영향을 준다.
+5. Summary의 `success`·세 완료 항목, `flyway_schema_history`의 새 버전 성공, 공고 목록·상세, 바뀐 기능 화면, 워커 healthy와
+   백엔드 오류 로그를 확인한다.
+6. 마이그레이션이 중간에 실패하면 앞서 커밋된 버전 때문에 이전 백엔드도 정상 동작하지 않을 수 있다. 고친 릴리스로 전방 수정하거나
+   백엔드를 멈춘 뒤 4의 백업을 복원하고 이전 이미지를 다시 연결한다. 복원은 백업 이후 쓰기를 잃으므로 그 범위를 먼저 확인한다.
 
 ## 배포 실패 시
 

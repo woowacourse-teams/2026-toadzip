@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      allow_incompatible_schema:
+        description: 백업·승인을 마친 특별 배포에서만 켠다. 실행 중인 백엔드가 쓸 수 없는 마이그레이션을 허용한다.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,6 +44,7 @@ jobs:
           BLUEGREEN_RUNTIME: ${{ vars.PROD_BLUEGREEN_RUNTIME }}
           BLUEGREEN_COMPOSE_OVERRIDES: ${{ vars.PROD_BLUEGREEN_COMPOSE_OVERRIDES }}
           CI_COMMIT: ${{ github.sha }}
+          ALLOW_INCOMPATIBLE_SCHEMA: ${{ inputs.allow_incompatible_schema || false }}
           DEPLOY_BRANCH: main
         shell: bash
         run: |
@@ -56,8 +62,11 @@ jobs:
           git merge-base --is-ancestor "$CI_COMMIT" FETCH_HEAD
           git checkout --detach "$CI_COMMIT"
           test "$(git rev-parse HEAD)" = "$CI_COMMIT"
+          special=()
+          if [[ "$ALLOW_INCOMPATIBLE_SCHEMA" == true ]]; then special+=(--allow-incompatible-schema); fi
           python3 -B scripts/release-bluegreen.py \
             --revision "$CI_COMMIT" --environment prod \
             --runtime "$runtime" --url "$BLUEGREEN_URL" --lock-fd 9 \
             --compose-override compose.caddy-server.yaml \
-            --compose-override compose.notification-credentials.yaml
+            --compose-override compose.notification-credentials.yaml \
+            ${special[@]+"${special[@]}"}

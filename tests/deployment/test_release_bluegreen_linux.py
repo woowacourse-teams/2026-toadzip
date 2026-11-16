@@ -15,6 +15,23 @@ spec.loader.exec_module(module)
 
 
 class ReleaseCheck(module.DrainCheck):
+    def prepare_base(self):
+        # A server checkout holds the running revision in its history, so the release can compare migrations.
+        source = self.runtime / 'release-source'
+        source.mkdir()
+        (source / '.gitignore').write_text('.env\n.local/\n')
+        for arguments in (['init', '-q'], ['config', 'user.name', 'Release fixture'],
+                          ['config', 'user.email', 'fixture@example.invalid'], ['add', '.'],
+                          ['commit', '-q', '-m', 'deployed fixture']):
+            subprocess.run(['git', '-C', str(source), *arguments], check=True, capture_output=True)
+        self.base = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
+        build = self.runtime / 'base-build'
+        build.mkdir()
+        for variable, tag in (('BACKEND_BLUE_IMAGE', self.project + '-runner'), ('FRONTEND_BLUE_IMAGE', self.project + '-v1')):
+            (build / 'Dockerfile').write_text('FROM ' + tag + '\nLABEL org.opencontainers.image.revision=' + self.base + '\n')
+            self.command(['docker', 'build', '--pull=false', '-t', tag + '-base', str(build)])
+            self.environment[variable] = self.docker('image', 'inspect', '--format', '{{.Id}}', tag + '-base')
+
     def prepare_checkout(self):
         source = self.runtime / 'release-source'
         (source / 'scripts').mkdir(parents=True)
@@ -46,6 +63,7 @@ class ReleaseCheck(module.DrainCheck):
         try:
             print('Building isolated release fixtures', flush=True)
             self.build_fixtures()
+            self.prepare_base()
             self.environment['SPRING_PROFILES_ACTIVE'] = 'dev'
             self.compose('up', '-d', '--no-build', '--no-deps', '--wait', 'backend-blue', 'frontend-blue', 'edge-nginx')
             binding = json.loads(self.docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', self.container('edge-nginx')))['80/tcp'][0]
@@ -96,7 +114,7 @@ class ReleaseCheck(module.DrainCheck):
             assert rejected.returncode != 0 and self.version() == 'release-v2'
             for service in ('backend', 'frontend'):
                 assert self.running(service + '-green')
-            rollback('1' * 40)
+            rollback(self.base)
             rollback_reports = [json.loads(path.read_text()) for path in (self.runtime / 'rollbacks').glob('*.json')]
             restored = next(item for item in rollback_reports if item['result'] == 'success')
             assert restored['completed'] == ['backend', 'frontend'] and restored['routes_verified']
@@ -107,7 +125,7 @@ class ReleaseCheck(module.DrainCheck):
             for service in ('backend', 'frontend'):
                 assert self.running(service + '-blue') and not self.running(service + '-green')
                 assert restored['from'][service]['revision'] == revision
-                assert restored['to'][service]['revision'] == '1' * 40
+                assert restored['to'][service]['revision'] == self.base
                 assert self.docker('inspect', '--format', '{{.Image}}', self.container(service + '-blue')) == restored['to'][service]['image']
             summary = (self.runtime / 'rollback-summary.md').read_text()
             assert restored['started_at'] in summary and restored['completed_at'] in summary

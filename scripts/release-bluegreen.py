@@ -70,8 +70,12 @@ class Release:
             draining = {worker for worker, mode in runner.workers().items() if mode == 'draining'}
             if draining:
                 runner.wait_workers(draining)
-            runner.check_http()
-            runner.verify_route(runner.container(bluegreen.active_service(runner.config.read_text(), service)))
+            runner.check_http(previous=True)
+            active = runner.container(bluegreen.active_service(runner.config.read_text(), service))
+            runner.verify_route(active)
+            if service == 'backend':
+                # Stop before spending the build on a release the running backend cannot coexist with.
+                runner.check_schema(active, self.options.revision)
         self.check_worker()
 
     def check_worker(self):
@@ -190,6 +194,8 @@ def main():
     parser.add_argument('--compose-override', type=Path, action='append', default=[])
     parser.add_argument('--drain-timeout', type=int, default=330)
     parser.add_argument('--lock-fd', type=int, help='CI shell descriptor holding the shared deployment lock')
+    parser.add_argument('--allow-incompatible-schema', action='store_true',
+                        help='After backup and approval: deploy migrations the active backend cannot use')
     options = parser.parse_args()
     if not re.fullmatch(r'[0-9a-f]{40}', options.revision) or options.drain_timeout < 1:
         parser.error('Expected a full Git SHA and positive drain timeout')
