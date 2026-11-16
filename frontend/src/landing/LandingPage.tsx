@@ -3,7 +3,6 @@ import { Link } from 'react-router'
 import { BrandLink } from '../BrandLink'
 import { MobileInstallCard, MobileInstallAction } from '../install/MobileInstall'
 import styles from './LandingPage.module.css'
-import { TechnologySection } from './TechnologySection'
 
 const steps = [
   {
@@ -186,8 +185,6 @@ export function LandingPage() {
             <StartLink />
           </div>
         </section>
-
-        <TechnologySection />
       </main>
       <footer className={styles.footer}>
         <BrandLink showName className={styles.brand} />
