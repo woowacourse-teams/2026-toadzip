@@ -85,6 +85,7 @@ class BoardAnnouncementPipelineIntegrationTest {
         jdbc.update("DELETE FROM gh_announcement_source");
         jdbc.update("DELETE FROM sh_announcement_source");
         jdbc.update("DELETE FROM external_data_collection_failures");
+        jdbc.update("DELETE FROM announcement_refinement_failures");
     }
 
     @ParameterizedTest
@@ -198,6 +199,12 @@ class BoardAnnouncementPipelineIntegrationTest {
             assertThat(jdbc.queryForObject("SELECT release_status FROM announcements", String.class))
                     .isEqualTo("UNCONFIRMED");
             assertThat(count("announcement_attachments")).isOne();
+            assertThat(jdbc.queryForMap("SELECT provider, source_key, source_announcement_identifier, reason, status, "
+                    + "last_execution_id FROM announcement_refinement_failures"))
+                    .containsEntry("provider", agency(type)).containsEntry("source_key", rejected)
+                    .containsEntry("source_announcement_identifier", rejected)
+                    .containsEntry("reason", "SOURCE_REFINEMENT_FAILED").containsEntry("status", "PENDING")
+                    .containsEntry("last_execution_id", accepted.executionId());
         }
         finally {
             jdbc.execute("ALTER TABLE announcements DROP CONSTRAINT board_pipeline_test_failure");
@@ -228,6 +235,9 @@ class BoardAnnouncementPipelineIntegrationTest {
         assertThat(result.failure().serverResponse().toString()).contains("failed=1", "collection");
         assertThat(count(agency(type).toLowerCase() + "_announcement_source")).isEqualTo(2);
         assertThat(count("announcements")).isZero();
+        var failure = jdbc.queryForMap("SELECT provider, source_key, reason FROM announcement_refinement_failures");
+        assertThat(failure).containsEntry("provider", agency(type)).containsEntry("reason", "SOURCE_LOOKUP_FAILED");
+        assertThat(failure.get("source_key")).asString().startsWith(agency(type) + " 페이지 ");
     }
 
     @ParameterizedTest

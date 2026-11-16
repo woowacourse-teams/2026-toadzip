@@ -1,14 +1,22 @@
 package com.toadzip.backend.ingest.refinement.service;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.domain.SourceRefinementFailure;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineFailure;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import com.toadzip.backend.ingest.refinement.domain.AnnouncementRefinementFailure;
+import com.toadzip.backend.ingest.refinement.domain.AnnouncementRefinementFailureReason;
+import com.toadzip.backend.ingest.refinement.repository.AnnouncementRefinementFailureStore;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -20,24 +28,35 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 한 번의 실행 동안 여러 번에 나눠 받은 원천을 정제하고 결과를 누적한다. 원천마다 따로 커밋해 한 원천의 실패가 앞서 정제한
  * 공고를 되돌리지 않게 하고, 원천 하나가 실패하면 기록한 뒤 다음 원천을 계속한다. 실행 소유권을 잃은 경우만은 실패로 삼키지
- * 않고 그대로 던져 실행을 멈춘다.
+ * 않고 그대로 던져 실행을 멈춘다. 기록한 실패는 실행을 마칠 때 {@link #recordFailures()}로 실패 검토 목록에 맞춘다.
  */
 @Slf4j
 public final class SourceRefinementRun<O extends Enum<O>> {
 
+    private static final int MAX_STORED_DETAIL_LENGTH = 1000;
+
     private final String label;
+    private final AgencyCode provider;
     private final TransactionTemplate transactions;
     private final IngestWriteOwnershipGuard ownershipGuard;
+    private final AnnouncementRefinementFailureStore failureStore;
+    private final Clock clock;
     private final Map<O, Integer> outcomes;
     private final List<SourceRefinementFailure> failures = new ArrayList<>();
+    /** 성공·실패와 상관없이 이번 실행이 다룬 원천·묶음 키. 이 키의 지난 실패만 해결로 바꿀 수 있다. */
+    private final Set<String> attemptedKeys = new LinkedHashSet<>();
+    private final List<AnnouncementRefinementFailure> observedFailures = new ArrayList<>();
     private int targetCount;
     private boolean reportsProgress;
 
-    SourceRefinementRun(String label, Class<O> outcomeType, TransactionTemplate transactions,
-            IngestWriteOwnershipGuard ownershipGuard) {
+    SourceRefinementRun(String label, AgencyCode provider, Class<O> outcomeType, TransactionTemplate transactions,
+            IngestWriteOwnershipGuard ownershipGuard, AnnouncementRefinementFailureStore failureStore, Clock clock) {
         this.label = label;
+        this.provider = provider;
         this.transactions = transactions;
         this.ownershipGuard = ownershipGuard;
+        this.failureStore = failureStore;
+        this.clock = clock;
         outcomes = new EnumMap<>(outcomeType);
     }
 
@@ -53,14 +72,16 @@ public final class SourceRefinementRun<O extends Enum<O>> {
 
     public <S> void refineFound(String lookupKey, Supplier<List<S>> lookup, Function<S, String> sourceKey,
             Function<S, O> refiner, BiConsumer<S, O> committed) {
-        List<S> sources = attempt(lookupKey, lookup).orElse(List.of());
+        List<S> sources = attempt(lookupKey, AnnouncementRefinementFailureReason.SOURCE_LOOKUP_FAILED, lookup)
+                .orElse(List.of());
         refine(sources, sourceKey, refiner, committed);
     }
 
     /** {@link #refineFound}의 {@link #apply} 판이다. 대상을 읽다 실패하면 {@code lookupKey}로 실패를 기록하고 건너뛴다. */
     public <S> int applyFound(String lookupKey, Supplier<List<S>> lookup, Function<S, String> sourceKey,
             Predicate<S> work, Consumer<S> committed) {
-        return apply(attempt(lookupKey, lookup).orElse(List.of()), sourceKey, work, committed);
+        return apply(attempt(lookupKey, AnnouncementRefinementFailureReason.SOURCE_LOOKUP_FAILED, lookup)
+                .orElse(List.of()), sourceKey, work, committed);
     }
 
     /** 원천 하나를 마칠 때마다 실행 진행률에 알린다. 정제할 원천 수를 미리 알리는 전체 정제가 쓴다. */
@@ -83,7 +104,8 @@ public final class SourceRefinementRun<O extends Enum<O>> {
         for (S source : sources) {
             targetCount++;
             try {
-                attempt(sourceKey.apply(source), () -> refiner.apply(source)).ifPresent(outcome -> {
+                attempt(sourceKey.apply(source), AnnouncementRefinementFailureReason.SOURCE_REFINEMENT_FAILED,
+                        () -> refiner.apply(source)).ifPresent(outcome -> {
                     outcomes.merge(outcome, 1, Integer::sum);
                     committed.accept(source, outcome);
                 });
@@ -107,7 +129,8 @@ public final class SourceRefinementRun<O extends Enum<O>> {
     public <S> int apply(List<S> sources, Function<S, String> sourceKey, Predicate<S> work, Consumer<S> committed) {
         int applied = 0;
         for (S source : sources) {
-            if (attempt(sourceKey.apply(source), () -> work.test(source)).orElse(false)) {
+            if (attempt(sourceKey.apply(source), AnnouncementRefinementFailureReason.SOURCE_REFINEMENT_FAILED,
+                    () -> work.test(source)).orElse(false)) {
                 applied++;
                 committed.accept(source);
             }
@@ -115,8 +138,21 @@ public final class SourceRefinementRun<O extends Enum<O>> {
         return applied;
     }
 
-    private <T> Optional<T> attempt(String sourceKey, Supplier<T> work) {
+    /**
+     * 이번 실행에서 기록한 실패를 실패 검토 목록에 맞춘다. 이 기관에서 이번에 다룬 키의 지난 실패 중 다시 나오지 않은 것만 해결로
+     * 바꾸고, 다른 기관이나 이번에 다루지 않은 원천의 실패는 그대로 둔다. 실행을 마칠 때 한 번 부른다.
+     */
+    public void recordFailures() {
+        transactions.executeWithoutResult(status -> {
+            ownershipGuard.verifyWrite();
+            failureStore.reconcile(provider, Set.copyOf(attemptedKeys), List.copyOf(observedFailures),
+                    IngestExecutionScope.currentExecutionId().orElse(null));
+        });
+    }
+
+    private <T> Optional<T> attempt(String sourceKey, AnnouncementRefinementFailureReason reason, Supplier<T> work) {
         IngestExecutionScope.checkStopRequested();
+        attemptedKeys.add(sourceKey);
         try {
             return Optional.ofNullable(transactions.execute(status -> {
                 ownershipGuard.verifyWrite();
@@ -127,10 +163,19 @@ public final class SourceRefinementRun<O extends Enum<O>> {
             throw lost;
         }
         catch (RuntimeException failure) {
-            failures.add(SourceRefinementFailure.of(sourceKey, failure));
+            SourceRefinementFailure reported = SourceRefinementFailure.of(sourceKey, failure);
+            failures.add(reported);
+            observedFailures.add(AnnouncementRefinementFailure.observed(provider, sourceKey, reason,
+                    storedDetail(reported, failure), clock.instant()));
             log.warn("{}에 실패했습니다. sourceKey={}", label, sourceKey, failure);
             return Optional.empty();
         }
+    }
+
+    /** 보고서 설명 뒤에 예외 종류(외부 기관 오류면 비밀값을 가린 그 메시지)를 붙여, 실패 목록에서 원인을 가늠하게 한다. */
+    private static String storedDetail(SourceRefinementFailure reported, RuntimeException failure) {
+        String detail = reported.detail() + " 원인: " + DataPipelineFailure.of(failure).detail();
+        return detail.substring(0, Math.min(detail.length(), MAX_STORED_DETAIL_LENGTH));
     }
 
     public int targetCount() {

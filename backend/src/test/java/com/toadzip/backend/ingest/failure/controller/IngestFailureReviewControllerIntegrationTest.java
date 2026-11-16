@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -341,6 +342,38 @@ class IngestFailureReviewControllerIntegrationTest {
     }
 
     @Test
+    void 기관_공고_정제_실패는_기관_이름표로_보이고_SH는_원천_식별자로_LH는_공고_ID의_최근_공고로_잇는다() throws Exception {
+        long sh = announcement("SH:101", "ORIGINAL", null);
+        long lhOriginal = announcement("LH-original", "ORIGINAL", null);
+        long lhCorrection = announcement("LH-correction", "CORRECTION", lhOriginal);
+        jdbc.sql("UPDATE announcements SET lh_pan_id = '2026000123' WHERE id IN (:ids)")
+                .param("ids", List.of(lhOriginal, lhCorrection)).update();
+        refinementFailure("SH", "SH:101", "SH:101", null, "SOURCE_REFINEMENT_FAILED", "2026-10-02T03:00:00Z");
+        refinementFailure("LH", "01:06:10:2026000123", null, "2026000123", "SOURCE_REFINEMENT_FAILED",
+                "2026-10-02T02:00:00Z");
+        refinementFailure("GH", "GH 페이지 7", null, null, "SOURCE_LOOKUP_FAILED", "2026-10-02T01:00:00Z");
+
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("domain", "announcement").param("category", "refinement"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(3))
+                .andExpect(jsonPath("$.data.items[0].category").value("refinement"))
+                .andExpect(jsonPath("$.data.items[0].source").value("SH_ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.items[0].product.id").value(sh))
+                .andExpect(jsonPath("$.data.items[1].source").value("LH_ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.items[1].metadata.panId").value("2026000123"))
+                .andExpect(jsonPath("$.data.items[1].product.id").value(lhCorrection))
+                .andExpect(jsonPath("$.data.items[2].source").value("GH_ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.items[2].reason").value("SOURCE_LOOKUP_FAILED"))
+                .andExpect(jsonPath("$.data.items[2].productLinkStatus").value("UNKNOWN"));
+        long lhFailure = jdbc.sql("SELECT id FROM announcement_refinement_failures WHERE provider = 'LH'")
+                .query(Long.class).single();
+        mockMvc.perform(get(ENDPOINT + "/refinement/" + lhFailure).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sourceKey").value("01:06:10:2026000123"));
+    }
+
+    @Test
     void 삭제되지_않은_취소_후속공고는_이전_공고를_목록에서_제외한다() throws Exception {
         long original = announcement("original", "ORIGINAL", null);
         long successor = announcement("successor", "CANCELLATION", original);
@@ -479,6 +512,17 @@ class IngestFailureReviewControllerIntegrationTest {
                 VALUES (:source, :source, :status, 3, 'API_ERROR', '수집 실패',
                     '2026-10-02T01:00:00Z', '2026-10-02T01:00:00Z', 2, 1)
                 """).param("source", source).param("status", status).update();
+    }
+
+    private void refinementFailure(String provider, String key, String identifier, String panId, String reason,
+            String occurredAt) {
+        jdbc.sql("""
+                INSERT INTO announcement_refinement_failures (provider, source_key, source_announcement_identifier,
+                    pan_id, reason, detail, status, occurred_at, last_occurred_at, occurrence_count, recurrence_count)
+                VALUES (:provider, :key, :identifier, :panId, :reason, '원천 정제를 완료하지 못했습니다.', 'PENDING',
+                    CAST(:at AS timestamptz), CAST(:at AS timestamptz), 1, 0)
+                """).param("provider", provider).param("key", key).param("identifier", identifier)
+                .param("panId", panId).param("reason", reason).param("at", occurredAt).update();
     }
 
     private void stageFailure(String table, String key, String identifierColumn, String identifier, String reason) {

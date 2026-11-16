@@ -16,6 +16,8 @@ import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
 import com.toadzip.backend.ingest.refinement.service.BoardRevisionLinker;
 import com.toadzip.backend.ingest.refinement.service.SourceRefinementRunner;
+import com.toadzip.backend.ingest.refinement.repository.AnnouncementRefinementFailureStore;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -34,7 +36,8 @@ class GhAnnouncementRefinementOwnershipTest {
         when(sources.findAllByPbancNoIn(List.of("1", "2", "3"))).thenReturn(targets);
         doThrow(new IngestOwnershipLostException()).when(guard).verifyWrite();
         var service = new GhAnnouncementRefinementService(sources, mock(HousingComplexRepository.class), refiner,
-                new SourceRefinementRunner(mock(PlatformTransactionManager.class), guard), mock(BoardRevisionLinker.class));
+                new SourceRefinementRunner(mock(PlatformTransactionManager.class), guard,
+                        mock(AnnouncementRefinementFailureStore.class), Clock.systemUTC()), mock(BoardRevisionLinker.class));
 
         assertThatThrownBy(() -> service.begin().refinePage(List.of("1", "2", "3"))).isInstanceOf(IngestOwnershipLostException.class);
 

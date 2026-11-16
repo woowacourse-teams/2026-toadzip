@@ -1,6 +1,9 @@
 package com.toadzip.backend.ingest.refinement.service;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.pipeline.service.IngestWriteOwnershipGuard;
+import com.toadzip.backend.ingest.refinement.repository.AnnouncementRefinementFailureStore;
+import java.time.Clock;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -12,16 +15,21 @@ public class SourceRefinementRunner {
 
     private final TransactionTemplate transactions;
     private final IngestWriteOwnershipGuard ownershipGuard;
+    private final AnnouncementRefinementFailureStore failureStore;
+    private final Clock clock;
 
     public SourceRefinementRunner(PlatformTransactionManager transactionManager,
-            IngestWriteOwnershipGuard ownershipGuard) {
+            IngestWriteOwnershipGuard ownershipGuard, AnnouncementRefinementFailureStore failureStore, Clock clock) {
         this.ownershipGuard = ownershipGuard;
+        this.failureStore = failureStore;
+        this.clock = clock;
         transactions = new TransactionTemplate(transactionManager);
         // 원천마다 따로 커밋해 한 원천의 실패가 앞서 정제한 공고를 되돌리지 않게 한다.
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    public <O extends Enum<O>> SourceRefinementRun<O> begin(String label, Class<O> outcomeType) {
-        return new SourceRefinementRun<>(label, outcomeType, transactions, ownershipGuard);
+    public <O extends Enum<O>> SourceRefinementRun<O> begin(String label, AgencyCode provider, Class<O> outcomeType) {
+        return new SourceRefinementRun<>(label, provider, outcomeType, transactions, ownershipGuard, failureStore,
+                clock);
     }
 }

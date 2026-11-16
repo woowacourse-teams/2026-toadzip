@@ -11,7 +11,8 @@ export function FailureReviewPage() {
   const [params, setParams] = useSearchParams()
   const legacyCategory = params.get('category')
   const domain: FailureDomain = params.get('domain') === 'announcement'
-    || (!params.has('domain') && (legacyCategory === 'announcement' || legacyCategory === 'enrichment')) ? 'announcement' : 'complex'
+    || (!params.has('domain') && (legacyCategory === 'announcement' || legacyCategory === 'enrichment'
+      || legacyCategory === 'refinement')) ? 'announcement' : 'complex'
   const type: DataPipelineType = domain === 'complex' ? 'COMPLEX_REFINEMENT' : 'ANNOUNCEMENT_REFINEMENT'
   const label = domain === 'complex' ? '단지' : '공고'
   const retired = domain === 'complex'

@@ -662,8 +662,11 @@ export const failureCategories = {
   complex: { label: '단지 정제', path: 'myhome/complex-mappings/failures' },
   announcement: { label: '공고 정제', path: 'myhome/announcement-mappings/failures' },
   enrichment: { label: 'LH 공고 보강', path: 'lh/announcement-enrichments/failures' },
+  // LH·SH·GH 공고 정제 실패는 실패 검토 API로만 읽는다.
+  refinement: { label: '기관 공고 정제', path: null },
 } as const
 export type FailureCategory = keyof typeof failureCategories
+type ListedFailureCategory = Exclude<FailureCategory, 'refinement'>
 export type IngestFailure = {
   target: string
   sourceKey: string
@@ -678,7 +681,7 @@ export type IngestFailure = {
 }
 
 export async function getIngestFailures(
-  category: FailureCategory, history: boolean, page: number,
+  category: ListedFailureCategory, history: boolean, page: number,
 ): Promise<readonly IngestFailure[]> {
   const needsPageSuffix = !history && category !== 'collection'
   const suffix = history ? '/history' : needsPageSuffix ? '/page' : ''
