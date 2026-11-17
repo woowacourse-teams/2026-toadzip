@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -122,6 +123,37 @@ class AnnouncementSourceUpdateTest {
 
         assertThat(announcement.getReceptionPlaces()).containsExactly(lh);
         assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 관리자가_확인한_원천과_같은_원천이면_정제가_켠_원천_확인을_다시_끄고_원천이_바뀌면_다시_켠다() {
+        ReceptionPlace lh = ReceptionPlace.create("LH 접수처", ReceptionMethod.VISIT, "충주시 2", "043-000-0000", null);
+        List<ReceptionPlace> moved = List.of(
+                ReceptionPlace.create("LH 접수처", ReceptionMethod.VISIT, "충주시 3", "043-000-0000", null));
+        Announcement announcement = announcement("기존 공고명", List.of(lh));
+        announcement.confirmSupply();
+        announcement.enrichFromLh("PAN-1", null, moved);
+        announcement.observeSourceValues(List.of("충주시 3"));
+
+        announcement.acknowledgeSourceReview();
+        announcement.enrichFromLh("PAN-1", null, moved);
+        announcement.observeSourceValues(List.of("충주시 3"));
+
+        assertThat(announcement.isSourceReviewRequired()).isFalse();
+        assertThat(announcement.getReceptionPlaces()).containsExactly(lh);
+
+        announcement.enrichFromLh("PAN-1", null, List.of(
+                ReceptionPlace.create("LH 접수처", ReceptionMethod.VISIT, "충주시 4", "043-000-0000", null)));
+        announcement.observeSourceValues(List.of("충주시 4"));
+
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 확인할_원천_변경이_없으면_원천_확인_완료를_거절한다() {
+        Announcement announcement = announcement("기존 공고명");
+
+        assertThatThrownBy(announcement::acknowledgeSourceReview).isInstanceOf(IllegalStateException.class);
     }
 
     @Test

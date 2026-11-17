@@ -85,6 +85,15 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     } catch(cause) { setError(cause instanceof Error ? cause.message : '처리하지 못했습니다.') }
     finally {setBusy(false)}
   }
+  async function acknowledgeSourceReview() {
+    if(!value) return
+    setBusy(true);setError('');setNotice('')
+    try {
+      await requestManagementApi(`${managementResourcePath(resource)}/${id}/source-review/acknowledge?version=${value.data.version}`,'POST')
+      setValue(await getManagementDetail(resource,id));setNotice('원천 변경 확인을 마쳤습니다. 원천이 다시 바뀌면 다시 표시합니다.');onChanged?.()
+    } catch(cause) { setError(cause instanceof Error ? cause.message : '처리하지 못했습니다.') }
+    finally {setBusy(false)}
+  }
   return <section className="management-page management-detail" data-resource={resource}>{!embedded ? <Link to={back}>← 목록으로</Link> : null}
     {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('입력한 내용을 버리고 새로 조회할까요?')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
     {!value && !error ? <p role="status">상세 정보를 불러오는 중…</p> : null}
@@ -93,7 +102,9 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
       {resource === 'complexes' && section !== 'verification' && value.summary.complex?.verificationStatus ? <ComplexVerificationBadge status={value.summary.complex.verificationStatus} count={value.summary.complex.reviewedFieldCount} /> : null}</div></div>
       {!editing || embedded ? <div className="admin-inline">{resource === 'announcements' && !value.summary.deleted && !editing && <Link className="admin-tonal" to={`/admin/announcements/${id}/pdf-correction?${params}`} aria-disabled={busy || verificationBusy || extendedBusy} onClick={event => { if (busy || verificationBusy || extendedBusy) event.preventDefault() }}>PDF로 보정</Link>}{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy} className="admin-tonal" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>{resource === 'announcements' ? '기본정보 수정' : '수정'}</button> : null}
         <button type="button" data-admin-navigation disabled={busy || verificationBusy || extendedBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
-      {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
+      {value.summary.reviewRequired && resource === 'complexes' ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
+      {value.summary.reviewRequired && resource === 'announcements' ? <div className="admin-warning admin-source-review" role="group" aria-label="원천 변경 확인"><p>수집 원천이 저장된 공고 값과 다릅니다. 저장된 값은 자동 정제로 덮어쓰지 않습니다. 공식 원문과 대조해 필요한 내용을 고친 뒤 확인을 마쳐 주세요.</p>
+        {!value.summary.deleted && !editing ? <button type="button" className="admin-tonal" disabled={busy || verificationBusy || extendedBusy || dirty} onClick={() => void acknowledgeSourceReview()}>{busy ? '처리 중…' : '원천 변경 확인 완료'}</button> : null}</div> : null}
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
         <h2>{value.summary.deleted ? '복구할까요?' : '휴지통으로 이동할까요?'}</h2><p><strong>{value.summary.name}</strong></p>
         <p>{value.summary.deleted ? '다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 원천과 수정 이력은 유지되며 다시 복구할 수 있습니다.'}</p>

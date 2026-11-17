@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.service.AdminAnnouncementManagementService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -47,6 +48,7 @@ class GhAnnouncementRefinementIntegrationTest {
     @Autowired private ExternalDataCollectionFailureRepository failures;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private AdminAnnouncementManagementService management;
     @Autowired private HousingComplexRepository complexes;
     @MockitoBean private GhAnnouncementExternalRepository externalRepository;
 
@@ -231,6 +233,30 @@ class GhAnnouncementRefinementIntegrationTest {
         assertThat(announcement.getName()).isEqualTo(ROW.title());
         assertThat(announcement.getSupplyType()).isEqualTo(RentalType.HAPPY_HOUSING);
         assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 관리자가_원천_변경_확인을_마치면_같은_GH_원천으로는_다시_표시하지_않고_공급유형이_바뀌면_다시_표시한다() {
+        collect(ROW);
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        confirmSupply("GH:801");
+        collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        var flagged = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(flagged.isSourceReviewRequired()).isTrue();
+
+        management.acknowledgeSourceReview(flagged.getId(), flagged.getVersion(), "operator");
+        GhRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow().isSourceReviewRequired())
+                .isFalse();
+
+        jdbc.update("UPDATE gh_announcement_source SET supply_type = '장기전세' WHERE pbanc_no = '801'");
+        GhRefinementTestSupport.refineAll(refinement, sources);
+
+        var changed = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(changed.getSupplyType()).isEqualTo(RentalType.NATIONAL_RENTAL);
+        assertThat(changed.isSourceReviewRequired()).isTrue();
     }
 
     @Test

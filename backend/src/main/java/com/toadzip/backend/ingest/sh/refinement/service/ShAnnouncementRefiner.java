@@ -55,11 +55,16 @@ class ShAnnouncementRefiner {
         boolean reviewBefore = announcement.isSourceReviewRequired();
         boolean changed = announcement.updateFromAgencySource(source.getTitle(), source.getRegisteredDate(),
                 source.getOriginalUrl());
+        List<String> sourceValues = new ArrayList<>(List.of(String.valueOf(source.getTitle()),
+                String.valueOf(source.getRegisteredDate()), String.valueOf(source.getOriginalUrl())));
         if (source.getBodyText() != null) {
             ShAnnouncementBodyValues values = bodyParser.parse(source.getBodyText());
             changed |= announcement.observeSourceSchedule(values.applicationStartDate(), values.applicationEndDate(),
                     values.winnerAnnouncementDate());
+            sourceValues.addAll(List.of(String.valueOf(values.applicationStartDate()),
+                    String.valueOf(values.applicationEndDate()), String.valueOf(values.winnerAnnouncementDate())));
         }
+        announcement.observeSourceValues(sourceValues);
         if (source.getAttachments() != null) {
             attachmentWriter.write(announcement, attachments(JSON.readTree(source.getAttachments())));
         }

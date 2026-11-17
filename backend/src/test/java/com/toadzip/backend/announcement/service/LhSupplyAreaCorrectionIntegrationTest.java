@@ -74,6 +74,7 @@ class LhSupplyAreaCorrectionIntegrationTest {
     @Autowired private LhAnnouncementRefinementService refinement;
     @Autowired private SupplyCorrectionService supplyCorrections;
     @Autowired private AnnouncementJsonCorrectionService jsonCorrections;
+    @Autowired private AdminAnnouncementManagementService management;
     @Autowired private LhCatalogStorageFixtures catalog;
     @Autowired private LhStorageFixtures lhStorage;
     @Autowired private HousingComplexRepository complexes;
@@ -319,6 +320,39 @@ class LhSupplyAreaCorrectionIntegrationTest {
 
         assertThat(schedules(id)).isEqualTo(schedules);
         assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isFalse();
+    }
+
+    @Test
+    void 관리자가_원천_변경_확인을_마치면_같은_LH_원천으로는_다시_표시하지_않고_LH가_공고명이나_일정을_다시_바꾸면_표시한다()
+            throws Exception {
+        long id = confirmedAnnouncement();
+        String name = announcements.findById(id).orElseThrow().getName();
+        details(PAN_ID, 20, LocalDate.now().plusDays(10).format(COMPACT_DATE));
+        refinement.refineAll();
+        assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isTrue();
+
+        acknowledge(id);
+        refinement.refineAll();
+
+        assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isFalse();
+
+        // 일정은 그대로 두고 공고명만 바뀌어도 다시 알린다.
+        publish(PAN_ID, "[정정] 대구시 달서구·달성군 10년 공공임대리츠 예비입주자 모집");
+        refinement.refineAll();
+
+        var renamed = announcements.findById(id).orElseThrow();
+        assertThat(renamed.getName()).isEqualTo(name);
+        assertThat(renamed.isSourceReviewRequired()).isTrue();
+
+        acknowledge(id);
+        details(PAN_ID, 20, LocalDate.now().plusDays(11).format(COMPACT_DATE));
+        refinement.refineAll();
+
+        assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isTrue();
+    }
+
+    private void acknowledge(long id) {
+        management.acknowledgeSourceReview(id, announcements.findById(id).orElseThrow().getVersion(), "operator");
     }
 
     /** 기본 정보는 고치지 않고 공고문 보정만 적용해 정본을 확정한 LH 공고다. */

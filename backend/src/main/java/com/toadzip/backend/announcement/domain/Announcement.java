@@ -25,8 +25,12 @@ import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import lombok.Getter;
@@ -69,6 +73,14 @@ public class Announcement {
     @Column(nullable = false)
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean sourceReviewRequired;
+
+    /** 마지막 정제가 본 기관 원천(기본 정보·LH 일정)의 지문이다. */
+    @Column(length = 64)
+    private String sourceFingerprint;
+
+    /** 관리자가 원천 변경 확인을 마칠 때 본 원천 지문이다. 원천이 이 지문과 같으면 원천 검토 대상으로 다시 표시하지 않는다. */
+    @Column(length = 64)
+    private String sourceReviewAcknowledgedFingerprint;
 
     private java.time.Instant adminUpdatedAt;
 
@@ -592,6 +604,44 @@ public class Announcement {
     public void requireSourceReview() {
         if (!adminDeleted) {
             sourceReviewRequired = true;
+        }
+    }
+
+    /**
+     * 이번 정제가 본 기관 원천 값(기본 정보·LH 일정)을 지문으로 남긴다. 정제는 원천 값을 공고에 다 맞춘 뒤 마지막에 부른다. 관리자가
+     * 확인을 마친 원천과 같으면 갱신이 켠 원천 검토 표시를 다시 끈다. 이미 확인한 차이는 원천이 다시 바뀔 때까지 알리지 않는다.
+     */
+    public void observeSourceValues(List<String> values) {
+        sourceFingerprint = fingerprint(values);
+        if (sourceFingerprint.equals(sourceReviewAcknowledgedFingerprint)) {
+            sourceReviewRequired = false;
+        }
+    }
+
+    /**
+     * 관리자가 원천 변경을 확인했다. 지금 원천 값과의 차이는 원천이 다시 바뀔 때까지 알리지 않는다. 확인할 원천 변경이 없거나 휴지통
+     * 공고면 거절한다.
+     */
+    public void acknowledgeSourceReview() {
+        if (adminDeleted) {
+            throw new IllegalStateException("휴지통에서 복구한 뒤 확인해 주세요.");
+        }
+        if (!sourceReviewRequired) {
+            throw new IllegalStateException("확인할 원천 변경이 없습니다.");
+        }
+        sourceReviewAcknowledgedFingerprint = sourceFingerprint;
+        sourceReviewRequired = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    private static String fingerprint(List<String> values) {
+        String joined = String.join("\u001e", values.stream().map(value -> Objects.toString(value, "")).toList());
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(joined.getBytes(StandardCharsets.UTF_8)));
+        }
+        catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
         }
     }
 

@@ -77,6 +77,15 @@ public class AdminAnnouncementManagementController {
         }
     }
 
+    @PostMapping("/{id}/source-review/acknowledge")
+    public ResponseEntity<Void> acknowledgeSourceReview(@PathVariable long id, @RequestParam @Min(0) long version,
+            Principal principal) {
+        try (var lease = ownership.acquire()) {
+            service.acknowledgeSourceReview(id, version, principal.getName());
+            return ResponseEntity.noContent().build();
+        }
+    }
+
     @GetMapping("/{id}/changes")
     public ApiResponse<List<AdminChangeResponse>> history(@PathVariable long id,
             @RequestParam(defaultValue = "0") @Min(0) int page) {

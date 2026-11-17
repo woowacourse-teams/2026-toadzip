@@ -132,12 +132,7 @@ public class AnnouncementSchedule {
         if (adminModified) { return false; }
         AnnouncementSchedule incoming = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
         incoming.complexName = normalizeComplexName(complexName);
-        if (this.scheduleType == incoming.scheduleType
-                && this.name.equals(incoming.name)
-                && this.startAt.equals(incoming.startAt)
-                && this.endAt.equals(incoming.endAt)
-                && this.displayOrder == incoming.displayOrder
-                && Objects.equals(this.complexName, incoming.complexName)) {
+        if (hasSourceValues(scheduleType, name, startAt, endAt, complexName) && this.displayOrder == displayOrder) {
             return false;
         }
         this.scheduleType = incoming.scheduleType;

@@ -296,6 +296,32 @@ class AdminManagementIntegrationTest {
     }
 
     @Test
+    void 원천_변경_확인을_마치면_표시를_내리고_그때_본_원천_지문을_남기며_다시_확인하면_거절한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String path = "/api/admin/announcements/" + id;
+        entityManager.createNativeQuery("""
+                UPDATE announcements SET source_review_required = true, source_fingerprint = 'observed' WHERE id = :id
+                """).setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        long version = getData(path).get("data").get("version").asLong();
+
+        mvc.perform(post(path + "/source-review/acknowledge").param("version", String.valueOf(version + 1))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+        mvc.perform(post(path + "/source-review/acknowledge").param("version", String.valueOf(version))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isNoContent());
+
+        assertThat(getData(path).get("summary").get("reviewRequired").asBoolean()).isFalse();
+        assertThat(entityManager.createNativeQuery(
+                "SELECT source_review_acknowledged_fingerprint FROM announcements WHERE id = :id")
+                .setParameter("id", id).getSingleResult()).isEqualTo("observed");
+        mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data[0].action").value("SOURCE_REVIEW_ACKNOWLEDGE"));
+        long acknowledged = getData(path).get("data").get("version").asLong();
+        mvc.perform(post(path + "/source-review/acknowledge").param("version", String.valueOf(acknowledged))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isConflict());
+    }
+
+    @Test
     void 공고_휴지통은_공개_조회에서_제외하고_단지_복구_순서를_보호한다() throws Exception {
         long complexId = createComplex();
         long id = createAnnouncement(complexId);

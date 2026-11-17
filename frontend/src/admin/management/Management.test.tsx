@@ -58,6 +58,28 @@ it('공고 기본정보와 출처에 전체 공식 URL과 원천 식별자를 �
   expect(screen.getByText('TEST-7')).toBeVisible()
 })
 
+it('공고 원천 변경 확인을 마치면 현재 버전으로 요청하고 표시를 내린다',async () => {
+  mocks.requestManagementApi.mockResolvedValue(null)
+  mocks.getManagementDetail.mockResolvedValue({ ...fixture(), summary: { ...summary, reviewRequired: true } })
+  render(<MemoryRouter initialEntries={['/admin/announcements/7']}><Routes><Route path="/admin/announcements/:id" element={<ManagementDetail resource="announcements" />} /></Routes></MemoryRouter>)
+  const group = await screen.findByRole('group', { name: '원천 변경 확인' })
+  expect(group).toHaveTextContent('수집 원천이 저장된 공고 값과 다릅니다.')
+  mocks.getManagementDetail.mockResolvedValue({ ...fixture(), data: { ...fixture().data, version: 3 } })
+  fireEvent.click(screen.getByRole('button', { name: '원천 변경 확인 완료' }))
+  expect(await screen.findByText('원천 변경 확인을 마쳤습니다. 원천이 다시 바뀌면 다시 표시합니다.')).toBeVisible()
+  expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/announcements/7/source-review/acknowledge?version=2','POST')
+  expect(screen.queryByRole('group', { name: '원천 변경 확인' })).toBeNull()
+})
+
+it('공고 원천 변경 확인이 거절되면 표시를 유지하고 이유를 보인다',async () => {
+  mocks.requestManagementApi.mockRejectedValue(new ManagementError('다른 관리자가 먼저 변경했습니다.', 409))
+  mocks.getManagementDetail.mockResolvedValue({ ...fixture(), summary: { ...summary, reviewRequired: true } })
+  render(<MemoryRouter initialEntries={['/admin/announcements/7']}><Routes><Route path="/admin/announcements/:id" element={<ManagementDetail resource="announcements" />} /></Routes></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '원천 변경 확인 완료' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('다른 관리자가 먼저 변경했습니다.')
+  expect(screen.getByRole('group', { name: '원천 변경 확인' })).toBeVisible()
+})
+
 it('단지 출처 URL이 저장되지 않았으면 원천 식별자와 기록 없음을 구분한다',async () => {
   render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '출처·수정 이력' }))
