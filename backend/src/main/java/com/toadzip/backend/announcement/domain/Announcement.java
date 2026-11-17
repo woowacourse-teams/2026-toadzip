@@ -588,6 +588,13 @@ public class Announcement {
         return adminModified || isSupplyConfirmed();
     }
 
+    /** 정본을 확정해 원천이 바꾸지 않는 행(LH 일정 등)이 원천과 달라졌음을 남긴다. 휴지통 공고는 표시하지 않는다. */
+    public void requireSourceReview() {
+        if (!adminDeleted) {
+            sourceReviewRequired = true;
+        }
+    }
+
     /**
      * 관리자가 고치지 않은 확정 공고의 정정 사유를 원천 값으로 맞춘다. 정정 증빙으로 사유를 확정했거나 원천이 사유를 주지 않으면 그대로
      * 둔다. 값을 바꿨으면 true다.

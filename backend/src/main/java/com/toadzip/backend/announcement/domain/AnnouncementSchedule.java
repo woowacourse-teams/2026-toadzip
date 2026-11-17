@@ -149,6 +149,16 @@ public class AnnouncementSchedule {
         return true;
     }
 
+    /** 원천 값과 일정유형·이름·기간·단지명이 같다. 원천 순서로 매기는 표시 순서는 보지 않는다. */
+    public boolean hasSourceValues(ScheduleType scheduleType, String name, LocalDateTime startAt, LocalDateTime endAt,
+            String complexName) {
+        return this.scheduleType == scheduleType
+                && this.name.equals(name)
+                && this.startAt.equals(startAt)
+                && this.endAt.equals(endAt)
+                && Objects.equals(this.complexName, normalizeComplexName(complexName));
+    }
+
     private static String normalizeComplexName(String complexName) {
         if (complexName == null || complexName.isBlank()) {
             return null;
