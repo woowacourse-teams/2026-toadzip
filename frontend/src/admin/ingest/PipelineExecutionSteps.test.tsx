@@ -36,6 +36,23 @@ describe('v2 공통 단계 표시', () => {
     expect(screen.getByRole('button', { name: 'SH 공고 원천 수집 진행' })).toHaveAttribute('aria-current', 'step')
     expect(screen.getByRole('button', { name: 'SH 공고 수집 실행 중지' })).toBeVisible()
   })
+  it.each([
+    ['TRANSIENT', null, '잠시 뒤 다시 실행하면 이어서 받습니다.'],
+    ['INTERNAL', 'IllegalStateException ← NullPointerException', '실행 ID를 개발자에게 전달해 주세요.'],
+  ] as const)('%s 실패는 다시 실행하면 되는지와 원인 요약, 실행 ID를 안내한다', (cause, detail, text) => {
+    show(execution({ type: 'GH_ANNOUNCEMENT_COLLECTION', status: 'FAILED', executionId: 'run-9',
+      failure: { stepName: 'GH 공고 원천 수집', message: '현재 단계를 처리하는 중 서버 오류가 발생했습니다.', serverResponse: null, cause, detail } }))
+    const note = screen.getByRole('note', { name: '실패 원인 안내' })
+    expect(note).toHaveTextContent(text)
+    expect(note).toHaveTextContent('실행 ID run-9')
+    if (detail) expect(note).toHaveTextContent(`원인: ${detail}`)
+  })
+
+  it('원인을 남기기 전의 실패 이력은 원인 안내를 보이지 않는다', () => {
+    show(execution({ status: 'FAILED', failure: { stepName: null, message: '서버 실행이 중단되었습니다.', serverResponse: null } }))
+    expect(screen.queryByRole('note', { name: '실패 원인 안내' })).not.toBeInTheDocument()
+  })
+
   it('지난 단건 등록 실패 이력은 매칭 진입 없이 지원 종료를 안내한다', () => {
     show(execution({ status: 'FAILED', targetAnnouncementIdentifier: '21395',
       failure: { stepName: '마이홈 공고 정제', message: '공급행 매칭 실패: 주택형을 확정할 수 없습니다.', serverResponse: null } }))

@@ -27,8 +27,10 @@ import jakarta.persistence.criteria.Subquery;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.hibernate.query.criteria.HibernateCriteriaBuilder;
 import org.hibernate.query.criteria.JpaExpression;
@@ -44,11 +46,19 @@ public class AnnouncementSearchRepository {
             WITH overview AS (
                 SELECT a.id, COALESCE(%s, 'UNKNOWN') AS application_status,
                     %s AS schedule_missing, %s AS supply_missing,
-                    a.release_status = 'UNCONFIRMED' AS unconfirmed
+                    a.release_status = 'UNCONFIRMED' AS unconfirmed, %s AS processing_stage
                 FROM announcements a
+                %s
             )
             """.formatted(ApplicationScheduleSql.status("a", null),
-                    AnnouncementAttentionSql.scheduleMissing("a"), AnnouncementAttentionSql.supplyMissing("a"));
+                    AnnouncementAttentionSql.scheduleMissing("a"), AnnouncementAttentionSql.supplyMissing("a"),
+                    AnnouncementProcessingStageSql.stage("a"), AnnouncementProcessingStageSql.joins("a"));
+    /** 마감 전은 접수마감·공고취소가 아닌 공고다. 일정 미정·조건부 접수도 처리할 일에 들어간다. */
+    private static final String OPEN_SQL = "o.application_status NOT IN ('CLOSED', 'CANCELLED')";
+    private static final String OPEN_STAGE_COUNTS_SQL = ADMIN_OVERVIEW_SQL + """
+            SELECT o.processing_stage AS stage, COUNT(*) AS count
+            FROM overview o JOIN announcements a ON a.id = o.id WHERE a.admin_deleted = false AND
+            """ + OPEN_SQL + " GROUP BY o.processing_stage";
     private static final String ADMIN_COUNTS_SQL = ADMIN_OVERVIEW_SQL + """
             SELECT COUNT(*) FILTER (WHERE application_status = 'BEFORE_APPLICATION') AS upcoming,
                 COUNT(*) FILTER (WHERE application_status = 'APPLYING') AS applying,
@@ -69,20 +79,25 @@ public class AnnouncementSearchRepository {
         this.entityManager = entityManager;
     }
 
+    /**
+     * applicationStatus는 접수 상태 하나이거나 OPEN(마감 전)이다. stage는 처리 단계 코드이며 빈 값이면 거르지 않는다.
+     */
     public Page<Announcement> searchAdmin(AdminSearch search, long complexId, String status, String attention,
-            LocalDate today) {
+            String stage, LocalDate today) {
         String where = AnnouncementRepository.ADMIN_SEARCH_FROM.replace(" FROM announcements c ",
                 " FROM announcements c JOIN overview o ON o.id = c.id ")
-                + " AND (:applicationStatus = '' OR o.application_status = :applicationStatus)"
+                + " AND (:applicationStatus = '' OR o.application_status = :applicationStatus"
+                + " OR (:applicationStatus = 'OPEN' AND " + OPEN_SQL + "))"
+                + " AND (:stage = '' OR o.processing_stage = :stage)"
                 + " AND (:attention = '' OR (:attention = 'ANY' AND (o.schedule_missing OR o.supply_missing"
                 + " OR o.unconfirmed)) OR (:attention = 'SCHEDULE_MISSING' AND o.schedule_missing)"
                 + " OR (:attention = 'SUPPLY_MISSING' AND o.supply_missing)"
                 + " OR (:attention = 'UNCONFIRMED' AND o.unconfirmed))";
         Query count = bindAdmin(entityManager.createNativeQuery(ADMIN_OVERVIEW_SQL + "SELECT count(*)" + where),
-                search, complexId, status, attention, today);
+                search, complexId, status, attention, today).setParameter("stage", stage);
         Query query = bindAdmin(entityManager.createNativeQuery(ADMIN_OVERVIEW_SQL + "SELECT c.*" + where
                 + " ORDER BY c.created_at DESC NULLS LAST, c.id DESC", Announcement.class),
-                search, complexId, status, attention, today);
+                search, complexId, status, attention, today).setParameter("stage", stage);
         query.setFirstResult(search.page() * search.pageSize()).setMaxResults(search.pageSize());
         @SuppressWarnings("unchecked")
         List<Announcement> items = query.getResultList();
@@ -102,7 +117,7 @@ public class AnnouncementSearchRepository {
     }
 
     public record AdminStatus(long id, String applicationStatus, List<String> attentionReasons,
-            LocalDate startDate, LocalDate endDate) { }
+            String processingStage, LocalDate startDate, LocalDate endDate) { }
 
     public List<AdminStatus> adminStatuses(List<Long> ids, LocalDate today) {
         if (ids.isEmpty()) { return List.of(); }
@@ -125,7 +140,8 @@ public class AnnouncementSearchRepository {
                 end = "end_date";
             }
             return new AdminStatus(((Number) row.get("id")).longValue(), row.get("application_status", String.class),
-                    List.copyOf(reasons), date(row.get(start)), date(row.get(end)));
+                    List.copyOf(reasons), row.get("processing_stage", String.class), date(row.get(start)),
+                    date(row.get(end)));
         }).toList();
     }
 
@@ -143,6 +159,17 @@ public class AnnouncementSearchRepository {
                 aggregateCount(row, "unknown"), aggregateCount(row, "attention"),
                 aggregateCount(row, "schedule_missing"),
                 aggregateCount(row, "supply_missing"), aggregateCount(row, "unconfirmed"));
+    }
+
+    /** 휴지통을 뺀 마감 전 공고를 처리 단계별로 센다. 없는 단계도 0으로 넣는다. */
+    public Map<String, Long> countOpenStages(LocalDate today) {
+        @SuppressWarnings("unchecked")
+        List<Tuple> rows = entityManager.createNativeQuery(OPEN_STAGE_COUNTS_SQL, Tuple.class)
+                .setParameter("today", today).getResultList();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        AnnouncementProcessingStageSql.STAGES.forEach(stage -> counts.put(stage, 0L));
+        rows.forEach(row -> counts.put(row.get("stage", String.class), aggregateCount(row, "count")));
+        return counts;
     }
 
     private long aggregateCount(Tuple row, String column) {

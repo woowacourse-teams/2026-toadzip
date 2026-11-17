@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.lh.refinement.service;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
@@ -51,7 +52,7 @@ public class LhAnnouncementRefinementService {
         IngestExecutionScope.beginWork("LH 공고 정제", "공고", targets.size());
         Run run = new Run(true);
         run.refine(targets);
-        run.retryUnlinkedRevisions();
+        run.finishAll();
         return run.report();
     }
 
@@ -71,7 +72,7 @@ public class LhAnnouncementRefinementService {
         private Tally attempt;
 
         private Run(boolean reportProgress) {
-            SourceRefinementRun<Outcome> started = runner.begin("LH 공고 정제", Outcome.class);
+            SourceRefinementRun<Outcome> started = runner.begin("LH 공고 정제", AgencyCode.LH, Outcome.class);
             run = reportProgress ? started.reportingProgress() : started;
         }
 
@@ -93,18 +94,31 @@ public class LhAnnouncementRefinementService {
                             .filter(view -> catalogSourceKeys.contains(view.getSourceKey())).toList());
         }
 
+        /** 수집이 예외로 멈췄을 때 그때까지 정제하며 본 실패를 실패 목록에 남긴다. */
+        public void abandon(RuntimeException stopped) {
+            run.recordFailuresAfter(stopped);
+        }
+
         /**
          * 마무리: 이번 실행에서 목록 값이 바뀌었지만 묶음 수집 대상이 아니었던 공고(종료 정책 밖 공고)를 정제하고, 정제 때
          * 원공고를 찾지 못한 정정·취소공고를 원공고가 정제된 뒤 다시 잇는다. 수집 대상으로 골랐지만 묶음을 다 받지 못한
-         * 공고는 정제하지 않고 이전 값을 유지한다.
+         * 공고는 정제하지 않고 이전 값을 유지한다. 끝으로 이번 실행의 정제 실패를 실패 목록에 맞춘다. everyRequestRead는 수집이
+         * 모든 요청을 실패 없이 읽었는지다.
          */
-        public void finish(Instant changedSince, Collection<String> collectedPanIds) {
+        public void finish(Instant changedSince, Collection<String> collectedPanIds, boolean everyRequestRead) {
             Predicate<LhAnnouncementCatalogSourceView> changed = view -> view.getChangedAt() != null
                     && !view.getChangedAt().isBefore(changedSince);
             refineFound("LH 마무리 정제", () -> catalog.findAllPresentRentalHousingAnnouncements().stream()
                     .filter(view -> !refinedPanIds.contains(view.getPanId()))
                     .filter(view -> !collectedPanIds.contains(view.getPanId())).filter(changed).toList());
             retryUnlinkedRevisions();
+            run.recordFailures(everyRequestRead);
+        }
+
+        /** 전체 정제의 마무리: 원공고를 찾지 못한 정정·취소공고를 다시 잇고, 정제 실패를 실패 목록에 맞춘다. */
+        private void finishAll() {
+            retryUnlinkedRevisions();
+            run.recordFailures();
         }
 
         private void retryUnlinkedRevisions() {

@@ -1,7 +1,10 @@
 package com.toadzip.backend.admin.service;
 
 import com.toadzip.backend.admin.dto.OperationsOverview;
+import com.toadzip.backend.announcement.domain.PdfExtractionQueue;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
+import com.toadzip.backend.announcement.service.PdfExtractionQueueService;
+import com.toadzip.backend.ingest.failure.repository.IngestFailureReviewQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -29,16 +32,21 @@ public class OperationsOverviewService {
     private final AdminUserQueryRepository registrations;
     private final UserRepository users;
     private final DataPipelineExecutionRepository executions;
+    private final PdfExtractionQueueService queue;
+    private final IngestFailureReviewQueryRepository failures;
     private final Clock clock;
 
     public OperationsOverviewService(ComplexSummaryQueryRepository complexes,
             AnnouncementSearchRepository announcements, AdminUserQueryRepository registrations, UserRepository users,
-            DataPipelineExecutionRepository executions, Clock clock) {
+            DataPipelineExecutionRepository executions, PdfExtractionQueueService queue,
+            IngestFailureReviewQueryRepository failures, Clock clock) {
         this.complexes = complexes;
         this.announcements = announcements;
         this.registrations = registrations;
         this.users = users;
         this.executions = executions;
+        this.queue = queue;
+        this.failures = failures;
         this.clock = clock;
     }
 
@@ -58,6 +66,19 @@ public class OperationsOverviewService {
                         "CANCELLED", counts.cancelled(), "UNKNOWN", counts.unknown()),
                 counts.attention(), Map.of("SCHEDULE_MISSING", counts.scheduleMissing(),
                         "SUPPLY_MISSING", counts.supplyMissing(), "UNCONFIRMED", counts.unconfirmed()), now);
+    }
+
+    public OperationsOverview.Tasks tasks() {
+        Instant now = now();
+        PdfExtractionQueue current = queue.current();
+        Long oldestWaitSeconds = null;
+        if (current.oldestWait() != null) {
+            oldestWaitSeconds = current.oldestWait().toSeconds();
+        }
+        long unresolved = failures.findReviews("announcement", "all", "PENDING", 0, 1, "", null).totalElements();
+        return new OperationsOverview.Tasks(announcements.countOpenStages(today(now)),
+                new OperationsOverview.AiQueue(current.waiting(), current.running(), oldestWaitSeconds,
+                        current.failed()), unresolved, now);
     }
 
     public OperationsOverview.Users users(int days) {

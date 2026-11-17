@@ -10,7 +10,7 @@ DB 운영, HTTPS 인증서 갱신, 로그·메트릭 수집과 모니터링에 �
 | [`certbot/`](certbot/) | 인증서 갱신 후 Nginx가 설정을 다시 읽게 하는 `reload-nginx.sh`를 담습니다. 적용 절차는 [HTTPS 운영](../docs/operations/https.md)을 따릅니다. |
 | [`db/`](db/) | PostgreSQL 운영 설정과 호스트 CPU·메모리·디스크, DB별 락·트랜잭션 수집용 Compose를 담습니다. |
 | [`grafana/provisioning/datasources/prometheus.yml`](grafana/provisioning/datasources/prometheus.yml) | Grafana의 기본 Prometheus 데이터 소스를 등록합니다. |
-| [`grafana/dashboards/`](grafana/dashboards/) | API·부하테스트 대시보드의 조회식, 환경 선택과 요청 로그 연결을 관리합니다. |
+| [`grafana/dashboards/`](grafana/dashboards/) | API·부하테스트, AI 작업 큐 대시보드의 조회식, 환경 선택과 요청 로그 연결을 관리합니다. |
 | [`grafana/provisioning/`](grafana/provisioning/) | 대시보드와 Prometheus·Loki 데이터 소스를 자동 등록합니다. |
 | [`loki/loki-config.yml`](loki/loki-config.yml) | 로그 저장소와 보관 기간 등 Loki 서버 설정을 정의합니다. |
 | [`monitoring/`](monitoring/) | Grafana 환경변수 예시와 모니터링 도메인을 Grafana로 연결하는 `Caddyfile`을 담습니다. |

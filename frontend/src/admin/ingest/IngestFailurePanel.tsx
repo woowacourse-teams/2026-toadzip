@@ -16,9 +16,10 @@ type Props = {
 
 export function IngestFailurePanel({ domain: selectedDomain, initialCategory, executionId, refreshToken = 0,
   retryDisabled = false, runError = '' }: Props) {
-  const domain = selectedDomain ?? (initialCategory === 'announcement' || initialCategory === 'enrichment' ? 'announcement' : 'complex')
+  const domain = selectedDomain ?? (initialCategory === 'announcement' || initialCategory === 'enrichment'
+    || initialCategory === 'refinement' ? 'announcement' : 'complex')
   const [params, setParams] = useSearchParams()
-  const allowed: (FailureCategory | 'all')[] = domain === 'complex' ? ['all','collection','complex'] : ['all','collection','announcement','enrichment']
+  const allowed: (FailureCategory | 'all')[] = domain === 'complex' ? ['all','collection','complex'] : ['all','collection','announcement','enrichment','refinement']
   const rawCategory = params.get('category') ?? initialCategory ?? 'all'
   const category = allowed.includes(rawCategory as FailureCategory | 'all') ? rawCategory as FailureCategory | 'all' : 'all'
   const rawStatus = params.get('status') ?? 'PENDING'
@@ -41,7 +42,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   const selectionKey = params.get('failure') ?? ''
   const [selectionCategory, selectionIdText] = selectionKey.split(':')
   const selectionId = Number(selectionIdText)
-  const validSelection = ['collection', 'complex', 'announcement', 'enrichment'].includes(selectionCategory)
+  const validSelection = ['collection', 'complex', 'announcement', 'enrichment', 'refinement'].includes(selectionCategory)
     && allowed.includes(selectionCategory as FailureCategory)
     && /^[1-9][0-9]*$/.test(selectionIdText ?? '') && Number.isSafeInteger(selectionId)
     && selectionKey === `${selectionCategory}:${selectionIdText}`
@@ -302,6 +303,7 @@ function reasonLabel(row:FailureReview) {
     TARGET_DECISION_REVIEW_REQUIRED:'저장한 단지 결정의 원천·단지 재확인 필요',
     LH_DETAIL_SOURCE_NOT_FOUND:'LH 상세 원천 없음',
     LH_SUPPLY_SOURCE_NOT_FOUND:'LH 공급 원천 없음', UNSUPPORTED_SUPPLY_TYPE:'지원하지 않는 공급 유형',
+    SOURCE_LOOKUP_FAILED:'정제할 원천을 읽지 못함', SOURCE_REFINEMENT_FAILED:'원천을 공고로 만들지 못함',
   }
   return labels[row.reason] ?? row.reason
 }
@@ -309,6 +311,7 @@ function nextAction(row:FailureReview) {
   if (row.status === 'RESOLVED') return '해결된 기록입니다. 다시 발생하면 미해결로 표시됩니다.'
   if (row.status === 'SKIPPED') return '건너뛴 사유와 원천 요청 조건을 확인하세요.'
   if (row.category === 'collection') return collectionCause(row).action
+  if (row.category === 'refinement') return '원인을 확인한 뒤 그 기관의 공고 수집을 다시 실행하세요. 다시 정제되면 해결로 바뀝니다.'
   if (row.reason === 'MANUAL_MATCH_REVIEW_REQUIRED') return '저장한 매칭의 근거와 현재 원천·주택형을 다시 비교하세요.'
   if (/GEOCODING/.test(row.reason)) return '단지 주소와 좌표 원천을 확인하세요. 좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면 별도 확인이 필요합니다.'
   if (/HOUSING_TYPE/.test(row.reason)) return row.product?.resourceType === 'announcements'
@@ -322,8 +325,10 @@ function nextAction(row:FailureReview) {
 function sourceLocation(row:FailureReview, supply = false) {
   const category=row.category === 'collection' ? row.source ?? 'MYHOME_COMPLEX'
     : row.category === 'enrichment' ? supply ? 'LH_ANNOUNCEMENT_SUPPLY' : 'LH_ANNOUNCEMENT_DETAIL'
+    : row.category === 'refinement' ? row.source === 'LH_ANNOUNCEMENT' ? 'LH_ANNOUNCEMENT_CATALOG' : row.source ?? 'SH_ANNOUNCEMENT'
     : ({complex:'MYHOME_COMPLEX',announcement:'MYHOME_ANNOUNCEMENT'} as const)[row.category]
-  const keyword=row.category === 'enrichment' ? typeof row.raw.panId === 'string' ? row.raw.panId : ''
+  const keyword=row.category === 'enrichment' || (row.category === 'refinement' && typeof row.raw.panId === 'string')
+    ? typeof row.raw.panId === 'string' ? row.raw.panId : ''
     : typeof row.raw.sourceAnnouncementIdentifier === 'string' ? row.raw.sourceAnnouncementIdentifier
     : typeof row.raw.sourceComplexIdentifier === 'string' ? row.raw.sourceComplexIdentifier.split(':')[0]
     : typeof row.raw.complexName === 'string' ? row.raw.complexName : ''

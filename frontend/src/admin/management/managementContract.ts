@@ -1,4 +1,4 @@
-import { applicationStatuses, attentionReasons } from './listFilterLabels'
+import { applicationStatuses, attentionReasons, processingStages } from './listFilterLabels'
 import { isVerificationStatus, type VerificationStatus } from './complexVerificationContract'
 import { parseSupplySheet, type SupplySheet } from '../supply/supplySheet'
 
@@ -54,6 +54,8 @@ export type ManagementAnnouncementSummary = {
   /** UNCONFIRMED·PUBLISHED. 미확정 공고는 사용자에게 보이지 않는다. 이전 서버 응답에는 없다. */
   applicationStatus?: string | null
   attentionReasons?: string[] | null
+  /** 공고문 PDF 처리 단계. 공고 관리 목록 응답에만 있고 이전 서버 응답에는 없다. */
+  processingStage?: string | null
   releaseStatus?: string
 }
 
@@ -229,6 +231,7 @@ function isManagementAnnouncementSummary(value: unknown): value is ManagementAnn
     && (value.releaseStatus === undefined || typeof value.releaseStatus === 'string')
     && (value.applicationStatus == null || typeof value.applicationStatus === 'string' && Object.hasOwn(applicationStatuses, value.applicationStatus))
     && (value.attentionReasons == null || Array.isArray(value.attentionReasons) && value.attentionReasons.every(reason => typeof reason === 'string' && reason !== 'ANY' && Object.hasOwn(attentionReasons, reason)))
+    && (value.processingStage == null || typeof value.processingStage === 'string' && Object.hasOwn(processingStages, value.processingStage))
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

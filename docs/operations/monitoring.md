@@ -90,6 +90,19 @@ Node Exporter 배포와 실제 수집 대상 등록은 [DB 서버 설정](databa
 디스크 패널과 PostgreSQL 락·트랜잭션 패널도 API 선택과 무관하다. PostgreSQL은 `db_role`로
 dev·prod·shared를 구분한다. DB 연결 성공과 collector 성공까지 확인한 데이터만 표시한다.
 
+## AI 작업 큐 대시보드
+
+`Toadzip · AI 작업 큐`는 공고문 PDF 추출 작업(`ai_jobs`)의 적체를 본다.
+정의는 [`ai-jobs.json`](../../infra/grafana/dashboards/ai-jobs.json)에 있고 UID는 `toadzip-ai-jobs`다.
+등록 방법은 API·부하테스트 대시보드와 같다.
+
+- 대기는 아직 워커가 꺼내지 않은 작업(대기·재시도 대기)이다. 재시도 시각이 오지 않은 작업도 대기에 든다.
+- 대기가 줄지 않고 가장 오래 기다린 대기가 계속 커지면 워커가 멈췄거나 처리량이 모자란 것이다.
+- 처리 시간은 최근 24시간에 성공한 작업의 **첫 시작부터 완료까지**다. 재시도한 작업은 재시도 대기 시간이 들어간다.
+- 실패 수는 최근 24시간에 실패로 끝난 작업이다. 관리자 취소와 마감 초과도 실패로 센다.
+- 백엔드가 큐를 읽지 못하거나 수집이 끊기면 값은 `—`다. 대기 0과 구분한다.
+- 값은 활성 색상 백엔드가 DB를 읽어 만들고, 10초 안의 수집은 같은 값을 다시 쓴다.
+
 ## 대시보드 조회식 검증
 
 실제 JSON의 PromQL을 사용해 개발·운영 분리, API별 p95, 오류율과 무트래픽 처리를 검사한다.
@@ -111,6 +124,15 @@ python3 tests/monitoring/db_host_cases.py > .local/verification/monitoring/db-ho
 docker run --rm --entrypoint promtool \
   --mount type=bind,src="$PWD/.local/verification/monitoring",dst=/tests,readonly \
   prom/prometheus:v3.14.0 test rules /tests/db-host-tests.yml
+```
+
+AI 작업 큐 조회식은 환경 분리와 수집 실패를 검사한다.
+
+```shell
+python3 tests/monitoring/ai_jobs_cases.py > .local/verification/monitoring/ai-jobs.yml
+docker run --rm --network none --entrypoint promtool \
+  --mount type=bind,src="$PWD/.local/verification/monitoring",dst=/tests,readonly \
+  prom/prometheus:v3.14.0 test rules /tests/ai-jobs.yml
 ```
 
 prod 고정 집계, 디스크 계산, DB 락과 수집 실패를 검증한다.

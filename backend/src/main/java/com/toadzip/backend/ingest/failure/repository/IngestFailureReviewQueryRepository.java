@@ -100,7 +100,7 @@ public class IngestFailureReviewQueryRepository {
                     )
                     OR EXISTS (
                         SELECT 1 FROM announcements announcement
-                        WHERE failure.category IN ('announcement', 'enrichment')
+                        WHERE failure.category IN ('announcement', 'enrichment', 'refinement')
                             AND announcement.source_announcement_identifier = failure.source_announcement_identifier
                             AND announcement.name ILIKE :pattern ESCAPE '!'
                     )
@@ -168,7 +168,7 @@ public class IngestFailureReviewQueryRepository {
                 AND (complex.id = link.housing_complex_id
                     OR (link.housing_complex_id IS NULL
                         AND complex.source_complex_identifier = failure.source_complex_identifier))
-            LEFT JOIN announcements announcement ON failure.category IN ('announcement', 'enrichment')
+            LEFT JOIN announcements announcement ON failure.category IN ('announcement', 'enrichment', 'refinement')
                 AND NULLIF(BTRIM(failure.source_announcement_identifier), '') IS NOT NULL
                 AND announcement.source_announcement_identifier = failure.source_announcement_identifier
             LEFT JOIN LATERAL (
@@ -244,6 +244,15 @@ public class IngestFailureReviewQueryRepository {
                 new FailureQuery("lh_announcement_enrichment_failures", "enrichment", "'announcement'",
                         "'LH_ANNOUNCEMENT'", "source_key", "NULL::text", "source_announcement_identifier",
                         "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",
+                        "last_resolved_by", "jsonb_build_object('panId', pan_id)"),
+                // LH 공고 ID 하나에 정정공고까지 공고가 여럿일 수 있어 가장 최근 공고로 잇는다.
+                new FailureQuery("announcement_refinement_failures", "refinement", "'announcement'",
+                        "provider || '_ANNOUNCEMENT'", "source_key", "NULL::text", """
+                        COALESCE(source_announcement_identifier, (
+                            SELECT latest.source_announcement_identifier FROM announcements latest
+                            WHERE latest.lh_pan_id = announcement_refinement_failures.pan_id
+                            ORDER BY latest.id DESC LIMIT 1))
+                        """, "NULL::text", "reason", "detail", "last_resolved_at", "last_resolved_execution_id",
                         "last_resolved_by", "jsonb_build_object('panId', pan_id)")
         );
     }

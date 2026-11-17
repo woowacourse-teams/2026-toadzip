@@ -199,6 +199,27 @@ it('LH 보강 실패에서는 같은 공고 번호로 상세·공급 원천을 �
   expectReturnLink(dialog.getByRole('link',{name:'LH 공급 원천'}), '/admin/sources?category=LH_ANNOUNCEMENT_SUPPLY&keyword=PAN-7', 'enrichment:1')
 })
 
+it('기관 공고 정제 실패는 분류·원인과 다시 수집할 안내를 보이고 그 기관 원천으로 잇는다', async () => {
+  const sh:FailureReview = {...row,id:5,category:'refinement',source:'SH_ANNOUNCEMENT',sourceKey:'SH:101',
+    reason:'SOURCE_REFINEMENT_FAILED',detail:'원천 정제를 완료하지 못했습니다. 원인: IllegalStateException',
+    raw:{sourceAnnouncementIdentifier:'SH:101'}}
+  const lh:FailureReview = {...row,id:6,category:'refinement',source:'LH_ANNOUNCEMENT',sourceKey:'01:06:10:2026000123',
+    target:'LH 공고',reason:'SOURCE_REFINEMENT_FAILED',raw:{panId:'2026000123'}}
+  fetchFailures.mockResolvedValue(page([sh, lh]))
+  render(<IngestFailurePanel initialCategory="refinement" executionId={null} />, {wrapper:MemoryRouter})
+  expect(await screen.findAllByText('원천을 공고로 만들지 못함')).toHaveLength(2)
+  expect(fetchFailures).toHaveBeenCalledWith('announcement','refinement','PENDING',0,expect.any(AbortSignal), {keyword:'',executionId:null})
+  fireEvent.click(screen.getByRole('button',{name:`확인·처리: ${sh.target}`}))
+  const dialog=within(screen.getByRole('dialog'))
+  expect(dialog.getByText(text => text.includes('기관 공고 정제'))).toBeVisible()
+  expect(dialog.getByText(text => text.includes('원인: IllegalStateException') && text.includes('공고 수집을 다시 실행하세요'))).toBeVisible()
+  expectReturnLink(dialog.getByRole('link',{name:'원천 데이터'}), '/admin/sources?category=SH_ANNOUNCEMENT&keyword=SH%3A101', 'refinement:5')
+  fireEvent.click(dialog.getByRole('button',{name:'닫기'}))
+  fireEvent.click(screen.getByRole('button',{name:`확인·처리: ${lh.target}`}))
+  expectReturnLink(within(screen.getByRole('dialog')).getByRole('link',{name:'원천 데이터'}),
+    '/admin/sources?category=LH_ANNOUNCEMENT_CATALOG&keyword=2026000123', 'refinement:6')
+})
+
 function expectReturnLink(link: HTMLElement, destination: string, failure: string) {
   const url = new URL(link.getAttribute('href')!, 'https://test.invalid')
   const back = new URL(url.searchParams.get('failureReturnTo')!, 'https://test.invalid')

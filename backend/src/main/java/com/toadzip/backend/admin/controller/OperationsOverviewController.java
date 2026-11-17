@@ -28,6 +28,11 @@ public class OperationsOverviewController {
         return new ApiResponse<>(service.announcements());
     }
 
+    @GetMapping("/tasks")
+    public ApiResponse<OperationsOverview.Tasks> tasks() {
+        return new ApiResponse<>(service.tasks());
+    }
+
     @GetMapping("/users")
     public ApiResponse<OperationsOverview.Users> users(@RequestParam(defaultValue = "7") int days) {
         return new ApiResponse<>(service.users(days));

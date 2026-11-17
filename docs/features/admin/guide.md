@@ -10,8 +10,9 @@
 
 ### 운영 홈에서 현황 확인하기
 
-`운영 홈`(`/admin/operations`)은 단지·공고·유저·알림 4개 패널을 표시한다. 현재 페이지 목록에서 총계를 추정하지 않고 서버 집계를 사용한다.
+`운영 홈`(`/admin/operations`)은 맨 위의 처리할 일과 단지·공고·유저·알림 4개 패널을 표시한다. 현재 페이지 목록에서 총계를 추정하지 않고 서버 집계를 사용한다.
 
+- 처리할 일: 휴지통을 제외한 마감 전 공고(접수마감·공고취소가 아닌 공고)를 공고문 PDF 처리 단계별로 센다. 단계는 저장하지 않고 조회할 때 계산하며 위에서부터 처음 맞는 단계다. 공급표를 확정한 공고는 확정, 확정 뒤 기관 원천 공급이 바뀌었으면 재확인 필요다. 확정 전 공고는 마지막 추출 작업이 진행 중이면 추출 대기·처리 중, 성공했으면 검토 대기, 실패했으면 추출 실패다. 추출한 적이 없으면 PDF 보정 화면이 고를 수 있는 PDF 첨부(이름이 `.pdf`)가 있을 때 추출 전, 없으면 PDF 없음이다. PDF 없음·추출 실패·검토 대기·재확인 필요는 관리자가 처리해야 넘어가는 단계라 강조한다. 공고문 PDF 추출 작업 큐의 대기·처리 중 수, 가장 오래 기다린 시간, 최근 24시간 실패 수와 공고 쪽 미해결 수집·정제 실패 수도 함께 보인다. 기존 확인 필요는 전체 공고 기준의 데이터 빈칸이라 그대로 둔다.
 - 단지: 휴지통을 제외한 전체·LH/SH/GH별 단지, 좌표 미확인, 원천 변경 재검토와 모집중 단지 수. 모집중은 대체되지 않은 공개 공고 중 공고중·접수중인 공고가 연결된 단지이며 단지는 중복 제거한다. 좌표 미확인은 위도 또는 경도 부재 기준이다.
 - 공고: 휴지통을 제외한 접수 상태별 건수와 확인 필요 공고 수. 확인 필요는 일정 누락·공급정보 누락·미확정의 합집합이며 사유별 집계는 중복될 수 있다. 일정 누락은 접수 날짜 또는 검토된 일정 부재, 공급정보 누락은 제외되지 않은 공급 행 부재다.
 - 최근 수집: LH/SH/GH별 최근 실행과 마지막 성공을 분리한다. 마지막 성공은 수집·정제 실행 전체가 `COMPLETED`로 끝난 시각이며 일부 실패·건너뜀·중지·실패는 성공 시각으로 사용하지 않는다. 이력이 없으면 이력 없음으로 표시한다.
@@ -45,8 +46,8 @@
 적용한 조건은 개별 해제하거나 초기화할 수 있다. 초기화는 현재 보관함·문제 대상을 유지하며 상세 복귀 시 조건과 페이지를 복원한다.
 
 - 단지 목록 API는 `recruiting=true`, `missingCoordinates=true`를 지원한다. 모집중은 공개된 공고중·접수중 공고에 연결된 단지를 중복 제거하며 후속 공개 공고로 대체된 공고는 제외한다. 좌표 미확인은 위도 또는 경도가 없는 경우다. 현재 스키마는 두 좌표를 필수로 저장하므로 이 조건은 0건이다.
-- 공고 목록 API는 `applicationStatus=BEFORE_APPLICATION|APPLYING|CLOSED|CONDITIONAL|CANCELLED|UNKNOWN`과 `attention=ANY|SCHEDULE_MISSING|SUPPLY_MISSING|UNCONFIRMED`를 지원한다. 상태는 한국 날짜로 계산한다. `ANY`는 사유가 하나 이상인 공고를 중복 제거한다. 기존 `unconfirmed=true`도 지원한다.
-- 운영 홈의 단지·공고 숫자는 동일한 집계 기준의 목록 필터로 연결한다. 공고 목록 요약의 `applicationStatus`·`attentionReasons`가 접수 상태와 확인 사유를 제공한다.
+- 공고 목록 API는 `applicationStatus=OPEN|BEFORE_APPLICATION|APPLYING|CLOSED|CONDITIONAL|CANCELLED|UNKNOWN`, `attention=ANY|SCHEDULE_MISSING|SUPPLY_MISSING|UNCONFIRMED`와 `stage=PDF_MISSING|NOT_EXTRACTED|EXTRACTING|EXTRACTION_FAILED|REVIEW_PENDING|CONFIRMED|RECHECK_REQUIRED`를 지원한다. `OPEN`은 마감 전(접수마감·공고취소가 아닌 공고)이다. 상태는 한국 날짜로 계산한다. `ANY`는 사유가 하나 이상인 공고를 중복 제거한다. 기존 `unconfirmed=true`도 지원한다.
+- 운영 홈의 단지·공고 숫자는 동일한 집계 기준의 목록 필터로 연결한다. 공고 목록 요약의 `applicationStatus`·`attentionReasons`·`processingStage`가 접수 상태, 확인 사유와 처리 단계를 제공한다. 처리할 일의 단계 숫자는 `applicationStatus=OPEN&stage=…` 목록으로 연결한다.
 
 ### 공고문과 PDF 보정
 

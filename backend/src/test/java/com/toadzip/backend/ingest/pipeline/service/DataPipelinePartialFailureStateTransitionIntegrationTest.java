@@ -31,6 +31,7 @@ import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationExecutionService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
@@ -370,7 +371,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         catch (DataPipelinePartialFailureException exception) {
             new DataPipelineFailureRecorder(executionStateService, Clock.fixed(STARTED_AT, ZoneOffset.UTC)).record(
                     executionId, DataPipelineType.COMPLEX_REFINEMENT, exception.getStep(),
-                    exception.getMessage(), exception.getServerResponse());
+                    exception.getMessage(), exception.getServerResponse(), DataPipelineFailureCause.PARTIAL, null);
         }
     }
 

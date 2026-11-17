@@ -6,6 +6,7 @@ const sources: Record<string,string> = {
   MYHOME_COMPLEX:'마이홈 단지 수집', MYHOME_ANNOUNCEMENT:'마이홈 공고 수집',
   LH_LEASE_CATALOG:'LH 임대 단지 목록', LH_ANNOUNCEMENT_CATALOG:'LH 공고 목록',
   LH_ANNOUNCEMENT_DETAIL:'LH 공고 상세', LH_ANNOUNCEMENT_SUPPLY:'LH 공급정보',
+  SH_ANNOUNCEMENT:'SH 공고 게시판', GH_ANNOUNCEMENT:'GH 공고 게시판',
 }
 const supplies: Record<string,string> = {'01':'영구임대','02':'국민임대','03':'50년 공공임대',
   '05':'10년 공공임대','06':'5년 공공임대','10':'행복주택','12':'통합공공임대'}
@@ -26,8 +27,13 @@ export function failureTarget(row: IngestFailure) {
     title = supplies[code] ?? `공급 유형 코드 ${code}`
   } else if (params.has('PAN_ID')) {
     title = `공고 ${params.get('PAN_ID')}`
+  } else if (params.has('seq') || params.has('pbancNo')) {
+    // SH 게시판은 글 번호(seq), GH 게시판은 공고 번호(pbancNo)로 상세를 받는다.
+    title = `공고 ${params.get('seq') ?? params.get('pbancNo')}`
+  } else if (params.has('page')) {
+    title = '공고 목록'
   }
-  const page = params.get('pageNo') ?? params.get('PAGE')
+  const page = params.get('pageNo') ?? params.get('PAGE') ?? params.get('page')
   const size = params.get('numOfRows') ?? params.get('PG_SZ')
   const parts = [page && /^[0-9]+$/.test(page) ? `요청 ${page}페이지` : null,
     size && /^[0-9]+$/.test(size) ? `페이지당 ${size}건` : null].filter(Boolean)

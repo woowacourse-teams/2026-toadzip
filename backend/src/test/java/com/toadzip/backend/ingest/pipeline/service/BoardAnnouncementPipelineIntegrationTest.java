@@ -85,6 +85,7 @@ class BoardAnnouncementPipelineIntegrationTest {
         jdbc.update("DELETE FROM gh_announcement_source");
         jdbc.update("DELETE FROM sh_announcement_source");
         jdbc.update("DELETE FROM external_data_collection_failures");
+        jdbc.update("DELETE FROM announcement_refinement_failures");
     }
 
     @ParameterizedTest
@@ -177,6 +178,43 @@ class BoardAnnouncementPipelineIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
+    void 지난_묶음_읽기_실패는_호출제한으로_멈춘_실행에서는_남고_모든_요청을_읽은_실행에서_해결된다(DataPipelineType type) {
+        jdbc.update("""
+                INSERT INTO announcement_refinement_failures (provider, source_key, reason, detail, status,
+                    occurred_at, last_occurred_at, occurrence_count, recurrence_count)
+                VALUES (?, ?, 'SOURCE_LOOKUP_FAILED', '조회 실패', 'PENDING', now(), now(), 1, 0)
+                """, agency(type), agency(type) + " 페이지 999");
+        boardList(type, 1, 11, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110);
+        boardList(type, 2, 11, 111);
+        for (int id = 101; id <= 111; id++) {
+            boardDetail(type, id);
+        }
+        if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
+            doThrow(ExternalDataRequestException.rateLimited("호출 제한")).when(shExternal).fetchDetail("111");
+        }
+        else {
+            doThrow(ExternalDataRequestException.rateLimited("호출 제한")).when(ghExternal)
+                    .fetchDetail(RENTAL_HOUSE, "111", "01");
+        }
+
+        var limited = service.start(type);
+        task.get().run();
+        assertThat(query.find(limited.executionId()).status())
+                .isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
+        assertThat(jdbc.queryForObject("SELECT status FROM announcement_refinement_failures", String.class))
+                .isEqualTo("PENDING");
+
+        boardDetail(type, 111);
+        var complete = service.start(type);
+        task.get().run();
+        assertThat(query.find(complete.executionId()).status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(jdbc.queryForMap("SELECT status, last_resolved_execution_id FROM announcement_refinement_failures"))
+                .containsEntry("status", "RESOLVED")
+                .containsEntry("last_resolved_execution_id", complete.executionId());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
     void 한_원천_정제가_실패해도_다른_공고_커밋과_실패_보고서는_보존한다(DataPipelineType type) {
         String rejected = "GH:801";
         if (type == DataPipelineType.SH_ANNOUNCEMENT_COLLECTION) {
@@ -198,9 +236,48 @@ class BoardAnnouncementPipelineIntegrationTest {
             assertThat(jdbc.queryForObject("SELECT release_status FROM announcements", String.class))
                     .isEqualTo("UNCONFIRMED");
             assertThat(count("announcement_attachments")).isOne();
+            assertThat(jdbc.queryForMap("SELECT provider, source_key, source_announcement_identifier, reason, status, "
+                    + "last_execution_id FROM announcement_refinement_failures"))
+                    .containsEntry("provider", agency(type)).containsEntry("source_key", rejected)
+                    .containsEntry("source_announcement_identifier", rejected)
+                    .containsEntry("reason", "SOURCE_REFINEMENT_FAILED").containsEntry("status", "PENDING")
+                    .containsEntry("last_execution_id", accepted.executionId());
         }
         finally {
             jdbc.execute("ALTER TABLE announcements DROP CONSTRAINT board_pipeline_test_failure");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {"SH_ANNOUNCEMENT_COLLECTION", "GH_ANNOUNCEMENT_COLLECTION"})
+    void 다음_페이지_원천_저장이_예외로_끝나도_앞_페이지에서_난_원천_정제_실패는_실패_목록에_남는다(DataPipelineType type) {
+        // 외부 기관 오류는 수집이 기록하고 이어 가지만 원천 저장(DB) 실패는 수집을 예외로 끝낸다.
+        boardList(type, 1, 11, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110);
+        boardList(type, 2, 11, 111);
+        for (int id = 101; id <= 111; id++) {
+            boardDetail(type, id);
+        }
+        String rejected = agency(type) + ":105";
+        String sourceTable = agency(type).toLowerCase() + "_announcement_source";
+        jdbc.execute("ALTER TABLE announcements ADD CONSTRAINT board_pipeline_test_failure "
+                + "CHECK (source_announcement_identifier <> '" + rejected + "') NOT VALID");
+        jdbc.execute("ALTER TABLE " + sourceTable + " ADD CONSTRAINT board_pipeline_store_failure "
+                + "CHECK (source_key <> '" + agency(type) + ":111') NOT VALID");
+        try {
+            var accepted = service.start(type);
+            task.get().run();
+            var result = query.find(accepted.executionId());
+
+            assertThat(result.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+            assertThat(count("announcements")).isEqualTo(9);
+            assertThat(jdbc.queryForMap("SELECT source_key, reason, status, last_execution_id "
+                    + "FROM announcement_refinement_failures"))
+                    .containsEntry("source_key", rejected).containsEntry("reason", "SOURCE_REFINEMENT_FAILED")
+                    .containsEntry("status", "PENDING").containsEntry("last_execution_id", accepted.executionId());
+        }
+        finally {
+            jdbc.execute("ALTER TABLE announcements DROP CONSTRAINT board_pipeline_test_failure");
+            jdbc.execute("ALTER TABLE " + sourceTable + " DROP CONSTRAINT board_pipeline_store_failure");
         }
     }
 
@@ -228,6 +305,9 @@ class BoardAnnouncementPipelineIntegrationTest {
         assertThat(result.failure().serverResponse().toString()).contains("failed=1", "collection");
         assertThat(count(agency(type).toLowerCase() + "_announcement_source")).isEqualTo(2);
         assertThat(count("announcements")).isZero();
+        var failure = jdbc.queryForMap("SELECT provider, source_key, reason FROM announcement_refinement_failures");
+        assertThat(failure).containsEntry("provider", agency(type)).containsEntry("reason", "SOURCE_LOOKUP_FAILED");
+        assertThat(failure.get("source_key")).asString().startsWith(agency(type) + " 페이지 ");
     }
 
     @ParameterizedTest

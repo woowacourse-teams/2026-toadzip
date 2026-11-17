@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementQuerySo
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
@@ -126,7 +127,8 @@ class SourceCollectionRecoveryIntegrationTest {
         Instant restartedAt = STARTED_AT.plusSeconds(60);
         states.recoverInterruptedBefore(restartedAt.minusSeconds(120), restartedAt, RECOVERY_REASON);
         UUID latestId = execution(restartedAt);
-        states.fail(latestId, null, "최신 실행 실패", "{}", restartedAt.plusSeconds(1));
+        states.fail(latestId, null, "최신 실행 실패", "{}", DataPipelineFailureCause.INTERNAL, null,
+                restartedAt.plusSeconds(1));
         entityManager.clear();
 
         var history = queryService(unlockedPipelineLock()).history(0, 100);
@@ -177,7 +179,8 @@ class SourceCollectionRecoveryIntegrationTest {
             try {
                 recordService.fail(recordId, request, failure);
                 assertThat(failure.getSuppressed()).hasSize(1);
-                states.fail(id, null, "원래 실행 실패", "{\"marker\":1}", STARTED_AT.plusSeconds(60));
+                states.fail(id, null, "원래 실행 실패", "{\"marker\":1}", DataPipelineFailureCause.INTERNAL, null,
+                        STARTED_AT.plusSeconds(60));
                 assertThat(queryService(unlockedPipelineLock()).find(id).status())
                         .isEqualTo(DataPipelineExecutionStatus.FAILED);
                 assertThat(records.findById(recordId).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
@@ -238,6 +241,9 @@ class SourceCollectionRecoveryIntegrationTest {
             assertThat(found.getErrorType()).isEqualTo("InterruptedExecution");
             assertThat(found.getFailureReason()).isEqualTo(RECOVERY_REASON);
         });
+        // 서버가 멈춰 끝난 실행은 다시 실행하면 이어서 받는다.
+        assertThat(executions.findByExecutionId(executionId).orElseThrow().getFailureCause())
+                .isEqualTo(DataPipelineFailureCause.TRANSIENT);
         assertThat(records.findById(successful.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.SUCCESS);
         assertThat(records.findById(failed.getId()).orElseThrow().getFailureReason()).isEqualTo("외부 응답 실패");
         assertThat(records.findById(imported.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.IMPORTED);

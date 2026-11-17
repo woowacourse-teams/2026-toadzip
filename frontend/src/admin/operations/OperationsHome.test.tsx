@@ -2,11 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { OperationsHome } from './OperationsHome'
-import { loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadUserOverview } from './api'
+import { loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadTasksOverview, loadUserOverview } from './api'
 import { listFeedback } from '../feedback/api'
 import { listDeliveries } from '../notifications/deliveryApi'
 import { loadNotificationSubscriptions, loadNotificationTrend } from '../notifications/api'
-vi.mock('./api', () => ({ loadAnnouncementOverview: vi.fn(), loadCollectionOverview: vi.fn(), loadComplexOverview: vi.fn(), loadUserOverview: vi.fn() }))
+vi.mock('./api', () => ({ loadAnnouncementOverview: vi.fn(), loadCollectionOverview: vi.fn(), loadComplexOverview: vi.fn(), loadTasksOverview: vi.fn(), loadUserOverview: vi.fn() }))
 vi.mock('../feedback/api', () => ({ listFeedback: vi.fn() }))
 vi.mock('../notifications/deliveryApi', () => ({ listDeliveries: vi.fn() }))
 vi.mock('../notifications/api', () => ({ loadNotificationSubscriptions: vi.fn(), loadNotificationTrend: vi.fn() }))
@@ -29,6 +29,8 @@ beforeEach(() => {
     { agency: 'GH', lastSuccessAt: asOf, latestStartedAt: asOf, latestStatus: 'COMPLETED' },
   ], asOf })
   vi.mocked(loadUserOverview).mockImplementation(async days => userOverview(days))
+  vi.mocked(loadTasksOverview).mockResolvedValue({ stages: { PDF_MISSING: 1, NOT_EXTRACTED: 46, EXTRACTING: 2, EXTRACTION_FAILED: 3, REVIEW_PENDING: 4, CONFIRMED: 8, RECHECK_REQUIRED: 0 },
+    queue: { waiting: 2, running: 1, oldestWaitSeconds: 754, recentFailed: 5 }, unresolvedFailures: 7, asOf })
   vi.mocked(listFeedback).mockResolvedValue(page)
   vi.mocked(listDeliveries).mockImplementation(async params => ({ ...page, totalElements: params.get('status') === 'FAILED' ? 2 : 4 }))
   vi.mocked(loadNotificationSubscriptions).mockResolvedValue({ ...page, summary: { activeMembers: 128, activeSubscriptions: 347, asOf } })
@@ -46,6 +48,27 @@ it('네 패널의 집계와 기존 관리 페이지의 지원 필터를 연결�
   expect(screen.getByRole('link', { name: /재시도 대기 4/ })).toHaveAttribute('href', '/admin/notification-deliveries?status=RETRY')
   expect(screen.getByRole('link', { name: /모집중/ })).toHaveAttribute('href', '/admin/complexes?recruiting=true')
   expect(screen.getByRole('button', { name: /카카오톡 메시지 발송/ })).toBeInTheDocument()
+})
+it('처리할 일은 마감 전 공고 단계별 수를 같은 범위의 공고 목록 필터로 연결하고 AI 큐와 미해결 실패를 보인다', async () => {
+  show()
+  const tasks = screen.getByRole('region', { name: '처리할 일' })
+  await waitFor(() => expect(within(tasks).getByText('마감 전 공고 64')).toBeInTheDocument())
+  const stages = within(within(tasks).getByRole('list', { name: '공고 처리 단계' }))
+  expect(stages.getByRole('link', { name: '추출 실패 3' })).toHaveAttribute('href', '/admin/announcements?applicationStatus=OPEN&stage=EXTRACTION_FAILED')
+  expect(stages.getByRole('link', { name: '검토 대기 4' })).toHaveAttribute('data-action', 'true')
+  expect(stages.getByRole('link', { name: '추출 전 46' })).not.toHaveAttribute('data-action')
+  expect(stages.getAllByRole('link')).toHaveLength(7)
+  expect(within(tasks).getByText('AI 추출 대기').parentElement).toHaveTextContent('처리 중 1 · 가장 오래 기다림 12분 · 최근 24시간 실패 5')
+  expect(within(tasks).getByRole('link', { name: /미해결 수집·정제 실패 7/ })).toHaveAttribute('href', '/admin/failures?domain=announcement&category=all')
+  expect(screen.getByRole('link', { name: /확인 필요 21/ })).toHaveAttribute('href', '/admin/announcements?attention=ANY')
+})
+it('처리할 일 조회가 실패하면 0건 대신 조회 실패를 보이고 다른 패널은 그대로 둔다', async () => {
+  vi.mocked(loadTasksOverview).mockRejectedValueOnce(new Error('연결 실패'))
+  show()
+  const tasks = screen.getByRole('region', { name: '처리할 일' })
+  await waitFor(() => expect(within(tasks).getByRole('alert')).toHaveTextContent('연결 실패'))
+  expect(within(tasks).getByRole('link', { name: '추출 실패 조회 실패' })).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByLabelText('공고중 건수')).toHaveTextContent('24'))
 })
 it('기간을 바꾸면 가입과 신청·취소만 바뀌고 현재 현황은 유지한다', async () => {
   show()

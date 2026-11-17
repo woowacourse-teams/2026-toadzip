@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.repository.SourceCollectionRecordRepository;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
@@ -118,6 +119,8 @@ public class DataPipelineExecutionStateService {
             DataPipelineStep failedStep,
             String message,
             String serverResponse,
+            DataPipelineFailureCause cause,
+            String detail,
             Instant failedAt
     ) {
         DataPipelineExecution execution = executionRepository.findByExecutionIdForUpdate(executionId)
@@ -125,7 +128,7 @@ public class DataPipelineExecutionStateService {
         if (!execution.isRunning()) {
             return;
         }
-        execution.fail(failedStep, message, serverResponse, failedAt);
+        execution.fail(failedStep, message, serverResponse, cause, detail, failedAt);
         executionRepository.flush();
     }
 
@@ -138,7 +141,7 @@ public class DataPipelineExecutionStateService {
     }
 
     private void failInterruptedExecution(DataPipelineExecution execution, Instant failedAt, String message) {
-        execution.fail(execution.getCurrentStep(), message, null, failedAt);
+        execution.fail(execution.getCurrentStep(), message, null, DataPipelineFailureCause.TRANSIENT, null, failedAt);
         collectionRecords.findAllByExecutionIdAndStatusOrderByStartedAtAscIdAsc(
                 execution.getExecutionId(), CollectionStatus.RUNNING).forEach(
                         record -> record.fail(failedAt, "InterruptedExecution", message));

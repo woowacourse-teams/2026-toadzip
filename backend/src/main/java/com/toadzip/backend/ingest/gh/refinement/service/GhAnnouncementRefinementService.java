@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.gh.refinement.service;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.refinement.domain.BoardRefinementOutcome;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.gh.collection.domain.GhAnnouncementSource;
@@ -43,7 +44,7 @@ public class GhAnnouncementRefinementService {
     /** 한 번의 실행에서 페이지마다 이어 정제하고 결과를 누적할 정제 실행을 시작한다. */
     public Run begin() {
         IngestExecutionScope.requireHeld();
-        return new Run(runner.begin("GH 공고 정제", BoardRefinementOutcome.class));
+        return new Run(runner.begin("GH 공고 정제", AgencyCode.GH, BoardRefinementOutcome.class));
     }
 
     public final class Run {
@@ -81,9 +82,18 @@ public class GhAnnouncementRefinementService {
             });
         }
 
-        /** 정제 때 원공고를 찾지 못한 정정공고를, 이번 실행에서 원공고가 정제된 뒤 다시 잇는다. */
-        public void finish() {
+        /** 수집이 예외로 멈췄을 때 그때까지 정제하며 본 실패를 실패 목록에 남긴다. */
+        public void abandon(RuntimeException stopped) {
+            run.recordFailuresAfter(stopped);
+        }
+
+        /**
+         * 정제 때 원공고를 찾지 못한 정정공고를, 이번 실행에서 원공고가 정제된 뒤 다시 잇고 정제 실패를 실패 목록에 맞춘다.
+         * everyRequestRead는 수집이 모든 요청을 실패 없이 읽었는지다.
+         */
+        public void finish(boolean everyRequestRead) {
             revisionLinker.relinkUnlinked(run, revisions, BoardRevisionName::gh);
+            run.recordFailures(everyRequestRead);
         }
 
         /** 단지 색인은 실행당 한 번, 정제할 원천이 처음 나올 때 만든다. 원천을 읽는 트랜잭션 안에서 부른다. */

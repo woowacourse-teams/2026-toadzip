@@ -4,6 +4,7 @@ import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { PipelineNextActions } from './PipelineNextActions'
+import { PipelineFailureGuidance } from './PipelineFailureGuidance'
 import { InitialRegistrationResultNotice } from './InitialRegistrationReport'
 
 export type PipelineViewState = {
@@ -123,6 +124,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
       </details>)}
       </details>
       {failureMessage ? <p role="alert" className="data-pipeline-error">{failureMessage}</p> : null}
+      {state.requestError === null ? <PipelineFailureGuidance execution={execution} /> : null}
       {type === 'COMPLEX_REGISTRATION' ? <InitialRegistrationResultNotice /> : type.endsWith('_SYNC') ? (
         <div>
           <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=collection&executionId=${execution.executionId ?? ''}`}>{label} 수집 실패 요청 보기</Link>{' · '}

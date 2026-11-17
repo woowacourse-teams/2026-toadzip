@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.sh.refinement.service;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.refinement.domain.BoardRefinementOutcome;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.refinement.domain.BoardRevisionName;
@@ -39,7 +40,7 @@ public class ShAnnouncementRefinementService {
     /** 한 번의 실행에서 페이지마다 이어 정제하고 결과를 누적할 정제 실행을 시작한다. */
     public Run begin() {
         IngestExecutionScope.requireHeld();
-        return new Run(runner.begin("SH 공고 정제", BoardRefinementOutcome.class));
+        return new Run(runner.begin("SH 공고 정제", AgencyCode.SH, BoardRefinementOutcome.class));
     }
 
     public final class Run {
@@ -65,9 +66,18 @@ public class ShAnnouncementRefinementService {
                     }, (source, outcome) -> revisions.commit(source.getSourceKey(), attempt));
         }
 
-        /** 정제 때 원공고를 찾지 못한 정정공고를, 이번 실행에서 원공고가 정제된 뒤 다시 잇는다. */
-        public void finish() {
+        /** 수집이 예외로 멈췄을 때 그때까지 정제하며 본 실패를 실패 목록에 남긴다. */
+        public void abandon(RuntimeException stopped) {
+            run.recordFailuresAfter(stopped);
+        }
+
+        /**
+         * 정제 때 원공고를 찾지 못한 정정공고를, 이번 실행에서 원공고가 정제된 뒤 다시 잇고 정제 실패를 실패 목록에 맞춘다.
+         * everyRequestRead는 수집이 모든 요청을 실패 없이 읽었는지다.
+         */
+        public void finish(boolean everyRequestRead) {
             revisionLinker.relinkUnlinked(run, revisions, BoardRevisionName::sh);
+            run.recordFailures(everyRequestRead);
         }
 
         public ShAnnouncementRefinementReport report() {

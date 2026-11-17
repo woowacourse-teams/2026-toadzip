@@ -33,8 +33,13 @@ it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분�
 })
 
 it('공고 표는 접수 상태와 접수 기간을 함께 표시한다', () => {
-  render(<MemoryRouter><ManagementSummaryTable items={[announcement]} resource="announcements" /></MemoryRouter>)
+  const view = render(<MemoryRouter><ManagementSummaryTable items={[announcement]} resource="announcements" /></MemoryRouter>)
   expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '접수 상태', '공고 구분', '게시일', '접수 기간', '확인할 상태'])
+  view.unmount()
+  // 처리 단계는 공고 관리 목록 응답에만 있어 그때만 열을 둔다.
+  render(<MemoryRouter><ManagementSummaryTable items={[{ ...announcement, announcement: { ...announcement.announcement!, processingStage: 'NOT_EXTRACTED' } }]} resource="announcements" /></MemoryRouter>)
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['공고명', '공급 기관', '공급 유형', '접수 상태', '처리 단계', '공고 구분', '게시일', '접수 기간', '확인할 상태'])
+  expect(screen.getByRole('cell', { name: '추출 전' })).toBeVisible()
   expect(screen.getByRole('columnheader', { name: '접수 상태' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '2026-10-10 ~ 2026-10-15' })).toBeVisible()
   expect(screen.queryByText('LH-7')).not.toBeInTheDocument()
@@ -216,6 +221,25 @@ it('공고 목록은 미확정 공고만 보는 필터를 서버로 보내고 �
   expect(screen.queryByRole('combobox', { name: '확인 필요' })).not.toBeInTheDocument()
 })
 
+it('운영 홈에서 온 마감 전·처리 단계 조건을 서버로 보내고 행마다 처리 단계를 보인다', async () => {
+  const review = { ...announcement, announcement: { ...announcement.announcement!, applicationStatus: 'APPLYING', processingStage: 'REVIEW_PENDING' } }
+  mocks.getManagementPage.mockResolvedValue(page(review))
+  render(<MemoryRouter initialEntries={['/admin/announcements?applicationStatus=OPEN&stage=REVIEW_PENDING']}><ManagementList resource="announcements" /></MemoryRouter>)
+  expect(await screen.findByRole('combobox', { name: '처리 단계' })).toHaveValue('REVIEW_PENDING')
+  expect(screen.getByRole('combobox', { name: '접수 상태' })).toHaveValue('OPEN')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('stage')).toBe('REVIEW_PENDING')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('applicationStatus')).toBe('OPEN')
+  expect(await screen.findByRole('cell', { name: '검토 대기' })).toBeVisible()
+  fireEvent.change(screen.getByRole('combobox', { name: '처리 단계' }), { target: { value: 'EXTRACTION_FAILED' } })
+  await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('stage')).toBe('EXTRACTION_FAILED'))
+})
+
+it('처리 단계 응답은 아는 단계만 받는다', () => {
+  const detail = (stage: unknown) => ({ summary: { ...announcement, announcement: { ...announcement.announcement, processingStage: stage } }, sourceIdentifier: 'TEST', data: { version: 1 } })
+  expect(parseManagementDetail(detail('CONFIRMED')).summary.announcement?.processingStage).toBe('CONFIRMED')
+  expect(parseManagementDetail(detail(null)).summary.announcement?.processingStage).toBeNull()
+  expect(() => parseManagementDetail(detail('DONE'))).toThrow('상세 응답이 올바르지 않습니다.')
+})
 
 it('필터는 제출한 검색어로 즉시 조회하고 작성 중 검색어를 보존한다', async () => {
   render(<MemoryRouter initialEntries={['/admin/complexes?keyword=서울&page=2']}><ManagementList resource="complexes" /></MemoryRouter>)

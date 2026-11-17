@@ -9,8 +9,10 @@ import com.toadzip.backend.announcement.domain.PdfExtractionJobView;
 import com.toadzip.backend.announcement.domain.PdfExtractionSource;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.List;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -149,6 +151,68 @@ class PdfExtractionJobRepositoryTest {
                 .extracting(PdfExtractionJobView::status).isEqualTo(PdfExtractionJobStatus.PENDING);
     }
 
+    @Test
+    void 큐_요약은_대기_재시도_처리중_수와_가장_오래된_대기와_기간_안에_끝난_작업만_센다() {
+        Instant since = Instant.parse("2026-11-01T00:00:00Z");
+        long oldWaiting = jobs.saveAndFlush(PdfExtractionJob.requestedByAdmin(ANNOUNCEMENT, "admin",
+                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T05:00:00Z"))).getId();
+        jobs.saveAndFlush(PdfExtractionJob.requestedByAdmin(ANNOUNCEMENT + 1, "admin",
+                PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T06:00:00Z")));
+        long retrying = finished(ANNOUNCEMENT + 2, "RETRY", null);
+        long running = finished(ANNOUNCEMENT + 3, "RUNNING", null);
+        started(finished(ANNOUNCEMENT + 4, "SUCCEEDED", "2026-11-01T01:00:20Z"), "2026-11-01T01:00:00Z");
+        started(finished(ANNOUNCEMENT + 5, "SUCCEEDED", "2026-11-01T02:01:00Z"), "2026-11-01T02:00:00Z");
+        started(finished(ANNOUNCEMENT + 6, "SUCCEEDED", "2026-10-31T23:59:00Z"), "2026-10-31T23:00:00Z");
+        finished(ANNOUNCEMENT + 7, "FAILED", "2026-11-01T03:00:00Z");
+        finished(ANNOUNCEMENT + 8, "FAILED", "2026-10-31T12:00:00Z");
+
+        var summary = jobs.summarizeQueue(PdfExtractionJob.KIND, since);
+
+        assertThat(summary.getPending()).isEqualTo(2);
+        assertThat(summary.getRetrying()).isEqualTo(1);
+        assertThat(summary.getRunning()).isEqualTo(1);
+        // 재시도 대기 작업은 finished 도움 함수가 2026-11-01T00:00Z에 넣어 가장 오래 기다렸다.
+        assertThat(summary.getOldestWaitingSince()).isEqualTo(Instant.parse("2026-11-01T00:00:00Z"));
+        assertThat(summary.getSucceeded()).isEqualTo(2);
+        assertThat(summary.getFailed()).isEqualTo(1);
+        assertThat(summary.getAverageProcessingSeconds()).isEqualTo(40.0);
+        assertThat(summary.getMaxProcessingSeconds()).isEqualTo(60.0);
+        assertThat(List.of(oldWaiting, retrying, running)).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void 작업이_없으면_큐_요약은_0이고_시각과_처리_시간은_비어_있다() {
+        var summary = jobs.summarizeQueue(PdfExtractionJob.KIND, Instant.parse("2026-11-01T00:00:00Z"));
+
+        assertThat(summary.getPending() + summary.getRetrying() + summary.getRunning()).isZero();
+        assertThat(summary.getOldestWaitingSince()).isNull();
+        assertThat(summary.getAverageProcessingSeconds()).isNull();
+    }
+
+    @Test
+    void 앞선_작업은_처리_중인_작업과_워커가_먼저_꺼낼_작업만_센다() {
+        // now 01:00, 꺼내기 기한은 넣은 지 30분이다. 아래 순서대로 넣어 id 순서가 곧 꺼내는 순서다.
+        Instant now = Instant.parse("2026-11-01T01:00:00Z");
+        queued(ANNOUNCEMENT, "PENDING", "00:20", "00:20", null, 0);
+        queued(ANNOUNCEMENT + 1, "RETRY", "00:40", "01:05", null, 1);
+        queued(ANNOUNCEMENT + 2, "RETRY", "00:40", "00:59", null, 1);
+        queued(ANNOUNCEMENT + 3, "RUNNING", "00:10", "00:10", "01:02", 1);
+        queued(ANNOUNCEMENT + 4, "RUNNING", "00:45", "00:45", "00:58", 1);
+        queued(ANNOUNCEMENT + 5, "RUNNING", "00:45", "00:45", "00:58", 3);
+        long otherKind = queued(ANNOUNCEMENT + 6, "PENDING", "00:50", "00:50", null, 0);
+        entityManager.createNativeQuery("UPDATE ai_jobs SET kind = 'OTHER_EXTRACTION' WHERE id = :id")
+                .setParameter("id", otherKind).executeUpdate();
+        finished(ANNOUNCEMENT + 7, "SUCCEEDED", "2026-11-01T00:57:00Z");
+        long target = queued(ANNOUNCEMENT + 8, "PENDING", "00:55", "00:55", null, 0);
+        queued(ANNOUNCEMENT + 9, "PENDING", "00:56", "00:56", null, 0);
+
+        long ahead = jobs.countAhead(target, now, now.minus(Duration.ofMinutes(30)), 3);
+
+        // 꺼내기 기한이 지난 대기, 재시도 시각 전, 시도를 다 쓴 lease 만료, 끝난 작업과 뒤에 넣은 작업은 빠진다.
+        // 처리 중(lease 유효), 재시도 시각이 된 재시도, 다시 꺼낼 lease 만료, 다른 종류의 대기가 남는다.
+        assertThat(ahead).isEqualTo(4);
+    }
+
     private static PdfExtractionJob job(long announcementId) {
         return PdfExtractionJob.requestedByAdmin(announcementId, "admin",
                 PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T00:00:00Z"));
@@ -178,5 +242,35 @@ class PdfExtractionJobRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
         return job.getId();
+    }
+
+    /** 시각은 2026-11-01의 시:분이다. 워커의 꺼내기 조건에 쓰는 칸을 SQL로 직접 맞춘다. */
+    private long queued(long announcementId, String status, String createdAt, String nextAttemptAt, String leaseUntil,
+            int attempts) {
+        PdfExtractionJob job = jobs.saveAndFlush(job(announcementId));
+        String lease = null;
+        if (leaseUntil != null) {
+            lease = "2026-11-01T" + leaseUntil + ":00Z";
+        }
+        entityManager.createNativeQuery("""
+                UPDATE ai_jobs SET status = :status, created_at = CAST(:createdAt AS timestamptz),
+                    next_attempt_at = CAST(:nextAttemptAt AS timestamptz),
+                    lease_until = CAST(:leaseUntil AS timestamptz), attempts = :attempts
+                WHERE id = :id
+                """)
+                .setParameter("status", status)
+                .setParameter("createdAt", "2026-11-01T" + createdAt + ":00Z")
+                .setParameter("nextAttemptAt", "2026-11-01T" + nextAttemptAt + ":00Z")
+                .setParameter("leaseUntil", lease)
+                .setParameter("attempts", attempts)
+                .setParameter("id", job.getId())
+                .executeUpdate();
+        entityManager.clear();
+        return job.getId();
+    }
+
+    private void started(long id, String startedAt) {
+        entityManager.createNativeQuery("UPDATE ai_jobs SET started_at = CAST(:startedAt AS timestamptz) WHERE id = :id")
+                .setParameter("startedAt", startedAt).setParameter("id", id).executeUpdate();
     }
 }

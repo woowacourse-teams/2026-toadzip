@@ -8,6 +8,7 @@ import { pipelineLabels, pipelineStatusLabels, retiredAnnouncementRegistrationNo
 import styles from './PipelineExecutionSteps.module.css'
 import { isRecord } from '../management/managementContract'
 import { PipelineNextActions } from './PipelineNextActions'
+import { PipelineFailureGuidance } from './PipelineFailureGuidance'
 
 export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled, focused = false, pending = false, children }: {
   execution: DataPipelineExecution; onStop?: () => void; stopping?: boolean
@@ -58,6 +59,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {focused && execution.status === 'RUNNING' && <h4>{execution.currentStepName ?? '첫 단계 준비 중'}</h4>}
     {execution.status === 'RUNNING' && <DataPipelineProgress execution={execution} label={label} />}
     {execution.failure && <p role="alert" className="form-error">{execution.failure.message}</p>}
+    <PipelineFailureGuidance execution={execution} />
     {execution.type === 'ANNOUNCEMENT_REGISTRATION' && <p role="note">{retiredAnnouncementRegistrationNotice}</p>}
     {execution.status === 'RUNNING' && onStop && <button type="button" disabled={stopping || execution.stopRequested || !execution.executionId}
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : `${label} 실행 중지`}</button>}

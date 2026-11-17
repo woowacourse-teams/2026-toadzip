@@ -27,4 +27,14 @@ public final class OperationsOverview {
 
     public record Collection(String agency, Instant lastSuccessAt, Instant latestStartedAt, String latestStatus) {
     }
+
+    /**
+     * 처리할 일. stages는 휴지통을 뺀 마감 전 공고의 처리 단계별 수, unresolvedFailures는 공고 쪽 미해결 수집·정제 실패 수다.
+     */
+    public record Tasks(Map<String, Long> stages, AiQueue queue, long unresolvedFailures, Instant asOf) {
+    }
+
+    /** 공고문 PDF 추출 작업 큐. oldestWaitSeconds는 기다리는 작업이 없으면 null, recentFailed는 최근 24시간에 실패로 끝난 수다. */
+    public record AiQueue(long waiting, long running, Long oldestWaitSeconds, long recentFailed) {
+    }
 }

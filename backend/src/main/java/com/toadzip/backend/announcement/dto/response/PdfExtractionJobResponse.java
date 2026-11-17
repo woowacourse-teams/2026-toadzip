@@ -15,6 +15,7 @@ import java.time.Instant;
  * @param failure 실패 사유. FAILED가 아니면 null이다.
  * @param retryReason 직전 시도의 일시 오류. RETRY가 아니면 null이다. 화면이 재시도를 기다리는 동안 보여 준다.
  * @param extraction 추출 결과. SUCCEEDED가 아니면 null이다.
+ * @param queue 큐 위치. PENDING·RETRY가 아니면 null이다.
  */
 public record PdfExtractionJobResponse(
         long jobId,
@@ -26,9 +27,19 @@ public record PdfExtractionJobResponse(
         Instant completedAt,
         Failure failure,
         Failure retryReason,
-        AnnouncementPdfExtraction extraction
+        AnnouncementPdfExtraction extraction,
+        Queue queue
 ) {
     /** code는 워커가 정한 고정 값, message는 관리자에게 보여 줄 공개 문구다. */
     public record Failure(String code, String message) {
+    }
+
+    /**
+     * 기다리는 작업의 큐 위치.
+     *
+     * @param ahead 이 작업보다 먼저 처리될 작업 수(지금 처리 중인 작업 포함)
+     * @param estimatedWaitSeconds 시작까지 걸릴 추정 시간(초). 최근 처리 시간으로 어림한 값이며, 모르면 null이다.
+     */
+    public record Queue(long ahead, Long estimatedWaitSeconds) {
     }
 }

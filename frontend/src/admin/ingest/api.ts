@@ -32,10 +32,16 @@ export type DataPipelineWarningStep = {
   report: unknown
 }
 
+/** TRANSIENT는 잠시 뒤 다시 실행, PARTIAL은 일부 대상 실패, INTERNAL은 서버 내부 오류다. 원인을 남기기 전의 실패는 null이다. */
+export type DataPipelineFailureCause = 'TRANSIENT' | 'PARTIAL' | 'INTERNAL'
+
 export type DataPipelineFailure = {
   stepName: string | null
   message: string
   serverResponse: unknown
+  cause?: DataPipelineFailureCause | null
+  /** 원인 요약. 외부 기관 오류면 비밀값을 가린 메시지, 내부 오류면 예외 종류다. */
+  detail?: string | null
 }
 
 export type DataPipelineWorkProgress = {
@@ -561,11 +567,15 @@ function isPipelineWarningStep(value: unknown): value is DataPipelineWarningStep
     && 'report' in value
 }
 
+const failureCauses: readonly unknown[] = ['TRANSIENT', 'PARTIAL', 'INTERNAL']
+
 function isPipelineFailure(value: unknown): value is DataPipelineFailure {
   return isRecord(value)
     && (typeof value.stepName === 'string' || value.stepName === null)
     && typeof value.message === 'string'
     && 'serverResponse' in value
+    && (value.cause === undefined || value.cause === null || failureCauses.includes(value.cause))
+    && (value.detail === undefined || value.detail === null || typeof value.detail === 'string')
 }
 
 function isCsrfToken(value: unknown): value is CsrfToken {
@@ -652,8 +662,11 @@ export const failureCategories = {
   complex: { label: '단지 정제', path: 'myhome/complex-mappings/failures' },
   announcement: { label: '공고 정제', path: 'myhome/announcement-mappings/failures' },
   enrichment: { label: 'LH 공고 보강', path: 'lh/announcement-enrichments/failures' },
+  // LH·SH·GH 공고 정제 실패는 실패 검토 API로만 읽는다.
+  refinement: { label: '기관 공고 정제', path: null },
 } as const
 export type FailureCategory = keyof typeof failureCategories
+type ListedFailureCategory = Exclude<FailureCategory, 'refinement'>
 export type IngestFailure = {
   target: string
   sourceKey: string
@@ -668,7 +681,7 @@ export type IngestFailure = {
 }
 
 export async function getIngestFailures(
-  category: FailureCategory, history: boolean, page: number,
+  category: ListedFailureCategory, history: boolean, page: number,
 ): Promise<readonly IngestFailure[]> {
   const needsPageSuffix = !history && category !== 'collection'
   const suffix = history ? '/history' : needsPageSuffix ? '/page' : ''
