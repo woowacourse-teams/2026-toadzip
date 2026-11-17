@@ -56,6 +56,8 @@ export type DataPipelineWorkProgress = {
 export type DataPipelineExecution = {
   executionId: string | null
   type: DataPipelineType
+  trigger?: 'MANUAL' | 'SCHEDULED' | 'RECOVERY' | null
+  collectionScope?: 'FULL' | 'INCREMENTAL' | null
   status: DataPipelineExecutionStatus
   currentStepName: string | null
   currentStepIndex: number

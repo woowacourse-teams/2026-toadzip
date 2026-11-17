@@ -32,7 +32,7 @@ class LhAnnouncementCollectionCandidateResolverTest {
     private static final Instant NOW = Instant.parse("2026-09-26T00:00:00Z");
 
     private final LhAnnouncementCollectionCandidateResolver resolver = new LhAnnouncementCollectionCandidateResolver(
-            catalogRepository, new LhAnnouncementCollectionPolicy(Clock.fixed(NOW, ZoneOffset.UTC), Period.ofDays(30)));
+            catalogRepository, new LhAnnouncementCollectionPolicy(Clock.fixed(NOW, ZoneOffset.UTC), Period.ofDays(30), Period.ofDays(3)));
 
     @Test
     void 공고목록의_임대주택_공고를_목록의_조회코드로_수집_후보로_만든다() {

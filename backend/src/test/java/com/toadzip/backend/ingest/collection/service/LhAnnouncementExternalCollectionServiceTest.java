@@ -122,7 +122,8 @@ class LhAnnouncementExternalCollectionServiceTest {
                         meterRegistry), failureRecorder, progressManager);
         LhAnnouncementCollectionPolicy collectionPolicy = new LhAnnouncementCollectionPolicy(
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                Period.ofDays(30)
+                Period.ofDays(30),
+                Period.ofDays(3)
         );
         return new LhAnnouncementExternalCollectionService(
                 new LhAnnouncementCollectionCandidateResolver(catalogRepository, collectionPolicy),

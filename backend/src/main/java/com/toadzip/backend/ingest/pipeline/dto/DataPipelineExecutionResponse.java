@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.dto;
 
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -14,6 +15,7 @@ public record DataPipelineExecutionResponse(
         DataPipelineType type,
         DataPipelineExecutionTrigger trigger,
         Instant scheduledAt,
+        DataPipelineCollectionScope collectionScope,
         UUID upstreamExecutionId,
         DataPipelineExecutionStatus status,
         DataPipelineStep currentStep,
@@ -46,6 +48,7 @@ public record DataPipelineExecutionResponse(
         return new DataPipelineExecutionResponse(
                 null,
                 type,
+                null,
                 null,
                 null,
                 null,

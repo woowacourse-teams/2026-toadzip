@@ -28,3 +28,4 @@
   .listCard :global(.pipeline-history-table) tr { padding-inline: var(--inset); }
   .detailCard { padding: 18px; }
 }
+.trigger { display: block; margin-top: 2px; color: var(--ds-color-muted); font-size: 12px; }

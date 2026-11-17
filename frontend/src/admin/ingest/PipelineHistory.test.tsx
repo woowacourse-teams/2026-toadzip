@@ -46,6 +46,19 @@ describe('데이터 실행 이력', () => {
     expect(detail).toHaveTextContent('상태 필터')
     expect(getFailureReviews).not.toHaveBeenCalled()
   })
+  it('스스로 시작한 공고 수집은 자동 표시와 받은 범위를 붙이고 관리자 실행에는 붙이지 않는다', async () => {
+    getHistory.mockResolvedValue([
+      execution({ executionId: 'auto-lh', type: 'ANNOUNCEMENT_SYNC', trigger: 'SCHEDULED', collectionScope: 'INCREMENTAL' }),
+      execution({ executionId: 'auto-sh', type: 'SH_ANNOUNCEMENT_COLLECTION', trigger: 'SCHEDULED', collectionScope: null }),
+      execution({ executionId: 'manual-lh', type: 'ANNOUNCEMENT_SYNC', trigger: 'MANUAL' }),
+    ])
+    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    const rows = (await screen.findAllByRole('row')).slice(1)
+    expect(rows[0]).toHaveTextContent('자동 · 최근분')
+    expect(rows[1]).toHaveTextContent('자동')
+    expect(rows[1]).not.toHaveTextContent('자동 ·')
+    expect(rows[2]).not.toHaveTextContent('자동')
+  })
   it('단지 이력은 아이콘으로 페이지 이동·새로고침·상세 닫기를 제공한다', async () => {
     const first = Array.from({ length: 20 }, (_, index) => execution({ executionId: `run-${index}` }))
     getHistory.mockResolvedValueOnce(first).mockResolvedValueOnce([execution()]).mockResolvedValueOnce(first).mockResolvedValueOnce(first)

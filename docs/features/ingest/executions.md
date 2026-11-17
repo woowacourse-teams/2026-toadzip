@@ -36,7 +36,7 @@
 
 ## 실행 방법
 
-- 수집·정제는 관리자 요청으로만 시작한다. 서버 부팅·예약·장애 복구는 새 ingest 실행을 만들지 않는다.
+- 수집·정제는 관리자 요청으로 시작한다. 공고 수집(LH `announcement-sync`, SH·GH 게시판 수집)은 켜 두면 서버가 스스로도 시작한다([자동 실행](../../operations/ingest/execution-controls.md#자동-실행)). 서버 부팅과 장애 복구는 새 ingest 실행을 만들지 않는다.
 - 알림 보관 기간 정리는 공통 스케줄링으로 실행하는 별도 작업이다.
 - 관리자가 `POST /api/admin/ingest/pipelines/{type}`으로 본문 없이 직접 시작한다. 공공데이터포털 수집 키는 서버 설정만 쓴다([수집 키](../../operations/ingest/execution-controls.md#수집-키)). `announcement-sync`(화면 이름 LH 공고 갱신)는 하나의 실행 ID·잠금으로 LH 공고 수집 후 정제를 수행한다.
 - 단지 정제는 지원을 종료했다. 단지는 원천 수집(`complex-collection`)만 실행하고, 이후 단지·주택형은 공고와 PDF 보정으로만 바뀐다. `complex-refinement`·`complex-sync` 시작, `POST /api/admin/ingest/myhome/complex-mappings`, LH 세대수 보강(`/api/admin/ingest/lh/housing-type-households`)의 실행·단지 연결·대상 결정 `POST`는 `410 INGEST_OPERATION_RETIRED`로 거절하고 실행을 만들지 않는다. 지난 실행 이력과 실패·비교 조회(`GET`)는 그대로 쓴다.
@@ -45,8 +45,7 @@
 - 단지 화면의 실행 진입점과 좌표 업로드 후 동작은 [관리자 가이드](../admin/guide.md#단지-수집)를 따른다.
 - `complex-collection`, `announcement-collection`, `announcement-refinement`의 기존 단계·동작을 보존한다.
 - 마이홈 공고 한 건 등록(`announcement-registration`)은 지원을 종료했다. `POST /api/admin/ingest/pipelines/announcement-registration`은 다른 실행 유형과 같은 경로로 받아 본문 없이 부르면 `410 INGEST_OPERATION_RETIRED`로 거절하고(본문을 보내면 400이 된다) URL 등록 API는 없앴다. 지난 등록 실행 이력은 그대로 읽는다.
-- 새 실행은 `MANUAL`로 기록한다. 과거 자동 실행의 `SCHEDULED`·`RECOVERY` 트리거와
-  예정 시각·상위 실행 ID는 기존 실행 이력 조회를 위해 읽을 수 있다.
+- 관리자 실행은 `MANUAL`, 자동 실행은 `SCHEDULED`와 확인 시각(`scheduledAt`)으로 기록한다. LH 자동 실행은 수집 범위(`collectionScope`: `INCREMENTAL` 최근분, `FULL` 전체)도 남긴다. 관리자 실행과 범위가 비어 있는 지난 실행은 전체로 본다. 과거 `RECOVERY` 트리거와 상위 실행 ID는 기존 실행 이력 조회를 위해 읽을 수 있다.
 
 ## 단지 화면의 결과와 오류 조회
 

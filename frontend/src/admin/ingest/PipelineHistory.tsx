@@ -95,7 +95,7 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
             <thead><tr><th scope="col">작업</th><th scope="col">실행 시각</th><th scope="col">상태</th><th scope="col">결과</th></tr></thead>
             <tbody>{items.map((item) => (
               <tr key={item.executionId} className={(compact || readOnlyComplex) && selected?.executionId === item.executionId ? styles.selectedHistoryRow : undefined}>
-                <td>{labels[item.type]}</td>
+                <td>{labels[item.type]}{item.trigger === 'SCHEDULED' ? <span className={listStyles.trigger}>{scheduledLabel(item)}</span> : null}</td>
                 <td><time dateTime={item.startedAt ?? undefined}>
                   {item.startedAt ? new Date(item.startedAt).toLocaleString('ko-KR') : '기록 없음'}
                 </time></td>
@@ -133,4 +133,11 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
     {listCard ? detail : null}
     </>
   )
+}
+
+// 스스로 시작한 실행은 관리자 실행과 구별하고, LH는 최근분만 받았는지 전체를 훑었는지 함께 보인다.
+function scheduledLabel(execution: DataPipelineExecution) {
+  if (execution.collectionScope === 'INCREMENTAL') return '자동 · 최근분'
+  if (execution.collectionScope === 'FULL') return '자동 · 전체'
+  return '자동'
 }

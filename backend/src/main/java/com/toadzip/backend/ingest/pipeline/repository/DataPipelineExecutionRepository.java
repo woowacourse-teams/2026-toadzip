@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.repository;
 
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -34,6 +35,22 @@ public interface DataPipelineExecutionRepository
             Collection<DataPipelineType> types, DataPipelineExecutionStatus status);
 
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
+
+    /** 자동 실행이 볼 최근 실행. 새 실행부터 읽는다. */
+    List<ExecutionSummary> findTop20ByTypeOrderByIdDesc(DataPipelineType type);
+
+    /** 전체 범위로 성공한 마지막 실행의 시작 시각. 범위가 없는 관리자 실행과 이전 실행은 전체 범위다. */
+    @Query("""
+            select max(execution.startedAt) from DataPipelineExecution execution
+            where execution.type = :type
+              and execution.status in :successes
+              and (execution.collectionScope is null or execution.collectionScope = :full)
+            """)
+    Optional<Instant> findLastFullSuccessStartedAt(
+            @Param("type") DataPipelineType type,
+            @Param("successes") Collection<DataPipelineExecutionStatus> successes,
+            @Param("full") DataPipelineCollectionScope full
+    );
 
     boolean existsByExecutionIdAndStopRequestedTrue(UUID executionId);
 

@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.exception.exception.IngestServiceKeyMissingExc
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.lh.collection.repository.external.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -91,7 +92,24 @@ public class DataPipelineExecutionService {
         return start(DataPipelineType.COMPLEX_REGISTRATION, actor, identifiers.stream().distinct().sorted().toList());
     }
 
+    /**
+     * 자동 실행을 시작한다. 다른 실행이 잠금을 잡고 있으면 관리자 실행과 같이 {@link IngestAlreadyRunningException}으로 거절한다.
+     *
+     * @param collectionScope 이번 실행의 수집 범위. 범위를 나눠 받지 않는 유형은 null이다.
+     */
+    public DataPipelineExecutionResponse startScheduled(
+            DataPipelineType type, Instant scheduledAt, DataPipelineCollectionScope collectionScope
+    ) {
+        return start(type, "SYSTEM", List.of(), new Launch(scheduledAt, collectionScope));
+    }
+
     private DataPipelineExecutionResponse start(DataPipelineType type, String actor, List<String> identifiers) {
+        return start(type, actor, identifiers, Launch.MANUAL);
+    }
+
+    private DataPipelineExecutionResponse start(
+            DataPipelineType type, String actor, List<String> identifiers, Launch launch
+    ) {
         type.rejectIfRetired();
         if (type.requiresServiceKey() && !ingestProperties.hasServiceKey()) {
             throw new IngestServiceKeyMissingException();
@@ -103,7 +121,7 @@ public class DataPipelineExecutionService {
         try (var ignored = IngestExecutionScope.open(lease)) {
             Instant startedAt = Instant.now(clock);
             recovery.recoverBeforeStart(lease, startedAt);
-            execution = executionStateService.create(executionId, type, startedAt);
+            execution = create(executionId, type, startedAt, launch);
         }
         catch (RuntimeException exception) {
             lease.close();
@@ -121,7 +139,8 @@ public class DataPipelineExecutionService {
         }
         try {
             String traceId = MDC.get("traceId");
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, actor, identifiers));
+            executor.execute(() -> execute(
+                    executionId, type, lease, heartbeatTask, traceId, actor, identifiers, launch.collectionScope()));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -143,14 +162,15 @@ public class DataPipelineExecutionService {
             ScheduledFuture<?> heartbeatTask,
             String traceId,
             String actor,
-            List<String> identifiers
+            List<String> identifiers,
+            DataPipelineCollectionScope collectionScope
     ) {
         String previousTraceId = MDC.get("traceId");
         String previousExecutionId = MDC.get("executionId");
         setExecutionContext("traceId", traceId);
         MDC.put("executionId", executionId.toString());
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
-        try (lease; var ignored = IngestExecutionScope.open(executionId, lease, monitor)) {
+        try (lease; var ignored = IngestExecutionScope.open(executionId, lease, monitor, collectionScope)) {
             lease.verifyHeld();
             runAndRecordOutcome(executionId, type, actor, identifiers);
         }
@@ -216,11 +236,25 @@ public class DataPipelineExecutionService {
         runner.retryComplexes(executionId, actor, identifiers);
     }
 
+    private DataPipelineExecution create(UUID executionId, DataPipelineType type, Instant startedAt, Launch launch) {
+        if (launch.scheduledAt() == null) {
+            return executionStateService.create(executionId, type, startedAt);
+        }
+        return executionStateService.createScheduled(
+                executionId, type, startedAt, launch.scheduledAt(), launch.collectionScope());
+    }
+
     private void setExecutionContext(String key, String value) {
         if (value == null) {
             MDC.remove(key);
             return;
         }
         MDC.put(key, value);
+    }
+
+    /** 실행을 시작한 원인. 관리자 실행은 예정 시각과 수집 범위가 없다. */
+    private record Launch(Instant scheduledAt, DataPipelineCollectionScope collectionScope) {
+
+        private static final Launch MANUAL = new Launch(null, null);
     }
 }

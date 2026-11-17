@@ -1,0 +1,177 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "ingest-alerts",
+      "folder": "Monitoring",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "toadzip-ingest-auto-stale",
+          "title": "Announcement collection stale",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "editorMode": "code",
+                "expr": "time() - max by (environment, type) (toadzip_ingest_auto_last_success_seconds{job=\"backend\",environment=~\"dev|prod\"})",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "queryType": "expression",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "params": [
+                        10800
+                      ],
+                      "type": "gt"
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "params": [],
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "expression": "A",
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "C",
+                "type": "threshold"
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "[{{ $labels.environment }}] {{ $labels.type }} 3시간째 수집 성공 없음",
+            "description": "마지막 성공 뒤 {{ printf \"%.0f\" $values.A.Value }}초가 지났습니다. 관리자 공고 수집 화면의 실행 이력에서 실패 원인과 executionId를 확인하세요. 한 번도 성공하지 않은 유형은 연속 실패 경보가 맡습니다."
+          },
+          "labels": {
+            "service": "backend",
+            "severity": "warning"
+          },
+          "isPaused": false,
+          "notification_settings": {
+            "receiver": "team-discord"
+          },
+          "for": "5m"
+        },
+        {
+          "uid": "toadzip-ingest-auto-failing",
+          "title": "Announcement collection failing",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "editorMode": "code",
+                "expr": "max by (environment, type) (toadzip_ingest_auto_failure_streak{job=\"backend\",environment=~\"dev|prod\"})",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "queryType": "expression",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "params": [
+                        2
+                      ],
+                      "type": "gt"
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "params": [],
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "expression": "A",
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "C",
+                "type": "threshold"
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "[{{ $labels.environment }}] {{ $labels.type }} 연속 {{ printf \"%.0f\" $values.A.Value }}회 실패",
+            "description": "마지막 성공 뒤 실행이 연이어 실패·일부 건너뜀·중지로 끝났습니다. 자동 실행은 10→30→60분으로 간격을 늘려 다시 시도합니다. 실행 이력의 실패 안내가 \"다시 하면 됨\"이 아니면 원인을 먼저 고치세요."
+          },
+          "labels": {
+            "service": "backend",
+            "severity": "warning"
+          },
+          "isPaused": false,
+          "notification_settings": {
+            "receiver": "team-discord"
+          },
+          "for": "5m"
+        }
+      ]
+    }
+  ]
+}

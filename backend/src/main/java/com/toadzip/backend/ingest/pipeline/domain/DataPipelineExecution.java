@@ -66,6 +66,11 @@ public class DataPipelineExecution {
 
     private UUID upstreamExecutionId;
 
+    /** 자동 실행이 고른 수집 범위. 관리자 실행과 이전 실행은 비어 있고 전체 수집으로 본다. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20, updatable = false)
+    private DataPipelineCollectionScope collectionScope;
+
     @Column(length = 100, updatable = false)
     private String targetAnnouncementIdentifier;
 
@@ -208,6 +213,21 @@ public class DataPipelineExecution {
                 scheduledAt,
                 upstreamExecutionId
         );
+    }
+
+    /** 자동 실행을 시작한다. 범위를 나눠 받지 않는 유형은 범위를 비운다. */
+    public static DataPipelineExecution scheduled(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            Instant scheduledAt,
+            DataPipelineCollectionScope collectionScope
+    ) {
+        DataPipelineExecution execution = start(
+                executionId, type, startedAt, DataPipelineExecutionTrigger.SCHEDULED, scheduledAt, null
+        );
+        execution.collectionScope = collectionScope;
+        return execution;
     }
 
     public void startStep(DataPipelineStep step) {
