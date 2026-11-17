@@ -12,8 +12,10 @@ import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnn
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.lh.collection.domain.LhAnnouncementQuery;
 import com.toadzip.backend.ingest.lh.collection.repository.LhAnnouncementQueryApiRepository;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
@@ -121,6 +123,34 @@ class AnnouncementAutoCollectionSchedulerIntegrationTest {
     }
 
     @Test
+    void LH_공고_일부만_정제에_실패한_실행도_성공으로_세어_연속_실패로_올리지_않고_전체_수집으로도_센다() {
+        Instant partialAt = finished(DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineExecutionStatus.FAILED,
+                DataPipelineFailureCause.PARTIAL, Duration.ofHours(2));
+        recentlySucceededBoards();
+
+        scheduler.startDue();
+
+        assertThat(latest(DataPipelineType.ANNOUNCEMENT_SYNC).getCollectionScope().name()).isEqualTo("INCREMENTAL");
+        assertThat(meters.get("toadzip.ingest.auto.last.success").tag("type", "ANNOUNCEMENT_SYNC")
+                .gauge().value()).isEqualTo(partialAt.getEpochSecond());
+        assertThat(meters.get("toadzip.ingest.auto.failure.streak").tag("type", "ANNOUNCEMENT_SYNC")
+                .gauge().value()).isZero();
+        task.get().run();
+    }
+
+    @Test
+    void 증분_수집만_일부_실패로_끝났으면_전체_수집으로_세지_않아_다음_실행을_전체로_받는다() {
+        finished(DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineExecutionStatus.FAILED,
+                DataPipelineFailureCause.PARTIAL, DataPipelineCollectionScope.INCREMENTAL, Duration.ofHours(2));
+        recentlySucceededBoards();
+
+        scheduler.startDue();
+
+        assertThat(latest(DataPipelineType.ANNOUNCEMENT_SYNC).getCollectionScope().name()).isEqualTo("FULL");
+        task.get().run();
+    }
+
+    @Test
     void 관리자_실행이_잠금을_잡고_있으면_자동_실행은_건너뛰고_실행_기록을_만들지_않는다() {
         try (var ignored = executionLock.tryAcquire(UUID.randomUUID()).orElseThrow()) {
             scheduler.startDue();
@@ -154,12 +184,24 @@ class AnnouncementAutoCollectionSchedulerIntegrationTest {
     }
 
     private Instant finished(DataPipelineType type, DataPipelineExecutionStatus status, Duration ago) {
+        return finished(type, status, null, ago);
+    }
+
+    private Instant finished(DataPipelineType type, DataPipelineExecutionStatus status,
+            DataPipelineFailureCause cause, Duration ago) {
+        return finished(type, status, cause, null, ago);
+    }
+
+    private Instant finished(DataPipelineType type, DataPipelineExecutionStatus status,
+            DataPipelineFailureCause cause, DataPipelineCollectionScope scope, Duration ago) {
         Instant startedAt = Instant.now().minus(ago);
         UUID executionId = UUID.randomUUID();
         executions.saveAndFlush(DataPipelineExecution.start(executionId, type, startedAt));
-        jdbc.sql("UPDATE data_pipeline_executions SET status = :status, finished_at = :finishedAt "
-                        + "WHERE execution_id = :executionId")
+        jdbc.sql("UPDATE data_pipeline_executions SET status = :status, failure_cause = :cause, "
+                        + "collection_scope = :scope, finished_at = :finishedAt WHERE execution_id = :executionId")
                 .param("status", status.name())
+                .param("cause", cause == null ? null : cause.name())
+                .param("scope", scope == null ? null : scope.name())
                 .param("finishedAt", Timestamp.from(startedAt.plusSeconds(60)))
                 .param("executionId", executionId)
                 .update();

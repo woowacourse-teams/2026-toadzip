@@ -40,7 +40,7 @@ class AutoCollectionPolicyTest {
             boolean due) {
         List<Run> runs = new ArrayList<>();
         for (int index = 0; index < failures; index++) {
-            runs.add(new Run(DataPipelineExecutionStatus.FAILED, NOW.minus(minutes(minutesSinceLastFailure + index))));
+            runs.add(new Run(DataPipelineExecutionStatus.FAILED, null, NOW.minus(minutes(minutesSinceLastFailure + index))));
         }
         runs.add(success(Duration.ofHours(5)));
 
@@ -53,10 +53,10 @@ class AutoCollectionPolicyTest {
     @Test
     void 호출_제한으로_건너뛴_완료와_중지도_실패로_세고_실행_중인_실행은_세지_않는다() {
         var record = record(DataPipelineType.ANNOUNCEMENT_SYNC, List.of(
-                new Run(DataPipelineExecutionStatus.RUNNING, NOW.minus(minutes(1))),
-                new Run(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS, NOW.minus(minutes(20))),
-                new Run(DataPipelineExecutionStatus.STOPPED, NOW.minus(minutes(40))),
-                new Run(DataPipelineExecutionStatus.COMPLETED_WARNINGS, NOW.minus(Duration.ofHours(3)))));
+                new Run(DataPipelineExecutionStatus.RUNNING, null, NOW.minus(minutes(1))),
+                new Run(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS, null, NOW.minus(minutes(20))),
+                new Run(DataPipelineExecutionStatus.STOPPED, null, NOW.minus(minutes(40))),
+                new Run(DataPipelineExecutionStatus.COMPLETED_WARNINGS, null, NOW.minus(Duration.ofHours(3)))));
 
         assertThat(record.failureStreak()).isEqualTo(2);
         assertThat(record.lastAttemptAt()).isEqualTo(NOW.minus(minutes(20)));
@@ -66,9 +66,20 @@ class AutoCollectionPolicyTest {
     }
 
     @Test
+    void 대상_일부만_실패한_실행은_성공으로_세고_멈춘_실패는_실패로_센다() {
+        var record = record(DataPipelineType.ANNOUNCEMENT_SYNC, List.of(
+                new Run(DataPipelineExecutionStatus.FAILED, DataPipelineFailureCause.TRANSIENT, NOW.minus(minutes(10))),
+                new Run(DataPipelineExecutionStatus.FAILED, DataPipelineFailureCause.PARTIAL, NOW.minus(minutes(70))),
+                new Run(DataPipelineExecutionStatus.FAILED, DataPipelineFailureCause.INTERNAL, NOW.minus(minutes(130)))));
+
+        assertThat(record.lastSuccessAt()).isEqualTo(NOW.minus(minutes(70)));
+        assertThat(record.failureStreak()).isEqualTo(1);
+    }
+
+    @Test
     void 관리자_실행이_실패한_직후라도_마지막_성공에서_간격이_지나지_않았으면_시작하지_않는다() {
         var record = record(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION, List.of(
-                new Run(DataPipelineExecutionStatus.FAILED, NOW.minus(minutes(40))), success(minutes(50))));
+                new Run(DataPipelineExecutionStatus.FAILED, null, NOW.minus(minutes(40))), success(minutes(50))));
 
         assertThat(policy.next(NOW, List.of(record))).isEmpty();
     }
@@ -112,7 +123,7 @@ class AutoCollectionPolicyTest {
     }
 
     private Run success(Duration ago) {
-        return new Run(DataPipelineExecutionStatus.COMPLETED, NOW.minus(ago));
+        return new Run(DataPipelineExecutionStatus.COMPLETED, null, NOW.minus(ago));
     }
 
     private Duration minutes(long minutes) {

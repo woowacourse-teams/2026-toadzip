@@ -1,11 +1,10 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.global.config.SchedulingConfig;
 import com.toadzip.backend.ingest.collection.configuration.ExternalDataIngestProperties;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.domain.AutoCollectionPolicy;
 import com.toadzip.backend.ingest.pipeline.domain.AutoCollectionRecord;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import io.micrometer.core.instrument.Gauge;
@@ -13,7 +12,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -38,9 +36,6 @@ public class AnnouncementAutoCollectionScheduler {
             DataPipelineType.SH_ANNOUNCEMENT_COLLECTION,
             DataPipelineType.GH_ANNOUNCEMENT_COLLECTION
     );
-    private static final List<DataPipelineExecutionStatus> SUCCESSES = Arrays.stream(DataPipelineExecutionStatus.values())
-            .filter(DataPipelineExecutionStatus::isSuccessful)
-            .toList();
 
     private final DataPipelineExecutionService executions;
     private final DataPipelineExecutionRepository history;
@@ -68,7 +63,8 @@ public class AnnouncementAutoCollectionScheduler {
 
     @Scheduled(
             fixedDelayString = "${ingest.auto-collection.check-interval}",
-            initialDelayString = "${ingest.auto-collection.initial-delay}"
+            initialDelayString = "${ingest.auto-collection.initial-delay}",
+            scheduler = SchedulingConfig.AUTO_RUN_SCHEDULER
     )
     public void startDue() {
         Instant now = clock.instant();
@@ -84,10 +80,9 @@ public class AnnouncementAutoCollectionScheduler {
 
     private AutoCollectionRecord record(DataPipelineType type) {
         List<AutoCollectionRecord.Run> recent = history.findTop20ByTypeOrderByIdDesc(type).stream()
-                .map(run -> new AutoCollectionRecord.Run(run.getStatus(), run.getStartedAt()))
+                .map(run -> new AutoCollectionRecord.Run(run.getStatus(), run.getFailureCause(), run.getStartedAt()))
                 .toList();
-        Instant lastFull = history.findLastFullSuccessStartedAt(type, SUCCESSES, DataPipelineCollectionScope.FULL)
-                .orElse(null);
+        Instant lastFull = history.findLastFullSuccessStartedAt(type).orElse(null);
         return AutoCollectionRecord.of(type, recent, lastFull);
     }
 

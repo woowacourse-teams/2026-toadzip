@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.exception.PdfExtractionInProgressExcepti
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
+import com.toadzip.backend.global.config.SchedulingConfig;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -77,7 +78,8 @@ public class PdfAutoExtractionScheduler {
 
     @Scheduled(
             fixedDelayString = "${announcement.pdf-auto-extraction.check-interval}",
-            initialDelayString = "${announcement.pdf-auto-extraction.initial-delay}"
+            initialDelayString = "${announcement.pdf-auto-extraction.initial-delay}",
+            scheduler = SchedulingConfig.AUTO_RUN_SCHEDULER
     )
     public void enqueueDue() {
         long room = maxInFlight - jobs.countByKindAndRequestSourceAndStatusIn(

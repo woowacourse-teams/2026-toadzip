@@ -111,6 +111,7 @@ dev·prod·shared를 구분한다. DB 연결 성공과 collector 성공까지 �
 - `Announcement collection stale`: 환경·유형별로 마지막 성공에서 3시간이 지나 5분간 이어지면 알린다.
   한 번도 성공하지 않은 유형은 값이 비어 있어 이 경보가 아니라 연속 실패 경보가 잡는다.
 - `Announcement collection failing`: 마지막 성공 뒤 실패가 3회 이상이면 알린다.
+- 두 경보의 성공은 대상 일부만 실패한 실행(`PARTIAL`)을 포함한다. 그 대상은 운영 홈의 '미해결 수집·정제 실패'로 본다.
 - 자동 실행을 끈 환경은 지표가 없으므로 두 경보 모두 정상으로 본다(`noDataState: OK`).
 
 ```shell
