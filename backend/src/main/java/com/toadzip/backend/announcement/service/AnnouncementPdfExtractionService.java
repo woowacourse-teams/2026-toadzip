@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.function.IntSupplier;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.data.domain.Limit;
@@ -80,10 +81,12 @@ public class AnnouncementPdfExtractionService {
         requireAnnouncement(announcementId);
         AnnouncementPdfDocument.requireReadable(pdf);
         failOverdue(announcementId);
-        requireNoActiveJob(announcementId, admin);
+        PdfExtractionSource source = PdfExtractionSource.of(fileName, pdf);
+        requireNoActiveJob(announcementId, () -> jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, announcementId,
+                source.sha256(), admin));
         PdfExtractionInput input = inputs.read(announcementId);
-        PdfExtractionJob saved = save(PdfExtractionJob.requestedByAdmin(announcementId, admin,
-                PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant()));
+        PdfExtractionJob saved = save(PdfExtractionJob.requestedByAdmin(announcementId, admin, source,
+                objectMapper.writeValueAsString(input), clock.instant()));
         log.info("event=announcement.pdf_extraction.requested announcementId={} jobId={} sourceSupplyRows={}",
                 announcementId, saved.getId(), input.sourceSupplyRows().size());
         return response(PdfExtractionJobView.of(saved));
@@ -93,7 +96,9 @@ public class AnnouncementPdfExtractionService {
     public PdfExtractionJobResponse requestAttachment(long announcementId, String admin, long attachmentId) {
         requireAnnouncement(announcementId);
         failOverdue(announcementId);
-        requireNoActiveJob(announcementId, admin);
+        requireNoActiveJob(announcementId, () -> attachments.adminFileName(announcementId, attachmentId)
+                .map(fileName -> jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, announcementId, fileName, admin))
+                .orElse(0));
         AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
         return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
     }
@@ -105,7 +110,7 @@ public class AnnouncementPdfExtractionService {
     public long requestBatch(long announcementId, long attachmentId) {
         requireAnnouncement(announcementId);
         failOverdue(announcementId);
-        requireNoActiveJob(announcementId, null);
+        requireNoActiveJob(announcementId, () -> 0);
         AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
         byte[] pdf = bytesOf(content.file());
         AnnouncementPdfDocument.requireReadable(pdf);
@@ -208,14 +213,14 @@ public class AnnouncementPdfExtractionService {
     }
 
     /**
-     * 진행 중 작업이 있으면 거절한다. 관리자 요청이면 그 전에 기다리는 서버 작업을 관리자 작업으로 바꿔, 관리자 화면이 이어 붙어
-     * 기다리는 작업이 서버 작업 뒤에 밀리지 않게 한다. admin이 null이면 서버 요청이다.
+     * 진행 중 작업이 있으면 거절한다. 그 전에 promote로 같은 PDF의 기다리는 서버 작업을 관리자 작업으로 바꿔, 관리자 화면이 이어 붙어
+     * 기다리는 작업이 서버 작업 뒤에 밀리지 않게 한다. 다른 PDF의 서버 작업은 바꾸지 않는다. 관리자 화면은 그 작업에 이어 붙지 않는다.
      */
-    private void requireNoActiveJob(long announcementId, String admin) {
+    private void requireNoActiveJob(long announcementId, IntSupplier promote) {
         if (!jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE)) {
             return;
         }
-        if (admin != null && jobs.promoteWaitingBatch(PdfExtractionJob.KIND, announcementId, admin) > 0) {
+        if (promote.getAsInt() > 0) {
             log.info("event=announcement.pdf_extraction.promoted announcementId={}", announcementId);
         }
         throw new PdfExtractionInProgressException();

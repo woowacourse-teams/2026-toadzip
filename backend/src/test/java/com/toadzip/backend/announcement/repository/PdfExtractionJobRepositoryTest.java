@@ -233,14 +233,21 @@ class PdfExtractionJobRepositoryTest {
     }
 
     @Test
-    void 관리자가_요청하면_기다리는_서버_작업만_관리자_작업으로_바뀌고_처리_중인_서버_작업은_그대로다() {
+    void 관리자가_같은_PDF를_요청하면_기다리는_서버_작업만_관리자_작업으로_바뀌고_처리_중이거나_다른_PDF인_작업은_그대로다() {
         long waiting = queued(ANNOUNCEMENT, "RETRY", "00:40", "00:41", null, 1);
         batch(waiting);
         long running = queued(ANNOUNCEMENT + 1, "RUNNING", "00:40", "00:40", "01:10", 1);
         batch(running);
+        String sameSha = PdfExtractionSource.of("a.pdf", new byte[] {1}).sha256();
+        String otherSha = PdfExtractionSource.of("a.pdf", new byte[] {2}).sha256();
 
-        assertThat(jobs.promoteWaitingBatch(PdfExtractionJob.KIND, ANNOUNCEMENT, "admin-2")).isEqualTo(1);
-        assertThat(jobs.promoteWaitingBatch(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, "admin-2")).isZero();
+        assertThat(jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, ANNOUNCEMENT, otherSha, "admin-2")).isZero();
+        assertThat(jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, ANNOUNCEMENT, "b.pdf", "admin-2")).isZero();
+        assertThat(jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, sameSha, "admin-2")).isZero();
+        assertThat(jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, "a.pdf", "admin-2")).isZero();
+        assertThat(jobs.findById(waiting).orElseThrow().getRequestSource()).isEqualTo("BATCH");
+
+        assertThat(jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, ANNOUNCEMENT, "a.pdf", "admin-2")).isEqualTo(1);
 
         assertThat(jobs.findById(waiting).orElseThrow())
                 .extracting(PdfExtractionJob::getRequestSource, PdfExtractionJob::getRequestedBy)

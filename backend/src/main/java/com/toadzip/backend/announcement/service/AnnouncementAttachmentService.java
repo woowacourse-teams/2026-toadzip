@@ -36,6 +36,11 @@ public class AnnouncementAttachmentService {
         return read(repository.findAdminSource(announcementId, attachmentId), false);
     }
 
+    /** 관리자 PDF 추출에서 첨부를 내려받지 않고 파일 이름만 본다. 없는 첨부면 빈 값이다. */
+    public Optional<String> adminFileName(long announcementId, long attachmentId) {
+        return repository.findAdminSource(announcementId, attachmentId).map(AttachmentSource::fileName);
+    }
+
     private AttachmentContent read(Optional<AttachmentSource> found, boolean download) {
         AttachmentSource source = found.orElseThrow(() -> new AttachmentUnavailableException(Reason.NOT_FOUND));
         TemporaryAttachment file = client.read(source.fileUrl());

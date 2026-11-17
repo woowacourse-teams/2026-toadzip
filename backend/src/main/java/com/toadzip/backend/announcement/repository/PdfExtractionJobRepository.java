@@ -99,17 +99,26 @@ public interface PdfExtractionJobRepository extends JpaRepository<PdfExtractionJ
             Collection<PdfExtractionJobStatus> statuses);
 
     /**
-     * 공고의 기다리는 서버 작업(BATCH)을 관리자 작업으로 바꾼다. 관리자가 같은 공고를 요청하면 그 작업이 먼저 꺼내지고 일반 처리로
-     * 불린다. 이미 처리 중인 작업은 그대로 둔다.
+     * 공고의 기다리는 서버 작업(BATCH)을 관리자 작업으로 바꾼다. 관리자가 같은 PDF를 요청하면 그 작업이 먼저 꺼내지고 일반 처리로
+     * 불린다. 이미 처리 중인 작업과 다른 PDF의 작업은 그대로 둔다.
      */
-    @Transactional
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = """
+    String PROMOTE_WAITING_BATCH = """
             UPDATE ai_jobs SET request_source = 'ADMIN', requested_by = :admin
             WHERE kind = :kind AND announcement_id = :announcementId AND request_source = 'BATCH'
               AND status IN ('PENDING', 'RETRY')
-            """, nativeQuery = true)
-    int promoteWaitingBatch(String kind, long announcementId, String admin);
+            """;
+
+    /** 관리자가 올린 PDF와 해시가 같은 기다리는 서버 작업을 관리자 작업으로 바꾼다. */
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = PROMOTE_WAITING_BATCH + " AND pdf_sha256 = :pdfSha256", nativeQuery = true)
+    int promoteWaitingBatchOfPdf(String kind, long announcementId, String pdfSha256, String admin);
+
+    /** 관리자가 고른 첨부와 파일 이름이 같은 기다리는 서버 작업을 관리자 작업으로 바꾼다. 첨부를 내려받기 전이라 해시를 모른다. */
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = PROMOTE_WAITING_BATCH + " AND file_name = :fileName", nativeQuery = true)
+    int promoteWaitingBatchOfFile(String kind, long announcementId, String fileName, String admin);
 
     interface QueueSummary {
         long getPending();

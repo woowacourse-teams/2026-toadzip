@@ -143,6 +143,26 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         });
     }
 
+    @Test
+    void 관리자가_다른_PDF를_요청하면_기다리는_서버_작업을_관리자_작업으로_바꾸지_않는다() throws IOException {
+        Announcement open = announcement(TODAY.plusDays(5));
+        attach(open, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
+        AnnouncementAttachment correction = attach(open, "정정 공고문.pdf", AttachmentType.ETC, 1);
+        scheduler.enqueueDue();
+
+        assertThatThrownBy(() -> extractions.requestAttachment(open.getId(), "admin", correction.getId()))
+                .isInstanceOf(PdfExtractionInProgressException.class);
+        byte[] uploaded = pdf(2);
+        assertThatThrownBy(() -> extractions.request(open.getId(), "admin", "공고문.pdf", uploaded))
+                .isInstanceOf(PdfExtractionInProgressException.class);
+
+        assertThat(jobs()).singleElement().satisfies(job -> {
+            assertThat(job.get("file_name")).isEqualTo("공고문.pdf");
+            assertThat(job.get("request_source")).isEqualTo("BATCH");
+            assertThat(job.get("requested_by")).isNull();
+        });
+    }
+
     private List<Map<String, Object>> jobs() {
         return jdbc.sql("SELECT announcement_id, file_name, request_source, requested_by, status FROM ai_jobs ORDER BY id")
                 .query().listOfRows();
@@ -167,8 +187,15 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     private static byte[] pdf() throws IOException {
+        return pdf(1);
+    }
+
+    /** 쪽 수가 다르면 내용이 다른 PDF다. */
+    private static byte[] pdf(int pages) throws IOException {
         try (PDDocument document = new PDDocument()) {
-            document.addPage(new PDPage());
+            for (int page = 0; page < pages; page++) {
+                document.addPage(new PDPage());
+            }
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             document.save(bytes);
             return bytes.toByteArray();
