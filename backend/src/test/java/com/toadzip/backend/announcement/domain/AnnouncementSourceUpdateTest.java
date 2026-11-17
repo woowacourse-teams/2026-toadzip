@@ -97,6 +97,34 @@ class AnnouncementSourceUpdateTest {
     }
 
     @Test
+    void 정본만_확정한_공고의_정정_사유는_관리자가_고칠_수_없으므로_원천_확인_없이_원천을_따른다() {
+        ReceptionPlace lh = ReceptionPlace.create("LH 접수처", ReceptionMethod.VISIT, "충주시 2", "043-000-0000", null);
+        Announcement announcement = announcement("기존 공고명", List.of(lh));
+        announcement.confirmSupply();
+
+        assertThat(announcement.enrichFromLh("PAN-1", null, List.of(lh))).isFalse();
+        assertThat(announcement.isSourceReviewRequired()).isFalse();
+
+        assertThat(announcement.enrichFromLh("PAN-1", "접수 기간 정정", List.of(lh))).isTrue();
+        assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("접수 기간 정정");
+        assertThat(announcement.isSourceReviewRequired()).isFalse();
+    }
+
+    @Test
+    void 정본을_확정한_공고는_LH_접수처가_바뀌면_저장된_접수처를_두고_원천_확인을_켠다() {
+        ReceptionPlace lh = ReceptionPlace.create("LH 접수처", ReceptionMethod.VISIT, "충주시 2", "043-000-0000", null);
+        Announcement announcement = announcement("기존 공고명", List.of(lh));
+        announcement.confirmSupply();
+
+        assertThat(announcement.enrichFromLh("PAN-1", null,
+                List.of(ReceptionPlace.create("LH 접수처", ReceptionMethod.VISIT, "충주시 3", "043-000-0000", null))))
+                .isFalse();
+
+        assertThat(announcement.getReceptionPlaces()).containsExactly(lh);
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
     void 관리자가_LH_접수처의_이름과_주소_표기를_공고문대로_바꿔도_같은_도로명_건물번호면_원천_변경으로_보지_않는다() {
         ReceptionPlace lh = ReceptionPlace.create("관리사무소", ReceptionMethod.VISIT,
                 "경기도 평택시 팽성읍 팽성송화로 163(주공아파트) 관리사무소", "031-651-6776", null);

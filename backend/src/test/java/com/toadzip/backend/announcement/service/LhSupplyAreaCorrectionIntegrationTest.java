@@ -276,6 +276,33 @@ class LhSupplyAreaCorrectionIntegrationTest {
         assertThat(supplyConfirmed(id)).isTrue();
     }
 
+    @Test
+    void PDF로_확정한_LH_공고는_기본_정보를_고치지_않았어도_재정제가_공고명과_일정을_덮지_않고_원천_확인을_표시한다()
+            throws Exception {
+        long id = refinedAnnouncement(supply("059.9100A", "59.9100", "25"));
+        var workspace = jsonCorrections.workspace(id);
+        var request = jsonRequest(workspace, SupplySheetInputs.of(workspace.supply().sheet()));
+        jsonCorrections.apply(id, new AnnouncementJsonCorrection.Apply(request,
+                jsonCorrections.preview(id, request).confirmationToken()), "operator");
+        var confirmed = announcements.findById(id).orElseThrow();
+        var saved = supplyCorrections.workspace(id).sheet();
+        assertThat(confirmed.isSupplyConfirmed()).isTrue();
+        assertThat(confirmed.isAdminModified()).isFalse();
+        assertThat(confirmed.isSourceReviewRequired()).isFalse();
+
+        publish(PAN_ID, "[정정] 대구시 달서구·달성군 10년 공공임대리츠 예비입주자 모집");
+        details(PAN_ID, 30);
+        supplies(supply("059.9100A", "59.9100", "26"));
+        refinement.refineAll();
+
+        var after = announcements.findById(id).orElseThrow();
+        assertThat(after.getName()).isEqualTo(confirmed.getName());
+        assertThat(after.getWinnerAnnouncementDate()).isEqualTo(confirmed.getWinnerAnnouncementDate());
+        assertThat(after.isSourceReviewRequired()).isTrue();
+        assertThat(supplyCorrections.workspace(id).sheet()).isEqualTo(saved);
+        assertThat(after.isSupplyRecheckRequired()).isTrue();
+    }
+
     private SupplyCorrection.Request request(SupplyCorrection.Workspace workspace, SupplySheetInput sheet) {
         return new SupplyCorrection.Request(UUID.randomUUID(), workspace.snapshotToken(), "공고문 공급 표 대조",
                 "https://apply.lh.or.kr/notice", "3", sheet);
@@ -333,19 +360,27 @@ class LhSupplyAreaCorrectionIntegrationTest {
     }
 
     private void publish(String panId) {
+        publish(panId, "대구시 달서구·달성군 10년 공공임대리츠 예비입주자 모집");
+    }
+
+    private void publish(String panId, String title) {
         LocalDate noticeDate = LocalDate.now().minusDays(1);
         catalogEntries.removeIf(entry -> entry.snapshot().panId().equals(panId));
         catalogEntries.add(new Entry(new LhAnnouncementCatalogSnapshot(panId, "03", "06", "10", "063",
-                "대구시 달서구·달성군 10년 공공임대리츠 예비입주자 모집", "공고중", noticeDate.format(CATALOG_DATE),
+                title, "공고중", noticeDate.format(CATALOG_DATE),
                 noticeDate.format(CATALOG_DATE), LocalDate.now().plusDays(10).format(CATALOG_DATE),
                 "https://apply.lh.or.kr/" + panId, ""), "{}"));
         catalog.store(List.copyOf(catalogEntries));
     }
 
     private void details(String panId) {
+        details(panId, 20);
+    }
+
+    private void details(String panId, int winnerAfterDays) {
         String start = LocalDate.now().plusDays(1).format(COMPACT_DATE);
         String end = LocalDate.now().plusDays(3).format(COMPACT_DATE);
-        String winner = LocalDate.now().plusDays(20).format(COMPACT_DATE);
+        String winner = LocalDate.now().plusDays(winnerAfterDays).format(COMPACT_DATE);
         List<LhAnnouncementDetailSourceView> views = new ArrayList<>(List.of(
                 LhSourceViews.detail(0, panId, new LhAnnouncementDetailSourceSnapshot("COMPLEX", COMPLEX_NAME, ADDRESS,
                         null, "1000", null, null, null, null, null, null, null, null, null, null, null, null, null, null,

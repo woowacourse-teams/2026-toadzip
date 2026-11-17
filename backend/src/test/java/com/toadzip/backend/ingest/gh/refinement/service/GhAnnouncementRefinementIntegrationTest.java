@@ -213,6 +213,27 @@ class GhAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 정본을_확정한_미공개_공고는_관리자가_고치지_않았어도_정정된_제목과_공급유형으로_덮지_않고_원천_확인을_표시한다() {
+        collect(ROW);
+        GhRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("UPDATE announcements SET supply_type = 'HAPPY_HOUSING' WHERE source_announcement_identifier = ?",
+                "GH:801");
+        confirmSupply("GH:801");
+        var confirmed = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(confirmed.isSupplyConfirmed()).isTrue();
+        assertThat(confirmed.isAdminModified()).isFalse();
+        assertThat(confirmed.isSourceReviewRequired()).isFalse();
+
+        collect(new Row("801", ROW.supplyType(), "[정정] " + ROW.title(), ROW.postedDate()));
+        GhRefinementTestSupport.refineAll(refinement, sources);
+
+        var announcement = announcements.findBySourceAnnouncementIdentifier("GH:801").orElseThrow();
+        assertThat(announcement.getName()).isEqualTo(ROW.title());
+        assertThat(announcement.getSupplyType()).isEqualTo(RentalType.HAPPY_HOUSING);
+        assertThat(announcement.isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
     void 같은_이름의_지구가_두_번_나와도_한_공고_단지로_보고_원천에서_빠진_지구는_표시하고_그_행을_없앤다() {
         collect(ROW);
         GhRefinementTestSupport.refineAll(refinement, sources);

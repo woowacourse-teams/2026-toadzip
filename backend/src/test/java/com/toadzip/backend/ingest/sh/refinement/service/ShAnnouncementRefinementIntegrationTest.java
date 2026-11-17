@@ -120,6 +120,26 @@ class ShAnnouncementRefinementIntegrationTest {
     }
 
     @Test
+    void 정본을_확정한_미공개_공고는_관리자가_고치지_않았어도_본문_일정과_제목으로_덮지_않고_원천_확인을_표시한다() {
+        collect();
+        setBody(SCHEDULE);
+        ShRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("UPDATE announcements SET supply_confirmed_at = now() WHERE source_announcement_identifier = ?",
+                "SH:100");
+        assertThat(sh100().isSupplyConfirmed()).isTrue();
+        assertThat(sh100().isAdminModified()).isFalse();
+        assertThat(sh100().isSourceReviewRequired()).isFalse();
+
+        setBody(SCHEDULE.replace("2027.01.29.", "2027.02.05."));
+        jdbc.update("UPDATE sh_announcement_source SET title = '[정정] 주택 입주자 모집' WHERE seq = '100'");
+        ShRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
+        assertThat(sh100().getName()).isEqualTo("주택 입주자 모집");
+        assertThat(sh100().isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
     void 관리자가_일정을_확인한_공고나_공개된_공고는_본문_일정으로_덮지_않는다() {
         collect();
         setBody(SCHEDULE);
