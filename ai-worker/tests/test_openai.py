@@ -41,6 +41,7 @@ def test_sends_prompt_with_medium_reasoning_by_default_and_maps_usage():
     assert body["messages"] == [{"role": "user", "content": "공고문 쪽 텍스트"}]
     assert (body["reasoning_effort"], body["response_format"], body["stream"]) == ("medium", {"type": "json_object"}, False)
     assert body["max_completion_tokens"] == 65536
+    assert "service_tier" not in body
     assert reply == openai.Reply('{"data": {}}', {"promptTokens": 23790, "outputTokens": 4131, "thinkingTokens": 13688})
 
 
@@ -229,3 +230,47 @@ def test_non_json_body_is_permanent():
         client(lambda request: httpx.Response(200, text="<html>gateway</html>")).chat("p", later())
 
     assert error.value.code == "MODEL_RESPONSE_INVALID"
+
+
+def test_sends_requested_service_tier():
+    requests = []
+    model = client(lambda request: (requests.append(request) or httpx.Response(200, json=completion())))
+
+    model.chat("p", later(), service_tier="flex")
+
+    assert json.loads(requests[0].content)["service_tier"] == "flex"
+
+
+def test_rate_limit_is_model_busy():
+    with pytest.raises(openai.ModelBusy):
+        client(lambda request: httpx.Response(429, text="raw upstream body")).chat("p", later())
+
+
+def test_flex_first_retries_with_default_tier_when_flex_is_busy():
+    tiers = []
+
+    def handler(request):
+        tier = json.loads(request.content).get("service_tier")
+        tiers.append(tier)
+        if tier == "flex":
+            return httpx.Response(429, text="flex capacity")
+        return httpx.Response(200, json=completion('{"data": {"ok": true}}'))
+
+    reply = openai.FlexFirst(client(handler)).chat("p", later())
+
+    assert tiers == ["flex", None]
+    assert reply.content == '{"data": {"ok": true}}'
+
+
+@pytest.mark.parametrize("status", [408, 500, 503])
+def test_flex_first_does_not_call_again_when_flex_may_have_been_processed(status):
+    tiers = []
+
+    def handler(request):
+        tiers.append(json.loads(request.content).get("service_tier"))
+        return httpx.Response(status, text="raw upstream body")
+
+    with pytest.raises(TransientError):
+        openai.FlexFirst(client(handler)).chat("p", later())
+
+    assert tiers == ["flex"]

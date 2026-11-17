@@ -59,6 +59,10 @@ public class AnnouncementSearchRepository {
             SELECT o.processing_stage AS stage, COUNT(*) AS count
             FROM overview o JOIN announcements a ON a.id = o.id WHERE a.admin_deleted = false AND
             """ + OPEN_SQL + " GROUP BY o.processing_stage";
+    private static final String OPEN_NOT_EXTRACTED_SQL = ADMIN_OVERVIEW_SQL + """
+            SELECT o.id FROM overview o JOIN announcements a ON a.id = o.id
+            WHERE a.admin_deleted = false AND o.processing_stage = 'NOT_EXTRACTED' AND
+            """ + OPEN_SQL + " ORDER BY a.id DESC LIMIT :limit";
     private static final String ADMIN_COUNTS_SQL = ADMIN_OVERVIEW_SQL + """
             SELECT COUNT(*) FILTER (WHERE application_status = 'BEFORE_APPLICATION') AS upcoming,
                 COUNT(*) FILTER (WHERE application_status = 'APPLYING') AS applying,
@@ -170,6 +174,14 @@ public class AnnouncementSearchRepository {
         AnnouncementProcessingStageSql.STAGES.forEach(stage -> counts.put(stage, 0L));
         rows.forEach(row -> counts.put(row.get("stage", String.class), aggregateCount(row, "count")));
         return counts;
+    }
+
+    /** 휴지통을 뺀 마감 전 공고 중 PDF 첨부가 있는데 추출한 적이 없는(추출 전) 공고를 최근 공고부터 고른다. */
+    public List<Long> findOpenNotExtracted(LocalDate today, int limit) {
+        @SuppressWarnings("unchecked")
+        List<Number> ids = entityManager.createNativeQuery(OPEN_NOT_EXTRACTED_SQL)
+                .setParameter("today", today).setParameter("limit", limit).getResultList();
+        return ids.stream().map(Number::longValue).toList();
     }
 
     private long aggregateCount(Tuple row, String column) {

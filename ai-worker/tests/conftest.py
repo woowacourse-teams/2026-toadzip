@@ -18,7 +18,9 @@ from ai_worker.openai import Reply
 from ai_worker.source_frame import SourceSupplyRow
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MIGRATION = REPO_ROOT / "backend/src/main/resources/db/migration/V20261103_01__ai_jobs.sql"
+MIGRATION_DIR = REPO_ROOT / "backend/src/main/resources/db/migration"
+# ai_jobs를 만들고 바꾸는 마이그레이션을 Flyway 순서대로 적용한다.
+MIGRATIONS = ("V20261103_01__ai_jobs.sql", "V20261117_03__ai_jobs_worker_version.sql")
 WORKER_ROLE_SQL = REPO_ROOT / "infra/db/create-ai-worker-role.sql"
 CONTRACT = REPO_ROOT / "ai-worker/contract/announcement-pdf-extraction"
 WORKER_ROLE = "toadzip_ai_worker"
@@ -50,7 +52,8 @@ def postgres():
             )
             # 운영의 역할 생성 스크립트를 그대로 쓴다. 마이그레이션 뒤에 실행해, 역할이 나중에 생긴 DB에도
             # 스크립트가 같은 권한을 주는지 확인한다(먼저 만든 경우의 마이그레이션 GRANT는 Spring 테스트가 확인한다).
-            conn.execute(MIGRATION.read_text(encoding="utf-8"))
+            for migration in MIGRATIONS:
+                conn.execute((MIGRATION_DIR / migration).read_text(encoding="utf-8"))
             conn.execute(WORKER_ROLE_SQL.read_text(encoding="utf-8"))
             conn.execute(f"ALTER ROLE {WORKER_ROLE} PASSWORD '{WORKER_PASSWORD}'")
         yield container
@@ -84,7 +87,8 @@ def worker_conn(postgres, owner):
 
 
 def insert_job(owner: psycopg.Connection, announcement_id: int = 1, *, status: str = "PENDING", attempts: int = 0,
-               lease_expired: bool = False, input: dict | None = None, age_minutes: int = 0) -> int:
+               lease_expired: bool = False, input: dict | None = None, age_minutes: int = 0,
+               request_source: str = "ADMIN", pdf_sha256: str = "a" * 64) -> int:
     """Spring이 넣는 것과 같은 작업 행을 넣는다. RUNNING이면 lease를 함께 채운다."""
     lease_until = "now() - interval '1 second'" if lease_expired else "now() + interval '10 minutes'"
     running = status == "RUNNING"
@@ -92,12 +96,13 @@ def insert_job(owner: psycopg.Connection, announcement_id: int = 1, *, status: s
         f"""
         INSERT INTO ai_jobs (kind, announcement_id, request_source, requested_by, status, attempts,
             next_attempt_at, lease_token, lease_until, file_name, pdf_sha256, pdf, input, created_at)
-        VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', %s, 'ADMIN', 'admin', %s, %s, now(),
+        VALUES ('ANNOUNCEMENT_PDF_EXTRACTION', %s, %s, %s, %s, %s, now(),
             {"gen_random_uuid()" if running else "NULL"}, {lease_until if running else "NULL"},
-            'notice.pdf', repeat('a', 64), %s, %s, now() - make_interval(mins => %s))
+            'notice.pdf', %s, %s, %s, now() - make_interval(mins => %s))
         RETURNING id
         """,
-        (announcement_id, status, attempts, PDF, json.dumps(input) if input is not None else None, age_minutes),
+        (announcement_id, request_source, "admin" if request_source == "ADMIN" else None, status, attempts,
+         pdf_sha256, PDF, json.dumps(input) if input is not None else None, age_minutes),
     ).fetchone()[0]
 
 
@@ -105,7 +110,8 @@ def job_row(owner: psycopg.Connection, job_id: int) -> dict:
     with owner.cursor(row_factory=psycopg.rows.dict_row) as cursor:
         return cursor.execute(
             """
-            SELECT status, attempts, pdf, result, jsonb_typeof(result) AS result_type, error_code, error_message,
+            SELECT status, attempts, pdf, result, worker_version, jsonb_typeof(result) AS result_type, error_code,
+                error_message,
                 lease_token, lease_until, started_at, completed_at,
                 extract(epoch FROM next_attempt_at - now()) AS retry_in_seconds,
                 extract(epoch FROM lease_until - now()) AS lease_seconds

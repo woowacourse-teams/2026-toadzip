@@ -80,17 +80,36 @@ public interface PdfExtractionJobRepository extends JpaRepository<PdfExtractionJ
 
     /**
      * id 작업보다 먼저 처리될 작업 수다. 지금 처리 중인 작업(lease가 살아 있는 RUNNING)과, 워커가 이 작업보다 먼저 꺼낼 작업을
-     * 센다. 워커는 종류를 가리지 않고 id 순서로 꺼내므로 다른 종류의 작업도 센다. 먼저 꺼낼 작업의 조건은 ai-worker
-     * jobs.claim의 꺼내기 조건과 같아야 하며, 한쪽을 바꾸면 다른 쪽도 바꾼다.
+     * 센다. 워커는 종류를 가리지 않고 관리자 작업(ADMIN)을 먼저, 같은 출처끼리는 id 순서로 꺼내므로 다른 종류의 작업도 센다.
+     * 먼저 꺼낼 작업의 조건과 순서는 ai-worker jobs.claim과 같아야 하며, 한쪽을 바꾸면 다른 쪽도 바꾼다.
      */
     @Query(value = """
-            SELECT COUNT(*) FROM ai_jobs
-            WHERE (status = 'RUNNING' AND lease_until > :now)
-               OR (id < :id AND created_at > :claimableSince
-                   AND ((status IN ('PENDING', 'RETRY') AND next_attempt_at <= :now)
-                       OR (status = 'RUNNING' AND lease_until <= :now AND attempts < :maxAttempts)))
+            SELECT COUNT(*) FROM ai_jobs other, ai_jobs me
+            WHERE me.id = :id AND other.id <> me.id
+              AND ((other.status = 'RUNNING' AND other.lease_until > :now)
+                OR ((other.request_source <> 'ADMIN', other.id) < (me.request_source <> 'ADMIN', me.id)
+                    AND other.created_at > :claimableSince
+                    AND ((other.status IN ('PENDING', 'RETRY') AND other.next_attempt_at <= :now)
+                        OR (other.status = 'RUNNING' AND other.lease_until <= :now
+                            AND other.attempts < :maxAttempts))))
             """, nativeQuery = true)
     long countAhead(long id, Instant now, Instant claimableSince, int maxAttempts);
+
+    long countByKindAndRequestSourceAndStatusIn(String kind, String requestSource,
+            Collection<PdfExtractionJobStatus> statuses);
+
+    /**
+     * 공고의 기다리는 서버 작업(BATCH)을 관리자 작업으로 바꾼다. 관리자가 같은 공고를 요청하면 그 작업이 먼저 꺼내지고 일반 처리로
+     * 불린다. 이미 처리 중인 작업은 그대로 둔다.
+     */
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE ai_jobs SET request_source = 'ADMIN', requested_by = :admin
+            WHERE kind = :kind AND announcement_id = :announcementId AND request_source = 'BATCH'
+              AND status IN ('PENDING', 'RETRY')
+            """, nativeQuery = true)
+    int promoteWaitingBatch(String kind, long announcementId, String admin);
 
     interface QueueSummary {
         long getPending();

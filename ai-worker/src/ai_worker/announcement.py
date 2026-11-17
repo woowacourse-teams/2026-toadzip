@@ -11,13 +11,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
-                       supply_grouping, supply_sources)
+                       supply_grouping, supply_sources, version)
 from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
 from ai_worker.jobs import Job
 
 log = logging.getLogger(__name__)
 
 KIND = "ANNOUNCEMENT_PDF_EXTRACTION"
+# ai_jobs.request_source. 서버가 스스로 넣은 작업이다(관리자 요청은 ADMIN).
+BATCH = "BATCH"
 SUPPLY_TABLE_UNSTRUCTURED = "SUPPLY_TABLE_UNSTRUCTURED"
 PDF_TEXT_MISSING = "PDF_TEXT_MISSING"
 # 쪽 처리가 이만큼도 남기지 않으면 모델을 부르지 않는다. 쪽마다 확인해 남은 쪽을 읽지 않고 바로 실패로 끝낸다.
@@ -32,10 +34,14 @@ class AnnouncementPdfExtractor:
         self.model = model
         # 없으면 코드가 읽은 수량 열의 뜻을 확인할 수 없어 공급표는 늘 모델 단계로 처리한다.
         self.column_judge = column_judge
+        # Jev가 없으면 공급표를 늘 모델 단계로 읽어 결과가 달라질 수 있으므로 버전에 넣는다.
+        self.version = version.source_version(f"jev={column_judge is not None}")
 
     def extract(self, job: Job) -> dict:
         if job.kind != KIND:
             raise PermanentError("UNSUPPORTED_JOB", "이 워커가 처리하지 않는 작업입니다.")
+        # 서버가 스스로 넣은 작업은 관리자가 기다리지 않으므로 느리지만 싼 Flex로 부른다.
+        model = openai.FlexFirst(self.model) if job.request_source == BATCH else self.model
         # 시도 예산은 PDF 처리부터 잰다. 모델 호출만 재면 큰 PDF의 쪽 처리 시간만큼 마감을 넘는다.
         deadline = time.monotonic() + ATTEMPT_BUDGET.total_seconds()
         frame = source_frame.SourceFrame.read(job.input)
@@ -65,14 +71,14 @@ class AnnouncementPdfExtractor:
             except PermanentError as unread:
                 eligibility_source, eligibility_error = eligibility_pages.EligibilityPages([], [], [], False), unread.message
         notice_prompt = stage_prompts.notice_prompt(selected)
-        plan = supply_sources.SupplyPlan(self.model, self.column_judge, rows, selected, texts[:2])
+        plan = supply_sources.SupplyPlan(model, self.column_judge, rows, selected, texts[:2])
         # 세 역할은 서로 의존하지 않는다. 같은 남은 마감 안에서 병렬 호출해 분리 비용이 순차 지연으로 누적되지 않게 한다.
         model_deadline = deadline - openai.READ_TIMEOUT
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="announcement-extraction") as pool:
             # 본문·신청자격 단계는 공급표와 상관없이 늘 부르므로 먼저 보내고, 그동안 공급표를 읽을 곳을 정한다.
-            notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
+            notice_future = pool.submit(model.chat, notice_prompt, model_deadline)
             eligibility_future = None if eligibility_error else pool.submit(
-                _eligibility_reply, self.model, stage_prompts.eligibility_prompt(eligibility_source), model_deadline)
+                _eligibility_reply, model, stage_prompts.eligibility_prompt(eligibility_source), model_deadline)
             source = plan.start(model_cutoff, model_deadline, pool)
             source.wait()
             notice_reply = notice_future.result()

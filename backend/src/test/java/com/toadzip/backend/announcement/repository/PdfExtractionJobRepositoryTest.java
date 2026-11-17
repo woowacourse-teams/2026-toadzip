@@ -213,6 +213,47 @@ class PdfExtractionJobRepositoryTest {
         assertThat(ahead).isEqualTo(4);
     }
 
+    @Test
+    void 서버_작업은_뒤에_넣은_관리자_작업에도_밀리고_관리자_작업은_먼저_넣은_서버_작업에_밀리지_않는다() {
+        Instant now = Instant.parse("2026-11-01T01:00:00Z");
+        long earlierBatch = queued(ANNOUNCEMENT, "PENDING", "00:40", "00:40", null, 0);
+        batch(earlierBatch);
+        long batchTarget = queued(ANNOUNCEMENT + 1, "PENDING", "00:45", "00:45", null, 0);
+        batch(batchTarget);
+        long adminTarget = queued(ANNOUNCEMENT + 2, "PENDING", "00:50", "00:50", null, 0);
+        long laterBatch = queued(ANNOUNCEMENT + 3, "PENDING", "00:52", "00:52", null, 0);
+        batch(laterBatch);
+        queued(ANNOUNCEMENT + 4, "PENDING", "00:55", "00:55", null, 0);
+        Instant claimableSince = now.minus(Duration.ofMinutes(30));
+
+        // 서버 작업 앞에는 먼저 넣은 서버 작업과 모든 관리자 작업(뒤에 넣은 것 포함)이 있다.
+        assertThat(jobs.countAhead(batchTarget, now, claimableSince, 3)).isEqualTo(3);
+        // 관리자 작업 앞에는 먼저 넣은 관리자 작업만 있다. 먼저 넣은 서버 작업은 세지 않는다.
+        assertThat(jobs.countAhead(adminTarget, now, claimableSince, 3)).isZero();
+    }
+
+    @Test
+    void 관리자가_요청하면_기다리는_서버_작업만_관리자_작업으로_바뀌고_처리_중인_서버_작업은_그대로다() {
+        long waiting = queued(ANNOUNCEMENT, "RETRY", "00:40", "00:41", null, 1);
+        batch(waiting);
+        long running = queued(ANNOUNCEMENT + 1, "RUNNING", "00:40", "00:40", "01:10", 1);
+        batch(running);
+
+        assertThat(jobs.promoteWaitingBatch(PdfExtractionJob.KIND, ANNOUNCEMENT, "admin-2")).isEqualTo(1);
+        assertThat(jobs.promoteWaitingBatch(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, "admin-2")).isZero();
+
+        assertThat(jobs.findById(waiting).orElseThrow())
+                .extracting(PdfExtractionJob::getRequestSource, PdfExtractionJob::getRequestedBy)
+                .containsExactly("ADMIN", "admin-2");
+        assertThat(jobs.findById(running).orElseThrow().getRequestSource()).isEqualTo("BATCH");
+    }
+
+    private void batch(long id) {
+        entityManager.createNativeQuery("UPDATE ai_jobs SET request_source = 'BATCH', requested_by = NULL WHERE id = :id")
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+    }
+
     private static PdfExtractionJob job(long announcementId) {
         return PdfExtractionJob.requestedByAdmin(announcementId, "admin",
                 PdfExtractionSource.of("a.pdf", new byte[] {1}), "{}", Instant.parse("2026-11-01T00:00:00Z"));

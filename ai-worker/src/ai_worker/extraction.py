@@ -28,6 +28,9 @@ class PermanentError(ExtractionError):
 
 
 class Extractor(Protocol):
+    # 결과를 바꾸는 소스·설정의 지문. 같은 PDF·입력·버전으로 성공한 작업이 있으면 워커는 추출하지 않고 그 결과를 쓴다.
+    version: str
+
     def extract(self, job: Job) -> dict:
         """job.pdf와 job.input으로 추출해 ai_jobs.result에 쓸 JSON 객체를 돌려준다.
 

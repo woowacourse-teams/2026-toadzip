@@ -50,9 +50,38 @@ def stage_prompt(model, stage):
     return next(prompt for prompt in model.prompts if marker in prompt)
 
 
-def job(content: bytes, job_input=None, kind=announcement.KIND) -> Job:
-    return Job(id=31, kind=kind, announcement_id=1, file_name="notice.pdf", pdf=content, input=job_input,
-               attempts=1, lease_token=uuid4())
+def job(content: bytes, job_input=None, kind=announcement.KIND, request_source="ADMIN") -> Job:
+    return Job(id=31, kind=kind, announcement_id=1, request_source=request_source, file_name="notice.pdf", pdf=content,
+               pdf_sha256="a" * 64, input=job_input, attempts=1, lease_token=uuid4())
+
+
+class TierModel(FakeModel):
+    """OpenAI처럼 service_tier를 받고, 단계마다 받은 처리 등급을 남긴다."""
+
+    def __init__(self):
+        super().__init__()
+        self.tiers = []
+
+    def chat(self, prompt, deadline, service_tier=None):
+        self.tiers.append(service_tier)
+        return super().chat(prompt, deadline)
+
+
+@pytest.mark.parametrize(("request_source", "tier"), [("BATCH", "flex"), ("ADMIN", None)])
+def test_server_jobs_call_every_stage_with_flex_and_admin_jobs_with_default_tier(request_source, tier):
+    model = TierModel()
+
+    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), request_source=request_source))
+
+    assert len(model.tiers) >= 3
+    assert set(model.tiers) == {tier}
+
+
+def test_version_is_stable_and_changes_with_column_judge():
+    without_judge = AnnouncementPdfExtractor(FakeModel()).version
+
+    assert AnnouncementPdfExtractor(FakeModel()).version == without_judge
+    assert AnnouncementPdfExtractor(FakeModel(), column_judge=object()).version != without_judge
 
 
 def test_result_has_contract_keys_and_original_page_numbers():

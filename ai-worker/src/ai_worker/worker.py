@@ -86,6 +86,14 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
     if job is None:
         return False
 
+    # heartbeat 스레드가 conn을 쓰기 전에 찾는다. 한 연결을 두 스레드가 함께 쓰지 않는다.
+    reused = jobs.reusable_result(conn, job, extractor.version)
+    if reused is not None:
+        log.info("작업 %d는 같은 PDF·입력·버전으로 성공한 결과를 다시 씁니다.", job.id)
+        if not jobs.complete(conn, job, reused, extractor.version):
+            log.warning("작업 %d 기록이 0행입니다. lease를 빼앗겼거나 공고와 함께 지워졌습니다.", job.id)
+        return True
+
     try:
         with heartbeat(conn, job):
             result = serialize(extractor.extract(job))
@@ -106,7 +114,7 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
         written = jobs.fail(conn, job, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE)
     else:
         try:
-            written = jobs.complete(conn, job, result)
+            written = jobs.complete(conn, job, result, extractor.version)
         except (psycopg.DataError, UnicodeEncodeError):
             # NUL·짝 없는 서로게이트처럼 jsonb가 거절하는 결과. 잡지 않으면 lease 만료까지 RUNNING으로 남아 유료 추출을 다시 부른다.
             log.exception("작업 %d 결과를 jsonb로 기록하지 못했습니다.", job.id)

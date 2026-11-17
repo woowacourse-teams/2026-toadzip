@@ -26,6 +26,10 @@ import static lombok.AccessLevel.PROTECTED;
 @NoArgsConstructor(access = PROTECTED)
 public class PdfExtractionJob {
     public static final String KIND = "ANNOUNCEMENT_PDF_EXTRACTION";
+    /** 관리자가 요청한 작업. 워커가 먼저 꺼내고 일반 처리로 부른다. */
+    public static final String ADMIN = "ADMIN";
+    /** 서버가 스스로 넣은 작업. 관리자 작업 뒤에 꺼내고 느리지만 싼 처리(Flex)로 부른다. 결과는 관리자가 검토해야 반영된다. */
+    public static final String BATCH = "BATCH";
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(nullable = false, length = 50) private String kind;
@@ -48,11 +52,11 @@ public class PdfExtractionJob {
     private Instant startedAt;
     private Instant completedAt;
 
-    private PdfExtractionJob(long announcementId, String requestedBy, PdfExtractionSource source, String input,
-            Instant now) {
+    private PdfExtractionJob(long announcementId, String requestSource, String requestedBy, PdfExtractionSource source,
+            String input, Instant now) {
         kind = KIND;
         this.announcementId = announcementId;
-        requestSource = "ADMIN";
+        this.requestSource = requestSource;
         this.requestedBy = requestedBy;
         status = PdfExtractionJobStatus.PENDING;
         nextAttemptAt = now;
@@ -66,6 +70,12 @@ public class PdfExtractionJob {
     /** 관리자가 올린 PDF로 바로 처리할 작업을 만든다. input은 워커에 줄 입력 스냅숏 JSON이다. */
     public static PdfExtractionJob requestedByAdmin(long announcementId, String admin, PdfExtractionSource source,
             String input, Instant now) {
-        return new PdfExtractionJob(announcementId, admin, source, input, now);
+        return new PdfExtractionJob(announcementId, ADMIN, admin, source, input, now);
+    }
+
+    /** 서버가 공고 첨부 PDF로 스스로 넣는 작업을 만든다. 요청한 사람이 없다. */
+    public static PdfExtractionJob requestedByBatch(long announcementId, PdfExtractionSource source, String input,
+            Instant now) {
+        return new PdfExtractionJob(announcementId, BATCH, null, source, input, now);
     }
 }

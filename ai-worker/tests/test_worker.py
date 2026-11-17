@@ -17,6 +17,8 @@ from conftest import PDF, connect_worker, contract_example, insert_job, job_row
 class FakeExtractor:
     """정해 둔 결과나 오류를 돌려주고, 받은 작업을 남긴다. during은 추출 도중에 할 일이다."""
 
+    version = "test-version"
+
     def __init__(self, result=None, error=None, during=None):
         self.result = result if result is not None else contract_example("result.example.json")
         self.error = error
@@ -160,12 +162,12 @@ def test_expired_lease_is_reclaimed_and_old_lease_cannot_write(postgres, owner, 
         assert (second.id, second.attempts) == (job_id, 2)
         assert second.lease_token != first.lease_token
 
-        assert jobs.complete(worker_conn, first, json.dumps({"stale": True})) is False
+        assert jobs.complete(worker_conn, first, json.dumps({"stale": True}), "v") is False
         assert jobs.fail(worker_conn, first, "STALE", "stale") is False
         assert jobs.retry(worker_conn, first, timedelta(minutes=1), worker.CLAIM_WINDOW, "STALE", "stale") is False
         assert job_row(owner, job_id)["status"] == "RUNNING"
 
-        assert jobs.complete(second_conn, second, json.dumps({"fresh": True})) is True
+        assert jobs.complete(second_conn, second, json.dumps({"fresh": True}), "v") is True
     assert job_row(owner, job_id)["result"] == {"fresh": True}
 
 
@@ -401,7 +403,8 @@ def test_deadline_cleanup_leaves_finished_jobs_alone(owner, worker_conn):
 
 def test_run_processes_jobs_until_stopped(owner, postgres, monkeypatch):
     monkeypatch.setattr(worker, "IDLE", timedelta(0))
-    job_ids = [insert_job(owner, 1), insert_job(owner, 2)]
+    # PDF가 같으면 두 번째 작업은 추출하지 않고 첫 결과를 다시 쓴다.
+    job_ids = [insert_job(owner, 1), insert_job(owner, 2, pdf_sha256="b" * 64)]
     stop = threading.Event()
     extractor = FakeExtractor(during=lambda job: len(extractor.jobs) == 2 and stop.set())
 
@@ -548,3 +551,66 @@ def test_heartbeat_marks_alive_during_long_extraction(owner, worker_conn, monkey
     run_once(worker_conn, FakeExtractor(during=long_extraction))
 
     assert seen["alive"] is True
+
+
+def test_admin_job_is_claimed_before_earlier_server_job(owner, worker_conn):
+    insert_job(owner, 1, request_source="BATCH")
+    admin_id = insert_job(owner, 2)
+    extractor = FakeExtractor()
+
+    run_once(worker_conn, extractor)
+
+    assert [job.id for job in extractor.jobs] == [admin_id]
+    assert extractor.jobs[0].request_source == "ADMIN"
+
+
+def test_success_records_worker_version(owner, worker_conn):
+    job_id = insert_job(owner)
+
+    run_once(worker_conn, FakeExtractor())
+
+    assert job_row(owner, job_id)["worker_version"] == FakeExtractor.version
+
+
+def test_same_pdf_input_and_version_reuses_result_without_extracting(owner, worker_conn):
+    input_example = contract_example("input.example.json")
+    insert_job(owner, 1, input=input_example)
+    run_once(worker_conn, FakeExtractor())
+    reused_id = insert_job(owner, 2, input=input_example, request_source="BATCH")
+    extractor = FakeExtractor(result={"data": {"other": True}})
+
+    assert run_once(worker_conn, extractor) is True
+
+    assert extractor.jobs == []
+    row = job_row(owner, reused_id)
+    assert (row["status"], row["result"], row["worker_version"]) == (
+        "SUCCEEDED", contract_example("result.example.json"), FakeExtractor.version)
+    assert (row["pdf"], row["lease_token"]) == (None, None)
+
+
+@pytest.mark.parametrize("change", ["pdf", "input", "version"])
+def test_result_is_not_reused_when_pdf_input_or_version_differs(owner, worker_conn, change):
+    insert_job(owner, 1, input={"hint": 1})
+    run_once(worker_conn, FakeExtractor())
+    second_id = insert_job(owner, 2, pdf_sha256="b" * 64 if change == "pdf" else "a" * 64,
+                           input={"hint": 2} if change == "input" else {"hint": 1})
+    extractor = FakeExtractor(result={"data": {"other": True}})
+    if change == "version":
+        extractor.version = "next-version"
+
+    run_once(worker_conn, extractor)
+
+    assert [job.id for job in extractor.jobs] == [second_id]
+    assert job_row(owner, second_id)["result"] == {"data": {"other": True}}
+
+
+def test_failed_job_result_is_not_reused(owner, worker_conn):
+    insert_job(owner, 1)
+    run_once(worker_conn, FakeExtractor(error=PermanentError("PDF_UNREADABLE", "읽을 수 없습니다.")))
+    second_id = insert_job(owner, 2)
+    extractor = FakeExtractor()
+
+    run_once(worker_conn, extractor)
+
+    assert [job.id for job in extractor.jobs] == [second_id]
+

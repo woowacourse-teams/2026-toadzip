@@ -80,11 +80,10 @@ public class AnnouncementPdfExtractionService {
         requireAnnouncement(announcementId);
         AnnouncementPdfDocument.requireReadable(pdf);
         failOverdue(announcementId);
-        requireNoActiveJob(announcementId);
+        requireNoActiveJob(announcementId, admin);
         PdfExtractionInput input = inputs.read(announcementId);
-        PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,
-                PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant());
-        PdfExtractionJob saved = save(job);
+        PdfExtractionJob saved = save(PdfExtractionJob.requestedByAdmin(announcementId, admin,
+                PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant()));
         log.info("event=announcement.pdf_extraction.requested announcementId={} jobId={} sourceSupplyRows={}",
                 announcementId, saved.getId(), input.sourceSupplyRows().size());
         return response(PdfExtractionJobView.of(saved));
@@ -94,9 +93,29 @@ public class AnnouncementPdfExtractionService {
     public PdfExtractionJobResponse requestAttachment(long announcementId, String admin, long attachmentId) {
         requireAnnouncement(announcementId);
         failOverdue(announcementId);
-        requireNoActiveJob(announcementId);
+        requireNoActiveJob(announcementId, admin);
         AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
         return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
+    }
+
+    /**
+     * 서버가 스스로 공고 첨부 PDF의 추출 작업(BATCH)을 넣는다. 결과는 관리자가 PDF 보정 화면에서 검토해 적용할 때만 반영된다.
+     * 진행 중 작업이 있으면 내려받지 않고 예외로 알린다.
+     */
+    public long requestBatch(long announcementId, long attachmentId) {
+        requireAnnouncement(announcementId);
+        failOverdue(announcementId);
+        requireNoActiveJob(announcementId, null);
+        AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
+        byte[] pdf = bytesOf(content.file());
+        AnnouncementPdfDocument.requireReadable(pdf);
+        PdfExtractionInput input = inputs.read(announcementId);
+        PdfExtractionJob saved = save(PdfExtractionJob.requestedByBatch(announcementId,
+                PdfExtractionSource.of(content.fileName(), pdf), objectMapper.writeValueAsString(input),
+                clock.instant()));
+        log.info("event=announcement.pdf_extraction.batch_requested announcementId={} jobId={} attachmentId={}",
+                announcementId, saved.getId(), attachmentId);
+        return saved.getId();
     }
 
     private static byte[] bytesOf(TemporaryAttachment file) {
@@ -188,10 +207,18 @@ public class AnnouncementPdfExtractionService {
         }
     }
 
-    private void requireNoActiveJob(long announcementId) {
-        if (jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE)) {
-            throw new PdfExtractionInProgressException();
+    /**
+     * 진행 중 작업이 있으면 거절한다. 관리자 요청이면 그 전에 기다리는 서버 작업을 관리자 작업으로 바꿔, 관리자 화면이 이어 붙어
+     * 기다리는 작업이 서버 작업 뒤에 밀리지 않게 한다. admin이 null이면 서버 요청이다.
+     */
+    private void requireNoActiveJob(long announcementId, String admin) {
+        if (!jobs.existsByKindAndAnnouncementIdAndStatusIn(PdfExtractionJob.KIND, announcementId, ACTIVE)) {
+            return;
         }
+        if (admin != null && jobs.promoteWaitingBatch(PdfExtractionJob.KIND, announcementId, admin) > 0) {
+            log.info("event=announcement.pdf_extraction.promoted announcementId={}", announcementId);
+        }
+        throw new PdfExtractionInProgressException();
     }
 
     private void requireAnnouncement(long announcementId) {
