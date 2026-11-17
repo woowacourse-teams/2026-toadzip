@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
                        supply_grouping, supply_sources, version)
-from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
+from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
 
 log = logging.getLogger(__name__)
@@ -119,6 +119,8 @@ class AnnouncementPdfExtractor:
             "totalPages": len(texts),
             "warnings": warnings,
             "usage": usage,
+            # 신청자격을 읽지 못한 결과(일시 오류, 시간 부족, 형식 오류)는 다시 하면 채워질 수 있다.
+            INCOMPLETE: extracted.data is None,
         }
 
 

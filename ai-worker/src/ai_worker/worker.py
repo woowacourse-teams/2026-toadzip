@@ -12,7 +12,7 @@ from pathlib import Path
 import psycopg
 
 from ai_worker import jobs
-from ai_worker.extraction import ATTEMPT_BUDGET, Extractor, PermanentError, TransientError
+from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, Extractor, PermanentError, TransientError
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +96,11 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
 
     try:
         with heartbeat(conn, job):
-            result = serialize(extractor.extract(job))
+            extracted = extractor.extract(job)
+        version = extractor.version
+        if isinstance(extracted, dict) and extracted.pop(INCOMPLETE, False):
+            version = None
+        result = serialize(extracted)
     except TransientError as error:
         delay = BACKOFF[min(job.attempts, len(BACKOFF)) - 1]
         if job.attempts < MAX_ATTEMPTS and jobs.retry(conn, job, delay, CLAIM_WINDOW, error.code, error.message):
@@ -114,7 +118,7 @@ def run_once(conn: psycopg.Connection, extractor: Extractor) -> bool:
         written = jobs.fail(conn, job, INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE)
     else:
         try:
-            written = jobs.complete(conn, job, result, extractor.version)
+            written = jobs.complete(conn, job, result, version)
         except (psycopg.DataError, UnicodeEncodeError):
             # NUL·짝 없는 서로게이트처럼 jsonb가 거절하는 결과. 잡지 않으면 lease 만료까지 RUNNING으로 남아 유료 추출을 다시 부른다.
             log.exception("작업 %d 결과를 jsonb로 기록하지 못했습니다.", job.id)

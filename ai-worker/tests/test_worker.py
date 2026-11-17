@@ -9,7 +9,7 @@ import psycopg
 import pytest
 
 from ai_worker import jobs, worker
-from ai_worker.extraction import PermanentError, TransientError
+from ai_worker.extraction import INCOMPLETE, PermanentError, TransientError
 from ai_worker.worker import DEADLINE, INTERNAL_ERROR_CODE, LEASE, MAX_ATTEMPTS, run_once
 from conftest import PDF, connect_worker, contract_example, insert_job, job_row
 
@@ -588,6 +588,18 @@ def test_same_pdf_input_and_version_reuses_result_without_extracting(owner, work
     assert (row["pdf"], row["lease_token"]) == (None, None)
 
 
+def test_job_without_input_reuses_result_of_job_without_input(owner, worker_conn):
+    insert_job(owner, 1)
+    run_once(worker_conn, FakeExtractor())
+    second_id = insert_job(owner, 2)
+    extractor = FakeExtractor(result={"data": {"other": True}})
+
+    run_once(worker_conn, extractor)
+
+    assert extractor.jobs == []
+    assert job_row(owner, second_id)["result"] == contract_example("result.example.json")
+
+
 @pytest.mark.parametrize("change", ["pdf", "input", "version"])
 def test_result_is_not_reused_when_pdf_input_or_version_differs(owner, worker_conn, change):
     insert_job(owner, 1, input={"hint": 1})
@@ -602,6 +614,20 @@ def test_result_is_not_reused_when_pdf_input_or_version_differs(owner, worker_co
 
     assert [job.id for job in extractor.jobs] == [second_id]
     assert job_row(owner, second_id)["result"] == {"data": {"other": True}}
+
+
+def test_incomplete_result_is_recorded_without_version_and_the_next_job_extracts_again(owner, worker_conn):
+    first_id = insert_job(owner, 1)
+    run_once(worker_conn, FakeExtractor(result={"data": {"partial": True}, INCOMPLETE: True}))
+    second_id = insert_job(owner, 2)
+    extractor = FakeExtractor()
+
+    run_once(worker_conn, extractor)
+
+    first = job_row(owner, first_id)
+    assert (first["status"], first["result"], first["worker_version"]) == ("SUCCEEDED", {"data": {"partial": True}}, None)
+    assert [job.id for job in extractor.jobs] == [second_id]
+    assert job_row(owner, second_id)["worker_version"] == FakeExtractor.version
 
 
 def test_failed_job_result_is_not_reused(owner, worker_conn):

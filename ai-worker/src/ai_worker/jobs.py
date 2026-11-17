@@ -142,8 +142,9 @@ def input_json(value: dict | None) -> str | None:
     return None if value is None else json.dumps(value, ensure_ascii=False)
 
 
-def complete(conn: psycopg.Connection, job: Job, result_json: str, version: str) -> bool:
-    """JSON 객체 문자열인 결과와 만든 워커 버전을 쓰고 PDF를 비운다. lease를 빼앗겼거나 작업이 지워졌으면 False."""
+def complete(conn: psycopg.Connection, job: Job, result_json: str, version: str | None) -> bool:
+    """JSON 객체 문자열인 결과와 만든 워커 버전을 쓰고 PDF를 비운다. 버전이 None이면 이 결과는 다시 쓰지 않는다.
+    lease를 빼앗겼거나 작업이 지워졌으면 False."""
     cursor = conn.execute(
         """
         UPDATE ai_jobs
