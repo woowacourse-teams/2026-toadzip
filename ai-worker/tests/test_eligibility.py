@@ -26,7 +26,7 @@ def _common(result):
 
 
 def _unverified(result):
-    """숫자 확인 필요 경고에 적힌 이유들. 근거가 있는 요건은 숫자를 비우지 않고 이 경고로만 알린다."""
+    """숫자 확인 필요 경고에 적힌 이유들. 근거가 있어도 원문과 맞는지 확정하지 못한 숫자는 비우고 이 경고로 알린다."""
     return [warning for warning in result.warnings if "숫자 확인 필요" in warning]
 
 
@@ -42,9 +42,9 @@ def test_amount_written_in_korean_units_becomes_won(written, expected):
     assert eligibility.amount_krw(written) == expected
 
 
-def test_numbers_not_in_the_requirement_text_are_kept_with_a_number_check_warning():
-    """근거가 있는 요건은 원문과 맞지 않는 숫자도 비우지 않고 그대로 판정에 쓴다. 세세하게 막기보다 근거를 분명히 하고
-    숫자 확인 필요 경고로 알리기로 했다. 경고는 JSON 경로가 아니라 요건 문구로 가리킨다."""
+def test_numbers_not_in_the_requirement_text_are_cleared_with_a_number_check_warning():
+    """근거가 있는 요건도 원문과 맞는지 확정하지 못한 숫자는 판정에 쓰지 않는다. 보정을 적용하면 곧바로 공개되므로 잘못 옮긴 숫자로
+    판정하지 않고, 숫자를 비워 목록으로 보이며 모델이 읽은 숫자는 경고에 남긴다. 경고는 JSON 경로가 아니라 요건 문구로 가리킨다."""
     result = _normalize([
         {"kind": "AGE", "scope": "APPLICANT", "minimum": 19, "maximum": 39, "text": "만 19세 이상 만 40세 이하인 자"},
         {"kind": "INCOME", "scope": "HOUSEHOLD", "standard": "URBAN_WORKER_MONTHLY_INCOME", "year": "전년도", "percent": 70,
@@ -54,13 +54,13 @@ def test_numbers_not_in_the_requirement_text_are_kept_with_a_number_check_warnin
     ])
 
     age, income, assets, car = _common(result)
-    assert (age["minimum"], age["maximum"]) == (19, 39)
+    assert (age["minimum"], age["maximum"]) == (None, None)
     assert (income["percent"], income["incomeBaseYear"], income["householdSizeExtraPercent"]) == (
         70, 2025, [{"householdSize": 1, "percent": 20}])
-    assert (assets["maximumKrw"], car["maximumKrw"]) == (337_000_000, 37_080_000)
+    assert (assets["maximumKrw"], car["maximumKrw"]) == (337_000_000, None)
     assert result.warnings == [
-        "신청자격 요건 '만 19세 이상 만 40세 이하인 자'(나이): 숫자 확인 필요. 모델이 적은 문구와 원문 p.11 글에 대조했지만 이 숫자가 맞는지 확정하지 못했고, 그대로 판정에 씁니다(문구에 없는 숫자(39)).",
-        "신청자격 요건 '자동차가액 3,557만원 이하'(자동차가액): 숫자 확인 필요. 모델이 적은 문구와 원문 p.11 글에 대조했지만 이 숫자가 맞는지 확정하지 못했고, 그대로 판정에 씁니다(문구에 없는 금액(3,708만원)).",
+        "신청자격 요건 '만 19세 이상 만 40세 이하인 자'(나이): 숫자 확인 필요. 모델이 적은 문구와 원문 p.11 글에 대조했지만 이 숫자가 맞는지 확정하지 못해 판정하지 않고 목록으로 남깁니다(문구에 없는 숫자(39)).",
+        "신청자격 요건 '자동차가액 3,557만원 이하'(자동차가액): 숫자 확인 필요. 모델이 적은 문구와 원문 p.11 글에 대조했지만 이 숫자가 맞는지 확정하지 못해 판정하지 않고 목록으로 남깁니다(문구에 없는 금액(3,708만원)).",
     ]
     assert [item["path"] for item in result.evidence] == [f"eligibility.common.requirements[{index}]" for index in range(4)]
 
@@ -103,9 +103,9 @@ def test_secondary_numbers_are_checked_against_the_evidence_page_and_amounts_on_
     assert (by_final["percent"], by_final["householdSizeExtraPercent"]) == (
         100, [{"householdSize": 1, "percent": 20}, {"householdSize": 2, "percent": 10}])
     assert residence["minimumMonths"] == 24
-    # 10,800만원 안의 800만원, 근거 쪽에 없는 가구원 수별 최종 비율(150%)은 맞지 않지만 숫자는 남기고 경고한다.
-    assert assets["maximumKrw"] == 8_000_000
-    assert (wrong_extra["percent"], wrong_extra["householdSizeExtraPercent"]) == (100, [{"householdSize": 1, "percent": 50}])
+    # 10,800만원 안의 800만원, 근거 쪽에 없는 가구원 수별 최종 비율(150%)은 맞지 않아 숫자를 비우고 경고한다.
+    assert assets["maximumKrw"] is None
+    assert (wrong_extra["percent"], wrong_extra["householdSizeExtraPercent"]) == (None, [])
     reasons = " ".join(_unverified(result))
     assert "문구에 없는 금액(800만원)" in reasons and "원문 쪽에 없는 가구원 수별 소득 비율(1인 150%)" in reasons
     assert "120%" not in reasons and "110%" not in reasons
@@ -410,11 +410,13 @@ def test_closed_lists_in_the_prompt_match_the_code():
     (6, "인천광역시에 1년 6개월 이상 계속 거주", False),
 ])
 def test_residence_months_are_checked_against_units_on_the_page(months, page, verified):
-    """거주기간은 단위가 붙은 형태(1년 6개월)만 원문과 맞는 것으로 본다. 맞지 않아도 개월과 지역을 남기고 숫자 확인 필요로 알린다."""
+    """거주기간은 단위가 붙은 형태(1년 6개월)만 원문과 맞는 것으로 본다. 맞지 않으면 개월과 지역을 함께 비우고 숫자 확인 필요로 알린다
+    (지역만 남기면 서버가 '지역 거주'만 판정해 넓어진다)."""
     result = _normalize([{"kind": "RESIDENCE", "regions": ["인천광역시"], "months": months, "text": "인천광역시"}], pages=[page])
 
     [residence] = _common(result)
-    assert (residence["regions"], residence["minimumMonths"]) == (["인천광역시"], months)
+    expected = (["인천광역시"], months) if verified else ([], None)
+    assert (residence["regions"], residence["minimumMonths"]) == expected
     assert bool(_unverified(result)) is not verified
 
 
@@ -428,7 +430,7 @@ def test_residence_months_that_are_not_a_number_clear_the_regions_too():
 
 def test_extra_percent_without_a_unit_on_the_page_and_an_amount_inside_eok_are_not_accepted():
     """쪽 글에 단위 없는 숫자(120세대)만 있으면 가구원 수별 비율로 인정하지 않고, '3억 3,700만원' 안의 '3,700만원'도 맞추지 않는다.
-    맞지 않은 숫자는 남기고 숫자 확인 필요로 알린다."""
+    맞지 않은 숫자는 비우고 숫자 확인 필요로 알린다."""
     result = _normalize([
         {"kind": "INCOME", "scope": "HOUSEHOLD", "standard": "URBAN_WORKER_MONTHLY_INCOME", "year": "전년도",
          "percent": 100, "extraBySize": [{"size": 1, "extra": 20}], "text": "월평균소득의 100퍼센트 이하"},
@@ -436,8 +438,8 @@ def test_extra_percent_without_a_unit_on_the_page_and_an_amount_inside_eok_are_n
     ], pages=["월평균소득의 100퍼센트 이하 총자산 3억 3,700만원 이하 1순위 120세대 공급"])
 
     income, assets = _common(result)
-    assert (income["percent"], income["householdSizeExtraPercent"]) == (100, [{"householdSize": 1, "percent": 20}])
-    assert assets["maximumKrw"] == 37_000_000
+    assert (income["percent"], income["householdSizeExtraPercent"]) == (None, [])
+    assert assets["maximumKrw"] is None
     reasons = " ".join(_unverified(result))
     assert "원문 쪽에 없는 가구원 수별 소득 비율(1인 120%)" in reasons and "문구에 없는 금액(3,700만원)" in reasons
 
@@ -462,9 +464,9 @@ def test_household_size_extras_written_as_added_points_on_another_eligibility_pa
     assert (by_size["percent"], by_size["householdSizeExtraPercent"]) == (
         100, [{"householdSize": 1, "percent": 20}, {"householdSize": 2, "percent": 10}])
     assert per_person["householdSizeExtraPercent"] == [{"householdSize": 1, "percent": 20}]
-    # 출산자녀 줄의 숫자로 옮긴 가산은 맞는 것으로 보지 않는다. 숫자는 남기고 숫자 확인 필요로 알린다.
-    assert child_only["householdSizeExtraPercent"] == [{"householdSize": 1, "percent": 10}]
-    assert by_children["householdSizeExtraPercent"] == [{"householdSize": 1, "percent": 10}, {"householdSize": 2, "percent": 20}]
+    # 출산자녀 줄의 숫자로 옮긴 가산은 맞는 것으로 보지 않는다. 숫자를 비우고 숫자 확인 필요로 알린다.
+    assert (child_only["percent"], child_only["householdSizeExtraPercent"]) == (None, [])
+    assert (by_children["percent"], by_children["householdSizeExtraPercent"]) == (None, [])
     reasons = " ".join(_unverified(result))
     assert "(1인 110%)" in reasons and "(2인 120%)" in reasons and "(2인 110%)" not in reasons
 
@@ -488,13 +490,13 @@ def test_base_percent_taken_from_percents_by_size_must_be_in_the_requirement_tex
     ], pages=["가구원수별 가구당 월평균소득 기준 이하\n청년: 100% 이하 (1인 120%, 2인 110%)\n고령자: 70% (1인 90%, 2인 80%)"])
 
     [income] = _common(result)
-    assert income["percent"] == 100
+    assert income["percent"] is None
     assert "문구에 없는 숫자(100)" in " ".join(_unverified(result))
 
 
 def test_asset_and_car_amounts_written_on_one_line_are_not_swapped():
     """통합공공임대는 '총자산 …원 및 자동차 …원 이하' 한 줄이 두 요건의 문구다. 금액이 둘이면 그 요건의 낱말 바로 뒤 금액만 맞는 것으로 본다.
-    뒤바뀐 금액도 남기되 숫자 확인 필요로 알린다."""
+    뒤바뀐 금액은 비우고 숫자 확인 필요로 알린다."""
     text = "자산기준 : 총자산 34,500만원 및 자동차 4,563만원 이하"
 
     result = _normalize([
@@ -506,7 +508,7 @@ def test_asset_and_car_amounts_written_on_one_line_are_not_swapped():
 
     assets, car, swapped_assets, swapped_car = _common(result)
     assert (assets["maximumKrw"], car["maximumKrw"]) == (345_000_000, 45_630_000)
-    assert (swapped_assets["maximumKrw"], swapped_car["maximumKrw"]) == (45_630_000, 345_000_000)
+    assert (swapped_assets["maximumKrw"], swapped_car["maximumKrw"]) == (None, None)
     reasons = " ".join(_unverified(result))
     assert reasons.count("이 요건의 금액인지 확인하지 못한 금액") == 2
     assert "금액(4,563만원)" in reasons and "금액(34,500만원)" in reasons
@@ -523,7 +525,7 @@ def test_assets_written_in_millions_on_the_national_rental_form_become_a_checked
 
 
 def test_amount_cut_out_of_a_larger_amount_on_the_page_needs_a_number_check():
-    """모델이 '3억 3,700만원'을 '3,700만원'으로 줄여 옮기면 낱말은 쪽에 있어도 그 금액은 원문에 없다. 남기되 숫자 확인 필요로 알린다."""
+    """모델이 '3억 3,700만원'을 '3,700만원'으로 줄여 옮기면 낱말은 쪽에 있어도 그 금액은 원문에 없다. 비우고 숫자 확인 필요로 알린다."""
     result = _normalize([
         {"kind": "ASSETS", "scope": "HOUSEHOLD", "amount": "3,700만원", "text": "총자산 3,700만원 이하"},
         {"kind": "ASSETS", "scope": "HOUSEHOLD", "amount": "3억 3,700만원", "text": "총자산 3억 3,700만원 이하"},
@@ -531,9 +533,9 @@ def test_amount_cut_out_of_a_larger_amount_on_the_page_needs_a_number_check():
     ], pages=["총자산 3억\n3,700만원 이하 자동차가액 ( 4,542 )만원 이하"])
 
     cut, whole, blank_form = _common(result)
-    assert (cut["maximumKrw"], whole["maximumKrw"], blank_form["maximumKrw"]) == (37_000_000, 337_000_000, 45_420_000)
+    assert (cut["maximumKrw"], whole["maximumKrw"], blank_form["maximumKrw"]) == (None, 337_000_000, 45_420_000)
     assert _unverified(result) == [
-        "신청자격 요건 '총자산 3,700만원 이하'(자산): 숫자 확인 필요. 모델이 적은 문구와 원문 p.11 글에 대조했지만 이 숫자가 맞는지 확정하지 못했고, 그대로 판정에 씁니다"
+        "신청자격 요건 '총자산 3,700만원 이하'(자산): 숫자 확인 필요. 모델이 적은 문구와 원문 p.11 글에 대조했지만 이 숫자가 맞는지 확정하지 못해 판정하지 않고 목록으로 남깁니다"
         "(원문 쪽에서 더 큰 금액의 일부인 금액(3,700만원))."]
 
 
@@ -580,7 +582,7 @@ def test_words_ending_in_won_are_not_amounts_and_minor_is_not_adult():
 
     assets, minor = _common(result)
     assert assets["maximumKrw"] == 345_000_000
-    assert minor["minimum"] == 19
+    assert minor["minimum"] is None
     assert len(result.warnings) == 1 and "미성년 자녀" in _unverified(result)[0]
 
 

@@ -197,9 +197,10 @@ export function requirementWarnings(target: WarningTarget, warnings: string[]): 
   })
 }
 
-/** 판정에 쓰지 않는 항목(직접 확인·목록)의 이유. 워커 경고는 판정에 쓴다고 말하므로 그 부분만 바꾼다. */
+/** 판정에 쓰지 않는 항목(직접 확인·목록)의 이유. 이전 워커 경고는 판정에 쓴다고 말하므로 그 부분을, 지금 워커 경고는 말투만 바꾼다. */
 export function unjudgedReason(reason: string): string {
   return reason
+    .replace('확정하지 못해 판정하지 않고 목록으로 남깁니다', '확정하지 못했어요. 이 항목은 판정에 쓰지 않아요')
     .replace('확정하지 못했고, 그대로 판정에 씁니다', '확정하지 못했어요. 이 항목은 판정에 쓰지 않아요')
     .replace('그대로 판정에 씁니다', '이 항목은 판정에 쓰지 않아요')
 }
@@ -209,9 +210,13 @@ export function unmatchedWarnings(targets: WarningTarget[], warnings: string[]):
   return warnings.filter(warning => !targets.some(target => requirementWarnings(target, [warning]).length > 0))
 }
 
-/** 판정에 쓰는 숫자를 원문과 확정하지 못했다는 요건 경고인지(목록으로 뺀 요건의 경고는 판정 조건과 무관하다). */
+/**
+ * 판정에 쓰는 숫자를 원문과 확정하지 못했다는 요건 경고인지. 이전 워커만 그런 숫자를 판정에 썼다. 지금 워커는 숫자를 비우고 목록으로
+ * 남기므로(경고에 '판정하지 않고'가 있다) 그 경고는 판정 조건과 무관하다.
+ */
 export function isNumberWarning(warning: string): boolean {
-  return REQUIREMENT_WARNING.exec(warning)?.[3].startsWith('숫자 확인 필요') ?? false
+  const reason = REQUIREMENT_WARNING.exec(warning)?.[3]
+  return reason !== undefined && reason.startsWith('숫자 확인 필요') && !reason.includes('판정하지 않고')
 }
 
 /**

@@ -5,7 +5,8 @@
 
 근거는 원문에서 찾은 것만 붙인다. text의 낱말이 모두 신청자격 쪽 한 곳에 있어야 그 쪽과 인용이 근거로 붙는다.
 근거가 없는 요건은 숫자를 비우고, 서버가 판정에 쓰지 않고 목록으로만 보인다.
-근거가 있는 요건은 모델 숫자를 그대로 판정에 쓰고, 원문과 맞는지 대조해 맞지 않으면 숫자 확인 필요 경고만 남긴다(세세하게 막기보다 근거를 분명히 하기로 했다).
+근거가 있는 요건도 숫자를 원문과 대조해 맞는지 확정하지 못하면 숫자를 비우고 숫자 확인 필요 경고를 남긴다. 보정을 적용하면 관리자 확인 없이
+곧바로 공개되므로, 잘못 옮긴 숫자로 판정하기보다 목록으로 보이는 쪽을 택했다. 모델이 읽은 숫자는 경고에 남는다.
 대조 기준: 주 숫자(나이·비율·금액·혼인기간)는 그 text 안에, 보조 숫자(가구원 수별 비율, 거주 개월)는 text나 근거 쪽 글에 단위와 함께 있어야 한다.
 가구원 수 가산은 기준표의 다른 줄에 따로 적히기도 해서, 신청자격 쪽 어디든 '1인 20%p'처럼 가구원 수와 가산값이 짝으로 적혀 있어도 인정한다.
 금액은 문구에 금액이 둘 이상이면 그 요건의 낱말(총자산, 자동차) 바로 뒤 금액이어야 하고, 근거 쪽에서 더 큰 금액의 일부가 아니어야 한다.
@@ -329,8 +330,7 @@ def _fold_bonus_tiers(items: list[tuple[dict, list[dict | None]]], warnings: lis
 
 
 def _requirement(item: dict, source: _Source, warnings: list[str], nested: bool) -> tuple[dict, dict | None]:
-    """근거 쪽이 없거나 읽을 수 없는 숫자가 하나라도 있으면 그 요건의 숫자를 모두 비운다.
-    근거 쪽이 있고 숫자를 읽을 수 있으면, 원문과 맞지 않는 숫자도 그대로 두고 숫자 확인 필요 경고를 남긴다."""
+    """근거 쪽이 없거나, 읽을 수 없거나 원문과 맞는지 확정하지 못한 숫자가 하나라도 있으면 그 요건의 숫자를 모두 비운다."""
     text = _limited(item.get("text"))
     kind = item.get("kind") if item.get("kind") in KINDS else "OTHER"
     if kind == "ANY_OF" and nested:
@@ -379,7 +379,7 @@ def _requirement(item: dict, source: _Source, warnings: list[str], nested: bool)
         result["familyTypes"] = [value for value in FAMILY_TYPES if value in wanted]
     if page is None:
         warnings.append(f"{label}: 근거 쪽에서 이 문구를 찾지 못해 판정에 쓰지 않고 목록으로만 남깁니다.")
-    if found.unreadable or page is None:
+    if found.unreadable or found.unverified or page is None:
         for name in _NUMBERS:
             if name in result:
                 result[name] = [] if name == "householdSizeExtraPercent" else None
@@ -389,8 +389,8 @@ def _requirement(item: dict, source: _Source, warnings: list[str], nested: bool)
     if found.unreadable:
         warnings.append(f"{label}: 숫자를 읽지 못해 판정하지 않고 목록으로 남깁니다({', '.join(found.unreadable)}).")
     elif found.unverified and page is not None:
-        warnings.append(f"{label}: 숫자 확인 필요. 모델이 적은 문구와 원문 p.{page} 글에 대조했지만 이 숫자가 맞는지 확정하지 못했고, 그대로 판정에 씁니다"
-                        f"({', '.join(found.unverified)}).")
+        warnings.append(f"{label}: 숫자 확인 필요. 모델이 적은 문구와 원문 p.{page} 글에 대조했지만 이 숫자가 맞는지 확정하지 못해 판정하지 않고"
+                        f" 목록으로 남깁니다({', '.join(found.unverified)}).")
     return result, ({"page": page, "quote": text} if page is not None else None)
 
 
