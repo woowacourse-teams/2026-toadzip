@@ -16,6 +16,7 @@ import com.toadzip.backend.announcement.domain.TemporaryAttachment;
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -27,6 +28,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -50,6 +52,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private PdfAutoExtractionScheduler scheduler;
     @Autowired private AnnouncementPdfExtractionService extractions;
     @Autowired private AnnouncementRepository announcements;
+    @Autowired private AnnouncementSearchRepository search;
     @Autowired private AnnouncementAttachmentRepository attachments;
     @Autowired private JdbcClient jdbc;
     @MockitoBean private AnnouncementAttachmentClient client;
@@ -112,6 +115,17 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
         assertThat(jobs()).isEmpty();
         verify(client, times(1)).read(anyString());
+    }
+
+    @Test
+    void 건너뛸_공고가_후보_수를_다_차지해도_그보다_오래된_공고를_후보로_고른다() {
+        Announcement older = announcement(TODAY.plusDays(5));
+        attach(older, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
+        Announcement skipped = announcement(TODAY.plusDays(5));
+        attach(skipped, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
+
+        assertThat(search.findOpenNotExtracted(TODAY, Set.of(skipped.getId()), 1)).containsExactly(older.getId());
+        assertThat(search.findOpenNotExtracted(TODAY, Set.of(), 1)).containsExactly(skipped.getId());
     }
 
     @Test

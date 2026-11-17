@@ -86,9 +86,7 @@ public class PdfAutoExtractionScheduler {
             return;
         }
         List<Long> candidates = announcements.findOpenNotExtracted(LocalDate.ofInstant(clock.instant(), SEOUL),
-                        CANDIDATE_LIMIT).stream()
-                .filter(id -> !unavailable.contains(id))
-                .toList();
+                Set.copyOf(unavailable), CANDIDATE_LIMIT);
         Map<Long, List<AnnouncementAttachment>> byAnnouncement = attachments.findAllByAnnouncementIdIn(candidates)
                 .stream()
                 .collect(Collectors.groupingBy(attachment -> attachment.getAnnouncement().getId()));

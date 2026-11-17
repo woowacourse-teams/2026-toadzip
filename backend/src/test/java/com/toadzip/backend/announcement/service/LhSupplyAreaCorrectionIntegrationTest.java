@@ -351,6 +351,21 @@ class LhSupplyAreaCorrectionIntegrationTest {
         assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isTrue();
     }
 
+    @Test
+    void 관리자가_원천_변경_확인을_마친_LH_공고는_접수처_연락처만_바뀌어도_다시_표시한다() throws Exception {
+        long id = confirmedAnnouncement();
+        details(PAN_ID, 20, null, "1600-1004");
+        refinement.refineAll();
+        acknowledge(id);
+        refinement.refineAll();
+        assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isFalse();
+
+        details(PAN_ID, 20, null, "1600-1005");
+        refinement.refineAll();
+
+        assertThat(announcements.findById(id).orElseThrow().isSourceReviewRequired()).isTrue();
+    }
+
     private void acknowledge(long id) {
         management.acknowledgeSourceReview(id, announcements.findById(id).orElseThrow().getVersion(), "operator");
     }
@@ -452,6 +467,11 @@ class LhSupplyAreaCorrectionIntegrationTest {
 
     /** documentTarget은 서류제출 대상자 발표일(yyyyMMdd)이고, 없으면 null이다. */
     private void details(String panId, int winnerAfterDays, String documentTarget) {
+        details(panId, winnerAfterDays, documentTarget, null);
+    }
+
+    /** receptionPhone이 있으면 그 연락처의 접수처 행을 더한다. */
+    private void details(String panId, int winnerAfterDays, String documentTarget, String receptionPhone) {
         String start = LocalDate.now().plusDays(1).format(COMPACT_DATE);
         String end = LocalDate.now().plusDays(3).format(COMPACT_DATE);
         String winner = LocalDate.now().plusDays(winnerAfterDays).format(COMPACT_DATE);
@@ -462,6 +482,12 @@ class LhSupplyAreaCorrectionIntegrationTest {
                 LhSourceViews.detail(1, panId, new LhAnnouncementDetailSourceSnapshot("SCHEDULE", COMPLEX_NAME, null,
                         null, null, null, null, null, null, null, start, end, winner, documentTarget, null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null, null, null))));
+        if (receptionPhone != null) {
+            views.add(LhSourceViews.detail(2, panId, new LhAnnouncementDetailSourceSnapshot("RECEPTION", COMPLEX_NAME,
+                    null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    "대구광역시 달서구 테스트로 1", "LH 대구경북지역본부", null, null, receptionPhone, null, null, null, null,
+                    null, null, null)));
+        }
         lhStorage.replaceDetails(panId, request(panId).requestDescription(), views);
     }
 

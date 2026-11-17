@@ -76,8 +76,9 @@ class AnnouncementAutoCollectionSchedulerIntegrationTest {
         }).when(executor).execute(any());
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         when(catalogCollection.collect()).thenAnswer(invocation -> {
-            catalog.store(List.of(entry("P-OPEN", today.plusDays(10)), entry("P-ENDED", today.minusDays(10))));
-            return new ExternalDataCollectionReport("lh-announcement-catalog", 2, 0, 2);
+            catalog.store(List.of(entry("P-OPEN", today.plusDays(10)), entry("P-JUST-CLOSED", today.minusDays(2)),
+                    entry("P-ENDED", today.minusDays(10))));
+            return new ExternalDataCollectionReport("lh-announcement-catalog", 3, 0, 3);
         });
         when(lhApi.supply(any())).thenAnswer(invocation -> {
             suppliedPanIds.add(invocation.<LhAnnouncementQuery>getArgument(0).panId());
@@ -103,7 +104,7 @@ class AnnouncementAutoCollectionSchedulerIntegrationTest {
         assertThat(started.getScheduledAt()).isNotNull();
         assertThat(started.getCollectionScope().name()).isEqualTo("INCREMENTAL");
         task.get().run();
-        assertThat(suppliedPanIds).containsExactly("P-OPEN");
+        assertThat(suppliedPanIds).containsExactlyInAnyOrder("P-OPEN", "P-JUST-CLOSED");
         assertThat(latest(DataPipelineType.ANNOUNCEMENT_SYNC).getStatus().isSuccessful()).isTrue();
     }
 
@@ -116,7 +117,7 @@ class AnnouncementAutoCollectionSchedulerIntegrationTest {
 
         assertThat(latest(DataPipelineType.ANNOUNCEMENT_SYNC).getCollectionScope().name()).isEqualTo("FULL");
         task.get().run();
-        assertThat(suppliedPanIds).containsExactlyInAnyOrder("P-OPEN", "P-ENDED");
+        assertThat(suppliedPanIds).containsExactlyInAnyOrder("P-OPEN", "P-JUST-CLOSED", "P-ENDED");
     }
 
     @Test

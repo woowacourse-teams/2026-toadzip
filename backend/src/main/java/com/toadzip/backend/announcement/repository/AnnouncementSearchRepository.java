@@ -62,7 +62,7 @@ public class AnnouncementSearchRepository {
     private static final String OPEN_NOT_EXTRACTED_SQL = ADMIN_OVERVIEW_SQL + """
             SELECT o.id FROM overview o JOIN announcements a ON a.id = o.id
             WHERE a.admin_deleted = false AND o.processing_stage = 'NOT_EXTRACTED' AND
-            """ + OPEN_SQL + " ORDER BY a.id DESC LIMIT :limit";
+            """ + OPEN_SQL;
     private static final String ADMIN_COUNTS_SQL = ADMIN_OVERVIEW_SQL + """
             SELECT COUNT(*) FILTER (WHERE application_status = 'BEFORE_APPLICATION') AS upcoming,
                 COUNT(*) FILTER (WHERE application_status = 'APPLYING') AS applying,
@@ -176,11 +176,23 @@ public class AnnouncementSearchRepository {
         return counts;
     }
 
-    /** 휴지통을 뺀 마감 전 공고 중 PDF 첨부가 있는데 추출한 적이 없는(추출 전) 공고를 최근 공고부터 고른다. */
-    public List<Long> findOpenNotExtracted(LocalDate today, int limit) {
+    /**
+     * 휴지통을 뺀 마감 전 공고 중 PDF 첨부가 있는데 추출한 적이 없는(추출 전) 공고를 최근 공고부터 고른다. excluded는 SQL에서 빼서,
+     * 건너뛸 공고가 limit을 다 차지해 그보다 오래된 공고가 영영 뽑히지 않는 일이 없게 한다.
+     */
+    public List<Long> findOpenNotExtracted(LocalDate today, Collection<Long> excluded, int limit) {
+        String exclusion = "";
+        if (!excluded.isEmpty()) {
+            exclusion = " AND a.id NOT IN (:excluded)";
+        }
+        String sql = OPEN_NOT_EXTRACTED_SQL + exclusion + " ORDER BY a.id DESC LIMIT :limit";
+        Query query = entityManager.createNativeQuery(sql)
+                .setParameter("today", today).setParameter("limit", limit);
+        if (!excluded.isEmpty()) {
+            query.setParameter("excluded", excluded);
+        }
         @SuppressWarnings("unchecked")
-        List<Number> ids = entityManager.createNativeQuery(OPEN_NOT_EXTRACTED_SQL)
-                .setParameter("today", today).setParameter("limit", limit).getResultList();
+        List<Number> ids = query.getResultList();
         return ids.stream().map(Number::longValue).toList();
     }
 
