@@ -116,10 +116,10 @@ public class AnnouncementPdfExtractionService {
         requireAnnouncement(announcementId);
         failOverdue(announcementId);
         requireNoActiveJob(announcementId);
+        PdfExtractionInput input = inputs.readBatch(announcementId, attachmentId);
         AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
         byte[] pdf = bytesOf(content.file());
         AnnouncementPdfDocument.requireReadable(pdf);
-        PdfExtractionInput input = inputs.read(announcementId);
         PdfExtractionJob saved = save(PdfExtractionJob.requestedByBatch(announcementId,
                 PdfExtractionSource.of(content.fileName(), pdf), objectMapper.writeValueAsString(input),
                 clock.instant()));
@@ -128,7 +128,7 @@ public class AnnouncementPdfExtractionService {
         return saved.getId();
     }
 
-    private static byte[] bytesOf(TemporaryAttachment file) {
+    static byte[] bytesOf(TemporaryAttachment file) {
         try (file) {
             if (file.size() > MAX_PDF_BYTES) {
                 throw new InvalidAnnouncementPdfException("공고문 PDF는 30MB 이하만 추출할 수 있습니다.");
