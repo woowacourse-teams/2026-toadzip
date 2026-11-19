@@ -21,11 +21,15 @@ MIN_PROBABILITY = 0.95
 MAX_CONTEXT = 95000
 
 
+LABELS = DATES | {"notice": "원공고 여부", "supply": "공급표 모집 행·수량", "schedules": "일정·접수처",
+                  "rentalType": "공급유형", "recruitmentType": "모집유형"}
+
+
 def question(instructions, criteria):
     return {"type": "choice", "instructions": instructions, "criteria": criteria}
 
 
-def assess(tree, texts, warnings, judge, deadline, title, reread):
+def assess(tree, texts, warnings, judge, deadline, title, reread, source_rows=None):
     data = tree["data"]
     sheet = data["supplySheet"]
     notice = data["announcement"]
@@ -68,6 +72,14 @@ def assess(tree, texts, warnings, judge, deadline, title, reread):
         "rentalType": question("Which single rental type does this notice recruit?", RENT | UNCLEAR),
         "recruitmentType": question("Which single recruitment type does this notice recruit?", RECRUIT | UNCLEAR),
     })
+    # 같은 형명이 여러 쪽에 반복될 수 있어 원문 행 ID로 각각 검증한다.
+    row_choices = {"represented": "Every recruited unit, target and number in this row occurs exactly once in the candidate.",
+                   "not_a_recruitment_row": "A header, subtotal, rent-only or detail row with no additional recruitment.",
+                   "conflict": "A recruitment row is missing, misassigned or double counted.",
+                   "unclear": "The meaning or coverage of this row is ambiguous."}
+    for row_id, row_text in (source_rows or {}).items():
+        questions[row_id] = question(f"Classify the coverage of source row {row_id} using the original pages and candidate supply.", row_choices)
+        evidence[row_id] = {"page": int(row_id.split(":")[0][1:]), "quote": row_text}
     context = {"sourcePages": dict(enumerate(texts, 1)), "noticeTitle": title, "supply": sheet,
                "schedule": data.get("schedules"), "receptionPlaces": data.get("receptionPlaces"), "citations": evidence}
     eligibility = data.get("eligibility")
@@ -75,8 +87,10 @@ def assess(tree, texts, warnings, judge, deadline, title, reread):
     if can_check_eligibility and len(json.dumps(context | {"eligibility": eligibility}, ensure_ascii=False)) <= MAX_CONTEXT:
         context["eligibility"] = eligibility
         questions["eligibility"] = question("Check ALL eligibility conditions, thresholds, exceptions and target links against the full original. Is it complete and correct for public eligibility decisions?", CHECK)
+    if "eligibility" in questions and len(json.dumps([context, questions], ensure_ascii=False)) > MAX_CONTEXT:
+        del context["eligibility"], questions["eligibility"]
     for attempt in range(2):
-        if len(json.dumps(context, ensure_ascii=False)) > MAX_CONTEXT or deadline - time.monotonic() < 1:
+        if len(json.dumps([context, questions], ensure_ascii=False)) > MAX_CONTEXT or deadline - time.monotonic() < 1:
             if set(questions) != {"eligibility"}:
                 reasons.append("원문 전체 대조에 필요한 입력 또는 시간 한도를 초과했습니다.")
             break
@@ -97,7 +111,7 @@ def assess(tree, texts, warnings, judge, deadline, title, reread):
             if answer.choice == "conflict" or attempt:
                 cite = evidence.get(key, {})
                 location = f" · {cite['page']}쪽 {cite['quote']}" if cite else ""
-                reasons.append(f"{DATES.get(key, key)} 원문 확인 필요{location}")
+                reasons.append(f"{LABELS.get(key, key)} 원문 확인 필요{location}")
             else:
                 pending[key] = prompt
         if reasons or not pending:

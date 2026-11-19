@@ -30,7 +30,7 @@
 첨부파일 본문은 기존 공개 공고 첨부 미리보기·다운로드 API를 사용한다. 휴지통 공고는 공식 원문 링크로 안내한다.
 PDF 추출(`POST /api/admin/announcements/{id}/pdf-extractions`, 공고 첨부는 `.../attachments/{attachmentId}`)은 업로드하거나 서버가 받은 첨부 PDF를 AI 작업(`ai_jobs`)으로 넣고, AI 워커가 외부 AI 모델로 추출한 결과와 PDF의 SHA-256을 작업 행에 남긴다. PDF 원본은 처리 중에만 보관하고 작업이 끝나면 비운다. 공유 초안 API와 로컬 폴더 연동은 없다.
 
-`PDF_AUTO_EXTRACTION_ENABLED=true`이면 서버가 PDF 추출 작업을 스스로 넣는다(`PdfAutoExtractionScheduler`, 요청 출처 `BATCH`). 결과는 관리자가 PDF 보정 화면에서 검토하고 적용할 때만 공고에 반영된다.
+`PDF_AUTO_EXTRACTION_ENABLED=true`이면 서버가 PDF 추출 작업을 스스로 넣는다(`PdfAutoExtractionScheduler`, 요청 출처 `BATCH`). 기본 설정에서는 관리자가 PDF 보정 화면에서 검토하고 적용한다. 자동 적용은 아래 JEV 자동 보정 계약을 따른다.
 
 - 대상: 휴지통이 아니고 접수가 끝나지 않았으며 아직 추출한 적이 없는 공고(처리 단계 '추출 전')다. 최근 공고부터 넣는다.
 - 첨부: 공고 화면과 같은 기준으로 고른다. 종류가 공고문인 첨부, 이름에 '공고문'·'모집공고'가 든 PDF, 첫 PDF 순서다.
@@ -216,3 +216,35 @@ LH·GH 공고 정제는 공고문 소유 공고의 공급표를 다시 만들지
 
 검증: `ComplexVerificationIntegrationTest`, `ComplexVerificationMigrationTest`와
 `AdminManagementIntegrationTest`.
+
+### JEV 자동 보정과 검수함
+
+`PDF_AUTO_EXTRACTION_ENABLED=true`인 환경에서 `PDF_PUBLICATION_MODE`가 새 배치 작업의 후속 처리를 정한다.
+기본값 `OFF`는 기존 수동 적용을 유지한다. `SHADOW`는 원문 검증과 서버 미리보기까지 실행하고
+`APPLY`는 통과한 신규 공고를 공개하고 알림을 적재한다. 이미 공개된 공고는 첫 공급표 보강만 한다.
+모의 판정 때 생성된 작업은 나중에 모드를 바꿔도 공개하지 않는다. 기존 수동 추출과 과거 작업도 자동 반영 대상에서 제외한다.
+
+워커는 Luna의 날짜 인용을 원문 쪽에서 확인하고 JEV에 PDF 원문, 공급표와 일정, 모집 행을 제시한다.
+공급·모집유형, 일정 의미, 행 누락, 원공고 여부 중 판단이 불명확하면 원본 PDF를 다른 텍스트 순서로 한 번 더 읽는다.
+명시적 모순, 원문 부족, 한도 초과, 응답 오류는 보류한다. 코드의 0.95는 모의 평가를 위한 초기 채택 기준이다.
+공고 적용 직전 서버는 최신 작업, 첨부 식별자와 PDF 해시, 공고 버전과 기관 공급행, 단지·주택형 연결을 검사한다.
+기존 공급표를 교체하거나 기존 기본정보와 충돌하는 변경은 검수함으로 보낸다.
+자동 보정도 수동 보정의 적용 트랜잭션과 최초 공개 알림을 사용하며 이력의 작업자는 `pdf-publication-agent`다.
+신청자격은 별도로 검증하고 공고 적용 후 독립 트랜잭션에서 처리한다. 기존 자격본, 경로 연결 실패, 근거 부족은 운영자가 확인한다.
+
+관리자 운영 홈의 **자동 보정 검수함**에서 사유를 확인하고 해당 공고의 PDF 보정 화면으로 이동한다.
+관리자 권한의 에이전트는 `GET /api/admin/operations/pdf-publication-reviews`의 `items`와 `nextBefore`를 읽고
+다음 요청의 `before`로 페이지를 넘길 수 있다. 근거는 해당 공고의 최신 PDF 추출 JSON의 `publicationReview`에 있다.
+
+모의 운영 시 기관과 서식별로 **같은 기간 전체 판정**을 추출하고 자동 통과 표본을 원문과 독립 대조한다.
+아래 조회 결과를 CSV로 내보내고 원문을 확인한 통과 건에만 `correct`를 `yes` 또는 `no`로 채운다.
+`python3 ai-worker/tools/evaluate_publication.py 판정.csv`는 기관별 검수함 비율과 오통과 수, 확인하지 않은 통과 수를 표시한다.
+수집 실패·첨부 누락·추출 실패는 이 분모에 들어가지 않으므로 운영 홈의 단계별 건수로 함께 확인한다.
+
+```sql
+SELECT j.id AS job_id, a.provider AS agency, d.outcome, '' AS correct
+FROM pdf_publication_decisions d
+JOIN ai_jobs j ON j.id = d.job_id
+JOIN announcements a ON a.id = j.announcement_id
+ORDER BY j.id;
+```

@@ -124,7 +124,7 @@ class AnnouncementPdfExtractor:
                         alternate.append(page.get_text("text", sort=False))
                     return alternate
             tree["publicationReview"] = publication.assess(tree, texts, warnings, self.column_judge, deadline,
-                                                          snapshot["title"], reread)
+                                                          snapshot["title"], reread, selected.supply_row_text)
         return {
             "json": json.dumps(tree, ensure_ascii=False),
             "pages": selection.pages,
