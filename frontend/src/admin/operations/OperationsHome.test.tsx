@@ -2,11 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { OperationsHome } from './OperationsHome'
-import { loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadTasksOverview, loadUserOverview } from './api'
+import { loadPdfReviews, loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadTasksOverview, loadUserOverview } from './api'
 import { listFeedback } from '../feedback/api'
 import { listDeliveries } from '../notifications/deliveryApi'
 import { loadNotificationSubscriptions, loadNotificationTrend } from '../notifications/api'
-vi.mock('./api', () => ({ loadAnnouncementOverview: vi.fn(), loadCollectionOverview: vi.fn(), loadComplexOverview: vi.fn(), loadTasksOverview: vi.fn(), loadUserOverview: vi.fn() }))
+vi.mock('./api', () => ({ loadPdfReviews: vi.fn(), loadAnnouncementOverview: vi.fn(), loadCollectionOverview: vi.fn(), loadComplexOverview: vi.fn(), loadTasksOverview: vi.fn(), loadUserOverview: vi.fn() }))
 vi.mock('../feedback/api', () => ({ listFeedback: vi.fn() }))
 vi.mock('../notifications/deliveryApi', () => ({ listDeliveries: vi.fn() }))
 vi.mock('../notifications/api', () => ({ loadNotificationSubscriptions: vi.fn(), loadNotificationTrend: vi.fn() }))
@@ -21,6 +21,7 @@ const trend = (): Awaited<ReturnType<typeof loadNotificationTrend>> => ({ asOf, 
 function show() { return render(<MemoryRouter><OperationsHome /></MemoryRouter>) }
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.mocked(loadPdfReviews).mockResolvedValue({ items: [], nextBefore: null })
   vi.mocked(loadComplexOverview).mockResolvedValue(complex)
   vi.mocked(loadAnnouncementOverview).mockResolvedValue({ statuses: { BEFORE_APPLICATION: 24, APPLYING: 38, CLOSED: 3071, CONDITIONAL: 5, CANCELLED: 5, UNKNOWN: 13 }, attention: 21, reasons: { SCHEDULE_MISSING: 13, SUPPLY_MISSING: 8, UNCONFIRMED: 5 }, asOf })
   vi.mocked(loadCollectionOverview).mockResolvedValue({ sources: [
@@ -119,4 +120,13 @@ it('최근 실패와 마지막 성공, 성공 이력이 없는 기관을 구분�
   expect(within(table).getByRole('row', { name: /LH/ })).toHaveTextContent('11. 06. 18:10')
   expect(within(table).getByRole('row', { name: /SH/ })).toHaveTextContent('성공 이력 없음')
   expect(within(table).getAllByRole('link').every(link => link.getAttribute('href') === '/admin/ingest/announcements')).toBe(true)
+})
+
+it('자동 보정 검수함에서 원문 보류 사유와 해당 공고의 PDF 보정을 연다', async () => {
+  vi.mocked(loadPdfReviews).mockResolvedValue({ items: [{ jobId: 55, announcementId: 41, name: '행복주택 예비모집',
+    reason: '7쪽 대상별 접수일 확인', eligibilityOnly: false }], nextBefore: null })
+  show()
+  const queue = screen.getByRole('region', { name: '자동 보정 검수함' })
+  expect(await within(queue).findByText('7쪽 대상별 접수일 확인')).toBeVisible()
+  expect(within(queue).getByRole('link', { name: '행복주택 예비모집' })).toHaveAttribute('href', '/admin/announcements/41/pdf-correction')
 })

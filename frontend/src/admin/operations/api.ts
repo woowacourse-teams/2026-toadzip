@@ -38,3 +38,14 @@ export const loadCollectionOverview = (signal: AbortSignal) => read<CollectionOv
     && sources.every(source => isRecord(source) && nullableInstant(source.lastSuccessAt) && nullableInstant(source.latestStartedAt)
       && (source.latestStatus === null || typeof source.latestStatus === 'string' && Object.hasOwn(pipelineStatusLabels, source.latestStatus)))
 }, signal)
+
+type PdfReview = { jobId: number; announcementId: number; name: string; reason: string; eligibilityOnly: boolean }
+export async function loadPdfReviews(before: number | null, signal: AbortSignal) {
+  const suffix = before === null ? '' : `?before=${before}`
+  const value = await requestManagementApi(`/api/admin/operations/pdf-publication-reviews${suffix}`, 'GET', undefined, signal)
+  if (!isRecord(value) || !Array.isArray(value.items) || !value.items.every(item => isRecord(item)
+    && Number.isSafeInteger(item.jobId) && Number.isSafeInteger(item.announcementId) && typeof item.name === 'string'
+    && typeof item.reason === 'string' && typeof item.eligibilityOnly === 'boolean')
+    || !(value.nextBefore === null || Number.isSafeInteger(value.nextBefore))) throw new Error('PDF 검수 목록을 읽지 못했습니다.')
+  return { items: value.items as PdfReview[], nextBefore: value.nextBefore as number | null }
+}

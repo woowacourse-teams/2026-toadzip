@@ -56,10 +56,21 @@ public class PdfPublicationDecisions {
                 .params(status, reason, job).update();
     }
 
-    public record Decision(String outcome, String reason, String eligibilityStatus) {}
+    public record ReviewItem(long jobId, long announcementId, String name, String reason, boolean eligibilityOnly) {}
 
-    public Optional<Decision> decision(long job) {
-        return jdbc.sql("SELECT outcome, reason, eligibility_status FROM pdf_publication_decisions WHERE job_id = ?")
-                .param(job).query(Decision.class).optional();
+    public List<ReviewItem> reviewQueue(long before) {
+        return jdbc.sql("""
+                SELECT d.job_id, a.id AS announcement_id, a.name, d.reason,
+                       d.eligibility_status = 'REVIEW' AS eligibility_only
+                FROM pdf_publication_decisions d
+                JOIN ai_jobs j ON j.id = d.job_id JOIN announcements a ON a.id = j.announcement_id
+                WHERE d.job_id < ? AND NOT a.admin_deleted
+                  AND ((d.outcome IN ('REVIEW', 'WOULD_PUBLISH', 'WOULD_CONFIRM') AND a.supply_confirmed_at IS NULL)
+                    OR (d.eligibility_status = 'REVIEW' AND NOT EXISTS
+                      (SELECT 1 FROM basic_comparison_rule_sets r WHERE r.announcement_id=a.id AND r.status='PUBLISHED')))
+                  AND NOT EXISTS (SELECT 1 FROM ai_jobs newer WHERE newer.announcement_id=a.id AND newer.id>j.id)
+                ORDER BY d.job_id DESC LIMIT 21
+                """).param(before).query((rs, n) -> new ReviewItem(rs.getLong("job_id"), rs.getLong("announcement_id"),
+                        rs.getString("name"), rs.getString("reason"), rs.getBoolean("eligibility_only"))).list();
     }
 }
