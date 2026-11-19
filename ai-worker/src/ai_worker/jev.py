@@ -58,11 +58,15 @@ class Jev:
         """headers는 질문 키 → 열 머리글 경로다. 예비자만 모집하는 공고면 당첨자 선택지는 정답일 수 없어 뺀다.
         timeout은 남은 작업 시간으로 줄여 넘긴다. httpx 제한은 단계마다 걸리므로 TIMEOUT 이하로만 둔다."""
         criteria = {name: text for name, text in OPTIONS.items() if not (reserve_only and name in WINNER_OPTIONS)}
+        questions = {key: {"type": "choice", "instructions": QUESTION.format(path=path), "criteria": criteria}
+                     for key, path in headers.items()}
+        return self.choices(state, questions, timeout)
+
+    def choices(self, state: dict, questions: dict, timeout: float) -> dict[str, Meaning]:
         request = {
             "model": MODEL,
             "state": state,
-            "questions": {key: {"type": "choice", "instructions": QUESTION.format(path=path), "criteria": criteria}
-                          for key, path in headers.items()},
+            "questions": questions,
         }
         try:
             response = self.client.post("/systemone", json=request, timeout=min(timeout, TIMEOUT))
@@ -73,10 +77,10 @@ class Jev:
         try:
             answers = response.json()["answers"]
             result = {}
-            for key in headers:
+            for key in questions:
                 choice = answers[key]["choice"]
                 probability = float(answers[key]["probabilities"][choice])
-                if not math.isfinite(probability):
+                if not math.isfinite(probability) or not 0 <= probability <= 1:
                     raise ValueError("probability is not finite")
                 result[key] = Meaning(choice, probability)
         except (ValueError, KeyError, TypeError) as error:

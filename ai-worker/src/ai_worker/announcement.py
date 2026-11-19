@@ -10,7 +10,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
+from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame, stage_prompts,
                        supply_grouping, supply_sources, version)
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
@@ -113,6 +113,18 @@ class AnnouncementPdfExtractor:
                  "usage=%s", job.id, len(selection.pages), len(texts), len(eligibility_source.pages),
                  "" if eligibility_source.section_found else "(절 제목 없음)", len(selected.supply_row_ids), len(frame),
                  len(warnings), supply.kind, usage)
+        snapshot = (job.input or {}).get("publication")
+        if job.request_source == BATCH and snapshot:
+            def reread():
+                with pages.open_pdf(job.pdf) as original:
+                    alternate = []
+                    for page in original:
+                        if time.monotonic() >= deadline:
+                            break
+                        alternate.append(page.get_text("text", sort=False))
+                    return alternate
+            tree["publicationReview"] = publication.assess(tree, texts, warnings, self.column_judge, deadline,
+                                                          snapshot["title"], reread)
         return {
             "json": json.dumps(tree, ensure_ascii=False),
             "pages": selection.pages,
