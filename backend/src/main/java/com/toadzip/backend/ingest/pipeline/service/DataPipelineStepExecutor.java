@@ -99,7 +99,8 @@ class DataPipelineStepExecutor {
         refinement.finish(executionStartedAt(), collection.selectedPanIds(),
                 collection.supply().failedRequestCount() + collection.detail().failedRequestCount() == 0);
         return resultAdapter.adapt(new LhCollectionRefinementReport(
-                collection.supply(), collection.detail(), refinement.report()));
+                collection.supply(), collection.detail(), refinement.report(),
+                !IngestExecutionScope.isIncrementalCollection()));
     }
 
     /** 이번 실행이 시작된 시각. 실행 밖에서 부르면 이번 실행에서 바뀐 공고를 정하지 못해 마무리 정제를 건너뛴다. */

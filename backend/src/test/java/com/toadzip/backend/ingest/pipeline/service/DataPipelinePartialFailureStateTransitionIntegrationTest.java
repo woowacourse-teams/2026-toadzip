@@ -30,6 +30,7 @@ import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefinement
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationExecutionService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -317,6 +318,29 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         verify(refinementService).refineAll();
     }
 
+    @ParameterizedTest
+    @CsvSource({"INCREMENTAL, 1, PARTIAL", "INCREMENTAL, 2, ALL_TARGETS_FAILED", "FULL, 1, ALL_TARGETS_FAILED"})
+    void LH_정제_대상이_모두_실패하면_증분_실행은_두_건부터_통째_실패로_센다(
+            DataPipelineCollectionScope scope, int failedCount, DataPipelineFailureCause cause
+    ) {
+        var collectionService = mock(LhAnnouncementExternalCollectionService.class);
+        var refinementService = mock(LhAnnouncementRefinementService.class);
+        var run = mock(LhAnnouncementRefinementService.Run.class);
+        when(run.report()).thenReturn(failedLhRefinementReport(failedCount));
+        when(refinementService.begin()).thenReturn(run);
+        when(collectionService.collectBundles(any())).thenReturn(new LhAnnouncementSharedRequestCollector.BundleReport(
+                ExternalDataCollectionReport.empty("lh-announcement-supply"),
+                ExternalDataCollectionReport.empty("lh-announcement-detail")));
+        var service = service(runner(successfulCatalogService(), collectionService, refinementService),
+                mock(DataPipelineExecutionLock.Lease.class));
+
+        var accepted = service.startScheduled(DataPipelineType.ANNOUNCEMENT_SYNC, STARTED_AT, scope);
+        var failed = executionRepository.findByExecutionId(accepted.executionId()).orElseThrow();
+
+        assertThat(failed.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(failed.getFailureCause()).isEqualTo(cause);
+    }
+
     @Test
     void 통합_수집_호출_제한은_정제_건너뜀_사유와_부분_완료를_저장한다() {
         var catalogService = mock(LhAnnouncementCatalogCollectionService.class);
@@ -474,6 +498,14 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 1, 1, 0, 0, Map.of(), 0, 0, 1, 0,
                 new LhAnnouncementRefinementReport.ComplexCounts(1, 0, 0, 0, 1, 0),
                 new LhAnnouncementRefinementReport.SupplyCounts(1, 0, 0)
+        );
+    }
+
+    private LhAnnouncementRefinementReport failedLhRefinementReport(int failedCount) {
+        return new LhAnnouncementRefinementReport(
+                failedCount, 0, 0, 0, Map.of(), failedCount, 0, 0, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(0, 0, 0, 0, 0, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(0, 0, 0)
         );
     }
 

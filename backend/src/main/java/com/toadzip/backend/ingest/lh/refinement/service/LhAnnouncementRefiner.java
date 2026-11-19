@@ -350,7 +350,12 @@ class LhAnnouncementRefiner {
         SUPPLY_TYPE_UNKNOWN,
         VALUES_MISSING,
         WINNER_DATE_MISSING,
-        TRASHED
+        TRASHED;
+
+        /** 상세·공급 원천이 아직 채워지지 않아 공고를 만들지 못했으면, 다시 받으면 달라질 수 있다. */
+        boolean waitsForSources() {
+            return this == SOURCES_MISSING || this == VALUES_MISSING || this == WINNER_DATE_MISSING;
+        }
     }
 
     static final class Tally {

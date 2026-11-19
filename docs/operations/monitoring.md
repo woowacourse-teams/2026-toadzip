@@ -114,6 +114,7 @@ dev·prod·shared를 구분한다. DB 연결 성공과 collector 성공까지 �
 - `Announcement collection failing`: 마지막 성공 뒤 실패가 3회 이상이면 알린다.
 - 두 경보의 성공은 대상 일부만 실패한 실행(`PARTIAL`)을 포함한다. 그 대상은 운영 홈의 '미해결 수집·정제 실패'로 본다.
   실패한 단계의 대상이 모두 실패한 실행(`ALL_TARGETS_FAILED`)은 실패로 센다.
+  LH 최근분 실행은 대상이 몇 건뿐이라 실패가 한 건뿐이면 이 판정을 하지 않는다([자동 실행](ingest/execution-controls.md#자동-실행)).
 - 자동 실행을 끈 환경은 지표가 없으므로 두 경보 모두 정상으로 본다(`noDataState: OK`).
 
 ```shell
