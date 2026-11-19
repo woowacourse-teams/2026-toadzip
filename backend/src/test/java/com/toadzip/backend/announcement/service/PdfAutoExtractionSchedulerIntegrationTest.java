@@ -42,13 +42,23 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest(properties = {
         "announcement.pdf-auto-extraction.enabled=true",
+        "announcement.pdf-publication.mode=APPLY",
+        "app.notification.publisher-enabled=true", "app.notification.activation-at=2026-01-01T00:00:00Z",
         "announcement.pdf-auto-extraction.initial-delay=PT24H",
         "announcement.pdf-auto-extraction.max-in-flight=2"
 })
+@org.springframework.test.context.jdbc.Sql(scripts = "/db/migration/V20261119_03__pdf_publication_decisions.sql",
+        executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.BEFORE_TEST_CLASS)
+@org.springframework.test.context.jdbc.Sql(statements = {"DROP TABLE pdf_publication_decisions", "DROP INDEX ix_ai_jobs_publication_pending"},
+        executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_CLASS)
 @ActiveProfiles("test")
 class PdfAutoExtractionSchedulerIntegrationTest {
     private static final LocalDate TODAY = LocalDate.now(ZoneId.of("Asia/Seoul"));
 
+    @Autowired private PdfPublicationScheduler publication;
+    @Autowired private tools.jackson.databind.ObjectMapper json;
+    @Autowired private com.toadzip.backend.housing.repository.HousingComplexRepository complexes;
+    @Autowired private com.toadzip.backend.housing.repository.HousingTypeRepository types;
     @Autowired private PdfAutoExtractionScheduler scheduler;
     @Autowired private AnnouncementPdfExtractionService extractions;
     @Autowired private AnnouncementRepository announcements;
@@ -234,6 +244,67 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 FROM ai_jobs ORDER BY id
                 """)
                 .query().listOfRows();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"apply", "shadow", "changedPdf", "conflict", "published"})
+    void 자동_공개와_보류는_원문과_같은_판정에만_한번_적용된다(String scenario) throws IOException {
+        String name = "검증단지-" + UUID.randomUUID();
+        var address = com.toadzip.backend.housing.domain.Address.create("서울 중구 세종대로", "1111010100100010000",
+                "1111010100", "11", "11110", new java.math.BigDecimal("37.5"), new java.math.BigDecimal("126.9"));
+        var complex = complexes.saveAndFlush(com.toadzip.backend.housing.domain.HousingComplex.create(name,
+                UUID.randomUUID().toString(), "HAPPY_HOUSING", address, 10, "SH", TODAY, "INDIVIDUAL", "APARTMENT",
+                "STAIR", true, 10, null, 0));
+        types.saveAndFlush(com.toadzip.backend.housing.domain.HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(),
+                "36A", new java.math.BigDecimal("36"), null, null));
+        var notice = announcements.saveAndFlush(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고",
+                AgencyCode.SH, TODAY, "https://example.com/notice"));
+        if (scenario.equals("published")) {
+            jdbc.sql("UPDATE announcements SET release_status='PUBLISHED' WHERE id=?").param(notice.getId()).update();
+        }
+        var pdf = attach(notice, "모집공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
+        long job = extractions.requestBatch(notice.getId(), pdf.getId());
+        var tree = json.createObjectNode();
+        var data = tree.putObject("data");
+        var metadata = data.putObject("announcement");
+        metadata.put("postedDate", TODAY.toString()).put("applicationStartDate", TODAY.toString())
+                .put("applicationEndDate", TODAY.plusDays(2).toString()).put("winnerAnnouncementDate", TODAY.plusDays(5).toString());
+        data.putArray("schedules");
+        data.putArray("receptionPlaces");
+        var sheet = data.putObject("supplySheet");
+        sheet.putArray("housingTypes").addObject().put("key", "h0").put("name", "36A").put("complexName", name).put("exclusiveArea", 36);
+        sheet.putArray("targets").addObject().put("key", "t0").put("label", "전체").putArray("groups");
+        var cell = Map.of("housingType", "h0", "target", "t0");
+        sheet.putArray("cells").add(json.valueToTree(cell));
+        sheet.putArray("quotas").addObject().put("count", 5).put("kind", "WINNER").putArray("members").add(json.valueToTree(cell));
+        sheet.putArray("leaseTerms");
+        var decision = tree.putObject("publicationReview").put("policy", 1);
+        var reasons = decision.putArray("reasons");
+        if (scenario.equals("conflict")) { reasons.add("7쪽 일정 예외"); }
+        var answers = decision.putObject("answers");
+        for (String key : List.of("notice", "supply", "schedules", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")) {
+            answers.putObject(key).put("choice", "confirmed").put("probability", 0.99);
+        }
+        answers.putObject("rentalType").put("choice", "HAPPY_HOUSING").put("probability", 0.99);
+        answers.putObject("recruitmentType").put("choice", "NEW").put("probability", 0.99);
+        jdbc.sql("UPDATE ai_jobs SET status='SUCCEEDED', completed_at=now(), pdf=NULL, result=cast(? as jsonb) WHERE id=?")
+                .params(json.writeValueAsString(Map.of("json", tree.toString())), job).update();
+        if (scenario.equals("changedPdf")) { attachmentPdf = pdf(2); }
+        if (scenario.equals("shadow")) {
+            jdbc.sql("UPDATE ai_jobs SET input=jsonb_set(input, '{publication,mode}', '\"SHADOW\"') WHERE id=?").param(job).update();
+        }
+        publication.process();
+        publication.process();
+        var result = jdbc.sql("SELECT outcome, reason FROM pdf_publication_decisions WHERE job_id=?").param(job).query().singleRow();
+        assertThat(result.get("outcome")).as("%s", result.get("reason")).isEqualTo(switch (scenario) {
+            case "apply" -> "PUBLISHED";
+            case "published" -> "CONFIRMED";
+            case "shadow" -> "WOULD_PUBLISH";
+            default -> "REVIEW";
+        });
+        assertThat(announcements.findById(notice.getId()).orElseThrow().isPublished()).isEqualTo(scenario.equals("apply") || scenario.equals("published"));
+        assertThat(jdbc.sql("SELECT count(*) FROM notification_outbox_events WHERE announcement_id=?")
+                .param(notice.getId()).query(Integer.class).single()).isEqualTo(scenario.equals("apply") ? 1 : 0);
     }
 
     private Announcement announcement(LocalDate applicationEnd) {

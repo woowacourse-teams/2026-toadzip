@@ -38,7 +38,7 @@ class PdfExtractionInputs {
     @Transactional(readOnly = true)
     PdfExtractionInput readBatch(long announcementId, long attachmentId) {
         var announcement = announcements.findById(announcementId).orElseThrow();
-        var snapshot = mode == PdfExtractionInput.PublicationMode.OFF || announcement.isPublished() ? null
+        var snapshot = mode == PdfExtractionInput.PublicationMode.OFF || announcement.isSupplyConfirmed() ? null
                 : new PdfExtractionInput.Publication(attachmentId, announcement.getVersion(), announcement.getName(), mode);
         return new PdfExtractionInput(sourceRows(announcement), snapshot);
     }
