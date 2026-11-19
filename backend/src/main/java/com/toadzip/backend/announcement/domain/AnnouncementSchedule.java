@@ -132,12 +132,7 @@ public class AnnouncementSchedule {
         if (adminModified) { return false; }
         AnnouncementSchedule incoming = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
         incoming.complexName = normalizeComplexName(complexName);
-        if (this.scheduleType == incoming.scheduleType
-                && this.name.equals(incoming.name)
-                && this.startAt.equals(incoming.startAt)
-                && this.endAt.equals(incoming.endAt)
-                && this.displayOrder == incoming.displayOrder
-                && Objects.equals(this.complexName, incoming.complexName)) {
+        if (hasSourceValues(scheduleType, name, startAt, endAt, complexName) && this.displayOrder == displayOrder) {
             return false;
         }
         this.scheduleType = incoming.scheduleType;
@@ -147,6 +142,16 @@ public class AnnouncementSchedule {
         this.displayOrder = incoming.displayOrder;
         this.complexName = incoming.complexName;
         return true;
+    }
+
+    /** 원천 값과 일정유형·이름·기간·단지명이 같다. 원천 순서로 매기는 표시 순서는 보지 않는다. */
+    public boolean hasSourceValues(ScheduleType scheduleType, String name, LocalDateTime startAt, LocalDateTime endAt,
+            String complexName) {
+        return this.scheduleType == scheduleType
+                && this.name.equals(name)
+                && this.startAt.equals(startAt)
+                && this.endAt.equals(endAt)
+                && Objects.equals(this.complexName, normalizeComplexName(complexName));
     }
 
     private static String normalizeComplexName(String complexName) {

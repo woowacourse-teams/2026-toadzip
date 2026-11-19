@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -45,6 +46,21 @@ public class LhAnnouncementCollectionCandidateResolver {
     public List<Candidate> resolveCatalogTargets() {
         return catalogRepository.findAllPresentRentalHousingAnnouncements().stream()
                 .filter(collectionPolicy::isCollectionTarget)
+                .map(this::catalogCandidate)
+                .toList();
+    }
+
+    /**
+     * 증분 수집 대상. 종료 정책 안의 공고 중 묶음 수집·정제를 마친 뒤 목록 행(이름·상태·공고일·마감일 등)이 바뀌었거나 아직
+     * 마치지 못한 공고다. 목록 행이 그대로인 채 공급·상세만 바뀐 공고는 주 1회 전체 수집이 받는다.
+     */
+    public List<Candidate> resolveIncrementalTargets() {
+        List<LhAnnouncementCatalogSourceView> targets = catalogRepository.findAllPresentRentalHousingAnnouncements()
+                .stream().filter(collectionPolicy::isCollectionTarget).toList();
+        Set<String> unchanged = catalogRepository.findSourceKeysRefinedSinceChange(
+                targets.stream().map(LhAnnouncementCatalogSourceView::getSourceKey).toList());
+        return targets.stream()
+                .filter(source -> !unchanged.contains(source.getSourceKey()))
                 .map(this::catalogCandidate)
                 .toList();
     }

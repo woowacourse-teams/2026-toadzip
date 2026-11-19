@@ -26,6 +26,11 @@ public record LhAnnouncementRefinementReport(
         return failedAnnouncementCount;
     }
 
+    @Override
+    public boolean stepFailedEntirely() {
+        return targetCount > 0 && failedAnnouncementCount >= targetCount;
+    }
+
     public record ComplexCounts(int created, int updated, int absent, int inherited, int auto, int unlinked) {
     }
 

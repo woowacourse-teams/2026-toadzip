@@ -87,4 +87,10 @@ public record ExternalDataCollectionReport(
     public int stepRateLimitedFailureCount() {
         return rateLimitedRequestCount;
     }
+
+    /** 실패한 요청이 있고 저장한 행이 없다. 성공 요청 수는 모든 수집기가 세지 않으므로 저장한 행 수로 본다. */
+    @Override
+    public boolean stepFailedEntirely() {
+        return failedRequestCount > 0 && storedRowCount == 0;
+    }
 }

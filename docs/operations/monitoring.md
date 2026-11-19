@@ -103,6 +103,27 @@ dev·prod·shared를 구분한다. DB 연결 성공과 collector 성공까지 �
 - 백엔드가 큐를 읽지 못하거나 수집이 끊기면 값은 `—`다. 대기 0과 구분한다.
 - 값은 활성 색상 백엔드가 DB를 읽어 만들고, 10초 안의 수집은 같은 값을 다시 쓴다.
 
+## 공고 수집 경보
+
+[`ingest.json`](../../infra/grafana/alerting/ingest.json)은 [자동 실행](ingest/execution-controls.md#자동-실행)의 두 경보다.
+`api.json`과 같이 자동 provisioning 디렉터리 밖에 두고 `team-discord` 수신 경로를 쓴다.
+
+- `Announcement collection stale`: 환경·유형별로 마지막 성공에서 7시간이 지나 5분간 이어지면 알린다.
+  자동 실행 간격(3시간)으로 두 번 연속 성공하지 못한 때다. 간격을 바꾸면 이 기준도 함께 바꾼다.
+  한 번도 성공하지 않은 유형은 값이 비어 있어 이 경보가 아니라 연속 실패 경보가 잡는다.
+- `Announcement collection failing`: 마지막 성공 뒤 실패가 3회 이상이면 알린다.
+- 두 경보의 성공은 대상 일부만 실패한 실행(`PARTIAL`)을 포함한다. 그 대상은 운영 홈의 '미해결 수집·정제 실패'로 본다.
+  실패한 단계의 대상이 모두 실패한 실행(`ALL_TARGETS_FAILED`)은 실패로 센다.
+  LH 최근분 실행은 대상이 몇 건뿐이라 실패가 한 건뿐이면 이 판정을 하지 않는다([자동 실행](ingest/execution-controls.md#자동-실행)).
+- 자동 실행을 끈 환경은 지표가 없으므로 두 경보 모두 정상으로 본다(`noDataState: OK`).
+
+```shell
+python3 tests/monitoring/ingest_alert_cases.py > .local/verification/monitoring/ingest-alerts.yml
+docker run --rm --network none --entrypoint promtool \
+  --mount type=bind,src="$PWD/.local/verification/monitoring",dst=/tests,readonly \
+  prom/prometheus:v3.14.0 test rules /tests/ingest-alerts.yml
+```
+
 ## 대시보드 조회식 검증
 
 실제 JSON의 PromQL을 사용해 개발·운영 분리, API별 p95, 오류율과 무트래픽 처리를 검사한다.

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EligibilityDraftPanel } from './EligibilityDraftPanel'
-import { checkTarget, itemTarget, moveToDirectCheck, requirementWarnings, ruleText, unjudgedReason, type Content, type RuleSet } from './eligibilityDraftApi'
+import { checkTarget, isNumberWarning, itemTarget, moveToDirectCheck, requirementWarnings, ruleText, unjudgedReason, type Content, type RuleSet } from './eligibilityDraftApi'
 import { readExtractedEligibility } from './extractedEligibility'
 
 const api = vi.hoisted(() => ({ load: vi.fn(), create: vi.fn(), apply: vi.fn(), preview: vi.fn() }))
@@ -123,6 +123,14 @@ describe('requirementWarnings', () => {
     const [reason] = requirementWarnings({ label: '만 19세 이상' }, [warning('만 19세 이상')])
     expect(unjudgedReason(reason)).toBe('숫자 확인 필요. 모델이 적은 문구와 원문 p.3 글에 대조했지만 이 숫자가 맞는지 확정하지 못했어요. 이 항목은 판정에 쓰지 않아요(문구에 없는 숫자(19)).')
     expect(unjudgedReason('숫자 확인 필요. 원문과 맞는지 확인하지 못한 숫자를 그대로 판정에 씁니다(문구에 없는 숫자(40)).')).not.toContain('판정에 씁니다')
+    expect(unjudgedReason('숫자 확인 필요. 모델이 적은 문구와 원문 p.3 글에 대조했지만 이 숫자가 맞는지 확정하지 못해 판정하지 않고 목록으로 남깁니다(문구에 없는 숫자(19)).'))
+      .toBe('숫자 확인 필요. 모델이 적은 문구와 원문 p.3 글에 대조했지만 이 숫자가 맞는지 확정하지 못했어요. 이 항목은 판정에 쓰지 않아요(문구에 없는 숫자(19)).')
+  })
+
+  it('숫자를 비우고 목록으로 남긴 요건의 경고는 판정 조건의 숫자 경고로 보지 않는다', () => {
+    expect(isNumberWarning(warning('만 19세 이상'))).toBe(true)
+    expect(isNumberWarning("신청자격 요건 '만 19세 이상'(나이): 숫자 확인 필요. 모델이 적은 문구와 원문 p.3 글에 대조했지만 이 숫자가 맞는지 확정하지 못해 판정하지 않고 목록으로 남깁니다(문구에 없는 숫자(19)).")).toBe(false)
+    expect(isNumberWarning("신청자격 요건 '만 19세 이상'(나이): 숫자를 읽지 못해 판정하지 않고 목록으로 남깁니다(숫자가 아닌 값(19세)).")).toBe(false)
   })
 })
 

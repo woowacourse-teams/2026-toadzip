@@ -61,6 +61,9 @@ class GhAnnouncementRefiner {
         boolean changed = announcement.updateFromAgencySource(source.getTitle(), source.getPostedDate(),
                 source.getOriginalUrl());
         changed |= announcement.observeSourceSupplyType(supplyType.orElse(null));
+        announcement.observeSourceValues(List.of(String.valueOf(source.getTitle()),
+                String.valueOf(source.getPostedDate()), String.valueOf(source.getOriginalUrl()),
+                String.valueOf(supplyType.orElse(null))));
         LinkResult link = revisionLinker.link(announcement, BoardRevisionName::gh);
         attempt.recordLink(link);
         if (source.getDistricts() != null) {

@@ -6,6 +6,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementNameClassification;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.LhAnnouncementValues;
+import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.repository.AgencySupplyLineStore;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -112,6 +113,7 @@ class LhAnnouncementRefiner {
         announcement.enrichFromLh(request.panId(), data.correctionReason(),
                 data.receptionPlace() == null ? List.of() : List.of(data.receptionPlace()));
         scheduleWriter.write(announcement, data, null);
+        announcement.observeSourceValues(sourceValues(catalog, supplyType.get(), data));
         linkRevision(announcement, tally);
         Map<String, AnnouncementComplex> complexes = complexLinker.observe(announcement, detailComplexes(details),
                 supplies, supplyType.get(), index, tally.complexes);
@@ -213,6 +215,33 @@ class LhAnnouncementRefiner {
             tally.revisionsLinked++;
             tally.linkedRevisionPanIds.add(revision.getLhPanId());
         }
+    }
+
+    /**
+     * 공고가 지키는 LH 원천 값이다. 원천에 없어 공고 값으로 채운 값은 넣지 않아, 관리자가 공고 값을 고쳐도 원천 지문은 그대로다. 일정은 원천
+     * 순서·식별자를 빼고 값만 정렬해, 순서만 바뀐 일정은 같은 원천으로 본다.
+     */
+    private static List<String> sourceValues(LhAnnouncementCatalogSourceView catalog, RentalType supplyType,
+            LhAnnouncementEnrichmentData data) {
+        List<String> parts = new ArrayList<>();
+        parts.add(String.join("\u001f", String.valueOf(catalog.getAnnouncementName()),
+                String.valueOf(catalog.noticeLocalDate().orElse(null)), String.valueOf(catalog.getDetailUrl()),
+                String.valueOf(supplyType)));
+        // 마감일은 접수 일정이 없을 때만 접수 종료일로 쓰므로 그때만 원천 값이다.
+        if (data.schedules().stream().noneMatch(schedule -> schedule.type() == ScheduleType.APPLICATION)) {
+            parts.add(String.valueOf(catalog.closingLocalDate().orElse(null)));
+        }
+        ReceptionPlace place = data.receptionPlace();
+        if (place != null) {
+            parts.add(String.join("\u001f", place.getName(), String.valueOf(place.getMethod()), place.getAddress(),
+                    place.getContact(), place.getUrl(), place.getGuidance()));
+        }
+        data.schedules().stream()
+                .map(schedule -> String.join("\u001f", String.valueOf(schedule.type()), schedule.name(),
+                        String.valueOf(schedule.startAt()), String.valueOf(schedule.endAt()), schedule.complexName()))
+                .sorted()
+                .forEach(parts::add);
+        return parts;
     }
 
     /** 재확인 기준 지문: 공고 단지 순서와 각 행의 주택형명·대표 면적·공급면적·모집수·보증금·임대료 원문. */
@@ -321,7 +350,12 @@ class LhAnnouncementRefiner {
         SUPPLY_TYPE_UNKNOWN,
         VALUES_MISSING,
         WINNER_DATE_MISSING,
-        TRASHED
+        TRASHED;
+
+        /** 상세·공급 원천이 아직 채워지지 않아 공고를 만들지 못했으면, 다시 받으면 달라질 수 있다. */
+        boolean waitsForSources() {
+            return this == SOURCES_MISSING || this == VALUES_MISSING || this == WINNER_DATE_MISSING;
+        }
     }
 
     static final class Tally {

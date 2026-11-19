@@ -25,8 +25,12 @@ import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import lombok.Getter;
@@ -69,6 +73,14 @@ public class Announcement {
     @Column(nullable = false)
     @org.hibernate.annotations.ColumnDefault("false")
     private boolean sourceReviewRequired;
+
+    /** 마지막 정제가 본 기관 원천(기본 정보·LH 일정)의 지문이다. */
+    @Column(length = 64)
+    private String sourceFingerprint;
+
+    /** 관리자가 원천 변경 확인을 마칠 때 본 원천 지문이다. 원천이 이 지문과 같으면 원천 검토 대상으로 다시 표시하지 않는다. */
+    @Column(length = 64)
+    private String sourceReviewAcknowledgedFingerprint;
 
     private java.time.Instant adminUpdatedAt;
 
@@ -490,7 +502,8 @@ public class Announcement {
     }
 
     /**
-     * LH 값으로 공고를 갱신한다. 관리자가 고친 공고는 덮지 않고 원천 값이 다르면 원천 검토 대상으로 표시한다. 휴지통 공고는 바꾸지 않는다.
+     * LH 값으로 공고를 갱신한다. 관리자가 고치거나 정본을 확정한 공고는 덮지 않고 원천 값이 다르면 원천 검토 대상으로 표시한다. 휴지통
+     * 공고는 바꾸지 않는다.
      * 관리자가 확정한 접수 기간·정정 연결·공고 상태와 원천에 없는 당첨자 발표일은 그대로 둔다.
      */
     public boolean updateFromLh(LhAnnouncementValues values) {
@@ -501,10 +514,10 @@ public class Announcement {
                 Objects.requireNonNullElse(values.winnerAnnouncementDate(), winnerAnnouncementDate),
                 values.originalUrl(), correctionCancellationReason, viewCount, actualCompetitionRate,
                 predictedCompetitionRate, receptionPlaces);
-        if (adminModified && !hasSameSourceValues(incoming)) {
+        if (keepsBasicInfo() && !adminDeleted && !hasSameSourceValues(incoming)) {
             sourceReviewRequired = true;
         }
-        if (adminModified || adminDeleted || hasSameSourceValues(incoming)) {
+        if (keepsBasicInfo() || adminDeleted || hasSameSourceValues(incoming)) {
             return false;
         }
         applySourceValues(incoming);
@@ -512,7 +525,7 @@ public class Announcement {
     }
 
     /**
-     * GH·SH 원천 값으로 미확정 공고의 공고명·게시일·원문 URL을 맞춘다. 공개됐거나 관리자가 고친 공고는 덮지 않고, 원천 값이
+     * GH·SH 원천 값으로 미확정 공고의 공고명·게시일·원문 URL을 맞춘다. 공개됐거나 관리자가 고치거나 정본을 확정한 공고는 덮지 않고, 원천 값이
      * 다르면 원천 검토 대상으로 표시한다. 휴지통 공고는 바꾸지 않는다. 값을 바꿨으면 true다.
      */
     public boolean updateFromAgencySource(String name, LocalDate postedDate, String originalUrl) {
@@ -524,7 +537,7 @@ public class Announcement {
         if (same || adminDeleted) {
             return false;
         }
-        if (adminModified || isPublished()) {
+        if (keepsBasicInfo() || isPublished()) {
             sourceReviewRequired = true;
             return false;
         }
@@ -536,7 +549,7 @@ public class Announcement {
 
     /**
      * 원천 본문에서 읽은 접수기간·당첨자 발표일 후보를 미확정 공고에 채운다. 관리자가 고치거나 일정을 확인하기 전까지는 원천이 이 값을
-     * 가지므로 원천을 따라 바꾸고(읽지 못한 값은 비운다), 그 뒤나 공개된 공고는 덮지 않고 원천이 읽은 값이 다르면 원천 검토 대상으로
+     * 가지므로 원천을 따라 바꾸고(읽지 못한 값은 비운다), 그 뒤나 공개됐거나 정본을 확정한 공고는 덮지 않고 원천이 읽은 값이 다르면 원천 검토 대상으로
      * 표시한다. 휴지통 공고는 바꾸지 않는다. 시작일이 종료일보다 늦은 기간은 버린다. 값을 바꿨으면 true다.
      */
     public boolean observeSourceSchedule(LocalDate startDate, LocalDate endDate, LocalDate winnerDate) {
@@ -549,7 +562,7 @@ public class Announcement {
         if (same || adminDeleted) {
             return false;
         }
-        if (adminModified || applicationScheduleReviewed || isPublished()) {
+        if (keepsBasicInfo() || applicationScheduleReviewed || isPublished()) {
             // 원천이 읽지 못한 값은 관리자가 채운 값과 다르다고 보지 않는다.
             boolean readDifferently = startDate != null && !startDate.equals(applicationStartDate)
                     || endDate != null && !endDate.equals(applicationEndDate)
@@ -564,18 +577,84 @@ public class Announcement {
     }
 
     /**
-     * 기관 게시판이 준 공급유형을 미확정 공고에 채운다. 관리자가 고치기 전까지는 원천을 따르고, 그 뒤나 공개된 공고는 덮지 않고
+     * 기관 게시판이 준 공급유형을 미확정 공고에 채운다. 관리자가 고치기 전까지는 원천을 따르고, 그 뒤나 공개됐거나 정본을 확정한 공고는 덮지 않고
      * 원천 값이 다르면 원천 검토 대상으로 표시한다. 원천 유형을 알 수 없으면(null) 있던 값을 지우지 않는다. 값을 바꿨으면 true다.
      */
     public boolean observeSourceSupplyType(RentalType sourceSupplyType) {
         if (sourceSupplyType == null || sourceSupplyType == supplyType || adminDeleted) {
             return false;
         }
-        if (adminModified || isPublished()) {
+        if (keepsBasicInfo() || isPublished()) {
             sourceReviewRequired = true;
             return false;
         }
         supplyType = sourceSupplyType;
+        return true;
+    }
+
+    /**
+     * 기관 원천이 기본 정보(공고명·유형·게시일·일정·원문 URL·접수처 등)를 더는 덮지 않는 공고다. 관리자가 고쳤거나, 공고문으로 정본을
+     * 확정해 관리자가 공고문과 대조한 공고다. 원천 값이 달라지면 덮지 않고 원천 검토 대상으로 알린다.
+     */
+    private boolean keepsBasicInfo() {
+        return adminModified || isSupplyConfirmed();
+    }
+
+    /** 정본을 확정해 원천이 바꾸지 않는 행(LH 일정 등)이 원천과 달라졌음을 남긴다. 휴지통 공고는 표시하지 않는다. */
+    public void requireSourceReview() {
+        if (!adminDeleted) {
+            sourceReviewRequired = true;
+        }
+    }
+
+    /**
+     * 이번 정제가 본 기관 원천 값(기본 정보·LH 일정)을 지문으로 남긴다. 정제는 원천 값을 공고에 다 맞춘 뒤 마지막에 부른다. 관리자가
+     * 확인을 마친 원천과 같으면 갱신이 켠 원천 검토 표시를 다시 끈다. 이미 확인한 차이는 원천이 다시 바뀔 때까지 알리지 않는다.
+     */
+    public void observeSourceValues(List<String> values) {
+        sourceFingerprint = fingerprint(values);
+        if (sourceFingerprint.equals(sourceReviewAcknowledgedFingerprint)) {
+            sourceReviewRequired = false;
+        }
+    }
+
+    /**
+     * 관리자가 원천 변경을 확인했다. 지금 원천 값과의 차이는 원천이 다시 바뀔 때까지 알리지 않는다. 확인할 원천 변경이 없거나 휴지통
+     * 공고면 거절한다.
+     */
+    public void acknowledgeSourceReview() {
+        if (adminDeleted) {
+            throw new IllegalStateException("휴지통에서 복구한 뒤 확인해 주세요.");
+        }
+        if (!sourceReviewRequired) {
+            throw new IllegalStateException("확인할 원천 변경이 없습니다.");
+        }
+        sourceReviewAcknowledgedFingerprint = sourceFingerprint;
+        sourceReviewRequired = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    private static String fingerprint(List<String> values) {
+        String joined = String.join("\u001e", values.stream().map(value -> Objects.toString(value, "")).toList());
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(joined.getBytes(StandardCharsets.UTF_8)));
+        }
+        catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    /**
+     * 관리자가 고치지 않은 확정 공고의 정정 사유를 원천 값으로 맞춘다. 정정 증빙으로 사유를 확정했거나 원천이 사유를 주지 않으면 그대로
+     * 둔다. 값을 바꿨으면 true다.
+     */
+    private boolean followsSourceCorrectionReason(String sourceCorrectionReason) {
+        if (adminModified || adminDeleted || revisionEvidenceUrl != null || sourceCorrectionReason == null
+                || sourceCorrectionReason.equals(correctionCancellationReason)) {
+            return false;
+        }
+        correctionCancellationReason = sourceCorrectionReason;
         return true;
     }
 
@@ -702,17 +781,21 @@ public class Announcement {
         replaceReceptionPlaces(incoming.receptionPlaces);
     }
 
-    /** LH 상세로 정정 사유와 접수처를 보강한다. 원천 접수처가 비어 있으면 저장된 접수처를 그대로 둔다. */
+    /**
+     * LH 상세로 정정 사유와 접수처를 보강한다. 원천 접수처가 비어 있으면 저장된 접수처를 그대로 둔다. 관리자가 고치거나 정본을 확정한
+     * 공고는 접수처를 덮지 않고, 원천 접수처가 다르면 원천 검토 대상으로 표시한다. 관리자가 고칠 수 없는 정정 사유는 정본만 확정한
+     * 공고에서 계속 원천을 따른다.
+     */
     public boolean enrichFromLh(String panId, String correctionReason, List<ReceptionPlace> receptionPlaces) {
         receptionPlaces = receptionPlaces == null ? List.of() : receptionPlaces;
         boolean sourceHasReception = !receptionPlaces.isEmpty();
-        if (adminModified || adminDeleted) {
+        if (keepsBasicInfo() || adminDeleted) {
             // 관리자는 LH가 준 접수처 곁에 공고문의 다른 접수처(인터넷 접수 등)를 더하거나 안내 문구를 붙일 수 있다.
             // LH 접수처가 목록에 그대로 있으면(안내 문구는 빼고 비교) 원천 변경이 아니다.
-            if (adminModified && sourceHasReception && !containsReceptionPlaces(receptionPlaces)) {
+            if (keepsBasicInfo() && !adminDeleted && sourceHasReception && !containsReceptionPlaces(receptionPlaces)) {
                 sourceReviewRequired = true;
             }
-            return false;
+            return followsSourceCorrectionReason(correctionReason);
         }
         if (lhPanIdReviewed && !Objects.equals(lhPanId, panId)) {
             throw new IllegalArgumentException("확인된 LH 공고의 원천을 바꿀 수 없습니다.");

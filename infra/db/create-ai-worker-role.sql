@@ -16,5 +16,9 @@ BEGIN
         GRANT UPDATE (status, attempts, next_attempt_at, lease_token, lease_until, pdf, result, error_code,
                 error_message, started_at, completed_at) ON ai_jobs TO toadzip_ai_worker;
     END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'ai_jobs' AND column_name = 'worker_version') THEN
+        GRANT UPDATE (worker_version) ON ai_jobs TO toadzip_ai_worker;
+    END IF;
 END
 $$;

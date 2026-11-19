@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import java.util.Map;
 import java.util.Optional;
@@ -7,7 +8,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import org.slf4j.MDC;
 
-/** 수집·정제 실행의 ID, 소유권, 진행 모니터를 스레드 범위로 보관한다. MDC는 로그 출력에만 쓴다. */
+/** 수집·정제 실행의 ID, 소유권, 진행 모니터와 수집 범위를 스레드 범위로 보관한다. MDC는 로그 출력에만 쓴다. */
 public final class IngestExecutionScope implements AutoCloseable {
 
     private static final ThreadLocal<State> CURRENT = new ThreadLocal<>();
@@ -21,20 +22,34 @@ public final class IngestExecutionScope implements AutoCloseable {
 
     public static IngestExecutionScope open(Lease lease) {
         State current = currentState();
-        return new IngestExecutionScope(new State(current.executionId(), lease, current.monitor()));
+        return new IngestExecutionScope(
+                new State(current.executionId(), lease, current.monitor(), current.collectionScope()));
     }
 
     public static IngestExecutionScope open(Lease lease, DataPipelineExecutionMonitor monitor) {
         State current = currentState();
-        return new IngestExecutionScope(new State(current.executionId(), lease, monitor));
+        return new IngestExecutionScope(new State(current.executionId(), lease, monitor, current.collectionScope()));
     }
 
     public static IngestExecutionScope open(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor) {
-        return new IngestExecutionScope(new State(executionId, lease, monitor));
+        return open(executionId, lease, monitor, null);
+    }
+
+    /** @param collectionScope 자동 실행이 고른 수집 범위. 없으면 전체 수집이다. */
+    public static IngestExecutionScope open(
+            UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor,
+            DataPipelineCollectionScope collectionScope
+    ) {
+        return new IngestExecutionScope(new State(executionId, lease, monitor, collectionScope));
     }
 
     public static Optional<UUID> currentExecutionId() {
         return Optional.ofNullable(currentState().executionId());
+    }
+
+    /** 자동 실행이 증분 수집을 골랐는지. 관리자 실행과 실행 밖 호출은 전체 수집이다. */
+    public static boolean isIncrementalCollection() {
+        return currentState().collectionScope() == DataPipelineCollectionScope.INCREMENTAL;
     }
 
     public static void checkStopRequested() {
@@ -135,8 +150,11 @@ public final class IngestExecutionScope implements AutoCloseable {
         set(previous);
     }
 
-    private record State(UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor) {
+    private record State(
+            UUID executionId, Lease lease, DataPipelineExecutionMonitor monitor,
+            DataPipelineCollectionScope collectionScope
+    ) {
 
-        private static final State EMPTY = new State(null, null, null);
+        private static final State EMPTY = new State(null, null, null, null);
     }
 }

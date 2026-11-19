@@ -8,6 +8,9 @@ from ai_worker.jobs import Job
 # 한 번의 추출(외부 호출 포함)이 넘지 않을 시간. 워커는 마감까지 이만큼 남지 않은 작업을 꺼내지 않는다.
 ATTEMPT_BUDGET = timedelta(minutes=10)
 MODEL_RESPONSE_INVALID = "MODEL_RESPONSE_INVALID"
+# 추출기가 결과에 True로 넣는 키. 없어도 되는 단계(신청자격)가 빠진 채 성공한 결과라는 뜻이다. 다시 하면 채워질 수 있어,
+# 워커는 이 키를 빼고 기록하며 같은 PDF의 다음 작업이 이 결과를 다시 쓰지 않게 워커 버전을 남기지 않는다.
+INCOMPLETE = "_incomplete"
 
 
 class ExtractionError(Exception):
@@ -28,6 +31,10 @@ class PermanentError(ExtractionError):
 
 
 class Extractor(Protocol):
+    # 결과를 바꾸는 소스·설정의 지문. 같은 PDF·입력·버전으로 성공한 작업이 있으면 워커는 추출하지 않고 그 결과를 쓴다.
+    # INCOMPLETE를 넣은 결과는 다시 쓰지 않는다.
+    version: str
+
     def extract(self, job: Job) -> dict:
         """job.pdf와 job.input으로 추출해 ai_jobs.result에 쓸 JSON 객체를 돌려준다.
 

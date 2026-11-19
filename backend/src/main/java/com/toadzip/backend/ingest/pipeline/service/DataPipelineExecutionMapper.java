@@ -32,6 +32,7 @@ public class DataPipelineExecutionMapper {
                 execution.getType(),
                 execution.getExecutionTrigger(),
                 execution.getScheduledAt(),
+                execution.getCollectionScope(),
                 execution.getUpstreamExecutionId(),
                 execution.getStatus(),
                 currentStep,

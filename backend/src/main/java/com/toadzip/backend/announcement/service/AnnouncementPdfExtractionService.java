@@ -49,6 +49,8 @@ public class AnnouncementPdfExtractionService {
     static final String DEADLINE_EXCEEDED_MESSAGE = "요청한 지 오래되어 작업을 끝냈습니다. 다시 요청해 주세요.";
     static final String CANCELLED_CODE = "CANCELLED_BY_ADMIN";
     static final String CANCELLED_MESSAGE = "관리자가 추출을 취소했습니다. 다시 요청할 수 있습니다.";
+    static final String REPLACED_CODE = "REPLACED_BY_ADMIN";
+    static final String REPLACED_MESSAGE = "관리자가 다른 PDF로 추출을 요청해 서버 추출을 끝냈습니다.";
 
     private final AnnouncementRepository announcements;
     private final PdfExtractionJobRepository jobs;
@@ -80,23 +82,50 @@ public class AnnouncementPdfExtractionService {
         requireAnnouncement(announcementId);
         AnnouncementPdfDocument.requireReadable(pdf);
         failOverdue(announcementId);
+        PdfExtractionSource source = PdfExtractionSource.of(fileName, pdf);
+        makeWayForAdmin(announcementId, admin, source.sha256());
         requireNoActiveJob(announcementId);
         PdfExtractionInput input = inputs.read(announcementId);
-        PdfExtractionJob job = PdfExtractionJob.requestedByAdmin(announcementId, admin,
-                PdfExtractionSource.of(fileName, pdf), objectMapper.writeValueAsString(input), clock.instant());
-        PdfExtractionJob saved = save(job);
+        PdfExtractionJob saved = save(PdfExtractionJob.requestedByAdmin(announcementId, admin, source,
+                objectMapper.writeValueAsString(input), clock.instant()));
         log.info("event=announcement.pdf_extraction.requested announcementId={} jobId={} sourceSupplyRows={}",
                 announcementId, saved.getId(), input.sourceSupplyRows().size());
         return response(PdfExtractionJobView.of(saved));
     }
 
-    /** 공고 첨부 PDF를 서버가 받아 작업을 넣는다. 진행 중 작업이 있으면 내려받지 않는다. */
+    /**
+     * 공고 첨부 PDF를 서버가 받아 작업을 넣는다. 진행 중 관리자 작업이 있으면 내려받지 않는다. 진행 중 서버 작업은 PDF 해시로 같은
+     * PDF인지 가려야 하므로 내려받은 뒤 request에서 처리한다.
+     */
     public PdfExtractionJobResponse requestAttachment(long announcementId, String admin, long attachmentId) {
+        requireAnnouncement(announcementId);
+        failOverdue(announcementId);
+        if (jobs.existsByKindAndAnnouncementIdAndRequestSourceAndStatusIn(PdfExtractionJob.KIND, announcementId,
+                PdfExtractionJob.ADMIN, ACTIVE)) {
+            throw new PdfExtractionInProgressException();
+        }
+        AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
+        return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
+    }
+
+    /**
+     * 서버가 스스로 공고 첨부 PDF의 추출 작업(BATCH)을 넣는다. 결과는 관리자가 PDF 보정 화면에서 검토해 적용할 때만 반영된다.
+     * 진행 중 작업이 있으면 내려받지 않고 예외로 알린다.
+     */
+    public long requestBatch(long announcementId, long attachmentId) {
         requireAnnouncement(announcementId);
         failOverdue(announcementId);
         requireNoActiveJob(announcementId);
         AttachmentContent content = attachments.readForAdmin(announcementId, attachmentId);
-        return request(announcementId, admin, content.fileName(), bytesOf(content.file()));
+        byte[] pdf = bytesOf(content.file());
+        AnnouncementPdfDocument.requireReadable(pdf);
+        PdfExtractionInput input = inputs.read(announcementId);
+        PdfExtractionJob saved = save(PdfExtractionJob.requestedByBatch(announcementId,
+                PdfExtractionSource.of(content.fileName(), pdf), objectMapper.writeValueAsString(input),
+                clock.instant()));
+        log.info("event=announcement.pdf_extraction.batch_requested announcementId={} jobId={} attachmentId={}",
+                announcementId, saved.getId(), attachmentId);
+        return saved.getId();
     }
 
     private static byte[] bytesOf(TemporaryAttachment file) {
@@ -185,6 +214,24 @@ public class AnnouncementPdfExtractionService {
                 PdfExtractionJobStatus.FAILED, DEADLINE_EXCEEDED_CODE, DEADLINE_EXCEEDED_MESSAGE, now);
         if (overdue > 0) {
             log.warn("event=announcement.pdf_extraction.overdue announcementId={} jobs={}", announcementId, overdue);
+        }
+    }
+
+    /**
+     * 관리자 요청이 서버 작업(BATCH)에 막히지 않게 한다. 같은 PDF의 기다리는 서버 작업은 관리자 작업으로 바꿔 먼저 처리되게 하고,
+     * 관리자 화면은 진행 중 거절을 받아 그 작업에 이어 붙는다. 다른 PDF의 서버 작업은 처리 중이어도 끝내 관리자 작업을 바로 넣게 한다.
+     */
+    private void makeWayForAdmin(long announcementId, String admin, String pdfSha256) {
+        if (jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, announcementId, pdfSha256, admin) > 0) {
+            log.info("event=announcement.pdf_extraction.promoted announcementId={}", announcementId);
+            return;
+        }
+        int replaced = jobs.failActiveBatchOfOtherPdf(PdfExtractionJob.KIND, announcementId, pdfSha256,
+                PdfExtractionJob.BATCH, ACTIVE, PdfExtractionJobStatus.FAILED, REPLACED_CODE, REPLACED_MESSAGE,
+                clock.instant());
+        if (replaced > 0) {
+            log.info("event=announcement.pdf_extraction.batch_replaced announcementId={} jobs={}", announcementId,
+                    replaced);
         }
     }
 

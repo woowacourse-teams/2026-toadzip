@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.repository.SourceCollectionRecordRepository;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -43,6 +44,20 @@ public class DataPipelineExecutionStateService {
             Instant startedAt
     ) {
         DataPipelineExecution execution = DataPipelineExecution.start(executionId, type, startedAt);
+        return executionRepository.saveAndFlush(execution);
+    }
+
+    @Transactional
+    public DataPipelineExecution createScheduled(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            Instant scheduledAt,
+            DataPipelineCollectionScope collectionScope
+    ) {
+        DataPipelineExecution execution = DataPipelineExecution.scheduled(
+                executionId, type, startedAt, scheduledAt, collectionScope
+        );
         return executionRepository.saveAndFlush(execution);
     }
 

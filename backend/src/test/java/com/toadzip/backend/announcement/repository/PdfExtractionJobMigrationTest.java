@@ -89,7 +89,8 @@ class PdfExtractionJobMigrationTest {
                         has_column_privilege('%1$s', 'ai_jobs', 'input', 'UPDATE'),
                         has_column_privilege('%1$s', 'ai_jobs', 'announcement_id', 'UPDATE'),
                         has_table_privilege('%1$s', 'ai_jobs', 'INSERT'),
-                        has_table_privilege('%1$s', 'ai_jobs', 'DELETE')
+                        has_table_privilege('%1$s', 'ai_jobs', 'DELETE'),
+                        has_column_privilege('%1$s', 'ai_jobs', 'worker_version', 'UPDATE')
                     """.formatted(WORKER))) {
                 rows.next();
                 assertThat(rows.getBoolean(1)).isTrue();
@@ -99,6 +100,8 @@ class PdfExtractionJobMigrationTest {
                 assertThat(rows.getBoolean(5)).isFalse();
                 assertThat(rows.getBoolean(6)).isFalse();
                 assertThat(rows.getBoolean(7)).isFalse();
+                // 운영처럼 역할이 먼저 있으면 나중 마이그레이션이 더한 열에도 권한을 준다.
+                assertThat(rows.getBoolean(8)).isTrue();
             }
         });
     }
@@ -126,6 +129,8 @@ class PdfExtractionJobMigrationTest {
                         """.formatted("cd".repeat(32)));
                 // DO $$ 블록이 있어 문장을 나누지 않고 한 번에 보낸다.
                 sql.execute(new ClassPathResource("db/migration/V20261103_01__ai_jobs.sql")
+                        .getContentAsString(StandardCharsets.UTF_8));
+                sql.execute(new ClassPathResource("db/migration/V20261117_03__ai_jobs_worker_version.sql")
                         .getContentAsString(StandardCharsets.UTF_8));
                 check.run(sql);
             }

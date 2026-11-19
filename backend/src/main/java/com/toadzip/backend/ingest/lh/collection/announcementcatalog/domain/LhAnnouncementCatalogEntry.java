@@ -89,6 +89,9 @@ public class LhAnnouncementCatalogEntry {
     @Column(nullable = false)
     private boolean presentInLatestCatalog;
 
+    /** 묶음 수집이 이 행의 공급·상세를 받아 정제까지 마친 시각. 증분 수집은 이 시각 뒤 행이 바뀌지 않았으면 다시 받지 않는다. */
+    private Instant refinedAt;
+
     @ManyToOne(fetch = LAZY, optional = false)
     @JoinColumn(name = "last_collection_record_id", nullable = false)
     private SourceCollectionRecord lastCollectionRecord;

@@ -18,7 +18,7 @@ const RECRUITMENT: Record<string, string> = { RECRUITING: '모집', UNKNOWN: '�
  * autoCreate면(보정 적용 직후) 누르지 않아도 최신 PDF 추출로 신청자격을 다시 만들어 반영한다. 적용한 공급행이 바뀌었을 수 있어 이미 있는 것도 바꾼다.
  * extracted는 보정 적용 전 탭이 넘기는, PDF에서 이미 뽑은 신청자격이다(없으면 null). 아직 신청자격이 없는 동안 서버 변환 미리보기를 보이고,
  * 미리보기를 받지 못하면 뽑은 내용을 그대로 보인다. 신청자격은 저장된 공급행에 경로를 이어 만들므로 적용 전에는 만들기 버튼을 두지 않는다.
- * warnings는 워커가 신청자격을 읽으며 남긴 경고('숫자 확인 필요' 등)다. 숫자가 원문과 맞지 않아도 판정에 쓰므로, 요건 문구가 같은 조건·목록 곁에
+ * warnings는 워커가 신청자격을 읽으며 남긴 경고('숫자 확인 필요' 등)다. 이전 워커는 숫자가 원문과 맞지 않아도 판정에 썼으므로, 요건 문구가 같은 조건·목록 곁에
  * 어떻게 확인했는지와 함께 보이고, 어디에도 붙지 않은 경고만 위에 모은다. warnings가 없으면(적용 결과 화면) 숫자 대조 결과는 말하지 않는다.
  */
 export function EligibilityDraftPanel({ announcementId, pdfSha256, onEvidence, autoCreate = false, extracted, warnings, pdfActions = true }: { announcementId: string; pdfSha256: string | null; onEvidence?: (item: Evidence) => void; autoCreate?: boolean; extracted?: ExtractedEligibility | null; warnings?: string[]; pdfActions?: boolean }) {

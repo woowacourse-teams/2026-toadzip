@@ -21,7 +21,7 @@ export const labels: Record<string, string> = {
   CONFIRMED: '확정', CONDITIONAL: '조건부', UPDATE_SCHEDULE: '접수 일정 수정',
   UPDATE: '정보 수정', DELETE: '휴지통 이동', RESTORE: '복구', UPDATE_SUPPLY: '공급정보 수정',
   UPDATE_HOUSING_TYPE: '주택형 수정', UPDATE_HOUSING_TYPE_FROM_PDF: 'PDF 공고로 주택형 갱신',
-  UPDATE_SUPPLY_TARGET: '공급대상 임대조건 수정',
+  UPDATE_SUPPLY_TARGET: '공급대상 임대조건 수정', SOURCE_REVIEW_ACKNOWLEDGE: '원천 변경 확인',
 }
 export const rentals = ['HAPPY_HOUSING', 'NATIONAL_RENTAL', 'PERMANENT_RENTAL', 'PUBLIC_RENTAL',
   'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'LONG_TERM_JEONSE', 'ETC']

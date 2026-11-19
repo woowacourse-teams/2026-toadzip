@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementOrigin;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.service.AdminAnnouncementManagementService;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionExtension;
 import com.toadzip.backend.ingest.sh.collection.domain.ShAnnouncementSnapshot;
@@ -46,6 +47,7 @@ class ShAnnouncementRefinementIntegrationTest {
     @Autowired private ExternalDataCollectionFailureRepository failures;
     @Autowired private AnnouncementRepository announcements;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private AdminAnnouncementManagementService management;
     @MockitoBean private ShAnnouncementExternalRepository externalRepository;
 
     @AfterEach
@@ -116,6 +118,49 @@ class ShAnnouncementRefinementIntegrationTest {
 
         assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
         assertThat(sh100().getName()).isEqualTo("주택 입주자 모집");
+        assertThat(sh100().isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 정본을_확정한_미공개_공고는_관리자가_고치지_않았어도_본문_일정과_제목으로_덮지_않고_원천_확인을_표시한다() {
+        collect();
+        setBody(SCHEDULE);
+        ShRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("UPDATE announcements SET supply_confirmed_at = now() WHERE source_announcement_identifier = ?",
+                "SH:100");
+        assertThat(sh100().isSupplyConfirmed()).isTrue();
+        assertThat(sh100().isAdminModified()).isFalse();
+        assertThat(sh100().isSourceReviewRequired()).isFalse();
+
+        setBody(SCHEDULE.replace("2027.01.29.", "2027.02.05."));
+        jdbc.update("UPDATE sh_announcement_source SET title = '[정정] 주택 입주자 모집' WHERE seq = '100'");
+        ShRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
+        assertThat(sh100().getName()).isEqualTo("주택 입주자 모집");
+        assertThat(sh100().isSourceReviewRequired()).isTrue();
+    }
+
+    @Test
+    void 관리자가_원천_변경_확인을_마치면_같은_SH_원천으로는_다시_표시하지_않고_본문_일정이_바뀌면_다시_표시한다() {
+        collect();
+        setBody(SCHEDULE);
+        ShRefinementTestSupport.refineAll(refinement, sources);
+        jdbc.update("UPDATE announcements SET supply_confirmed_at = now() WHERE source_announcement_identifier = ?",
+                "SH:100");
+        jdbc.update("UPDATE sh_announcement_source SET title = '[정정] 주택 입주자 모집' WHERE seq = '100'");
+        ShRefinementTestSupport.refineAll(refinement, sources);
+        assertThat(sh100().isSourceReviewRequired()).isTrue();
+
+        management.acknowledgeSourceReview(sh100().getId(), sh100().getVersion(), "operator");
+        ShRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(sh100().isSourceReviewRequired()).isFalse();
+
+        setBody(SCHEDULE.replace("2027.01.29.", "2027.02.05."));
+        ShRefinementTestSupport.refineAll(refinement, sources);
+
+        assertThat(sh100().getWinnerAnnouncementDate()).isEqualTo(LocalDate.of(2027, 1, 29));
         assertThat(sh100().isSourceReviewRequired()).isTrue();
     }
 

@@ -60,12 +60,16 @@ public class LhAnnouncementExternalCollectionService {
 
     /**
      * 공급·상세를 요청 묶음 단위로 받고, 묶음을 다 받을 때마다 listener가 그 묶음의 공고를 이어받는다. 호출 제한이나 실패로
-     * 받지 못한 묶음은 대기 상태로 남아 다음 실행이 이어받는다.
+     * 받지 못한 묶음은 대기 상태로 남아 다음 실행이 이어받는다. 증분 수집은 정제까지 마친 뒤 목록 행이 바뀌지 않은 공고를
+     * 다시 받지 않는다.
      */
     public BundleReport collectBundles(Consumer<List<Candidate>> listener) {
         IngestExecutionScope.requireHeld();
-        List<Candidate> candidates = measurePreparation(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, false,
-                candidateResolver::resolveCatalogTargets);
+        Supplier<List<Candidate>> targets = candidateResolver::resolveCatalogTargets;
+        if (IngestExecutionScope.isIncrementalCollection()) {
+            targets = candidateResolver::resolveIncrementalTargets;
+        }
+        List<Candidate> candidates = measurePreparation(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, false, targets);
         Map<String, Candidate> selected = new LinkedHashMap<>();
         candidates.forEach(candidate -> selected.put(candidate.sourceAnnouncementKey(), candidate));
         for (ExternalDataSource source : List.of(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,

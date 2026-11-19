@@ -2,9 +2,10 @@
 
 Postgres `ai_jobs` 작업 큐를 처리하는 Python 워커다. Spring은 작업을 넣고 결과를 읽으며, 관리자 취소와 마감 정리로만 진행 중 작업을 실패로 끝낸다. 꺼내기·lease·재시도·완료·실패와 PDF 비우기는 워커가 한다. 상태 전이 규칙과 Spring과 맞춘 JSON 형식은 [contract/README.md](contract/README.md)에 있다.
 
-- `src/ai_worker/jobs.py`: `ai_jobs` SQL 전부. 연결은 autocommit이고 시각은 DB `now()`를 쓴다.
+- `src/ai_worker/jobs.py`: `ai_jobs` SQL 전부. 연결은 autocommit이고 시각은 DB `now()`를 쓴다. 관리자 작업(`ADMIN`)을 서버 작업(`BATCH`)보다 먼저 꺼내고, 같은 PDF·입력·워커 버전으로 성공한 결과를 찾는다(`reusable_result`).
+- `src/ai_worker/version.py`: 워커 버전. 패키지 소스 파일(프롬프트 포함)과 결과를 바꾸는 설정의 지문이라 손으로 올리지 않는다.
 - `src/ai_worker/extraction.py`: 추출기 계약. 일시 오류(`TransientError`)는 시도가 남았으면 재시도하고, 그 밖의 오류는 바로 실패로 끝낸다.
-- `src/ai_worker/worker.py`: `run_once`가 작업 하나를 꺼내 추출하고 기록한다. 처리하는 동안 1분마다 lease(3분)를 늘리고, 재시도 간격은 1분 → 5분, 넣은 지 40분이 지난 작업은 실패로 끝낸다. 한 번의 추출은 10분(`ATTEMPT_BUDGET`) 안에 끝나야 하고, 마감까지 그만큼 남지 않은 작업은 꺼내지 않는다. `run`은 종료 신호까지 `run_once`를 되풀이하고, 오류가 나도 멈추지 않고 DB 연결이 끊기면 다시 연결한다.
+- `src/ai_worker/worker.py`: `run_once`가 작업 하나를 꺼내 추출하고 기록한다. 처리하는 동안 1분마다 lease(3분)를 늘리고, 재시도 간격은 1분 → 5분, 넣은 지 40분이 지난 작업은 실패로 끝낸다. 한 번의 추출은 10분(`ATTEMPT_BUDGET`) 안에 끝나야 하고, 마감까지 그만큼 남지 않은 작업은 꺼내지 않는다. 같은 PDF·입력·버전으로 성공한 작업이 있으면 추출하지 않고 그 결과를 쓴다. `run`은 종료 신호까지 `run_once`를 되풀이하고, 오류가 나도 멈추지 않고 DB 연결이 끊기면 다시 연결한다.
 - `src/ai_worker/announcement.py`: 공고문 PDF 추출기의 실행 흐름(`AnnouncementPdfExtractor.extract`). 아래 모듈을 차례로 부르고, `checks.py`가 쪽 번호를 원본 기준으로 바꾸고 검산 불일치를 경고로 남긴다. PDF 보정 저장은 공급표에 없는 주택형을 지우므로, `checks.missing_housing_types`가 PDF 수량표에 있는데(`supply_grouping.type_cells`) 결과 공급표에 없는 주택형과, 형명·전용면적이 같은 주택형이 결과에 없는 LH 주택형을 경고한다.
 - `src/ai_worker/pages.py`: PDF를 열어 추출에 보낼 쪽을 고르고(`select`), 고른 쪽을 공급 단계·본문 단계 입력으로 나눈다(`prompt_pages`).
 - `src/ai_worker/tables.py`: 쪽의 표를 찾아 셀을 읽고, 공급표인지와 열 머리글의 역할(필드)을 판단한다(`page_tables`). 앞 쪽 공급표의 열 역할을 머리글 없는 이어짐 표에 물려준다. 주택타입 열이 있으면 주택형(신청형) 행마다 세부 타입(`TableSubtype`)을 읽고, `supply_assembly.py`가 그 주택형의 주택타입(`houseTypes`)으로 쓴다.
@@ -44,7 +45,7 @@ SIGTERM·SIGINT를 받으면 처리 중인 작업을 끝내고 멈춘다. 그 �
 
 ## 테스트
 
-Docker가 켜져 있어야 한다. 테스트는 OpenAI API를 부르지 않는다(`httpx.MockTransport`). 큐 테스트는 Postgres 17 컨테이너에 Flyway 마이그레이션 `V20261103_01__ai_jobs.sql`을 그대로 적용하고, 워커를 제한 역할로 접속시켜 확인한다.
+Docker가 켜져 있어야 한다. 테스트는 OpenAI API를 부르지 않는다(`httpx.MockTransport`). 큐 테스트는 Postgres 17 컨테이너에 `ai_jobs` Flyway 마이그레이션(`conftest.MIGRATIONS`)을 그대로 적용하고, 워커를 제한 역할로 접속시켜 확인한다.
 
 ```bash
 cd ai-worker

@@ -138,6 +138,24 @@ public class AdminAnnouncementManagementService {
                 json.writeValueAsString(summary(announcement))));
     }
 
+    /** 관리자가 원천 변경을 확인하고 값은 그대로 둔다. 같은 원천 차이는 원천이 다시 바뀔 때까지 표시하지 않는다. */
+    @Transactional
+    public void acknowledgeSourceReview(long id, long version, String actor) {
+        var announcement = find(id);
+        checkVersion(announcement, version);
+        if (announcement.isAdminDeleted()) {
+            throw new AdminDataConflictException("휴지통에서 복구한 뒤 확인해 주세요.");
+        }
+        if (!announcement.isSourceReviewRequired()) {
+            throw new AdminDataConflictException("확인할 원천 변경이 없습니다.");
+        }
+        String before = json.writeValueAsString(summary(announcement));
+        announcement.acknowledgeSourceReview();
+        announcements.flush();
+        changes.save(new AdminDataChange("ANNOUNCEMENT", id, "SOURCE_REVIEW_ACKNOWLEDGE", actor, before,
+                json.writeValueAsString(summary(announcement))));
+    }
+
     public List<AdminChangeResponse> history(long id, int page) {
         find(id);
         return changes.findByResourceTypeAndResourceIdOrderByIdDesc("ANNOUNCEMENT", id, PageRequest.of(page, 20))

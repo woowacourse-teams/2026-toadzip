@@ -1,10 +1,13 @@
 package com.toadzip.backend.ingest.pipeline.repository;
 
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineCollectionScope;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +37,36 @@ public interface DataPipelineExecutionRepository
             Collection<DataPipelineType> types, DataPipelineExecutionStatus status);
 
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
+
+    /** 자동 실행이 볼 최근 실행. 새 실행부터 읽는다. */
+    List<ExecutionSummary> findTop20ByTypeOrderByIdDesc(DataPipelineType type);
+
+    /**
+     * 전체 범위로 성공한 마지막 실행의 시작 시각. 범위가 없는 관리자 실행과 이전 실행은 전체 범위다.
+     * 대상 일부만 실패한 실행(PARTIAL)도 성공으로 센다. AutoCollectionRecord.Run.succeeded와 같아야 한다.
+     */
+    default Optional<Instant> findLastFullSuccessStartedAt(DataPipelineType type) {
+        List<DataPipelineExecutionStatus> successes = Arrays.stream(DataPipelineExecutionStatus.values())
+                .filter(DataPipelineExecutionStatus::isSuccessful)
+                .toList();
+        return findLastFullSuccessStartedAt(type, successes, DataPipelineExecutionStatus.FAILED,
+                DataPipelineFailureCause.PARTIAL, DataPipelineCollectionScope.FULL);
+    }
+
+    @Query("""
+            select max(execution.startedAt) from DataPipelineExecution execution
+            where execution.type = :type
+              and (execution.status in :successes
+                   or (execution.status = :failed and execution.failureCause = :partial))
+              and (execution.collectionScope is null or execution.collectionScope = :full)
+            """)
+    Optional<Instant> findLastFullSuccessStartedAt(
+            @Param("type") DataPipelineType type,
+            @Param("successes") Collection<DataPipelineExecutionStatus> successes,
+            @Param("failed") DataPipelineExecutionStatus failed,
+            @Param("partial") DataPipelineFailureCause partial,
+            @Param("full") DataPipelineCollectionScope full
+    );
 
     boolean existsByExecutionIdAndStopRequestedTrue(UUID executionId);
 
@@ -113,5 +146,7 @@ public interface DataPipelineExecutionRepository
         Instant getFinishedAt();
 
         DataPipelineExecutionStatus getStatus();
+
+        DataPipelineFailureCause getFailureCause();
     }
 }

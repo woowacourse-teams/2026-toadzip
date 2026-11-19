@@ -1,6 +1,7 @@
 """OpenAI Luna 채팅 API 호출. 키와 응답 원문은 로그와 오류 문구에 남기지 않는다."""
 
 import json
+import logging
 import socket
 import threading
 import time
@@ -10,11 +11,17 @@ import httpx
 
 from ai_worker.extraction import MODEL_RESPONSE_INVALID, PermanentError, TransientError
 
+log = logging.getLogger(__name__)
+
 BASE_URL = "https://api.openai.com/v1"
 MODEL = "gpt-6-luna"
 CONNECT_TIMEOUT = 10
 # 요청은 남은 마감 시간까지 기다리므로 마감을 넘기지 않는다. 호출하는 쪽은 응답 뒤 처리에 쓸 여유로 이만큼 일찍 마감을 잡는다.
 READ_TIMEOUT = 60
+
+
+class ModelBusy(TransientError):
+    """HTTP 429. 호출 한도를 넘었거나 Flex 처리 용량이 모자라 요청을 받지 않았다. 받지 않은 요청이라 요금이 들지 않는다."""
 
 
 @dataclass(frozen=True)
@@ -36,8 +43,8 @@ class OpenAI:
             transport=transport,
         )
 
-    def chat(self, content: str, deadline: float) -> Reply:
-        """deadline은 time.monotonic() 기준으로 응답을 다 받아야 하는 시각이다."""
+    def chat(self, content: str, deadline: float, service_tier: str | None = None) -> Reply:
+        """deadline은 time.monotonic() 기준으로 응답을 다 받아야 하는 시각이다. service_tier가 없으면 계정 기본 처리로 부른다."""
         body = {
             "model": MODEL,
             "messages": [{"role": "user", "content": content}],
@@ -46,8 +53,12 @@ class OpenAI:
             "reasoning_effort": self.reasoning_effort,
             "max_completion_tokens": 65536,
         }
+        if service_tier:
+            body["service_tier"] = service_tier
         status, payload = self.post(body, deadline)
-        if status in (408, 429) or status >= 500:
+        if status == 429:
+            raise ModelBusy("MODEL_UNAVAILABLE", "AI 모델이 잠시 요청을 받지 못합니다.")
+        if status == 408 or status >= 500:
             raise TransientError("MODEL_UNAVAILABLE", "AI 모델이 잠시 요청을 받지 못합니다.")
         if status != 200:
             raise PermanentError("MODEL_REJECTED", f"AI 모델이 요청을 거절했습니다(HTTP {status}).")
@@ -118,3 +129,20 @@ def usage_of(usage: object) -> dict:
     thinking = details.get("reasoning_tokens") if isinstance(details, dict) else None
     output = completion - thinking if isinstance(completion, int) and isinstance(thinking, int) else completion
     return {"promptTokens": usage.get("prompt_tokens"), "outputTokens": output, "thinkingTokens": thinking}
+
+
+class FlexFirst:
+    """서버가 스스로 넣은 작업의 모델 호출. 느리지만 싼 Flex로 먼저 부르고, Flex 용량이 모자라 받지 않으면(429)
+    같은 마감 안에서 기본 처리로 다시 부른다. 받지 않은 요청은 요금이 들지 않아 두 번 내지 않는다.
+    시간 초과처럼 받았을 수도 있는 오류는 다시 부르지 않고 워커의 재시도에 맡긴다."""
+
+    def __init__(self, model: OpenAI):
+        self.model = model
+
+    def chat(self, content: str, deadline: float) -> Reply:
+        try:
+            return self.model.chat(content, deadline, service_tier="flex")
+        except ModelBusy:
+            log.info("Flex 처리 용량이 모자라 기본 처리로 다시 부릅니다.")
+            return self.model.chat(content, deadline)
+

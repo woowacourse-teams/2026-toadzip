@@ -3,6 +3,7 @@ import type { DataPipelineExecution, DataPipelineFailureCause } from './api'
 const guidance: Record<DataPipelineFailureCause, string> = {
   TRANSIENT: '외부 기관 응답 문제나 서버 중단으로 멈췄습니다. 잠시 뒤 다시 실행하면 이어서 받습니다.',
   PARTIAL: '일부 대상만 실패했습니다. 실패 대상에서 원인을 확인한 뒤 다시 실행하세요.',
+  ALL_TARGETS_FAILED: '대상이 모두 실패했습니다. 기관 응답 형식이 바뀌었을 수 있어 다시 실행해도 같을 수 있습니다. 실패 대상에서 원인을 확인하세요.',
   INTERNAL: '서버 내부 오류입니다. 다시 실행해도 같으면 아래 실행 ID를 개발자에게 전달해 주세요.',
 }
 

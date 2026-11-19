@@ -72,7 +72,12 @@ public class DataPipelineRunner {
             previousPartiallyFailedStep = step;
             if (firstReportedPartialFailure == null) {
                 firstReportedPartialFailure = new DataPipelinePartialFailureException(
-                        step, outcome.partialFailure().serverResponse()
+                        step, outcome.partialFailure().serverResponse(), outcome.partialFailure().failedEntirely()
+                );
+            }
+            else if (outcome.partialFailure().failedEntirely()) {
+                firstReportedPartialFailure = new DataPipelinePartialFailureException(
+                        firstReportedPartialFailure.getStep(), firstReportedPartialFailure.getServerResponse(), true
                 );
             }
         }

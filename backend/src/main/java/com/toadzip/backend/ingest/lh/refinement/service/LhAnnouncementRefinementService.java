@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.lh.refinement.service;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.domain.LhAnnouncementCatalogSourceView;
+import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogEntryRepository;
 import com.toadzip.backend.ingest.lh.collection.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.lh.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
@@ -13,6 +14,7 @@ import com.toadzip.backend.ingest.lh.refinement.service.LhAnnouncementRefiner.Ta
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import com.toadzip.backend.ingest.refinement.service.SourceRefinementRun;
 import com.toadzip.backend.ingest.refinement.service.SourceRefinementRunner;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -20,6 +22,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
@@ -37,13 +40,18 @@ public class LhAnnouncementRefinementService {
     private final HousingComplexRepository housingComplexes;
     private final LhAnnouncementRefiner refiner;
     private final SourceRefinementRunner runner;
+    private final LhAnnouncementCatalogEntryRepository catalogEntries;
+    private final Clock clock;
 
     public LhAnnouncementRefinementService(LhAnnouncementCatalogSourceReader catalog,
-            HousingComplexRepository housingComplexes, LhAnnouncementRefiner refiner, SourceRefinementRunner runner) {
+            HousingComplexRepository housingComplexes, LhAnnouncementRefiner refiner, SourceRefinementRunner runner,
+            LhAnnouncementCatalogEntryRepository catalogEntries, Clock clock) {
         this.catalog = catalog;
         this.housingComplexes = housingComplexes;
         this.refiner = refiner;
         this.runner = runner;
+        this.catalogEntries = catalogEntries;
+        this.clock = clock;
     }
 
     public LhAnnouncementRefinementReport refineAll() {
@@ -91,7 +99,21 @@ public class LhAnnouncementRefinementService {
             refineFound("LH 묶음 " + panIds.stream().findFirst().orElse(""),
                     () -> catalog.findAllByPanIdInAndPresentInLatestCatalogTrue(panIds).stream()
                             .filter(LhAnnouncementCatalogSourceView::isRentalHousingAnnouncement)
-                            .filter(view -> catalogSourceKeys.contains(view.getSourceKey())).toList());
+                            .filter(view -> catalogSourceKeys.contains(view.getSourceKey())).toList(),
+                    this::refineCollected);
+        }
+
+        /**
+         * 묶음으로 받은 목록 행을 정제하고, 공고를 마무리했으면 같은 트랜잭션에서 정제를 마친 시각을 남긴다. 정제가 실패해
+         * 되돌려지거나, 상세가 아직 비어 있어 공고를 만들지 못했거나, 원공고를 아직 찾지 못한 정정공고면 시각을 남기지 않아
+         * 증분 수집이 그 공고를 다시 받는다.
+         */
+        private Outcome refineCollected(LhAnnouncementCatalogSourceView target) {
+            Outcome outcome = refineAttempt(target);
+            if (!outcome.waitsForSources() && attempt.unlinkedRevisionPanIds().isEmpty()) {
+                catalogEntries.markRefined(target.getSourceKey(), clock.instant());
+            }
+            return outcome;
         }
 
         /** 수집이 예외로 멈췄을 때 그때까지 정제하며 본 실패를 실패 목록에 남긴다. */
@@ -149,8 +171,13 @@ public class LhAnnouncementRefinementService {
 
         /** 정제할 대상을 읽는 일까지 원천 정제와 같은 규칙으로 돌려, 읽다 실패해도 이미 받은 수집 결과를 잃지 않는다. */
         private void refineFound(String lookupKey, Supplier<List<LhAnnouncementCatalogSourceView>> lookup) {
+            refineFound(lookupKey, lookup, this::refineAttempt);
+        }
+
+        private void refineFound(String lookupKey, Supplier<List<LhAnnouncementCatalogSourceView>> lookup,
+                Function<LhAnnouncementCatalogSourceView, Outcome> refiner) {
             run.refineFound(lookupKey, () -> ordered(lookup.get()), LhAnnouncementCatalogSourceView::getSourceKey,
-                    this::refineAttempt, this::commit);
+                    refiner, this::commit);
         }
 
         private List<LhAnnouncementCatalogSourceView> ordered(List<LhAnnouncementCatalogSourceView> targets) {

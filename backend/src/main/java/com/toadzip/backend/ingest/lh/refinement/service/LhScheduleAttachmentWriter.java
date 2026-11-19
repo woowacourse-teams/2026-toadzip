@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 /**
  * LH 상세 원천의 일정·첨부를 공고에 맞춘다. 원천 식별자가 같으면 고치고 없으면 만든다. 원천에 남지 않은 보강의
  * 값은 지우되, 원천이 비면 같은 LH 공고의 마지막 정상값을 남기고 연결이 바뀐 이전 LH 공고의 값만 지운다.
+ * 정본을 확정한 공고의 일정은 바꾸지 않고, 원천 일정이 다르면 공고를 원천 검토 대상으로 표시한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -56,6 +57,12 @@ public class LhScheduleAttachmentWriter {
                 stored.put(schedule.getSourceScheduleIdentifier(), schedule);
             }
         }
+        if (announcement.isSupplyConfirmed()) {
+            if (schedulesDiffer(storedSchedules, stored, sources, replacedPanIds)) {
+                announcement.requireSourceReview();
+            }
+            return new Count(0, 0);
+        }
         Set<String> retained = new HashSet<>();
         int created = 0;
         int updated = 0;
@@ -81,6 +88,25 @@ public class LhScheduleAttachmentWriter {
                         replacedPanIds, retained))
                 .toList());
         return new Count(created, updated);
+    }
+
+    /** 원천 일정이 만들거나 고치거나 지울 행이 있다. 관리자가 고친 행은 관리자 값이라 비교하지 않는다. */
+    private static boolean schedulesDiffer(List<AnnouncementSchedule> storedSchedules,
+            Map<String, AnnouncementSchedule> stored, List<LhScheduleData> sources, Set<String> replacedPanIds) {
+        Set<String> retained = new HashSet<>();
+        for (LhScheduleData source : sources) {
+            retained.add(source.sourceIdentifier());
+            AnnouncementSchedule schedule = stored.get(source.sourceIdentifier());
+            if (schedule == null) {
+                return true;
+            }
+            if (!schedule.isAdminModified() && !schedule.hasSourceValues(source.type(), source.name(),
+                    source.startAt(), source.endAt(), source.complexName())) {
+                return true;
+            }
+        }
+        return storedSchedules.stream().anyMatch(schedule -> stale(schedule.getSourceScheduleIdentifier(),
+                schedule.isAdminModified(), replacedPanIds, retained));
     }
 
     private Count writeAttachments(Announcement announcement, List<LhAttachmentData> sources,

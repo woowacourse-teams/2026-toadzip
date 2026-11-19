@@ -5,6 +5,7 @@
 시각은 모두 DB now()로 정한다.
 """
 
+import json
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
@@ -20,7 +21,7 @@ DEADLINE_EXCEEDED_CODE = "DEADLINE_EXCEEDED"
 DEADLINE_EXCEEDED_MESSAGE = "요청한 지 오래되어 작업을 끝냈습니다. 다시 요청해 주세요."
 # 아래 문장들이 고치는 열. infra/db/create-ai-worker-role.sql과 ai_jobs 마이그레이션이 워커 역할에 주는 열과 같다.
 UPDATED_COLUMNS = ("status", "attempts", "next_attempt_at", "lease_token", "lease_until", "pdf", "result",
-                   "error_code", "error_message", "started_at", "completed_at")
+                   "error_code", "error_message", "started_at", "completed_at", "worker_version")
 
 
 @dataclass(frozen=True)
@@ -30,8 +31,11 @@ class Job:
     id: int
     kind: str
     announcement_id: int
+    # ADMIN(관리자가 기다리는 요청) 또는 BATCH(서버가 스스로 넣은 작업).
+    request_source: str
     file_name: str
     pdf: bytes
+    pdf_sha256: str
     input: dict | None
     attempts: int
     lease_token: UUID
@@ -80,6 +84,8 @@ def fail_overdue(conn: psycopg.Connection, deadline: timedelta) -> int:
 
 def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta, max_attempts: int) -> Job | None:
     """마감 전인 작업 하나를 잡아 RUNNING으로 바꾸고 시도 횟수를 하나 올린다. 없으면 None.
+    관리자가 기다리는 작업(ADMIN)을 서버 작업(BATCH)보다 먼저, 같은 출처끼리는 넣은 순서로 꺼낸다.
+    이 조건과 순서는 백엔드 PdfExtractionJobRepository.countAhead와 같아야 하며, 한쪽을 바꾸면 다른 쪽도 바꾼다.
     started_at은 첫 시작 시각을 남기고, 직전 재시도 사유(error_code·error_message)는 다음 기록까지 둔다."""
     with conn.cursor(row_factory=class_row(Job)) as cursor:
         cursor.execute(
@@ -89,7 +95,7 @@ def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta, max_a
                 WHERE ((status IN ('PENDING', 'RETRY') AND next_attempt_at <= now())
                    OR (status = 'RUNNING' AND lease_until <= now() AND attempts < %s))
                   AND created_at > now() - %s
-                ORDER BY id
+                ORDER BY request_source <> 'ADMIN', id
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
@@ -98,8 +104,8 @@ def claim(conn: psycopg.Connection, lease: timedelta, deadline: timedelta, max_a
                 attempts = job.attempts + 1, started_at = COALESCE(job.started_at, now())
             FROM next
             WHERE job.id = next.id
-            RETURNING job.id, job.kind, job.announcement_id, job.file_name, job.pdf, job.input,
-                job.attempts, job.lease_token
+            RETURNING job.id, job.kind, job.announcement_id, job.request_source, job.file_name, job.pdf,
+                job.pdf_sha256, job.input, job.attempts, job.lease_token
             """,
             (max_attempts, deadline, lease),
         )
@@ -116,16 +122,37 @@ def extend_lease(conn: psycopg.Connection, job: Job, lease: timedelta, deadline:
     return cursor.rowcount == 1
 
 
-def complete(conn: psycopg.Connection, job: Job, result_json: str) -> bool:
-    """JSON 객체 문자열인 결과를 쓰고 PDF를 비운다. lease를 빼앗겼거나 작업이 지워졌으면 False."""
+def reusable_result(conn: psycopg.Connection, job: Job, version: str) -> str | None:
+    """같은 종류·PDF 해시·입력을 같은 워커 버전으로 성공한 다른 작업의 결과 JSON 문자열이다. 가장 최근 것을 쓰고, 없으면 None.
+    버전이 다르면 프롬프트나 검산이 바뀌었을 수 있어 쓰지 않는다."""
+    row = conn.execute(
+        """
+        SELECT result::text FROM ai_jobs
+        WHERE kind = %s AND pdf_sha256 = %s AND worker_version = %s AND input IS NOT DISTINCT FROM %s::jsonb
+          AND status = 'SUCCEEDED' AND result IS NOT NULL AND id <> %s
+        ORDER BY completed_at DESC, id DESC
+        LIMIT 1
+        """,
+        (job.kind, job.pdf_sha256, version, input_json(job.input), job.id),
+    ).fetchone()
+    return None if row is None else row[0]
+
+
+def input_json(value: dict | None) -> str | None:
+    return None if value is None else json.dumps(value, ensure_ascii=False)
+
+
+def complete(conn: psycopg.Connection, job: Job, result_json: str, version: str | None) -> bool:
+    """JSON 객체 문자열인 결과와 만든 워커 버전을 쓰고 PDF를 비운다. 버전이 None이면 이 결과는 다시 쓰지 않는다.
+    lease를 빼앗겼거나 작업이 지워졌으면 False."""
     cursor = conn.execute(
         """
         UPDATE ai_jobs
-        SET status = 'SUCCEEDED', result = %s::jsonb, pdf = NULL, error_code = NULL, error_message = NULL,
-            lease_token = NULL, lease_until = NULL, completed_at = now()
+        SET status = 'SUCCEEDED', result = %s::jsonb, worker_version = %s, pdf = NULL, error_code = NULL,
+            error_message = NULL, lease_token = NULL, lease_until = NULL, completed_at = now()
         WHERE id = %s AND lease_token = %s
         """,
-        (result_json, job.id, job.lease_token),
+        (result_json, version, job.id, job.lease_token),
     )
     return cursor.rowcount == 1
 

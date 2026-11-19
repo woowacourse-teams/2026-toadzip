@@ -34,6 +34,7 @@ import com.toadzip.backend.ingest.mapping.dto.InitialRegistrationRunResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeInitialRegistrationExecutionService;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineFailureCause;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
@@ -390,6 +391,40 @@ class DataPipelineRunnerTest {
     }
 
     @Test
+    void 정제_대상이_일부만_실패하면_일부_실패로_알린다() {
+        when(lhAnnouncementRefinementService.refineAll()).thenReturn(lhRefinementReport(3, 1));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId))
+                .isInstanceOfSatisfying(DataPipelinePartialFailureException.class, exception ->
+                        assertThat(exception.cause()).isEqualTo(DataPipelineFailureCause.PARTIAL));
+    }
+
+    @Test
+    void 정제_대상이_모두_실패하면_대상_전부_실패로_알린다() {
+        when(lhAnnouncementRefinementService.refineAll()).thenReturn(lhRefinementReport(2, 2));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, executionId))
+                .isInstanceOfSatisfying(DataPipelinePartialFailureException.class, exception ->
+                        assertThat(exception.cause()).isEqualTo(DataPipelineFailureCause.ALL_TARGETS_FAILED));
+    }
+
+    @Test
+    void 앞_단계가_일부_실패하고_뒤_단계의_요청이_모두_실패하면_첫_실패_단계로_대상_전부_실패를_알린다() {
+        when(lhAnnouncementCatalogCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-catalog", 5, 1, 4));
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 0, 3, 3));
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
+                .thenReturn(collectionReport("lh-announcement-detail"));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, executionId))
+                .isInstanceOfSatisfying(DataPipelinePartialFailureException.class, exception -> {
+                    assertThat(exception.getStep()).isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+                    assertThat(exception.cause()).isEqualTo(DataPipelineFailureCause.ALL_TARGETS_FAILED);
+                });
+    }
+
+    @Test
     void LH_공고목록이_일부_실패해도_LH_공급과_상세_수집을_실행한다() {
         ExternalDataCollectionReport partialFailure = new ExternalDataCollectionReport(
                 "lh-announcement-catalog", 0, 2, 4);
@@ -648,6 +683,14 @@ class DataPipelineRunnerTest {
     }
 
     private record CompletedStep(DataPipelineStep step, String serverResponse) {
+    }
+
+    private LhAnnouncementRefinementReport lhRefinementReport(int targetCount, int failedCount) {
+        return new LhAnnouncementRefinementReport(
+                targetCount, targetCount - failedCount, 0, 0, Map.of(), failedCount, 0, 0, 0,
+                new LhAnnouncementRefinementReport.ComplexCounts(0, 0, 0, 0, 0, 0),
+                new LhAnnouncementRefinementReport.SupplyCounts(0, 0, 0)
+        );
     }
 
     private ExternalDataCollectionReport collectionReport(String operation) {

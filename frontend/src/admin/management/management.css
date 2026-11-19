@@ -73,6 +73,8 @@
 .admin-save-bar {position:sticky;bottom:12px;display:flex;justify-content:flex-end;gap:12px;background:var(--ds-color-surface);padding:16px;border:1px solid var(--ds-color-divider);border-radius:8px;box-shadow:0 3px 18px #0000000f;}
 .admin-required {font-size:11px;color:var(--ds-color-status-upcoming);font-weight:400;}
 .admin-warning,.admin-confirm {padding:20px;background:var(--ds-color-status-upcoming-surface);border:1px solid var(--admin-warn-line);border-radius:8px;margin:18px 0;line-height:1.6;}
+.admin-source-review {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;}
+.admin-source-review p {margin:0;flex:1 1 320px;}
 .admin-confirm h2 {font-size:18px;}
 .admin-change {padding:16px 0;border-bottom:1px solid var(--ds-color-divider);}
 .admin-change summary,.pipeline-details summary {cursor:pointer;font-size:14px;font-weight:600;line-height:1.6;}

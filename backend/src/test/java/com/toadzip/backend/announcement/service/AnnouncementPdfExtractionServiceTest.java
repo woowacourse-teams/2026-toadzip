@@ -171,10 +171,10 @@ class AnnouncementPdfExtractionServiceTest {
     }
 
     @Test
-    void 진행_중_작업이_있으면_첨부를_내려받지_않는다() {
+    void 진행_중_관리자_작업이_있으면_첨부를_내려받지_않는다() {
         when(announcements.existsById(7L)).thenReturn(true);
-        when(jobs.existsByKindAndAnnouncementIdAndStatusIn(any(), eq(7L), any()))
-                .thenReturn(true);
+        when(jobs.existsByKindAndAnnouncementIdAndRequestSourceAndStatusIn(any(), eq(7L), eq(PdfExtractionJob.ADMIN),
+                any())).thenReturn(true);
 
         assertThatThrownBy(() -> service.requestAttachment(7L, "admin", 68L))
                 .isInstanceOf(PdfExtractionInProgressException.class);

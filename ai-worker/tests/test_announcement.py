@@ -11,7 +11,7 @@ import pytest
 from ai_worker import announcement, jev, tables
 from ai_worker.announcement import AnnouncementPdfExtractor
 from ai_worker import openai
-from ai_worker.extraction import ATTEMPT_BUDGET, PermanentError, TransientError
+from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
 from ai_worker.openai import Reply
 from conftest import (COVER, sheet_answer, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EMPTY_ELIGIBILITY_DATA, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
@@ -50,9 +50,38 @@ def stage_prompt(model, stage):
     return next(prompt for prompt in model.prompts if marker in prompt)
 
 
-def job(content: bytes, job_input=None, kind=announcement.KIND) -> Job:
-    return Job(id=31, kind=kind, announcement_id=1, file_name="notice.pdf", pdf=content, input=job_input,
-               attempts=1, lease_token=uuid4())
+def job(content: bytes, job_input=None, kind=announcement.KIND, request_source="ADMIN") -> Job:
+    return Job(id=31, kind=kind, announcement_id=1, request_source=request_source, file_name="notice.pdf", pdf=content,
+               pdf_sha256="a" * 64, input=job_input, attempts=1, lease_token=uuid4())
+
+
+class TierModel(FakeModel):
+    """OpenAI처럼 service_tier를 받고, 단계마다 받은 처리 등급을 남긴다."""
+
+    def __init__(self):
+        super().__init__()
+        self.tiers = []
+
+    def chat(self, prompt, deadline, service_tier=None):
+        self.tiers.append(service_tier)
+        return super().chat(prompt, deadline)
+
+
+@pytest.mark.parametrize(("request_source", "tier"), [("BATCH", "flex"), ("ADMIN", None)])
+def test_server_jobs_call_every_stage_with_flex_and_admin_jobs_with_default_tier(request_source, tier):
+    model = TierModel()
+
+    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), request_source=request_source))
+
+    assert len(model.tiers) >= 3
+    assert set(model.tiers) == {tier}
+
+
+def test_version_is_stable_and_changes_with_column_judge():
+    without_judge = AnnouncementPdfExtractor(FakeModel()).version
+
+    assert AnnouncementPdfExtractor(FakeModel()).version == without_judge
+    assert AnnouncementPdfExtractor(FakeModel(), column_judge=object()).version != without_judge
 
 
 def test_result_has_contract_keys_and_original_page_numbers():
@@ -60,7 +89,8 @@ def test_result_has_contract_keys_and_original_page_numbers():
 
     result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
 
-    assert result.keys() == contract_example("result.example.json").keys()
+    # INCOMPLETE는 워커가 기록 전에 빼는 내부 표시다.
+    assert result.keys() - {INCOMPLETE} == contract_example("result.example.json").keys()
     assert (result["pages"], result["totalPages"], result["usage"]) == (
         [1, 3, 4], 5, {key: value * 3 for key, value in USAGE.items()})
     tree = json.loads(result["json"])
@@ -1093,6 +1123,7 @@ def test_eligibility_stage_is_called_again_once_after_a_transient_error():
     result = AnnouncementPdfExtractor(model).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT, NOTICE)))
 
     assert json.loads(result["json"])["data"]["eligibility"] == EMPTY_ELIGIBILITY_DATA
+    assert result[INCOMPLETE] is False
     assert model.eligibility_calls == 2 and not [warning for warning in result["warnings"] if "신청자격" in warning]
     # 다시 부를 때도 처음과 같은 마감을 쓴다(공급·본문 단계와 같은 마감). 새 마감을 잡으면 시도 예산을 넘는다.
     assert model.eligibility_deadlines == [model.deadlines[0]] * 2
@@ -1109,6 +1140,8 @@ def test_eligibility_stage_that_fails_twice_leaves_a_warning_and_the_job_succeed
     assert len(tree["data"]["supplySheet"]["housingTypes"]) == 1 and tree["data"]["eligibility"] is None
     assert model.eligibility_calls == 2
     assert "신청자격을 읽지 못했습니다: AI 모델이 잠시 요청을 받지 못합니다." in result["warnings"]
+    # 다시 하면 신청자격이 채워질 수 있어, 같은 PDF의 다음 작업이 이 결과를 다시 쓰지 않게 알린다.
+    assert result[INCOMPLETE] is True
 
 
 def test_eligibility_stage_is_not_called_again_after_a_permanent_error_or_without_time_left(monkeypatch):
