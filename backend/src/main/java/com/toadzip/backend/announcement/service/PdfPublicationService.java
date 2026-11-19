@@ -5,6 +5,9 @@ import static com.toadzip.backend.announcement.service.PublicationCorrection.req
 import com.toadzip.backend.announcement.domain.*;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Apply;
 import com.toadzip.backend.announcement.repository.*;
+import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
+import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
+import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
 import jakarta.validation.Validator;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -28,6 +31,8 @@ class PdfPublicationService {
     private final PdfExtractionInputs inputs;
     private final AnnouncementJsonCorrectionService corrections;
     private final PublicationCorrection proposals;
+    private final EligibilityRuleSetService rules;
+    private final EligibilityExtractionDraftService eligibility;
     private final ObjectMapper json;
     private final Validator validator;
     private final Clock clock;
@@ -78,7 +83,32 @@ class PdfPublicationService {
             return;
         }
         corrections.apply(id, new Apply(request, preview.confirmationToken()), PdfPublicationScheduler.ACTOR);
-        decisions.record(jobId, previouslyPublished ? "CONFIRMED" : "PUBLISHED", "공개 기준 통과", announcement.getVersion(), "REVIEW");
+        boolean verifiedEligibility = eligibilityReady(review);
+        decisions.record(jobId, previouslyPublished ? "CONFIRMED" : "PUBLISHED",
+                verifiedEligibility ? "공개 기준 통과" : "공고 보정 완료 · 신청자격의 원문 근거와 대상별 예외를 확인하세요.",
+                announcement.getVersion(), verifiedEligibility ? "PENDING" : "REVIEW");
+    }
+
+    private static boolean eligibilityReady(JsonNode review) {
+        var answer = review.path("answers").path("eligibility");
+        double probability = answer.path("probability").asDouble(-1);
+        return "confirmed".equals(answer.path("choice").asString("")) && probability >= 0.95 && probability <= 1;
+    }
+
+    @Transactional
+    public void publishEligibility(long jobId) {
+        var version = decisions.claimEligibility(jobId);
+        if (version.isEmpty()) { return; }
+        var job = jobs.findById(jobId).orElseThrow();
+        long id = job.getAnnouncementId();
+        var notice = announcements.findByIdForUpdate(id).orElseThrow();
+        require(notice.isPublished() && !notice.isAdminDeleted() && notice.getVersion() == version.get()
+                && decisions.isLatest(jobId, id), "공고 또는 추출이 변경되었습니다.");
+        require(rules.draft(id) == null && rules.published(id) == null, "기존 신청자격 검토본이 있습니다.");
+        var result = eligibility.create(id, new DraftFromExtraction(job.getPdfSha256(), null, 0L));
+        // 작성·공개·투영까지 같은 트랜잭션이다. 연결하지 못한 경로가 있으면 자격만 되돌린다.
+        require(result.published() && result.notices().isEmpty(), "신청자격 경로 또는 원문 연결 확인이 필요합니다.");
+        decisions.finishEligibility(jobId, "PUBLISHED", "공고와 신청자격 공개 완료");
     }
 
     private void checkAnswers(JsonNode review) {

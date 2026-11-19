@@ -70,20 +70,29 @@ def assess(tree, texts, warnings, judge, deadline, title, reread):
     })
     context = {"sourcePages": dict(enumerate(texts, 1)), "noticeTitle": title, "supply": sheet,
                "schedule": data.get("schedules"), "receptionPlaces": data.get("receptionPlaces"), "citations": evidence}
+    eligibility = data.get("eligibility")
+    can_check_eligibility = bool(eligibility and not any(w.startswith("신청자격") for w in warnings))
+    if can_check_eligibility and len(json.dumps(context | {"eligibility": eligibility}, ensure_ascii=False)) <= MAX_CONTEXT:
+        context["eligibility"] = eligibility
+        questions["eligibility"] = question("Check ALL eligibility conditions, thresholds, exceptions and target links against the full original. Is it complete and correct for public eligibility decisions?", CHECK)
     for attempt in range(2):
         if len(json.dumps(context, ensure_ascii=False)) > MAX_CONTEXT or deadline - time.monotonic() < 1:
-            reasons.append("원문 전체 대조에 필요한 입력 또는 시간 한도를 초과했습니다.")
+            if set(questions) != {"eligibility"}:
+                reasons.append("원문 전체 대조에 필요한 입력 또는 시간 한도를 초과했습니다.")
             break
         try:
             answers = judge.choices(context, questions, deadline - time.monotonic())
         except jev.JevError:
-            reasons.append("JEV가 공개 근거를 확인하지 못했습니다.")
+            if set(questions) != {"eligibility"}:
+                reasons.append("JEV가 공개 근거를 확인하지 못했습니다.")
             break
         pending = {}
         for key, prompt in questions.items():
             answer = answers[key]
             result["answers"][key] = {"choice": answer.choice, "probability": answer.probability}
             if answer.choice in prompt["criteria"] and answer.choice not in ("conflict", "unclear") and answer.probability >= MIN_PROBABILITY:
+                continue
+            if key == "eligibility" and (attempt or answer.choice == "conflict"):
                 continue
             if answer.choice == "conflict" or attempt:
                 cite = evidence.get(key, {})
@@ -96,7 +105,8 @@ def assess(tree, texts, warnings, judge, deadline, title, reread):
         # 첫 판정에서 의미가 불명확한 항목만 원본 PDF의 문서 내부 순서로 다시 읽는다.
         alternate = reread()
         if len(alternate) != len(texts) or any(not page.strip() for page in alternate):
-            reasons.append("재검토할 원문을 모두 읽지 못했습니다.")
+            if set(pending) != {"eligibility"}:
+                reasons.append("재검토할 원문을 모두 읽지 못했습니다.")
             break
         context["sourcePages"] = dict(enumerate(alternate, 1))
         questions = pending

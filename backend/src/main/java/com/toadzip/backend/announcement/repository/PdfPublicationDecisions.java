@@ -39,6 +39,23 @@ public class PdfPublicationDecisions {
                 """).params(job, outcome, reason, version, eligibility).update();
     }
 
+    public List<Long> awaitingEligibility() {
+        return jdbc.sql("SELECT job_id FROM pdf_publication_decisions WHERE eligibility_status = 'PENDING' ORDER BY job_id LIMIT 10")
+                .query(Long.class).list();
+    }
+
+    public Optional<Long> claimEligibility(long job) {
+        return jdbc.sql("""
+                SELECT published_version FROM pdf_publication_decisions WHERE job_id = ?
+                  AND eligibility_status = 'PENDING' FOR UPDATE SKIP LOCKED
+                """).param(job).query(Long.class).optional();
+    }
+
+    public void finishEligibility(long job, String status, String reason) {
+        jdbc.sql("UPDATE pdf_publication_decisions SET eligibility_status=?, reason=? WHERE job_id=? AND eligibility_status='PENDING'")
+                .params(status, reason, job).update();
+    }
+
     public record Decision(String outcome, String reason, String eligibilityStatus) {}
 
     public Optional<Decision> decision(long job) {
