@@ -55,7 +55,7 @@ DB 제약(`V20261103_01__ai_jobs.sql`)이 아래 상태별 열 규칙을 강제�
 - 결과 다시 쓰기: 꺼낸 작업과 종류·`pdf_sha256`·`input`이 같고 `worker_version`이 지금 워커 버전과 같은 `SUCCEEDED` 작업이 있으면, 모델을 부르지 않고 가장 최근 그 결과로 `SUCCEEDED`를 쓴다. 워커 버전은 워커 소스 파일(프롬프트 포함)과 결과를 바꾸는 설정의 지문이라, 무엇이든 고치면 이전 결과를 다시 쓰지 않는다. `worker_version`이 없는 옛 작업도 다시 쓰지 않는다. 신청자격 단계가 빠진 채 성공한 결과(일시 오류·시간 부족·형식 오류)는 다시 하면 채워질 수 있어 `worker_version`을 비워 기록하고, 그래서 다시 쓰지 않는다.
 - 처리하는 동안 1분마다 `WHERE id = ? AND lease_token = ?`로 `lease_until`을 늘린다(lease 3분). 워커가 죽으면 늘리기가 멈춰 다른 워커가 다시 꺼낸다. 마감이 지난 작업은 늘리지 않는다.
 - 마감: `created_at`부터 40분이 지난 `PENDING`·`RUNNING`·`RETRY`는 꺼내지 않고 `FAILED`(`DEADLINE_EXCEEDED`)로 끝낸다. 관리자 화면은 45분까지 기다린다. 워커가 멈춰도 Spring이 작업을 넣거나 상태를 읽기 전에 같은 마감·문구로 끝낸다(`AnnouncementPdfExtractionService.DEADLINE`). 마감을 바꾸면 두 곳을 함께 바꾼다.
-- 관리자 취소: Spring이 진행 중 작업을 `FAILED`(`CANCELLED_BY_ADMIN`)로 끝낸다. 마감과 같이 `pdf`·`lease_token`·`lease_until`을 비우므로 그 작업을 처리 중인 워커의 이후 쓰기는 0행이 된다.
+- 관리자 취소: Spring이 진행 중 작업을 `FAILED`(`CANCELLED_BY_ADMIN`)로 끝낸다. 관리자가 다른 PDF를 요청해 서버 작업(`BATCH`)을 끝낼 때는 `REPLACED_BY_ADMIN`이다. 마감과 같이 `pdf`·`lease_token`·`lease_until`을 비우므로 그 작업을 처리 중인 워커의 이후 쓰기는 0행이 된다.
 - 꺼내기 기한: 한 번의 시도(10분)를 마감 전에 끝낼 수 없는 작업, 곧 `created_at`부터 30분이 지난 작업은 꺼내지 않는다.
 - 작업 하나는 최대 3번(워커 `MAX_ATTEMPTS`) 처리한다. lease가 끝난 `RUNNING`이 이미 3번을 썼으면 다시 꺼내지 않고 `FAILED`로 끝낸다.
 - 완료·실패·재시도 쓰기는 `WHERE id = ? AND lease_token = ?`로 한다. lease를 빼앗긴 이전 워커의 쓰기는 0행이 된다.

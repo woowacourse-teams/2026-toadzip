@@ -57,11 +57,14 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private JdbcClient jdbc;
     @MockitoBean private AnnouncementAttachmentClient client;
 
+    /** 첨부 서버가 돌려주는 PDF. 만들 때마다 문서 ID가 달라지므로 같은 PDF를 올리는 경우는 이 바이트를 쓴다. */
+    private byte[] attachmentPdf;
+
     @BeforeEach
     void setUp() throws IOException {
         jdbc.sql("TRUNCATE ai_jobs, announcements CASCADE").update();
-        byte[] pdf = pdf();
-        doAnswer(invocation -> file(pdf)).when(client).read(anyString());
+        attachmentPdf = pdf();
+        doAnswer(invocation -> file(attachmentPdf)).when(client).read(anyString());
     }
 
     @Test
@@ -129,7 +132,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     @Test
-    void 관리자가_같은_공고를_요청하면_기다리는_서버_작업이_관리자_작업이_되어_먼저_처리된다() {
+    void 관리자가_같은_첨부를_요청하면_기다리는_서버_작업이_관리자_작업이_되어_먼저_처리된다() {
         Announcement open = announcement(TODAY.plusDays(5));
         AnnouncementAttachment notice = attach(open, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
         scheduler.enqueueDue();
@@ -140,31 +143,96 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         assertThat(jobs()).singleElement().satisfies(job -> {
             assertThat(job.get("request_source")).isEqualTo("ADMIN");
             assertThat(job.get("requested_by")).isEqualTo("admin");
+            assertThat(job.get("status")).isEqualTo("PENDING");
         });
     }
 
     @Test
-    void 관리자가_다른_PDF를_요청하면_기다리는_서버_작업을_관리자_작업으로_바꾸지_않는다() throws IOException {
+    void 관리자가_같은_PDF를_직접_올리면_기다리는_서버_작업이_관리자_작업이_된다() {
         Announcement open = announcement(TODAY.plusDays(5));
         attach(open, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
-        AnnouncementAttachment correction = attach(open, "정정 공고문.pdf", AttachmentType.ETC, 1);
         scheduler.enqueueDue();
 
-        assertThatThrownBy(() -> extractions.requestAttachment(open.getId(), "admin", correction.getId()))
-                .isInstanceOf(PdfExtractionInProgressException.class);
-        byte[] uploaded = pdf(2);
-        assertThatThrownBy(() -> extractions.request(open.getId(), "admin", "공고문.pdf", uploaded))
+        assertThatThrownBy(() -> extractions.request(open.getId(), "admin", "내려받은 공고문.pdf", attachmentPdf))
                 .isInstanceOf(PdfExtractionInProgressException.class);
 
         assertThat(jobs()).singleElement().satisfies(job -> {
             assertThat(job.get("file_name")).isEqualTo("공고문.pdf");
-            assertThat(job.get("request_source")).isEqualTo("BATCH");
-            assertThat(job.get("requested_by")).isNull();
+            assertThat(job.get("request_source")).isEqualTo("ADMIN");
+            assertThat(job.get("requested_by")).isEqualTo("admin");
+        });
+    }
+
+    @Test
+    void 관리자가_다른_PDF를_올리면_기다리는_서버_작업을_끝내고_관리자_작업을_바로_넣는다() throws IOException {
+        Announcement open = announcement(TODAY.plusDays(5));
+        attach(open, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
+        scheduler.enqueueDue();
+        byte[] correction = pdf(2);
+
+        extractions.request(open.getId(), "admin", "공고문.pdf", correction);
+
+        assertThat(jobs()).satisfiesExactly(
+                batch -> {
+                    assertThat(batch.get("request_source")).isEqualTo("BATCH");
+                    assertThat(batch.get("status")).isEqualTo("FAILED");
+                    assertThat(batch.get("error_code")).isEqualTo("REPLACED_BY_ADMIN");
+                },
+                admin -> {
+                    assertThat(admin.get("request_source")).isEqualTo("ADMIN");
+                    assertThat(admin.get("requested_by")).isEqualTo("admin");
+                    assertThat(admin.get("status")).isEqualTo("PENDING");
+                });
+    }
+
+    @Test
+    void 관리자가_내용이_다른_첨부를_고르면_이름이_같아도_처리_중인_서버_작업을_끝내고_관리자_작업을_넣는다() throws IOException {
+        Announcement open = announcement(TODAY.plusDays(5));
+        attach(open, "공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
+        AnnouncementAttachment correction = attach(open, "공고문.pdf", AttachmentType.ETC, 1);
+        byte[] correctionBytes = pdf(3);
+        doAnswer(invocation -> file(correctionBytes)).when(client).read(correction.getFileUrl());
+        scheduler.enqueueDue();
+        jdbc.sql("""
+                UPDATE ai_jobs SET status = 'RUNNING', attempts = 1, lease_token = gen_random_uuid(),
+                    lease_until = now() + interval '10 minutes', started_at = now()
+                """).update();
+
+        extractions.requestAttachment(open.getId(), "admin", correction.getId());
+
+        assertThat(jobs()).satisfiesExactly(
+                batch -> {
+                    assertThat(batch.get("status")).isEqualTo("FAILED");
+                    assertThat(batch.get("error_code")).isEqualTo("REPLACED_BY_ADMIN");
+                    assertThat(batch.get("lease_token")).isNull();
+                },
+                admin -> {
+                    assertThat(admin.get("request_source")).isEqualTo("ADMIN");
+                    assertThat(admin.get("status")).isEqualTo("PENDING");
+                });
+    }
+
+    @Test
+    void 진행_중인_관리자_작업은_다른_관리자의_다른_PDF_요청이_끝내지_않는다() throws IOException {
+        Announcement open = announcement(TODAY.plusDays(5));
+        byte[] first = pdf(2);
+        extractions.request(open.getId(), "admin-1", "공고문.pdf", first);
+        byte[] second = pdf(3);
+
+        assertThatThrownBy(() -> extractions.request(open.getId(), "admin-2", "정정 공고문.pdf", second))
+                .isInstanceOf(PdfExtractionInProgressException.class);
+
+        assertThat(jobs()).singleElement().satisfies(job -> {
+            assertThat(job.get("requested_by")).isEqualTo("admin-1");
+            assertThat(job.get("status")).isEqualTo("PENDING");
         });
     }
 
     private List<Map<String, Object>> jobs() {
-        return jdbc.sql("SELECT announcement_id, file_name, request_source, requested_by, status FROM ai_jobs ORDER BY id")
+        return jdbc.sql("""
+                SELECT announcement_id, file_name, request_source, requested_by, status, error_code, lease_token
+                FROM ai_jobs ORDER BY id
+                """)
                 .query().listOfRows();
     }
 

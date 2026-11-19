@@ -242,12 +242,10 @@ class PdfExtractionJobRepositoryTest {
         String otherSha = PdfExtractionSource.of("a.pdf", new byte[] {2}).sha256();
 
         assertThat(jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, ANNOUNCEMENT, otherSha, "admin-2")).isZero();
-        assertThat(jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, ANNOUNCEMENT, "b.pdf", "admin-2")).isZero();
         assertThat(jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, sameSha, "admin-2")).isZero();
-        assertThat(jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, ANNOUNCEMENT + 1, "a.pdf", "admin-2")).isZero();
         assertThat(jobs.findById(waiting).orElseThrow().getRequestSource()).isEqualTo("BATCH");
 
-        assertThat(jobs.promoteWaitingBatchOfFile(PdfExtractionJob.KIND, ANNOUNCEMENT, "a.pdf", "admin-2")).isEqualTo(1);
+        assertThat(jobs.promoteWaitingBatchOfPdf(PdfExtractionJob.KIND, ANNOUNCEMENT, sameSha, "admin-2")).isEqualTo(1);
 
         assertThat(jobs.findById(waiting).orElseThrow())
                 .extracting(PdfExtractionJob::getRequestSource, PdfExtractionJob::getRequestedBy)

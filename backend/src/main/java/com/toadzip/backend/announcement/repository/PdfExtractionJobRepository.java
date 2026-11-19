@@ -114,11 +114,19 @@ public interface PdfExtractionJobRepository extends JpaRepository<PdfExtractionJ
     @Query(value = PROMOTE_WAITING_BATCH + " AND pdf_sha256 = :pdfSha256", nativeQuery = true)
     int promoteWaitingBatchOfPdf(String kind, long announcementId, String pdfSha256, String admin);
 
-    /** 관리자가 고른 첨부와 파일 이름이 같은 기다리는 서버 작업을 관리자 작업으로 바꾼다. 첨부를 내려받기 전이라 해시를 모른다. */
+    /**
+     * 관리자가 다른 PDF를 요청했을 때 그 공고의 진행 중 서버 작업(BATCH)을 끝낸다. 관리자가 서버 작업이 끝날 때까지 기다리지 않게
+     * 한다. 처리 중인 작업도 끝내며, lease를 비우므로 그 워커의 이후 쓰기는 0행이 된다.
+     */
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = PROMOTE_WAITING_BATCH + " AND file_name = :fileName", nativeQuery = true)
-    int promoteWaitingBatchOfFile(String kind, long announcementId, String fileName, String admin);
+    @Query(FAIL_ACTIVE + " AND job.requestSource = :batch AND job.pdfSha256 <> :pdfSha256")
+    int failActiveBatchOfOtherPdf(String kind, long announcementId, String pdfSha256, String batch,
+            Collection<PdfExtractionJobStatus> active, PdfExtractionJobStatus failed, String code, String message,
+            Instant now);
+
+    boolean existsByKindAndAnnouncementIdAndRequestSourceAndStatusIn(String kind, long announcementId,
+            String requestSource, Collection<PdfExtractionJobStatus> statuses);
 
     interface QueueSummary {
         long getPending();
