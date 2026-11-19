@@ -130,3 +130,17 @@ it('자동 보정 검수함에서 원문 보류 사유와 해당 공고의 PDF �
   expect(await within(queue).findByText('7쪽 대상별 접수일 확인')).toBeVisible()
   expect(within(queue).getByRole('link', { name: '행복주택 예비모집' })).toHaveAttribute('href', '/admin/announcements/41/pdf-correction')
 })
+it('자동 보정 검수함은 줄바꿈으로 이어진 사유를 한 줄씩 나눠 보이고 빈 줄은 버린다', async () => {
+  vi.mocked(loadPdfReviews).mockResolvedValue({ items: [
+    { jobId: 57, announcementId: 43, name: '국민임대 입주자모집', reason: '3쪽 공급호수 합계 불일치\n\n소득기준 근거 쪽수 없음\n', eligibilityOnly: true },
+    { jobId: 56, announcementId: 42, name: '영구임대 예비모집', reason: '5쪽 접수 기간 확인', eligibilityOnly: false },
+  ], nextBefore: null })
+  show()
+  const queue = screen.getByRole('region', { name: '자동 보정 검수함' })
+  const eligibility = (await within(queue).findByRole('link', { name: '국민임대 입주자모집' })).closest('li')!
+  expect(within(eligibility).getAllByRole('listitem').map(reason => reason.textContent)).toEqual(['3쪽 공급호수 합계 불일치', '소득기준 근거 쪽수 없음'])
+  expect(within(eligibility).getByText('신청자격')).toBeVisible()
+  const supply = within(queue).getByRole('link', { name: '영구임대 예비모집' }).closest('li')!
+  expect(within(supply).getAllByRole('listitem').map(reason => reason.textContent)).toEqual(['5쪽 접수 기간 확인'])
+  expect(within(supply).queryByText('신청자격')).not.toBeInTheDocument()
+})
