@@ -455,6 +455,23 @@ class DataPipelineExecutionServiceTest {
     }
 
     @Test
+    void 대상이_모두_실패한_단계가_있으면_실패_원인을_일부_실패와_구별해_남긴다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        doAnswer(invocation -> {
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.MAP_LH_ANNOUNCEMENTS);
+            executionStateService.recordPartialFailure(executionId, DataPipelineStep.MAP_LH_ANNOUNCEMENTS, "{}");
+            throw new DataPipelinePartialFailureException(DataPipelineStep.MAP_LH_ANNOUNCEMENTS, "{}", true);
+        }).when(runner).run(any(), any());
+
+        service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
+
+        assertThat(query.findLatest(DataPipelineType.ANNOUNCEMENT_REFINEMENT).failure().cause())
+                .isEqualTo("ALL_TARGETS_FAILED");
+    }
+
+    @Test
     void 부분_실패한_단계와_서버_응답을_실패_상태에_보존한다() {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));

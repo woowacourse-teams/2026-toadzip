@@ -45,7 +45,8 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(properties = {
         "ingest.service-key=test-service-key",
         "ingest.auto-collection.enabled=true",
-        "ingest.auto-collection.initial-delay=PT24H"
+        "ingest.auto-collection.initial-delay=PT24H",
+        "ingest.auto-collection.interval=PT1H"
 })
 @ActiveProfiles("test")
 class AnnouncementAutoCollectionSchedulerIntegrationTest {
@@ -136,6 +137,24 @@ class AnnouncementAutoCollectionSchedulerIntegrationTest {
         assertThat(meters.get("toadzip.ingest.auto.failure.streak").tag("type", "ANNOUNCEMENT_SYNC")
                 .gauge().value()).isZero();
         task.get().run();
+    }
+
+    @Test
+    void 대상이_모두_실패한_실행은_성공으로_세지_않아_연속_실패로_올리고_다음_실행을_미룬다() {
+        Instant succeededAt = finished(DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineExecutionStatus.COMPLETED,
+                Duration.ofHours(3));
+        finished(DataPipelineType.ANNOUNCEMENT_SYNC, DataPipelineExecutionStatus.FAILED,
+                DataPipelineFailureCause.ALL_TARGETS_FAILED, Duration.ofMinutes(5));
+        recentlySucceededBoards();
+        long before = executions.count();
+
+        scheduler.startDue();
+
+        assertThat(executions.count()).isEqualTo(before);
+        assertThat(meters.get("toadzip.ingest.auto.last.success").tag("type", "ANNOUNCEMENT_SYNC")
+                .gauge().value()).isEqualTo(succeededAt.getEpochSecond());
+        assertThat(meters.get("toadzip.ingest.auto.failure.streak").tag("type", "ANNOUNCEMENT_SYNC")
+                .gauge().value()).isOne();
     }
 
     @Test

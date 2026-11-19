@@ -186,7 +186,7 @@ public class DataPipelineExecutionService {
                     exception.getStep(),
                     exception.getMessage(),
                     exception.getServerResponse(),
-                    DataPipelineFailureCause.PARTIAL,
+                    exception.cause(),
                     null
             );
         }

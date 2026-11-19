@@ -6,6 +6,8 @@ public enum DataPipelineFailureCause {
     TRANSIENT,
     /** 일부 대상만 실패했다. 대상별 원인은 실패 목록에 있다. */
     PARTIAL,
+    /** 실패한 단계에서 성공한 대상이 없다. 기관 응답 형식이 바뀌었을 수 있어 다시 실행해도 같을 수 있다. 대상별 원인은 실패 목록에 있다. */
+    ALL_TARGETS_FAILED,
     /** 서버 내부 오류다. 다시 실행해도 같을 수 있어 실행 ID로 서버 로그를 확인해야 한다. */
     INTERNAL
 }

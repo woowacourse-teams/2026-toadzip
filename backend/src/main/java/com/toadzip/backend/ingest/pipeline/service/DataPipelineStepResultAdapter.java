@@ -20,7 +20,8 @@ class DataPipelineStepResultAdapter {
                     objectMapper.writeValueAsString(report),
                     report.stepFailureCount(),
                     report.stepRateLimitedFailureCount(),
-                    report.stepWarningCount()
+                    report.stepWarningCount(),
+                    report.stepFailedEntirely()
             );
         }
         catch (JacksonException exception) {

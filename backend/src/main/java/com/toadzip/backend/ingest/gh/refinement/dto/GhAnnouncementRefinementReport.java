@@ -17,4 +17,9 @@ public record GhAnnouncementRefinementReport(
     public int stepFailureCount() {
         return failed;
     }
+
+    @Override
+    public boolean stepFailedEntirely() {
+        return targetCount > 0 && failed >= targetCount;
+    }
 }

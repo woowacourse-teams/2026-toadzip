@@ -32,8 +32,11 @@ export type DataPipelineWarningStep = {
   report: unknown
 }
 
-/** TRANSIENT는 잠시 뒤 다시 실행, PARTIAL은 일부 대상 실패, INTERNAL은 서버 내부 오류다. 원인을 남기기 전의 실패는 null이다. */
-export type DataPipelineFailureCause = 'TRANSIENT' | 'PARTIAL' | 'INTERNAL'
+/**
+ * TRANSIENT는 잠시 뒤 다시 실행, PARTIAL은 일부 대상 실패, ALL_TARGETS_FAILED는 실패한 단계의 대상 전부 실패,
+ * INTERNAL은 서버 내부 오류다. 원인을 남기기 전의 실패는 null이다.
+ */
+export type DataPipelineFailureCause = 'TRANSIENT' | 'PARTIAL' | 'ALL_TARGETS_FAILED' | 'INTERNAL'
 
 export type DataPipelineFailure = {
   stepName: string | null
@@ -569,7 +572,7 @@ function isPipelineWarningStep(value: unknown): value is DataPipelineWarningStep
     && 'report' in value
 }
 
-const failureCauses: readonly unknown[] = ['TRANSIENT', 'PARTIAL', 'INTERNAL']
+const failureCauses: readonly unknown[] = ['TRANSIENT', 'PARTIAL', 'ALL_TARGETS_FAILED', 'INTERNAL']
 
 function isPipelineFailure(value: unknown): value is DataPipelineFailure {
   return isRecord(value)

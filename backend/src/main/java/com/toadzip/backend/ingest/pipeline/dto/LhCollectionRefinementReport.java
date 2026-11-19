@@ -21,4 +21,10 @@ public record LhCollectionRefinementReport(
     public int stepWarningCount() {
         return supply.stepWarningCount() + detail.stepWarningCount() + refinement.stepWarningCount();
     }
+
+    /** 공급·상세 수집이나 정제 중 하나라도 통째로 실패하면 이 단계는 성공한 몫이 없다. */
+    @Override
+    public boolean stepFailedEntirely() {
+        return supply.stepFailedEntirely() || detail.stepFailedEntirely() || refinement.stepFailedEntirely();
+    }
 }

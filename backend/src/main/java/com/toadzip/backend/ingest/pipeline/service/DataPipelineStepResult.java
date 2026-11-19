@@ -4,7 +4,8 @@ record DataPipelineStepResult(
         String serverResponse,
         int failureCount,
         int rateLimitedFailureCount,
-        int warningCount
+        int warningCount,
+        boolean failedEntirely
 ) {
 
     DataPipelineStepResult {
