@@ -28,17 +28,17 @@ def firing(uid, time, labels):
 # dev LH is always stale so a leak of dev into prod shows up as an extra sample.
 for env in ["dev", "prod"]:
     tags = dict(job="backend", instance=env, environment=env)
-    metric("toadzip_ingest_auto_last_success_seconds", "0x300", **tags, type="ANNOUNCEMENT_SYNC")
-    metric("toadzip_ingest_auto_last_success_seconds", "0+60x300", **tags, type="SH_ANNOUNCEMENT_COLLECTION")
-    metric("toadzip_ingest_auto_last_success_seconds", " ".join(["NaN"] * 301), **tags, type="GH_ANNOUNCEMENT_COLLECTION")
-    metric("toadzip_ingest_auto_failure_streak", "0x300", **tags, type="SH_ANNOUNCEMENT_COLLECTION")
-    metric("toadzip_ingest_auto_failure_streak", "1x60 2x60 3x180", **tags, type="GH_ANNOUNCEMENT_COLLECTION")
+    metric("toadzip_ingest_auto_last_success_seconds", "0x480", **tags, type="ANNOUNCEMENT_SYNC")
+    metric("toadzip_ingest_auto_last_success_seconds", "0+60x480", **tags, type="SH_ANNOUNCEMENT_COLLECTION")
+    metric("toadzip_ingest_auto_last_success_seconds", " ".join(["NaN"] * 481), **tags, type="GH_ANNOUNCEMENT_COLLECTION")
+    metric("toadzip_ingest_auto_failure_streak", "0x480", **tags, type="SH_ANNOUNCEMENT_COLLECTION")
+    metric("toadzip_ingest_auto_failure_streak", "1x60 2x60 3x360", **tags, type="GH_ANNOUNCEMENT_COLLECTION")
 
 STALE, FAILING = "toadzip-ingest-auto-stale", "toadzip-ingest-auto-failing"
 lh = [f'{{environment="{env}",type="ANNOUNCEMENT_SYNC"}}' for env in ["dev", "prod"]]
 gh = [f'{{environment="{env}",type="GH_ANNOUNCEMENT_COLLECTION"}}' for env in ["dev", "prod"]]
-firing(STALE, "2h59m", [])
-firing(STALE, "3h1m", lh)
+firing(STALE, "6h59m", [])
+firing(STALE, "7h1m", lh)
 firing(FAILING, "1h59m", [])
 firing(FAILING, "2h3m", gh)
 

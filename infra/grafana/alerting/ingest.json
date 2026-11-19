@@ -42,7 +42,7 @@
                   {
                     "evaluator": {
                       "params": [
-                        10800
+                        25200
                       ],
                       "type": "gt"
                     },
@@ -76,7 +76,7 @@
           "noDataState": "OK",
           "execErrState": "Error",
           "annotations": {
-            "summary": "[{{ $labels.environment }}] {{ $labels.type }} 3시간째 수집 성공 없음",
+            "summary": "[{{ $labels.environment }}] {{ $labels.type }} 7시간째 수집 성공 없음",
             "description": "마지막 성공 뒤 {{ printf \"%.0f\" $values.A.Value }}초가 지났습니다. 관리자 공고 수집 화면의 실행 이력에서 실패 원인과 executionId를 확인하세요. 한 번도 성공하지 않은 유형은 연속 실패 경보가 맡습니다."
           },
           "labels": {
