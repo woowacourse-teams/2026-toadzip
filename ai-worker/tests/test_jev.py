@@ -29,6 +29,27 @@ def test_count_meanings_sends_one_choice_per_column_and_reads_the_chosen_probabi
     assert not set(jev.WINNER_OPTIONS) & set(question["criteria"])
 
 
+def test_ask_reads_a_noul_as_the_probability_of_yes_and_a_choice_as_its_meaning():
+    def handler(request):
+        return httpx.Response(200, json={"answers": {
+            "cancelled": {"noul": 0.03},
+            "rentalType": {"choice": "HAPPY_HOUSING", "probabilities": {"HAPPY_HOUSING": 0.97, "NATIONAL": 0.03}}}})
+
+    questions = {"cancelled": {"type": "noul", "instructions": "취소 공고인가?"},
+                 "rentalType": {"type": "choice", "instructions": "공급유형", "criteria": {"HAPPY_HOUSING": "", "NATIONAL": ""}}}
+
+    assert client(handler).ask({"pages": {}}, questions, 5) == {
+        "cancelled": 0.03, "rentalType": jev.Meaning("HAPPY_HOUSING", 0.97)}
+
+
+def test_ask_raises_when_an_answer_is_not_of_the_asked_type():
+    def handler(request):
+        return httpx.Response(200, json={"answers": {"cancelled": {"choice": "yes", "probabilities": {"yes": 1.0}}}})
+
+    with pytest.raises(jev.JevError):
+        client(handler).ask({}, {"cancelled": {"type": "noul", "instructions": "취소 공고인가?"}}, 5)
+
+
 def test_winner_options_stay_for_a_notice_that_also_selects_winners():
     sent = {}
 

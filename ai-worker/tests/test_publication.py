@@ -1,116 +1,205 @@
 import time
 
+import pytest
+
 from ai_worker import jev
 from ai_worker import publication as policy
 from ai_worker.jev import Meaning
 from ai_worker.supply_sources import AMBIGUOUS_TABLE_NOTE
 
-PAGES = ["행복주택 입주자 모집공고 접수 11월 3일", "주택형 36A 예비 모집 12", "유의사항과 계약 안내"]
+PAGES = ["행복주택 입주자 모집공고 신청접수 ‘26.11.03.(화) 10:00 ~ 11.05.(목) 발표 ’26.12.01.(화)",
+         "주택형 36A 12 주택형 36B 5", "유의사항과 계약 안내"]
+SCHEDULE = [["신청접수", "당첨자 발표"], ["‘26.11.03.(화) 10:00 ~ 11.05.(목)", "’26.12.01.(화) 14:00 이후"]]
+ROWS = {"P2:T1:R1": "주택형\t모집", "P2:T1:R2": "36A\t12", "P2:T1:R3": "\t(-) 3,000", "P3:T1:R1": "소득\t100%"}
+COLLECTED = {"title": "행복주택 모집공고", "rentalType": "HAPPY_HOUSING", "recruitmentType": "NEW",
+             "applicationStartDate": "2026-11-03", "applicationEndDate": "2026-11-05",
+             "winnerAnnouncementDate": "2026-12-01"}
+NOTICE = {"applicationStartDate": "2026-11-03", "applicationEndDate": "2026-11-05", "winnerAnnouncementDate": "2026-12-01"}
+QUOTES = {"applicationStartDate": "신청접수 '26.11.03.(화) 10:00", "applicationEndDate": "~ 11.05.(목)",
+          "winnerAnnouncementDate": "'26.12.01.(화) 14:00 이후"}
+# 질문 종류별로 통과하는 답
+PASSING = {"recruits": 0.99, "cancelled": 0.01, "rentalListed": 0.99, "mixedRental": 0.01,
+           "rentalType": ("HAPPY_HOUSING", 0.99), "recruitmentType": ("NEW", 0.99),
+           "applicationStartDate": ("application", 0.99), "applicationEndDate": ("application", 0.99),
+           "winnerAnnouncementDate": ("final_announcement", 0.99)}
+REQUIREMENT = {"kind": "AGE", "asWritten": "만 19세 이상", "scope": "APPLICANT", "minimum": 19}
+ELIGIBILITY = {"common": {"requirements": [REQUIREMENT, {"kind": "OTHER", "asWritten": "유의사항"}]}}
 
 
-def assessment(answers=None, quote="11월 3일", unresolved=(), source_rows=None, eligibility=None, warnings=(),
-               failing=(), reread=None, judged=True, seconds=30, missing_date=None, unresolved_data=()):
-    """answers는 질문 키별로 차례로 돌려줄 (선택, 확률) 목록이다. 없으면 첫 선택지를 0.99로 답한다."""
-    notice = {field: None if field == missing_date else "2026-11-03" for field in policy.DATES}
-    evidence = [{"path": "announcement." + field, "page": 1, "quote": quote} for field in notice]
-    evidence.append({"path": "eligibility.targets[0].requirements[0]", "page": 3, "quote": "유의사항"})
-    sheet = {"housingTypes": [1], "cells": [1], "quotas": [1], "unresolvedFields": list(unresolved),
-             "evidence": [{"path": "housingTypes[0]", "page": 2, "quote": "36A"}]}
-    tree = {"data": {"announcement": notice, "supplySheet": sheet, "schedules": [], "eligibility": eligibility,
+def assessment(answers=None, collected=COLLECTED, notice=NOTICE, quotes=QUOTES, unresolved=(), rows=ROWS,
+               eligibility=None, warnings=(), failing=(), judged=True, seconds=30, unresolved_data=(), tables=(SCHEDULE,),
+               complex_names=("단지",)):
+    """answers는 질문 키 → 답(Noul은 확률, Choice는 (선택, 확률))이다. 없는 키는 통과하는 답을 받는다."""
+    evidence = [{"path": "announcement." + field, "page": 1, "quote": quote} for field, quote in quotes.items()]
+    evidence += [{"path": "eligibility.common.requirements[0]", "page": 3, "quote": "만 19세 이상"},
+                 {"path": "eligibility.common.requirements[1]", "page": 3, "quote": "유의사항"}]
+    sheet = {"housingTypes": [{"name": "36A", "complexName": name} for name in complex_names], "cells": [1], "quotas": [1],
+             "unresolvedFields": list(unresolved), "evidence": [{"path": "housingTypes[0]", "page": 2, "quote": "36A\t12"}]}
+    tree = {"data": {"announcement": dict(notice), "supplySheet": sheet, "schedules": [], "eligibility": eligibility,
                      "unresolvedFields": list(unresolved_data)},
             "evidence": evidence}
-    scripted = {key: list(values) for key, values in (answers or {}).items()}
     calls = []
 
     class Judge:
-        def choices(self, state, questions, timeout):
-            calls.append((state, list(questions)))
-            if failing and set(failing) & set(questions):
+        def ask(self, state, questions, timeout):
+            calls.append((state, questions))
+            if set(failing) & set(questions):
                 raise jev.JevError("거절")
-            return {key: Meaning(*(scripted[key].pop(0) if scripted.get(key) else (next(iter(q["criteria"])), 0.99)))
-                    for key, q in questions.items()}
+            result = {}
+            for key, question in questions.items():
+                default = PASSING.get(key, 0.99 if key.startswith("eligibility") else 0.01)
+                answer = (answers or {}).get(key, default)
+                result[key] = answer if question["type"] == "noul" else Meaning(*answer)
+            return result
 
-    decision = policy.assess(tree, PAGES, list(warnings), Judge() if judged else None, time.monotonic() + seconds,
-                             "행복주택 모집공고",
-                             reread or (lambda: [page + " (다시 읽음)" for page in PAGES]), source_rows)
+    source = policy.Source(PAGES, rows, lambda page: list(tables) if page == 1 else [])
+    decision = policy.assess(tree, source, list(warnings), Judge() if judged else None, time.monotonic() + seconds, collected)
     return decision, calls
 
 
-def pages_sent_for(calls, key):
-    return next(sorted(state["pages"]) for state, keys in calls if key in keys)
+def asked(calls):
+    return [key for _, questions in calls for key in questions]
 
 
-def test_verified_notice_approves_types_and_eligibility():
-    decision, _ = assessment(eligibility={"targets": ["청년"]})
+def test_notice_agreeing_with_the_collected_values_is_approved_without_asking_about_them():
+    decision, calls = assessment(eligibility=ELIGIBILITY)
     assert decision["reasons"] == []
     assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
     assert decision["eligibilityVerified"] is True
     assert decision["evidence"]["winnerAnnouncementDate"]["page"] == 1
+    # 수집값과 같은 유형·날짜는 묻지 않는다. 인용되지 않은 공급표 행과 구조화된 요건만 묻는다.
+    assert asked(calls) == ["recruits", "cancelled", "P2:T1:R3", "eligibility.common.requirements[0]"]
 
 
-def test_each_judgment_sees_only_the_pages_it_needs():
-    _, calls = assessment(source_rows={"P2:T1:R3": "주택형 36A 예비 모집 12"}, eligibility={"targets": ["청년"]})
-    assert pages_sent_for(calls, "notice") == [1, 2]
-    assert pages_sent_for(calls, "applicationEndDate") == [1]
-    assert pages_sent_for(calls, "P2:T1:R3") == [2]
-    assert pages_sent_for(calls, "eligibility") == [3]
+def test_values_the_collection_did_not_have_are_asked_and_approved_from_the_answers():
+    decision, calls = assessment(collected={"title": "행복주택 모집공고"})
+    assert decision["reasons"] == []
+    assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
+    assert set(asked(calls)) >= {"rentalType", "rentalListed", "mixedRental", "recruitmentType", *policy.DATES}
+    state, questions = next(call for call in calls if "winnerAnnouncementDate" in call[1])
+    assert state == {"schedule": SCHEDULE}
+    assert "26.12.01" in questions["winnerAnnouncementDate"]["instructions"]
 
 
-def test_unclear_date_is_asked_again_from_the_reread_original_then_held():
-    decision, calls = assessment({"applicationEndDate": [("unclear", 0.99), ("conflict", 0.99)]})
-    state, _ = next(call for call in calls if call[1] == ["applicationEndDate"])
-    assert state["pages"][1].endswith("(다시 읽음)")
-    assert decision["reasons"] == ["신청 접수 종료일 원문 확인 필요 · 1쪽 11월 3일"]
-    assert decision["rentalType"] is None
+@pytest.mark.parametrize("answers, reason", [
+    ({"recruits": 0.5}, "입주자 모집공고문인지 확인 필요(안내문·서식·결과 발표일 수 있음)"),
+    ({"cancelled": 0.5}, "모집 취소·철회 공고인지 확인 필요"),
+    ({"mixedRental": 0.6}, "여러 공급유형을 함께 모집하는 공고인지 확인 필요"),
+    ({"rentalListed": 0.6}, "공급유형이 분류 목록에 있는지 확인 필요"),
+    ({"rentalType": ("HAPPY_HOUSING", 0.9)}, "공급유형을 원문에서 하나로 정하지 못했습니다."),
+    ({"rentalType": ("NOT_A_RENTAL_TYPE", 0.99)}, "공급유형을 원문에서 하나로 정하지 못했습니다."),
+    ({"recruitmentType": ("WAITLIST", 0.7)}, "모집유형(신규·예비)을 원문에서 하나로 정하지 못했습니다."),
+])
+def test_undecided_notice_kind_holds_publication(answers, reason):
+    decision, _ = assessment(answers, collected={"title": "행복주택 모집공고"})
+    assert decision["reasons"] == [reason]
+    assert (decision["rentalType"], decision["recruitmentType"]) == (None, None)
 
 
-def test_answer_below_the_probability_bar_twice_holds_publication():
-    decision, _ = assessment({"notice": [("confirmed", 0.9), ("confirmed", 0.9)]})
-    assert decision["reasons"] == ["원공고인지 원문 확인 필요(정정·취소·안내문일 수 있음)"]
+def test_date_of_another_step_is_held_even_when_the_answer_is_confident():
+    decision, _ = assessment({"winnerAnnouncementDate": ("shortlist_announcement", 0.99)}, collected={"title": "공고"})
+    assert decision["reasons"] == [
+        "최종 당첨자 또는 예비입주자 발표일 2026-12-01이 어느 절차의 날짜인지 원문 확인 필요 · 1쪽 '26.12.01.(화) 14:00 이후"]
 
 
-def test_unreadable_reread_holds_instead_of_approving_an_unclear_answer():
-    decision, _ = assessment({"schedules": [("unclear", 0.99)]}, reread=lambda: PAGES[:1])
-    assert decision["reasons"] == ["일정·접수처: 다시 읽을 원문을 모두 읽지 못했습니다."]
+def test_date_outside_any_schedule_table_is_held_without_asking_about_it():
+    decision, calls = assessment(collected={"title": "공고"}, tables=())
+    assert len(decision["reasons"]) == 3 and "applicationStartDate" not in asked(calls)
+    assert decision["reasons"][0] == ("신청 접수 시작일 2026-11-03을 일정표에서 찾지 못해 어느 절차의 날짜인지 확인할 수 없습니다"
+                                      " · 1쪽 신청접수 '26.11.03.(화) 10:00")
 
 
-def test_missing_quote_or_unverified_supply_holds_without_model_calls():
-    for kwargs in [{"quote": "없는 원문"}, {"unresolved": [{"path": "quotas[0]", "reason": "원문 불일치"}]},
+def test_pdf_date_differing_from_the_collected_date_is_held_without_model_calls():
+    decision, calls = assessment(collected=COLLECTED | {"applicationEndDate": "2026-11-06"})
+    assert decision["reasons"] == ["신청 접수 종료일: 수집한 값 2026-11-06와 PDF의 2026-11-05가 다릅니다."] and not calls
+
+
+@pytest.mark.parametrize("quotes", [
+    QUOTES | {"applicationEndDate": "~ 11.06.(금)"},                      # 인용에 그 날짜가 없음
+    QUOTES | {"winnerAnnouncementDate": "'27.12.01.(화)"},                 # 연도가 다름
+    QUOTES | {"applicationStartDate": "신청접수 2026년 11월 3일"},           # 인용의 날짜 표현이 쪽 원문에 없음
+])
+def test_date_whose_citation_does_not_show_it_on_the_page_is_held_without_model_calls(quotes):
+    decision, calls = assessment(quotes=quotes)
+    assert len(decision["reasons"]) == 1 and decision["reasons"][0].endswith("의 원문 쪽·인용을 확인할 수 없습니다.")
+    assert not calls
+
+
+def test_missing_date_holds_without_model_calls():
+    decision, calls = assessment(notice=NOTICE | {"applicationEndDate": None})
+    assert decision["reasons"] == ["신청 접수 종료일 값이 없습니다."] and not calls
+
+
+def test_unverified_supply_holds_without_model_calls():
+    for kwargs in [{"unresolved": [{"path": "quotas[0]", "reason": "원문 불일치"}]},
                    {"warnings": ["원본 3쪽 공급표의 주택형 36B이(가) 추출 결과에 없음"]}]:
         decision, calls = assessment(**kwargs)
         assert decision["reasons"] and not calls
 
 
 def test_repeated_unresolved_fields_become_one_readable_reason():
-    fields = [{"path": f"housingTypes[{row}].complexName", "reason": "해당 열의 값을 확인하지 못함"} for row in range(3)]
+    fields = [{"path": f"housingTypes[{row}].exclusiveArea", "reason": "해당 열의 값을 확인하지 못함"} for row in range(3)]
     decision, _ = assessment(unresolved=fields)
-    assert decision["reasons"] == ["주택형의 단지명 3건 미확인: 해당 열의 값을 확인하지 못함"]
+    assert decision["reasons"] == ["전용면적 3건 미확인: 해당 열의 값을 확인하지 못함"]
+
+
+def test_blank_complex_names_hold_only_when_some_housing_type_names_a_complex():
+    field = {"path": "housingTypes[0].complexName", "reason": "해당 열의 값을 확인하지 못함"}
+    single, _ = assessment(unresolved=[field], complex_names=("", ""))
+    assert single["reasons"] == []
+    mixed, _ = assessment(unresolved=[field], complex_names=("", "가람단지"))
+    assert mixed["reasons"] == ["주택형의 단지명 1건 미확인: 해당 열의 값을 확인하지 못함"]
 
 
 def test_process_note_and_eligibility_warning_do_not_hold_the_notice():
-    decision, _ = assessment(warnings=[AMBIGUOUS_TABLE_NOTE, "신청자격: 요건 1개를 뺐습니다."], eligibility={"targets": ["청년"]})
+    decision, _ = assessment(warnings=[AMBIGUOUS_TABLE_NOTE, "신청자격: 요건 1개를 뺐습니다."], eligibility=ELIGIBILITY)
     assert decision["reasons"] == []
     assert decision["eligibilityVerified"] is False
 
 
-def test_missing_recruitment_row_is_reported_with_its_original_page_and_text():
-    decision, calls = assessment({"P2:T1:R3": [("conflict", 0.99)]}, source_rows={"P2:T1:R3": "주택형 36A 예비 모집 12"})
-    assert decision["reasons"] == ["공급표 2쪽 행 원문 확인 필요 · 주택형 36A 예비 모집 12"]
-    question = next(state for state, keys in calls if "P2:T1:R3" in keys)
-    assert "evidence" not in question["supply"]
+def test_uncited_row_that_may_recruit_is_reported_with_its_page_and_text():
+    rows = ROWS | {"P2:T1:R4": "36B\t5"}
+    decision, calls = assessment({"P2:T1:R4": 0.75}, rows=rows)
+    assert decision["reasons"] == ["공급표 2쪽 행이 추출 결과에 빠졌을 수 있음 · 36B 5"]
+    _, questions = next(call for call in calls if "P2:T1:R4" in call[1])
+    # 머리글 행, 인용된 행, 인용된 행이 없는 표(소득표)의 행은 묻지 않는다.
+    assert list(questions) == ["P2:T1:R3", "P2:T1:R4"]
+    assert questions["P2:T1:R4"]["instructions"]["table_headers"] == ["주택형\t모집"]
+
+
+def test_many_possibly_missing_rows_are_summarised():
+    rows = ROWS | {f"P2:T1:R{number}": f"36B\t{number}" for number in range(4, 12)}
+    decision, _ = assessment({row: 0.9 for row in rows}, rows=rows)
+    assert len(decision["reasons"]) == 6 and decision["reasons"][-1] == "공급표 행 4건 더 확인 필요"
+
+
+def test_supply_evidence_not_found_in_the_table_rows_is_held():
+    decision, _ = assessment(rows={"P2:T1:R1": "다른 표"})
+    assert decision["reasons"] == ["공급표 근거를 원문 표 행에서 찾지 못해 빠진 행이 없는지 확인할 수 없습니다."]
 
 
 def test_rejected_jev_request_holds_that_judgment():
-    decision, _ = assessment(failing=["supply"])
+    decision, _ = assessment(failing=["P2:T1:R3"])
     assert decision["reasons"] == ["공급표 원문 대조 응답을 받지 못했습니다."]
     assert decision["rentalType"] is None
 
 
-def test_conflicting_eligibility_keeps_the_notice_publishable_but_unverified():
-    decision, _ = assessment({"eligibility": [("conflict", 0.99)]}, eligibility={"targets": ["청년"]})
-    assert decision["reasons"] == []
-    assert decision["rentalType"] == "HAPPY_HOUSING"
+def test_eligibility_requirement_its_quote_does_not_state_keeps_the_notice_publishable_but_unverified():
+    decision, calls = assessment({"eligibility.common.requirements[0]": 0.5}, eligibility=ELIGIBILITY)
+    assert decision["reasons"] == [] and decision["rentalType"] == "HAPPY_HOUSING"
     assert decision["eligibilityVerified"] is False
+    _, questions = calls[-1]
+    # 원문을 옮긴 글은 빼고 구조화한 값만 묻는다. 글만 있는 요건은 묻지 않는다.
+    assert questions["eligibility.common.requirements[0]"]["instructions"]["requirement"] == {
+        "kind": "AGE", "scope": "APPLICANT", "minimum": 19}
+    assert list(questions) == ["eligibility.common.requirements[0]"]
+
+
+def test_eligibility_with_an_unresolved_item_is_not_verified_and_not_asked():
+    field = {"path": "eligibility.common.requirements[0]", "reason": "원문에서 확인하지 못함"}
+    decision, calls = assessment(eligibility=ELIGIBILITY, unresolved_data=[field])
+    assert decision["reasons"] == [] and decision["eligibilityVerified"] is False
+    assert not [key for key in asked(calls) if key.startswith("eligibility")]
 
 
 def test_without_the_source_check_model_nothing_is_approved():
@@ -122,24 +211,11 @@ def test_without_the_source_check_model_nothing_is_approved():
 def test_no_time_left_for_the_source_check_holds_without_asking():
     decision, calls = assessment(seconds=0.5)
     assert not calls and decision["rentalType"] is None
-    assert decision["reasons"][0] == "공고 성격 원문 대조 시간이 모자랍니다."
-    assert all(reason.endswith("원문 대조 시간이 모자랍니다.") for reason in decision["reasons"])
+    assert decision["reasons"] == ["공고 성격 원문 대조 시간이 모자랍니다.", "공급표 원문 대조 시간이 모자랍니다."]
 
 
-def test_rental_type_the_model_cannot_name_is_held_and_not_approved():
-    for answer in [("unclear", 0.99), ("NOT_A_RENTAL_TYPE", 0.99)]:
-        decision, _ = assessment({"rentalType": [answer, answer]})
-        assert decision["reasons"] == ["공급유형을 원문에서 하나로 정하지 못했습니다."]
-        assert (decision["rentalType"], decision["recruitmentType"]) == (None, None)
-
-
-def test_missing_date_holds_without_model_calls():
-    decision, calls = assessment(missing_date="applicationEndDate")
-    assert decision["reasons"] == ["신청 접수 종료일 값이 없습니다."] and not calls
-
-
-def test_eligibility_with_an_unresolved_item_is_not_verified_and_not_asked():
-    field = {"path": "eligibility.targets[0].requirements[0]", "reason": "원문에서 확인하지 못함"}
-    decision, calls = assessment(eligibility={"targets": ["청년"]}, unresolved_data=[field])
-    assert decision["reasons"] == [] and decision["eligibilityVerified"] is False
-    assert not [keys for _, keys in calls if "eligibility" in keys]
+def test_questions_beyond_one_request_are_split():
+    rows = ROWS | {f"P2:T1:R{number}": f"\t(-) {number}" for number in range(4, 60)}
+    decision, calls = assessment(rows=rows)
+    assert decision["reasons"] == []
+    assert [len(questions) for _, questions in calls if "P2:T1:R3" in questions or "P2:T1:R50" in questions] == [40, 17]

@@ -1,6 +1,7 @@
-"""TypeSafe Jev에 공급표 수량 열이 무엇을 세는지 묻는다. 키와 응답 원문은 로그와 오류 문구에 남기지 않는다.
+"""TypeSafe Jev 호출. 공급표 수량 열이 무엇을 세는지 묻고, 공개 판정(publication)의 질문을 대신 보낸다.
+키와 응답 원문은 로그와 오류 문구에 남기지 않는다.
 
-판단은 Jev가, 그 판단을 쓸지는 코드(supply_sources)가 정한다. 질문 문구·선택지·기준값은 이 모듈에만 둔다.
+수량 열: 판단은 Jev가, 그 판단을 쓸지는 코드(supply_sources)가 정한다. 그 질문 문구·선택지·기준값은 이 모듈에만 둔다.
 GH·LH 표본 18개 열(고칠 때 보지 않은 9개 포함)에서 확률 0.7 이상이면서 틀린 답이 없었다.
 """
 
@@ -60,9 +61,10 @@ class Jev:
         criteria = {name: text for name, text in OPTIONS.items() if not (reserve_only and name in WINNER_OPTIONS)}
         questions = {key: {"type": "choice", "instructions": QUESTION.format(path=path), "criteria": criteria}
                      for key, path in headers.items()}
-        return self.choices(state, questions, timeout)
+        return self.ask(state, questions, timeout)
 
-    def choices(self, state: dict, questions: dict, timeout: float) -> dict[str, Meaning]:
+    def ask(self, state: dict, questions: dict, timeout: float) -> dict[str, Meaning | float]:
+        """질문 키마다 Choice는 고른 선택지와 그 확률(Meaning)을, Noul은 '예'일 확률을 돌려준다."""
         request = {
             "model": MODEL,
             "state": state,
@@ -77,15 +79,22 @@ class Jev:
         try:
             answers = response.json()["answers"]
             result = {}
-            for key in questions:
-                choice = answers[key]["choice"]
-                probability = float(answers[key]["probabilities"][choice])
-                if not math.isfinite(probability) or not 0 <= probability <= 1:
-                    raise ValueError("probability is not finite")
-                result[key] = Meaning(choice, probability)
+            for key, question in questions.items():
+                if question["type"] == "noul":
+                    result[key] = _probability(answers[key]["noul"])
+                else:
+                    choice = answers[key]["choice"]
+                    result[key] = Meaning(choice, _probability(answers[key]["probabilities"][choice]))
         except (ValueError, KeyError, TypeError) as error:
             raise JevError("Jev 응답 형식을 읽지 못했습니다.") from error
         return result
+
+
+def _probability(value) -> float:
+    probability = float(value)
+    if not math.isfinite(probability) or not 0 <= probability <= 1:
+        raise ValueError("probability is not finite")
+    return probability
 
 
 def is_reserve_notice(first_pages: list[str]) -> bool:

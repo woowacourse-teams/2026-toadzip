@@ -10,8 +10,8 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame, stage_prompts,
-                       supply_grouping, supply_sources, version)
+from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame,
+                       stage_prompts, supply_grouping, supply_sources, tables, version)
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
 
@@ -115,17 +115,13 @@ class AnnouncementPdfExtractor:
                  len(warnings), supply.kind, usage)
         snapshot = (job.input or {}).get("publication")
         if job.request_source == BATCH and snapshot:
-            def reread():
+            def page_tables(number):
                 with pages.open_pdf(job.pdf) as original:
-                    alternate = []
-                    for page in original:
-                        if time.monotonic() >= deadline:
-                            break
-                        alternate.append(page.get_text("text", sort=False))
-                    return alternate
+                    return [table.cells for table in tables.detected_tables(original[number - 1])[0]]
             try:
-                tree["publicationReview"] = publication.assess(tree, texts, warnings, self.column_judge, deadline,
-                                                              snapshot["title"], reread, selected.supply_row_text)
+                tree["publicationReview"] = publication.assess(
+                    tree, publication.Source(texts, selected.supply_row_text, page_tables), warnings, self.column_judge,
+                    deadline, snapshot)
             except Exception:
                 # 판정 오류로 유료 추출 결과까지 버리지 않는다. 결과는 남기고 운영자 검수로 보낸다.
                 log.exception("작업 %d 공개 판정 중 오류", job.id)
