@@ -122,7 +122,8 @@ class AdminSocialLoginIntegrationTest {
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
                 .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."));
 
-        mockMvc.perform(grant(userId).with(user("root").roles("ADMIN")))
+        MockHttpSession actor = adminSocialLogin();
+        mockMvc.perform(grant(userId).session(actor))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(userId))
                 .andExpect(jsonPath("$.data.admin").value(true));
@@ -134,10 +135,10 @@ class AdminSocialLoginIntegrationTest {
         // 관리자도 같은 계정의 사용자 기능을 그대로 쓴다.
         mockMvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk());
         assertThat(changesOf(userId)).extracting(AdminDataChange::getAction, AdminDataChange::getActor)
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("GRANT_ADMIN", "root"));
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("GRANT_ADMIN", Long.toString(userIdOf(actor))));
 
         // 이미 관리자면 기록을 더 남기지 않는다.
-        mockMvc.perform(grant(userId).with(user("root").roles("ADMIN"))).andExpect(status().isOk());
+        mockMvc.perform(grant(userId).session(actor)).andExpect(status().isOk());
         assertThat(changesOf(userId)).hasSize(1);
     }
 
@@ -157,8 +158,7 @@ class AdminSocialLoginIntegrationTest {
         mockMvc.perform(get("/api/admin/users/" + targetId).session(target)).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/auth/me").session(target)).andExpect(status().isOk());
         assertThat(changesOf(targetId)).extracting(AdminDataChange::getAction, AdminDataChange::getActor)
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("GRANT_ADMIN", "root"),
-                        org.assertj.core.groups.Tuple.tuple("REVOKE_ADMIN", Long.toString(userIdOf(actor))));
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("REVOKE_ADMIN", Long.toString(userIdOf(actor))));
     }
 
     @Test
@@ -172,44 +172,16 @@ class AdminSocialLoginIntegrationTest {
                 .andExpect(jsonPath("$.message").value("자기 자신의 관리자 권한은 뺄 수 없습니다."));
 
         mockMvc.perform(get("/api/admin/auth/me").session(session)).andExpect(status().isOk());
-        assertThat(changesOf(userId)).hasSize(1);
-    }
-
-    @Test
-    void 비밀번호_관리자도_마지막_소셜_관리자의_권한은_뺄_수_없다() throws Exception {
-        long last = userIdOf(adminSocialLogin());
-        long other = userIdOf(adminSocialLogin());
-        // 같은 DB를 쓰는 다른 테스트의 관리자 회원은 잠시 빼 두었다가 되돌린다.
-        java.util.List<Long> others = jdbc.queryForList(
-                "SELECT id FROM users WHERE admin = true AND id NOT IN (?, ?)", Long.class, last, other);
-        others.forEach(id -> jdbc.update("UPDATE users SET admin = false WHERE id = ?", id));
-        try {
-            mockMvc.perform(revoke(other).with(user("root").roles("ADMIN")))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.admin").value(false));
-
-            mockMvc.perform(revoke(last).with(user("root").roles("ADMIN")))
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("LAST_ADMIN_REVOKE"))
-                    .andExpect(jsonPath("$.message").value("관리자 권한이 있는 카카오·구글 계정이 하나는 남아 있어야 합니다."));
-            assertThat(jdbc.queryForObject("SELECT admin FROM users WHERE id = ?", Boolean.class, last)).isTrue();
-            assertThat(changesOf(last)).extracting(AdminDataChange::getAction).containsExactly("GRANT_ADMIN");
-            // 관리자가 아닌 회원을 빼는 요청은 남은 관리자 수와 관계없이 바뀌는 것이 없다.
-            mockMvc.perform(revoke(other).with(user("root").roles("ADMIN"))).andExpect(status().isOk());
-        } finally {
-            others.forEach(id -> jdbc.update("UPDATE users SET admin = true WHERE id = ?", id));
-        }
+        assertThat(changesOf(userId)).isEmpty();
     }
 
     @Test
     void 남은_두_소셜_관리자를_동시에_빼도_한_명은_남는다() throws Exception {
-        long first = userIdOf(adminSocialLogin());
-        long second = userIdOf(adminSocialLogin());
-        java.util.List<Long> others = jdbc.queryForList(
-                "SELECT id FROM users WHERE admin = true AND id NOT IN (?, ?)", Long.class, first, second);
-        others.forEach(id -> jdbc.update("UPDATE users SET admin = false WHERE id = ?", id));
-        var requests = java.util.List.of(
-                revoke(first).with(user("root").roles("ADMIN")), revoke(second).with(user("other-root").roles("ADMIN")));
+        MockHttpSession firstAdmin = adminSocialLogin();
+        MockHttpSession secondAdmin = adminSocialLogin();
+        long first = userIdOf(firstAdmin);
+        long second = userIdOf(secondAdmin);
+        var requests = java.util.List.of(revoke(first).session(secondAdmin), revoke(second).session(firstAdmin));
         var start = new java.util.concurrent.CountDownLatch(1);
         var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
         try {
@@ -222,22 +194,21 @@ class AdminSocialLoginIntegrationTest {
             for (var result : results) {
                 statuses.add(result.get(30, java.util.concurrent.TimeUnit.SECONDS));
             }
-            assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+            assertThat(statuses).containsExactlyInAnyOrder(200, 403);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE admin = true AND id IN (?, ?)",
                     Long.class, first, second)).isEqualTo(1L);
         } finally {
             pool.shutdownNow();
-            others.forEach(id -> jdbc.update("UPDATE users SET admin = true WHERE id = ?", id));
         }
     }
 
     @Test
-    void 비관리자의_권한을_소셜_관리자와_비밀번호_관리자가_동시에_빼도_둘_다_바뀌는_것_없이_끝난다() throws Exception {
+    void 비관리자의_권한을_두_소셜_관리자가_동시에_빼도_둘_다_바뀌는_것_없이_끝난다() throws Exception {
         long member = userIdOf(socialLogin("kakao", Map.of("id", newSubject()), "id"));
         MockHttpSession actor = adminSocialLogin();
         // 회원 번호가 행위자보다 작아야 소셜 경로가 회원 행부터 잠근다.
         assertThat(member).isLessThan(userIdOf(actor));
-        var requests = java.util.List.of(revoke(member).session(actor), revoke(member).with(user("root").roles("ADMIN")));
+        var requests = java.util.List.of(revoke(member).session(actor), revoke(member).session(adminSocialLogin()));
         var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
         try {
             for (int round = 0; round < 20; round++) {
@@ -263,7 +234,7 @@ class AdminSocialLoginIntegrationTest {
         long memberId = userIdOf(member);
 
         mockMvc.perform(grant(memberId).session(member)).andExpect(status().isForbidden());
-        mockMvc.perform(grant(Long.MAX_VALUE).with(user("root").roles("ADMIN")))
+        mockMvc.perform(grant(Long.MAX_VALUE).session(adminSocialLogin()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
         assertThat(changesOf(memberId)).isEmpty();
@@ -273,7 +244,7 @@ class AdminSocialLoginIntegrationTest {
     void 관리자_권한을_받은_소셜_계정의_로그인과_사이트_로그아웃은_감사_기록에_남는다() throws Exception {
         String subject = newSubject();
         MockHttpSession first = socialLogin("kakao", Map.of("id", subject), "id");
-        mockMvc.perform(grant(userIdOf(first)).with(user("root").roles("ADMIN"))).andExpect(status().isOk());
+        mockMvc.perform(grant(userIdOf(first)).session(adminSocialLogin())).andExpect(status().isOk());
         auditLogRepository.deleteAll();
 
         MockHttpSession session = socialLogin("kakao", Map.of("id", subject), "id");
@@ -330,7 +301,7 @@ class AdminSocialLoginIntegrationTest {
         mockMvc.perform(revoke(otherId).session(revoked)).andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/admin/auth/me").session(other)).andExpect(status().isOk());
-        assertThat(changesOf(otherId)).hasSize(1);
+        assertThat(changesOf(otherId)).isEmpty();
     }
 
     @Test
@@ -341,10 +312,10 @@ class AdminSocialLoginIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    /** 비밀번호 관리자가 권한을 준 뒤 새로 로그인한 소셜 관리자 세션. */
+    /** 운영 최초 지정 절차처럼 기존 회원의 관리자 권한을 DB에 설정한다. */
     private MockHttpSession adminSocialLogin() throws Exception {
         MockHttpSession session = socialLogin("kakao", Map.of("id", newSubject()), "id");
-        mockMvc.perform(grant(userIdOf(session)).with(user("root").roles("ADMIN"))).andExpect(status().isOk());
+        jdbc.update("UPDATE users SET admin = true WHERE id = ?", userIdOf(session));
         return session;
     }
 

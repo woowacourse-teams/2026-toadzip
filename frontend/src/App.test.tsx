@@ -19,8 +19,7 @@ vi.mock('./admin/management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('./admin/management/api')>()),
   getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
 }))
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { StrictMode } from 'react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.tsx'
@@ -121,17 +120,8 @@ describe('App', () => {
     )
   })
 
-  it('관리자 로그인과 관리 화면에도 같은 로고를 표시한다', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({ message: '인증이 필요합니다.' }, 401))
-      .mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
-    const { unmount } = render(<MemoryRouter initialEntries={['/admin/login']}><App /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
-    const adminLoginBrand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
-    expect(adminLoginBrand.querySelector('.brand-name')).not.toBeInTheDocument()
-    expect(adminLoginBrand.querySelector('img'))
-      .toHaveAttribute('src', '/logo-bok-search.svg')
-
-    unmount()
+  it('관리 화면에 운영 홈 로고를 표시한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin/complexes']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '단지 관리' })).toBeVisible()
     const adminBrand = screen.getByRole('link', { name: '관리자 운영 홈으로' })
@@ -150,15 +140,14 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: '공식 목록과 대조' })).not.toBeInTheDocument()
   })
 
-  it('만료된 세션의 로그아웃 응답이 401이어도 로그인 상태를 지우고 다시 로그인한다', async () => {
+  it('만료된 세션의 로그아웃 응답이 401이어도 공통 로그인 화면으로 이동한다', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' }))
       .mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
       .mockResolvedValueOnce(jsonResponse({ message: '인증이 필요합니다.' }, 401))
-      .mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
-      .mockResolvedValueOnce(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' }))
+      .mockResolvedValue(jsonResponse({}, 401))
 
     render(
       <MemoryRouter initialEntries={['/admin']}>
@@ -168,20 +157,15 @@ describe('App', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
 
-    const loginIdentifierInput = await screen.findByLabelText('로그인 식별자')
-    fireEvent.change(loginIdentifierInput, { target: { value: 'admin' } })
-    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
-    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    expect(await screen.findByRole('heading', { name: '로그인' })).toBeVisible()
 
-    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
   })
 
-  it('관리자 로그인 화면은 보던 관리자 주소로 돌아오는 소셜 로그인 링크를 보인다', async () => {
+  it('미인증 관리자 접근은 원래 주소를 보존해 공통 소셜 로그인으로 이동한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: '인증이 필요합니다.' }, 401)))
     render(<MemoryRouter initialEntries={['/admin/announcements?page=2']}><App /><LocationProbe /></MemoryRouter>)
 
-    expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
-    fireEvent.click(screen.getByRole('link', { name: '카카오·구글 계정으로 로그인' }))
+    expect(screen.queryByLabelText('비밀번호')).not.toBeInTheDocument()
 
     expect(await screen.findByRole('heading', { name: '로그인' })).toBeVisible()
     expect(screen.getByRole('link', { name: /카카오톡으로 로그인/ })).toBeVisible()
@@ -254,72 +238,7 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
   })
 
-  it.each([false, true])('인증 복원 대기 중 로그인하면 관리자 화면을 연다 (실패 후 재시도: %s)', async retry => {
-    const restoring = deferredResponse()
-    const fetchMock = vi.fn().mockReturnValueOnce(restoring.promise)
-    if (retry) {
-      fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
-        .mockResolvedValueOnce(jsonResponse({ message: '로그인 실패' }, 401))
-    }
-    fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
-      .mockResolvedValueOnce(jsonResponse({ loginIdentifier: 'current-admin', role: 'ADMIN' }))
-    vi.stubGlobal('fetch', fetchMock)
-    render(<MemoryRouter initialEntries={['/admin/login']}><App /></MemoryRouter>)
-    fireEvent.change(await screen.findByLabelText('로그인 식별자'), { target: { value: 'current-admin' } })
-    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
-    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
-    if (retry) {
-      expect(await screen.findByText('로그인 실패')).toBeVisible()
-      fireEvent.click(screen.getByRole('button', { name: '로그인' }))
-    }
-    expect(await screen.findByRole('heading', { name: '운영 홈', level: 1 })).toBeVisible()
-    await act(async () => restoring.resolve(jsonResponse({ loginIdentifier: 'stale-admin', role: 'ADMIN' })))
-    expect(screen.getByText('current-admin')).toBeVisible()
-    expect(screen.queryByText('stale-admin')).not.toBeInTheDocument()
-  })
 
-  it('StrictMode의 오래된 인증 상태 응답이 로그인 후 세션을 덮어쓰지 않는다', async () => {
-    const firstSessionResponse = deferredResponse()
-    const latestSessionResponse = deferredResponse()
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    fetchMock
-      .mockReturnValueOnce(firstSessionResponse.promise)
-      .mockReturnValueOnce(latestSessionResponse.promise)
-      .mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
-      .mockResolvedValueOnce(jsonResponse({ loginIdentifier: 'current-admin', role: 'ADMIN' }))
-
-    render(
-      <StrictMode>
-        <MemoryRouter initialEntries={['/admin/login']}>
-          <App />
-        </MemoryRouter>
-      </StrictMode>,
-    )
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-    })
-
-    await act(async () => {
-      latestSessionResponse.resolve(jsonResponse({ message: '인증이 필요합니다.' }, 401))
-    })
-
-    fireEvent.change(await screen.findByLabelText('로그인 식별자'), {
-      target: { value: 'current-admin' },
-    })
-    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
-    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
-
-    expect(await screen.findByText('current-admin')).toBeVisible()
-
-    await act(async () => {
-      firstSessionResponse.resolve(jsonResponse({ loginIdentifier: 'stale-admin', role: 'ADMIN' }))
-    })
-
-    expect(screen.getByText('current-admin')).toBeVisible()
-    expect(screen.queryByText('stale-admin')).not.toBeInTheDocument()
-  })
 })
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -328,17 +247,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     json: vi.fn().mockResolvedValue(body),
   } as unknown as Response
-}
-
-function deferredResponse(): {
-  promise: Promise<Response>
-  resolve: (response: Response) => void
-} {
-  let resolveResponse: (response: Response) => void
-  const promise = new Promise<Response>((resolve) => {
-    resolveResponse = resolve
-  })
-  return { promise, resolve: resolveResponse! }
 }
 
 function LocationProbe() {

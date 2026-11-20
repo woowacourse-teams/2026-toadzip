@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { AdminApiError, getCurrentAdmin, loginAdmin, logoutAdmin, type AdminSession } from './api'
+import { AdminApiError, getCurrentAdmin, logoutAdmin, type AdminSession } from './api'
 import { AdminAuthContext } from './AdminAuthContext'
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
@@ -34,22 +34,6 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function login(loginIdentifier: string, password: string) {
-    setError(null)
-    const generation = nextSessionStateGeneration()
-    try {
-      const authenticatedSession = await loginAdmin(loginIdentifier, password)
-      if (isLatestSessionStateGeneration(generation)) {
-        setSession(authenticatedSession)
-        setForbidden(false)
-      }
-    } finally {
-      if (isLatestSessionStateGeneration(generation)) {
-        setIsLoading(false)
-      }
-    }
-  }
-
   async function logout() {
     const generation = nextSessionStateGeneration()
     try {
@@ -74,7 +58,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AdminAuthContext.Provider value={{ session, isLoading, error, forbidden, login, logout }}>
+    <AdminAuthContext.Provider value={{ session, isLoading, error, forbidden, logout }}>
       {children}
     </AdminAuthContext.Provider>
   )

@@ -5,7 +5,7 @@ import { PrivacyLinks } from '../../privacy/Privacy'
 import { getCurrentUser } from './api'
 import { LoginContent } from './LoginContent'
 import { LoginBrand } from './LoginBrand'
-import { clearLoginReturn, readLoginReturn, rememberLoginReturn, safeLoginReturn } from './loginReturn'
+import { clearLoginReturn, isAdminPath, readLoginReturn, rememberLoginReturn, safeLoginReturn } from './loginReturn'
 import styles from './LoginPage.module.css'
 
 export function LoginPage() {
@@ -36,7 +36,7 @@ export function LoginPage() {
   cancelUrl.searchParams.delete('inbox')
   return <main className={`${styles.page} ph-no-capture`} aria-labelledby={titleId}>
     <header className={styles.header}>
-      <Link className={styles.back} aria-label="지도로 돌아가기" to={cancelUrl.pathname + cancelUrl.search + cancelUrl.hash} replace onClick={clearLoginReturn}>
+      <Link className={styles.back} aria-label="지도로 돌아가기" to={isAdminPath(cancelUrl.pathname) ? '/explore' : cancelUrl.pathname + cancelUrl.search + cancelUrl.hash} replace onClick={clearLoginReturn}>
         <span aria-hidden="true">←</span>
       </Link>
       <h1 id={titleId}>로그인</h1>

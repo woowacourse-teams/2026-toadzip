@@ -41,20 +41,22 @@ docker compose -f compose.yaml -f compose.local.yaml up -d --build --wait db db-
 
 ## 관리자 데이터 등록 수동 검증
 
-로컬 관리자 계정이 없다면 `.env`에 다음 값을 설정한 뒤 백엔드를 최초 한 번
-기동한다. 계정 생성 후에는 `ADMIN_BOOTSTRAP_ENABLED=false`로 되돌린다. 실제
-비밀번호는 Git이 추적하는 파일에 기록하지 않는다.
+첫 관리자로 지정할 회원이 카카오 또는 구글로 한 번 로그인한다. DB 운영자가 해당 회원의
+회원 번호와 로그인 식별자를 대조하고, 같은 회원 한 명에게 관리자 권한을 부여한다.
+psql에서 아래 명령을 실행하고, 조회로 확인한 두 값을 입력한다.
 
-```dotenv
-ADMIN_BOOTSTRAP_ENABLED=true
-ADMIN_LOGIN_IDENTIFIER=로컬_관리자_식별자
-ADMIN_PASSWORD=로컬_관리자_비밀번호
+```sql
+\prompt '회원 번호: ' member_id
+\prompt '로그인 식별자: ' login_identifier
+BEGIN;
+UPDATE users SET admin = TRUE
+WHERE id = :'member_id' AND login_identifier = :'login_identifier' AND admin = FALSE
+RETURNING id, admin;
 ```
 
-카카오·구글 계정에 관리자 권한을 주려면 그 계정으로 사이트에 한 번 로그인한 뒤,
-관리자 화면의 회원 상세에서 `관리자 권한 주기`를 누른다. 권한은 다시 로그인하지 않아도
-다음 요청부터 반영된다. 자기 자신의 권한과, 관리자 권한이 있는 카카오·구글 계정이
-하나만 남았을 때 그 계정의 권한은 뺄 수 없다.
+의도한 회원 번호 한 행이 반환되면 `COMMIT;`을 실행한다. 그 외에는 `ROLLBACK;`을 실행한다.
+이후 기존 관리자는 관리자 화면의 회원 상세에서 다른 소셜 회원에게 권한을 줄 수 있다.
+배포 전 운영 관리자가 실제 소셜 계정으로 로그인해 `/admin`에 들어가는지 확인한다.
 
 백엔드와 PostgreSQL을 기동하고, 별도 터미널에서 프론트엔드 개발 서버를 실행한다.
 
@@ -67,7 +69,7 @@ npm run dev
 
 브라우저에서 `http://localhost:5173/admin`을 열고 다음 순서로 확인한다.
 
-1. 로컬 관리자 계정이나 관리자 권한을 준 카카오·구글 계정으로 로그인한다.
+1. 관리자 권한을 준 카카오·구글 계정으로 로그인한다.
 2. 단지 기본 정보, 주소, 시설 정보를 입력하고 `단지 저장`을 누른다.
 3. 저장 중에는 버튼이 비활성화되고, 완료 후 성공 메시지와 선택 단지가 표시되는지 확인한다.
 4. 선택 단지가 방금 저장한 단지인지 확인한다.

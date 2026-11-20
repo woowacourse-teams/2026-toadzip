@@ -116,7 +116,6 @@ function AdminRoutes() {
   return (
     <AdminAuthProvider>
       <Routes>
-        <Route path="login" element={<LoginPage />} />
         <Route element={<RequireAdmin />}>
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="operations" replace />} />
@@ -181,6 +180,7 @@ export default function App() {
       <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/admin/login" element={<LoginPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
