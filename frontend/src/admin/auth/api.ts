@@ -29,21 +29,6 @@ export async function getCurrentAdmin(signal?: AbortSignal): Promise<AdminSessio
   return request<AdminSession>('/api/admin/auth/me', { signal })
 }
 
-export async function loginAdmin(
-  loginIdentifier: string,
-  password: string,
-): Promise<AdminSession> {
-  const csrfToken = await requestCsrfToken()
-  return request<AdminSession>('/api/admin/auth/login', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      [csrfToken.headerName]: csrfToken.token,
-    },
-    body: JSON.stringify({ loginIdentifier, password }),
-  })
-}
-
 export async function logoutAdmin(): Promise<void> {
   const csrfToken = await requestCsrfToken()
   await request<void>('/api/admin/auth/logout', {

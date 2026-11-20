@@ -26,16 +26,6 @@ public class AdminAuthenticationAuditService {
     }
 
     @Transactional
-    public void recordLoginFailure(String loginIdentifier, String requestTraceId) {
-        record(
-                AdminAuthenticationAuditAction.LOGIN,
-                AdminAuthenticationAuditResult.FAILURE,
-                loginIdentifier,
-                requestTraceId
-        );
-    }
-
-    @Transactional
     public void recordLogout(String loginIdentifier, String requestTraceId) {
         record(
                 AdminAuthenticationAuditAction.LOGOUT,

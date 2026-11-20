@@ -9,9 +9,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.toadzip.backend.admin.domain.AdminAccount;
-import com.toadzip.backend.admin.repository.AdminAccountRepository;
-import com.toadzip.backend.admin.repository.AdminAuthenticationAuditLogRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
@@ -20,6 +17,8 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDate;
@@ -33,9 +32,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -61,13 +63,7 @@ class AdminDataRegistrationFlowIntegrationTest {
     private EntityManager entityManager;
 
     @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private AdminAccountRepository adminAccountRepository;
-
-    @Autowired
-    private AdminAuthenticationAuditLogRepository auditLogRepository;
+    private UserRepository users;
 
     @Autowired
     private HousingComplexRepository housingComplexRepository;
@@ -86,31 +82,19 @@ class AdminDataRegistrationFlowIntegrationTest {
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
         housingComplexRepository.deleteAll();
-        auditLogRepository.deleteAll();
-        adminAccountRepository.deleteAll();
-        entityManager.flush();
-        adminAccountRepository.save(
-                AdminAccount.create(
-                        "admin",
-                        passwordEncoder.encode("correct-password"),
-                        LocalDateTime.of(2026, 8, 28, 9, 0)
-                )
-        );
     }
 
     @Test
-    void 실제_로그인과_CSRF로_단지_공고_공급행을_연속_저장한다() throws Exception {
+    void 소셜_관리자_세션과_CSRF로_단지_공고_공급행을_연속_저장한다() throws Exception {
         CsrfFixture loginCsrf = issueCsrfToken();
-        MvcResult loginResult = mockMvc.perform(post("/api/admin/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"loginIdentifier\":\"admin\",\"password\":\"correct-password\"}")
-                        .cookie(loginCsrf.cookie())
-                        .header(loginCsrf.headerName(), loginCsrf.token()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.loginIdentifier").value("admin"))
-                .andExpect(jsonPath("$.role").value("ADMIN"))
-                .andReturn();
-        MockHttpSession session = (MockHttpSession) loginResult.getRequest().getSession(false);
+        User admin = User.create("google:registration-test", LocalDateTime.now());
+        admin.grantAdmin();
+        String memberId = users.saveAndFlush(admin).getId().toString();
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                memberId, null, AuthorityUtils.createAuthorityList("ROLE_USER")));
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
 
         CsrfFixture housingCsrf = issueCsrfToken(session, loginCsrf.cookie());
         MvcResult housingResult = mockMvc.perform(authenticatedPost(

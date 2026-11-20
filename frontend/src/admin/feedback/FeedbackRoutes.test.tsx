@@ -22,6 +22,6 @@ it('미인증 사용자는 관리자 로그인으로 이동하며 의견 조회�
   const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }))
   vi.stubGlobal('fetch', fetchMock)
   render(<MemoryRouter initialEntries={['/admin/feedback']}><App /></MemoryRouter>)
-  expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
-  expect(fetchMock.mock.calls.every(([url]) => String(url).endsWith('/api/admin/auth/me'))).toBe(true)
+  expect(await screen.findByRole('heading', { name: '로그인' })).toBeVisible()
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/admin/')).every(([url]) => String(url).endsWith('/api/admin/auth/me'))).toBe(true)
 })

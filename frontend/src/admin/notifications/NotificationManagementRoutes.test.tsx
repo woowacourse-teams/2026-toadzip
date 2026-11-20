@@ -55,6 +55,6 @@ it('미인증 사용자는 신청 API를 호출하지 않고 관리자 로그인
   const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 401 }))
   vi.stubGlobal('fetch', fetcher)
   render(<MemoryRouter initialEntries={['/admin/notification-subscriptions']}><App /></MemoryRouter>)
-  expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
-  expect(fetcher.mock.calls.every(([url]) => String(url).endsWith('/api/admin/auth/me'))).toBe(true)
+  expect(await screen.findByRole('heading', { name: '로그인' })).toBeVisible()
+  expect(fetcher.mock.calls.filter(([url]) => String(url).includes('/api/admin/')).every(([url]) => String(url).endsWith('/api/admin/auth/me'))).toBe(true)
 })
