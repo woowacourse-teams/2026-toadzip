@@ -39,7 +39,10 @@ class PdfExtractionInputs {
     PdfExtractionInput readBatch(long announcementId, long attachmentId) {
         var announcement = announcements.findById(announcementId).orElseThrow();
         var snapshot = mode == PdfExtractionInput.PublicationMode.OFF || announcement.isSupplyConfirmed() ? null
-                : new PdfExtractionInput.Publication(attachmentId, announcement.getVersion(), announcement.getName(), mode);
+                : new PdfExtractionInput.Publication(attachmentId, announcement.getVersion(), announcement.getName(),
+                        mode, announcement.getSupplyType(), announcement.getRecruitmentType(),
+                        announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
+                        announcement.getWinnerAnnouncementDate());
         return new PdfExtractionInput(sourceRows(announcement), snapshot);
     }
 

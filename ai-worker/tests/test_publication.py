@@ -6,6 +6,7 @@ from ai_worker import jev
 from ai_worker import publication as policy
 from ai_worker.jev import Meaning
 from ai_worker.supply_sources import AMBIGUOUS_TABLE_NOTE
+from conftest import contract_example
 
 PAGES = ["행복주택 입주자 모집공고 신청접수 ‘26.11.03.(화) 10:00 ~ 11.05.(목) 발표 ’26.12.01.(화)",
          "주택형 36A 12 주택형 36B 5", "유의사항과 계약 안내"]
@@ -86,6 +87,17 @@ def test_collected_type_outside_the_choices_is_asked_like_a_missing_one():
     assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
     assert {"rentalType", "rentalListed", "mixedRental", "recruitmentType"} <= set(asked(calls))
     assert not set(policy.DATES) & set(asked(calls))
+
+
+def test_collected_values_in_the_contract_input_example_are_the_ones_read_here():
+    """서버가 쓰는 입력 예시(Spring PdfExtractionContractTest가 같은 파일로 확인)의 수집값 이름과 값 모양을 그대로 읽는다."""
+    collected = contract_example("input.example.json")["publication"]
+    assert {"rentalType", "recruitmentType", *policy.DATES} <= collected.keys()
+    assert collected["rentalType"] in policy.RENT and collected["recruitmentType"] in policy.RECRUIT
+    decision, calls = assessment(collected=collected, notice=NOTICE | {
+        field: collected[field] for field in ("applicationStartDate", "applicationEndDate")})
+    # 예시에서 비어 있는 발표일만 묻는다.
+    assert decision["reasons"] == [] and set(policy.DATES) & set(asked(calls)) == {"winnerAnnouncementDate"}
 
 
 @pytest.mark.parametrize("answers, reason", [

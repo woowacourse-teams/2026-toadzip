@@ -68,6 +68,7 @@ import org.springframework.test.context.jdbc.Sql.ExecutionPhase;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -436,6 +437,42 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     @Test
+    void 수집한_유형과_날짜를_작업_입력에_담고_PDF가_같은_값이면_공급표를_확정한다() {
+        Candidate collected = candidate(Announcement.create("SH:" + UUID.randomUUID(), null, null, "수집값이 있는 공고",
+                AnnouncementPublicationType.ORIGINAL, RentalType.HAPPY_HOUSING, RecruitmentType.NEW, AgencyCode.SH,
+                TODAY, TODAY, TODAY.plusDays(2), TODAY.plusDays(5), "https://example.com/notice", null, 0, null));
+        long id = collected.notice().getId();
+        long job = succeededJob(collected, passedExtraction(collected));
+        Candidate unconfirmed = candidate();
+        long unconfirmedJob = succeededJob(unconfirmed, heldExtraction(unconfirmed));
+
+        // 워커가 읽는 모양이다: 유형은 상수 이름, 날짜는 YYYY-MM-DD, 없는 값은 null.
+        assertThat(publicationInput(job)).isEqualTo(json.readTree("""
+                {"attachmentId": %d, "announcementVersion": %d, "title": "수집값이 있는 공고", "mode": "APPLY",
+                 "rentalType": "HAPPY_HOUSING", "recruitmentType": "NEW", "applicationStartDate": "%s",
+                 "applicationEndDate": "%s", "winnerAnnouncementDate": "%s"}
+                """.formatted(collected.pdf().getId(), collected.notice().getVersion(), TODAY, TODAY.plusDays(2),
+                TODAY.plusDays(5))));
+        JsonNode withoutValues = publicationInput(unconfirmedJob);
+        assertThat(List.of("rentalType", "recruitmentType", "applicationStartDate", "applicationEndDate",
+                "winnerAnnouncementDate")).allSatisfy(field -> assertThat(withoutValues.required(field).isNull())
+                .as(field).isTrue());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("CONFIRMED"));
+        Announcement notice = announcements.findById(id).orElseThrow();
+        assertThat(notice.isSupplyConfirmed()).isTrue();
+        assertThat(notice.getSupplyType()).isEqualTo(RentalType.HAPPY_HOUSING);
+        assertThat(notice.getRecruitmentType()).isEqualTo(RecruitmentType.NEW);
+        assertThat(List.of(notice.getApplicationStartDate(), notice.getApplicationEndDate(),
+                notice.getWinnerAnnouncementDate())).containsExactly(TODAY, TODAY.plusDays(2), TODAY.plusDays(5));
+        assertThat(supplyRows(id)).singleElement()
+                .satisfies(row -> assertThat(row.get("housing_type_name")).isEqualTo("36A"));
+    }
+
+    @Test
     void 워커_계약_예시_모양의_추출_결과를_보정안으로_읽어_공급표까지_공개한다() throws IOException {
         Candidate candidate = candidate();
         long id = candidate.notice().getId();
@@ -566,6 +603,12 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
     /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */
     private Candidate candidate() {
+        return candidate(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고", AgencyCode.SH, TODAY,
+                "https://example.com/notice"));
+    }
+
+    /** 저장하지 않은 공고에 공급표를 연결할 단지·주택형과 공고문 PDF 첨부를 붙인다. 공고의 기관은 SH여야 단지를 찾는다. */
+    private Candidate candidate(Announcement unsaved) {
         String complexName = "검증단지-" + UUID.randomUUID();
         Address address = Address.create("서울 중구 세종대로", "1111010100100010000",
                 "1111010100", "11", "11110", new BigDecimal("37.5"), new BigDecimal("126.9"));
@@ -574,8 +617,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 "STAIR", true, 10, null, 0));
         types.saveAndFlush(HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(),
                 "36A", new BigDecimal("36"), null, null));
-        Announcement notice = announcements.saveAndFlush(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(),
-                "자동 공개 공고", AgencyCode.SH, TODAY, "https://example.com/notice"));
+        Announcement notice = announcements.saveAndFlush(unsaved);
         return new Candidate(notice, attach(notice, "모집공고문.pdf", AttachmentType.ANNOUNCEMENT, 0), complexName);
     }
 
@@ -662,6 +704,12 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 """)
                 .params(json.writeValueAsString(Map.of("json", tree.toString())), job).update();
         return job;
+    }
+
+    /** 서버가 작업에 담은 자동 공개 스냅숏(ai_jobs.input.publication). */
+    private JsonNode publicationInput(long job) {
+        return json.readTree(jdbc.sql("SELECT input::text FROM ai_jobs WHERE id = ?").param(job).query(String.class)
+                .single()).required("publication");
     }
 
     private List<Map<String, Object>> decisionsOf(long job) {
