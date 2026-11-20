@@ -1,6 +1,6 @@
 import { rememberLoginReturn, readLoginReturn } from './loginReturn'
 import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { UserSessionControl } from './UserSessionControl'
@@ -164,7 +164,9 @@ it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', as
 it('모바일 회원도 마이페이지 링크로 이동하며 계정 메뉴 행동을 수집한다', async () => {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
-  render(<MemoryRouter><UserSessionControl presentation="rail" /><LocationDisplay /></MemoryRouter>)
+  render(<MemoryRouter><UserSessionControl presentation="rail" sessionOverride="signed-in" memberId="1" /><LocationDisplay /></MemoryRouter>)
+  expect(screen.queryByRole('link', { name: '관리자 메뉴' })).toBeNull()
+  expect(fetch).not.toHaveBeenCalled()
   fireEvent.click(await screen.findByRole('link', { name: '마이페이지' }))
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/mypage')
   expect(captureProductEvent).toHaveBeenCalledWith('account_menu_opened')
@@ -228,4 +230,37 @@ it('알림 보관함의 읽지 않은 수는 아이콘 우상단 배지로 붙�
   const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
   expect(css).toMatch(/\.service-notification-inbox__icon\s*\{[^}]*position:\s*relative;/)
   expect(css).toMatch(/\.service-notification-inbox__icon > span\s*\{[^}]*position:\s*absolute;[^}]*top:/)
+})
+
+it('데스크톱 소셜 관리자에게 마이페이지 바로 위의 관리 화면 링크를 제공한다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ role: 'ADMIN' })))
+  render(<MemoryRouter><UserSessionControl presentation="rail" sessionOverride="signed-in" memberId="42" /><LocationDisplay /></MemoryRouter>)
+
+  const admin = await screen.findByRole('link', { name: '관리자 메뉴' })
+  expect(admin.nextElementSibling).toBe(screen.getByRole('link', { name: '마이페이지' }))
+  expect(admin).toHaveAttribute('href', '/admin')
+  fireEvent.click(admin)
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/admin')
+})
+
+it('창 복귀 때 권한이 회수됐으면 관리자 메뉴만 숨긴다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ role: 'ADMIN' }))
+    .mockResolvedValue(Response.json({}, { status: 403 })))
+  render(<MemoryRouter><UserSessionControl presentation="rail" sessionOverride="signed-in" memberId="42" /></MemoryRouter>)
+  await screen.findByRole('link', { name: '관리자 메뉴' })
+  await act(async () => { fireEvent.focus(window) })
+  expect(screen.queryByRole('link', { name: '관리자 메뉴' })).toBeNull()
+  expect(screen.getByRole('link', { name: '마이페이지' })).toBeInTheDocument()
+})
+
+it('로그아웃 뒤 도착한 관리자 응답은 메뉴를 다시 표시하지 않는다', async () => {
+  let resolve!: (response: Response) => void
+  const promise = new Promise<Response>(done => { resolve = done })
+  vi.stubGlobal('fetch', vi.fn(() => promise))
+  render(<MemoryRouter><UserSessionControl presentation="rail" sessionOverride="signed-in" memberId="42" /></MemoryRouter>)
+  await act(async () => {
+    window.dispatchEvent(new Event('toadzip:session-ended'))
+    resolve(Response.json({ role: 'ADMIN' }))
+  })
+  expect(screen.queryByRole('link', { name: '관리자 메뉴' })).toBeNull()
 })

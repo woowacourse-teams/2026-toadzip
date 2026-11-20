@@ -51,7 +51,7 @@ function isApplied(action: Action, result: NotificationInterestResult | void) {
 export function NotificationInterestSessionControl({ presentation }: { readonly presentation?: 'default' | 'rail' }) {
   const context = useContext(InterestContext)
   return <UserSessionControl onLogout={context?.resetSession} presentation={presentation}
-    sessionOverride={context?.mode === 'member' ? 'signed-in' : context?.mode}
+    memberId={context?.userId} sessionOverride={context?.mode === 'member' ? 'signed-in' : context?.mode}
     onSessionRetry={context?.refreshStatus} />
 }
 

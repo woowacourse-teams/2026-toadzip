@@ -25,8 +25,8 @@ export class AdminApiError extends Error {
   }
 }
 
-export async function getCurrentAdmin(): Promise<AdminSession> {
-  return request<AdminSession>('/api/admin/auth/me')
+export async function getCurrentAdmin(signal?: AbortSignal): Promise<AdminSession> {
+  return request<AdminSession>('/api/admin/auth/me', { signal })
 }
 
 export async function loginAdmin(

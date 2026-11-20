@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { NotificationBadge } from '../../notifications/NotificationBadge'
 import { getCurrentUser, logoutUser } from './api'
+import { AdminMenuLink } from './AdminMenuLink'
 import { LoginModal } from './LoginModal'
 import { MemberMenuModal } from './MemberMenuModal'
 import { useMobileViewport } from '../../public-housing/components/useMobileViewport'
@@ -14,7 +15,7 @@ import { MobileInstallAction } from '../../install/MobileInstall'
 
 type SessionState = 'loading' | 'guest' | 'signed-in' | 'error'
 
-export function UserSessionControl({ onLogout, presentation = 'default', sessionOverride, onSessionRetry }: { readonly onLogout?: () => void; readonly presentation?: 'default' | 'rail'; readonly sessionOverride?: SessionState; readonly onSessionRetry?: () => void }) {
+export function UserSessionControl({ onLogout, presentation = 'default', sessionOverride, memberId, onSessionRetry }: { readonly onLogout?: () => void; readonly presentation?: 'default' | 'rail'; readonly sessionOverride?: SessionState; readonly memberId?: string | null; readonly onSessionRetry?: () => void }) {
   const [localSession, setSession] = useState<SessionState>('loading')
   const session = sessionOverride ?? localSession
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -154,6 +155,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
           <path d="M4 4h16v16H4zM4 13h5l1 3h4l1-3h5" />
         </svg><NotificationBadge /></span><span className="housing-navigation__multiline-label">{mobile ? '알림' : <>알림<span className="housing-navigation__label-break" /> 보관함</>}</span>
       </button>}
+      {session === 'signed-in' && presentation === 'rail' && !mobile && memberId && <AdminMenuLink key={memberId} />}
       {session === 'signed-in' && (presentation === 'default' ? accountActions : <Link className="service-login-link" to="/mypage" aria-current={pathname.startsWith('/mypage') ? 'page' : undefined} onClick={() => { rememberExplorerPath(explorerReturn?.current ?? pathname + search + hash); captureProductEvent('account_menu_opened') }}><span className="housing-navigation__multiline-label">마이<span className="housing-navigation__label-break" />페이지</span></Link>)}
       {session === 'signed-in' && (memberView || inboxRequested) && <MemberMenuModal inboxOnly={presentation === 'rail'} key={memberView === 'account' ? 'account' : 'notifications'} view={memberView ?? 'inbox'} onClose={closeMember} returnFocusRef={memberTrigger}>
         {accountActions}
