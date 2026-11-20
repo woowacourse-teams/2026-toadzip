@@ -697,19 +697,17 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     /**
-     * 워커 계약 예시(result.example.json)의 추출 JSON에 본문 단계가 늘 내는 날짜·접수처·일정과 공개 판정을
-     * 워커가 쓰는 모양으로 더한 결과.
+     * 워커 계약 예시(result.example.json)의 추출 JSON과 공개 판정에 본문 단계가 늘 내는 날짜·접수처·일정을 더한 결과.
      * 서버 단지·주택형에 이어지도록 주택형의 단지명·형명·전용면적만 이 공고 것으로 바꾼다.
      */
     private ObjectNode workerResult(Candidate candidate) throws IOException {
         String example = json.readTree(Files.readString(WORKER_RESULT_EXAMPLE)).required("json").asString();
         ObjectNode tree = (ObjectNode) json.readTree(example);
         ObjectNode data = tree.withObject("data");
-        Map<String, String> dates = Map.of("applicationStartDate", TODAY.toString(),
-                "applicationEndDate", TODAY.plusDays(2).toString(),
-                "winnerAnnouncementDate", TODAY.plusDays(5).toString());
-        ObjectNode notice = data.withObject("announcement").put("postedDate", TODAY.toString());
-        dates.forEach(notice::put);
+        data.withObject("announcement").put("postedDate", TODAY.toString())
+                .put("applicationStartDate", TODAY.toString())
+                .put("applicationEndDate", TODAY.plusDays(2).toString())
+                .put("winnerAnnouncementDate", TODAY.plusDays(5).toString());
         data.putArray("receptionPlaces").addObject().put("name", "LH청약플러스").put("method", "ONLINE")
                 .putNull("address").putNull("contact").put("url", "https://apply.lh.or.kr").putNull("guidance");
         data.putArray("schedules").addObject().put("scheduleType", "APPLICATION").put("name", "청약 접수")
@@ -717,23 +715,6 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         data.putArray("unresolvedFields");
         ObjectNode type = (ObjectNode) data.withObject("supplySheet").withArray("housingTypes").get(0);
         type.put("complexName", candidate.complexName()).put("name", "36A").put("exclusiveArea", 36.0);
-        ObjectNode review = tree.putObject("publicationReview").put("policy", 1).put("rentalType", "HAPPY_HOUSING")
-                .put("recruitmentType", "NEW").put("eligibilityVerified", false);
-        review.putArray("reasons");
-        ObjectNode evidence = review.putObject("evidence");
-        ObjectNode answers = review.putObject("answers");
-        answers.putObject("notice").put("choice", "confirmed").put("probability", 0.99);
-        answers.putObject("rentalType").put("choice", "HAPPY_HOUSING").put("probability", 0.99);
-        answers.putObject("recruitmentType").put("choice", "NEW").put("probability", 0.99);
-        for (String field : dates.keySet()) {
-            ObjectNode cite = json.createObjectNode().put("path", "announcement." + field).put("page", 1)
-                    .put("quote", "접수 11월 3일");
-            tree.withArray("evidence").add(cite);
-            evidence.set(field, cite.deepCopy());
-            answers.putObject(field).put("choice", "confirmed").put("probability", 0.99);
-        }
-        answers.putObject("schedules").put("choice", "confirmed").put("probability", 0.99);
-        answers.putObject("supply").put("choice", "confirmed").put("probability", 0.99);
         return tree;
     }
 

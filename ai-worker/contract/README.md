@@ -4,8 +4,8 @@
 Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파일을 읽어 두 쪽 형식이 어긋나지 않게 한다.
 필드를 바꾸면 이 예시와 양쪽 코드를 함께 고친다.
 
-- `announcement-pdf-extraction/input.example.json`: 기관 공급 원천 행(`sourceSupplyRows`). 행마다 원천(`source`: `LH`·`GH`)과 공급 보정 작업실이 그 행을 찾는 식별자(`rowIdentifier`)를 담고, 값은 문자열이다(모르면 빈 문자열). LH 행은 LH 공급 API가 보낸 값 그대로, GH 행은 GH 공급행 틀의 값(지구명·주택형 이름·전용면적·세대수)이다. 원천이 없는 공고(SH 등)는 빈 목록이다. 예시는 두 원천의 행 모양을 함께 보이지만 실제 한 공고는 한 기관 원천만 가진다.
-- `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다.
+- `announcement-pdf-extraction/input.example.json`: 기관 공급 원천 행(`sourceSupplyRows`). 행마다 원천(`source`: `LH`·`GH`)과 공급 보정 작업실이 그 행을 찾는 식별자(`rowIdentifier`)를 담고, 값은 문자열이다(모르면 빈 문자열). LH 행은 LH 공급 API가 보낸 값 그대로, GH 행은 GH 공급행 틀의 값(지구명·주택형 이름·전용면적·세대수)이다. 원천이 없는 공고(SH 등)는 빈 목록이다. 예시는 두 원천의 행 모양을 함께 보이지만 실제 한 공고는 한 기관 원천만 가진다. 서버가 자동 공개 판정을 맡긴 작업(공급을 확정하지 않은 공고의 `BATCH` 작업, `PDF_PUBLICATION_MODE`가 `SHADOW`·`APPLY`)에만 `publication`이 있다(아래 '자동 공개 판정').
+- `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다. 예시의 `publicationReview`는 입력에 `publication`이 있을 때만 붙는다.
 
 ### 공급행 단계의 규칙과 원천 행
 
@@ -46,6 +46,15 @@ Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파�
 - 요건 경고 형식: 요건 하나에 대한 `warnings`는 `신청자격 요건 '<asWritten, 40자 넘으면 앞 40자와 …>'(<요건 종류 이름>): `로 시작한다. 종류 이름은 AGE 나이, NO_HOUSE 무주택, INCOME 소득, ASSETS 자산, CAR_VALUE 자동차가액, NO_CAR 자동차 미보유, RESIDENCE 거주, MARRIAGE_PERIOD 혼인기간, FAMILY_TYPE 가족 형태, UNIVERSITY_STUDENT 대학생, JOB_SEEKER 취업준비생, ANY_OF 선택 요건, OTHER 기타이고, 워커 `_KIND_NAMES`·서버 `ExtractedEligibilityDraft.KIND_NAMES`·화면 `KIND_NAMES`가 같은 이름을 쓴다(서버는 조건으로 바꾸지 못한 요건의 목록 항목을 `<종류 이름>: <asWritten>`으로 둔다). 판정에 쓰는 숫자를 원문과 확정하지 못한 경고는 그 뒤가 `숫자 확인 필요`로 시작한다. 관리자 신청자격 탭이 이 형식으로 경고를 문구와 종류가 같은 조건 곁에만 붙이고(자산·자동차처럼 같은 문구를 쓰는 요건을 가른다), 숫자 경고가 없는 조건에 '맞지 않는 숫자는 없었어요'라고 보이므로 형식을 바꾸면 화면(`eligibilityDraftApi.ts`)도 함께 바꾼다.
 - 가산(`adjustments`): 같은 묶음에서 종류·`scope`가 같은 `INCOME`·`ASSETS`·`CAR_VALUE` 중 가산 없는 요건이 하나이고 나머지가 모두 가산 요건이면, 나머지의 가산을 그 요건에 붙이고 나머지는 결과에 두지 않는다(가산 기준표 줄을 따로 낸 응답). 소득에 출산자녀 가산이 없는데 근거 쪽에 출산가구 소득 기준표 제목이 있으면 그 제목을 `asWritten`으로 `CHILDBIRTH`를 붙인다. 두 경우 모두 `warnings`에 남긴다.
 - 묶음 `summary`는 같은 대상의 신청 조건(공급표 `targets[n].applicationCondition`)에 합쳐진다(공고 전체는 모든 대상에, 대상 요약은 핵심 이름이 같은 대상에).
+
+### 자동 공개 판정 (`input.publication`, `publicationReview`)
+
+- 입력 `publication`: 서버가 판정을 다시 확인할 때 쓰는 첨부 ID(`attachmentId`)·공고 버전(`announcementVersion`)·모드(`mode`)와 공고 제목(`title`), 그리고 작업을 넣을 때 공고가 가진 수집값이다. 수집값은 `rentalType`·`recruitmentType`(서버 enum 상수 이름)과 `applicationStartDate`·`applicationEndDate`·`winnerAnnouncementDate`(`YYYY-MM-DD`)이고 없으면 `null`이다. 워커는 이 이름 그대로 읽는다(`publication.assess`의 `collected`).
+- 워커는 수집값이 있는 유형과, 수집값과 같은 PDF 날짜는 원문 대조 모델(Jev)에 묻지 않는다. PDF 날짜가 수집값과 다르면 묻지 않고 보류한다. 워커의 선택지에 없는 유형(`ETC`)은 수집값이 없는 것으로 본다.
+- 결과 `publicationReview`: `policy`(지금 1), `reasons`(운영자가 읽는 보류 사유. 비어 있으면 통과), `rentalType`·`recruitmentType`(통과했을 때만 값이 있고 수집값이나 Jev가 고른 값), `eligibilityVerified`(신청자격 요건이 모두 인용문과 맞았는지), `evidence`(날짜 필드 → 근거 인용과 그 안의 날짜 표현 `written`), `answers`(질문 키 → Jev 답)이다. 서버는 `policy`·`reasons`·`rentalType`·`recruitmentType`·`eligibilityVerified`만 읽고, `evidence`·`answers`는 운영자와 측정이 근거로 본다.
+- `answers`의 답은 예·아니오 질문이면 `{"noul": '예'일 확률}`, 선택형이면 `{"choice": 고른 선택지, "probability": 그 확률}`이다. 키는 공고 성격(`recruits`·`cancelled`·`rentalType`·`rentalListed`·`mixedRental`·`recruitmentType`), 날짜 필드 이름(고른 선택지는 그 날짜가 속한 절차), 공급표 원문 행 ID(`P쪽:T표:R행`), 신청자격 요건 경로(`eligibility...requirements[n]`)다. 묻지 않은 질문은 `answers`에 없다.
+- 질문 문구·선택지·통과 기준(선택형 0.95, 예·아니오 0.8/0.2)은 워커 `publication.py`에만 있다. 서버가 통과한 판정을 적용하는 조건은 `docs/features/admin/review-api.md`의 'JEV 자동 보정과 검수함'이 원본이다.
+- 단지 열이 없는 공급표는 모든 주택형의 `complexName`이 빈 문자열이다. 워커는 그 미확인을 보류 사유로 세지 않고, 서버가 공고 단지가 한 곳일 때만 그 단지로 채운다.
 
 ## 큐 상태 전이 (워커가 지킬 것)
 

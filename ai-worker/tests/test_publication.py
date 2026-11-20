@@ -1,3 +1,4 @@
+import json
 import time
 
 import pytest
@@ -98,6 +99,22 @@ def test_collected_values_in_the_contract_input_example_are_the_ones_read_here()
         field: collected[field] for field in ("applicationStartDate", "applicationEndDate")})
     # 예시에서 비어 있는 발표일만 묻는다.
     assert decision["reasons"] == [] and set(policy.DATES) & set(asked(calls)) == {"winnerAnnouncementDate"}
+
+
+def test_approved_decision_has_the_shape_of_the_contract_result_example():
+    """서버(PublicationCorrection)가 읽는 결론의 이름과, 운영자가 근거로 보는 evidence·answers의 모양."""
+    example = json.loads(contract_example("result.example.json")["json"])["publicationReview"]
+    decision, _ = assessment(collected=COLLECTED | {"winnerAnnouncementDate": None})
+    assert decision.keys() == example.keys() == policy.held().keys()
+    assert {key: type(value) for key, value in decision.items()} == {key: type(value) for key, value in example.items()}
+    assert decision["evidence"].keys() == example["evidence"].keys() == policy.DATES.keys()
+    assert all(cite.keys() == {"path", "page", "quote", "written"}
+               for review in (decision, example) for cite in review["evidence"].values())
+    shapes = {key: answer.keys() for key, answer in decision["answers"].items()}
+    assert shapes == {"recruits": {"noul"}, "cancelled": {"noul"}, "P2:T1:R3": {"noul"},
+                      "winnerAnnouncementDate": {"choice", "probability"}}
+    assert {key: answer.keys() for key, answer in example["answers"].items()} == {
+        "P4:T1:R5" if key == "P2:T1:R3" else key: shape for key, shape in shapes.items()}
 
 
 @pytest.mark.parametrize("answers, reason", [
