@@ -46,6 +46,18 @@ class PdfExtractionContractTest {
     }
 
     @Test
+    void 수집값이_없던_때에_넣은_작업의_입력도_읽는다() throws Exception {
+        String queued = """
+                {"sourceSupplyRows": [],
+                 "publication": {"attachmentId": 3301, "announcementVersion": 4, "title": "공고", "mode": "APPLY"}}
+                """;
+
+        assertThat(mapper.readValue(queued, PdfExtractionInput.class).publication()).isEqualTo(
+                new PdfExtractionInput.Publication(3301, 4, "공고", PdfExtractionInput.PublicationMode.APPLY,
+                        null, null, null, null, null));
+    }
+
+    @Test
     void 워커가_쓰는_결과_예시를_모르는_필드_없이_읽는다() throws Exception {
         var strict = JsonMapper.builder()
                 .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
