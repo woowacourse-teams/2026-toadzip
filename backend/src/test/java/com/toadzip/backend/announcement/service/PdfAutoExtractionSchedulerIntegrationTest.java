@@ -13,6 +13,7 @@ import com.toadzip.backend.announcement.controller.PdfPublicationReviewControlle
 import com.toadzip.backend.announcement.controller.PdfPublicationReviewController.ReviewPage;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
@@ -24,6 +25,7 @@ import com.toadzip.backend.announcement.exception.AttachmentUnavailableException
 import com.toadzip.backend.announcement.exception.AttachmentUnavailableException.Reason;
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions.ReviewItem;
@@ -102,6 +104,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private AnnouncementRepository announcements;
     @Autowired private AnnouncementSearchRepository search;
     @Autowired private AnnouncementAttachmentRepository attachments;
+    @Autowired private AnnouncementComplexRepository announcementComplexes;
     @Autowired private JdbcClient jdbc;
     @Autowired private EntityManager entities;
     @Autowired private PlatformTransactionManager transactions;
@@ -470,6 +473,44 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 notice.getWinnerAnnouncementDate())).containsExactly(TODAY, TODAY.plusDays(2), TODAY.plusDays(5));
         assertThat(supplyRows(id)).singleElement()
                 .satisfies(row -> assertThat(row.get("housing_type_name")).isEqualTo("36A"));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            1 | PUBLISHED | 공고 보정 완료
+            0 | REVIEW    | 공급표에 단지명이 없고 공고에 연결된 단지가 한 곳이 아닙니다(0곳).
+            2 | REVIEW    | 공급표에 단지명이 없고 공고에 연결된 단지가 한 곳이 아닙니다(2곳).
+            """)
+    void 단지명이_없는_공급표는_공고에_연결된_단지가_한_곳일_때만_그_단지로_채운다(int linked, String outcome, String reason) {
+        Candidate candidate = candidate();
+        long id = candidate.notice().getId();
+        List<String> names = List.of(candidate.complexName(), "다른 단지").subList(0, linked);
+        names.forEach(name -> announcementComplexes.saveAndFlush(
+                AnnouncementComplex.observe(candidate.notice(), name, null, null)));
+        ObjectNode tree = passedExtraction(candidate);
+        tree.withObject("data").withObject("supplySheet").withArray("housingTypes")
+                .forEach(type -> ((ObjectNode) type).put("complexName", ""));
+        long job = succeededJob(candidate, tree);
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo(outcome);
+            assertThat(decision.get("reason").toString()).startsWith(reason);
+        });
+        assertThat(published(candidate.notice())).isEqualTo(linked == 1);
+        List<String> filled = jdbc.sql("""
+                SELECT c.source_complex_name FROM supply_rows r
+                JOIN announcement_complexes c ON c.id = r.announcement_complex_id WHERE r.announcement_id = ?
+                """).param(id).query(String.class).list();
+        if (linked == 1) {
+            assertThat(filled).containsExactly(candidate.complexName());
+        } else {
+            assertThat(filled).isEmpty();
+        }
+        // 보류한 공고에 공고 단지를 새로 만들지 않는다.
+        assertThat(jdbc.sql("SELECT source_complex_name FROM announcement_complexes WHERE announcement_id = ?")
+                .param(id).query(String.class).list()).containsExactlyInAnyOrderElementsOf(names);
     }
 
     @Test

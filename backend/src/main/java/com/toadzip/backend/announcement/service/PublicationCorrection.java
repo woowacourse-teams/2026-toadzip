@@ -88,8 +88,10 @@ class PublicationCorrection {
         var rows = new ArrayList<SupplySheetInput.HousingType>();
         var seen = new HashSet<Long>();
         var usedLinks = new HashSet<Long>();
-        for (var row : array(sheet, "housingTypes")) {
-            String name = row.required("complexName").asString();
+        var housingTypes = array(sheet, "housingTypes");
+        Optional<String> onlyComplex = onlyLinkedComplex(workspace, housingTypes);
+        for (var row : housingTypes) {
+            String name = onlyComplex.orElseGet(() -> row.required("complexName").asString());
             var links = workspace.supply().announcementComplexes().stream().filter(c -> name.equals(c.name())).toList();
             require(links.size() <= 1, "공고 단지 후보가 여러 곳입니다: " + name);
             var link = links.isEmpty() ? null : links.getFirst();
@@ -132,6 +134,20 @@ class PublicationCorrection {
                 decimal(l, "monthlyRent"), decimal(l, "convertedDeposit"), array(l, "members").stream()
                 .map(PublicationCorrection::cell).toList())).toList();
         return new SupplySheetInput(rows, targets, cells, quotas, leases);
+    }
+
+    /**
+     * 단지 열이 없는 공급표(단지 한 곳만 모집하는 공고)는 모든 주택형의 단지명이 빈다. 공고 단지가 한 곳일 때만 그 이름을 쓰고,
+     * 없거나 여러 곳이면 어느 단지인지 알 수 없어 보류한다. 단지명이 하나라도 적혀 있으면 채우지 않는다.
+     */
+    private static Optional<String> onlyLinkedComplex(Workspace workspace, List<JsonNode> housingTypes) {
+        boolean named = housingTypes.stream().anyMatch(row -> !row.required("complexName").asString().isBlank());
+        if (named || housingTypes.isEmpty()) {
+            return Optional.empty();
+        }
+        var linked = workspace.supply().announcementComplexes();
+        require(linked.size() == 1, "공급표에 단지명이 없고 공고에 연결된 단지가 한 곳이 아닙니다(" + linked.size() + "곳).");
+        return Optional.of(linked.getFirst().name());
     }
 
     static void require(boolean ok, String reason) {
