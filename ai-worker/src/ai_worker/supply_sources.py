@@ -18,6 +18,8 @@ from ai_worker.supply_assembly import assemble
 from ai_worker.supply_sheet import SupplySheet
 
 log = logging.getLogger(__name__)
+# 처리 과정 안내다. 공개 판정(publication)은 이 경고를 결과의 결함으로 보지 않는다.
+AMBIGUOUS_TABLE_NOTE = "공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다."
 
 
 class Model(Protocol):
@@ -80,7 +82,7 @@ class ModelSupply:
         if selected.table_structure_fallback:
             warnings.append("표 셀 구조를 분리하지 못해 일부 쪽 텍스트를 공급 단계에도 전달했습니다.")
         if selected.ambiguous_supply_tables:
-            warnings.append("공급 표인지 판단이 불확실한 표를 공급·본문 단계 양쪽에 전달했습니다.")
+            warnings.append(AMBIGUOUS_TABLE_NOTE)
         tree, sheet, source_warnings = assemble(draft, selected, self._source_names)
         return Supply(tree, sheet, [*warnings, *source_warnings], [reply.usage], "model")
 
