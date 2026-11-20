@@ -106,6 +106,7 @@ def one_of(instructions, criteria, reason, expected=None):
 
 def assess(tree, source, warnings, judge, deadline, collected):
     """collected는 서버가 수집 때 가진 값이다: 있으면 rentalType·recruitmentType과 날짜 셋(DATES의 키)."""
+    collected = known(collected)
     data = tree["data"]
     notice = data["announcement"]
     cites, reasons = date_citations(tree, source.texts)
@@ -130,6 +131,13 @@ def assess(tree, source, warnings, judge, deadline, collected):
     eligibility = eligibility_check(tree, warnings)
     review["eligibilityVerified"] = eligibility is not None and not asker.ask(eligibility)
     return review
+
+
+def known(collected):
+    """수집값 가운데 이 판정이 아는 유형만 남긴다. 분류 목록 밖 유형(서버의 ETC '기타')은 기관이 분류하지 못한 것이라
+    수집값이 없는 것으로 보고 원문에 묻는다."""
+    choices = {"rentalType": RENT, "recruitmentType": RECRUIT}
+    return {field: value for field, value in collected.items() if field not in choices or value in choices[field]}
 
 
 def held(*reasons):

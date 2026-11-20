@@ -81,6 +81,13 @@ def test_values_the_collection_did_not_have_are_asked_and_approved_from_the_answ
     assert "26.12.01" in questions["winnerAnnouncementDate"]["instructions"]
 
 
+def test_collected_type_outside_the_choices_is_asked_like_a_missing_one():
+    decision, calls = assessment(collected=COLLECTED | {"rentalType": "ETC", "recruitmentType": "ETC"})
+    assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
+    assert {"rentalType", "rentalListed", "mixedRental", "recruitmentType"} <= set(asked(calls))
+    assert not set(policy.DATES) & set(asked(calls))
+
+
 @pytest.mark.parametrize("answers, reason", [
     ({"recruits": 0.5}, "입주자 모집공고문인지 확인 필요(안내문·서식·결과 발표일 수 있음)"),
     ({"cancelled": 0.5}, "모집 취소·철회 공고인지 확인 필요"),
