@@ -6,6 +6,7 @@ import pytest
 from ai_worker import jev
 from ai_worker import publication as policy
 from ai_worker.jev import Meaning
+from ai_worker.supply_assembly import NO_SOURCE_VALUE
 from ai_worker.supply_sources import AMBIGUOUS_TABLE_NOTE
 from conftest import contract_example
 
@@ -83,11 +84,12 @@ def test_values_the_collection_did_not_have_are_asked_and_approved_from_the_answ
     assert "26.12.01" in questions["winnerAnnouncementDate"]["instructions"]
 
 
-def test_collected_type_outside_the_choices_is_asked_like_a_missing_one():
+def test_collected_type_outside_the_choices_is_held_without_model_calls():
+    """서버의 ETC(기타)는 수집이 분류하지 못한 공고다. 그대로 승인하지도, 물어서 기존 값을 바꾸려 하지도 않는다."""
     decision, calls = assessment(collected=COLLECTED | {"rentalType": "ETC", "recruitmentType": "ETC"})
-    assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
-    assert {"rentalType", "rentalListed", "mixedRental", "recruitmentType"} <= set(asked(calls))
-    assert not set(policy.DATES) & set(asked(calls))
+    assert decision["reasons"] == ["수집한 공급유형이 분류 목록에 없는 값(ETC)이라 원문 확인이 필요합니다.",
+                                   "수집한 모집유형이 분류 목록에 없는 값(ETC)이라 원문 확인이 필요합니다."]
+    assert (decision["rentalType"], decision["recruitmentType"]) == (None, None) and not calls
 
 
 def test_collected_values_in_the_contract_input_example_are_the_ones_read_here():
@@ -161,6 +163,18 @@ def test_date_whose_citation_does_not_show_it_on_the_page_is_held_without_model_
     assert not calls
 
 
+@pytest.mark.parametrize("page, quote", [
+    ("신청접수 11.03-11.05 발표 12/01", "신청접수 11.03-11.05"),      # 앞 날짜의 일(03)을 연도로 읽지 않는다
+    ("신청접수 11/03-11/05 발표 12/01", "신청접수 11/03-11/05"),
+    ("신청접수 2026.11.03~11.05 발표 12/01", "2026.11.03~11.05"),
+])
+def test_end_date_written_after_a_range_separator_is_found_in_its_citation(page, quote):
+    assert policy.date_citations(
+        {"data": {"announcement": {"applicationEndDate": "2026-11-05"}},
+         "evidence": [{"path": "announcement.applicationEndDate", "page": 1, "quote": quote}]},
+        [page])[0]["applicationEndDate"]["written"].endswith(("11.05", "11/05"))
+
+
 def test_missing_date_holds_without_model_calls():
     decision, calls = assessment(notice=NOTICE | {"applicationEndDate": None})
     assert decision["reasons"] == ["신청 접수 종료일 값이 없습니다."] and not calls
@@ -179,12 +193,23 @@ def test_repeated_unresolved_fields_become_one_readable_reason():
     assert decision["reasons"] == ["전용면적 3건 미확인: 해당 열의 값을 확인하지 못함"]
 
 
-def test_blank_complex_names_hold_only_when_some_housing_type_names_a_complex():
-    field = {"path": "housingTypes[0].complexName", "reason": "해당 열의 값을 확인하지 못함"}
+def test_blank_complex_names_pass_only_when_the_table_has_no_complex_column_at_all():
+    field = {"path": "housingTypes[0].complexName", "reason": NO_SOURCE_VALUE}
     single, _ = assessment(unresolved=[field], complex_names=("", ""))
     assert single["reasons"] == []
     mixed, _ = assessment(unresolved=[field], complex_names=("", "가람단지"))
-    assert mixed["reasons"] == ["주택형의 단지명 1건 미확인: 해당 열의 값을 확인하지 못함"]
+    assert mixed["reasons"] == [f"주택형의 단지명 1건 미확인: {NO_SOURCE_VALUE}"]
+    # 추출이 단지명을 냈는데 원문에서 확인되지 않아 비운 표는 단지 구분이 있는 표다.
+    unverified = "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"
+    named, _ = assessment(unresolved=[field | {"reason": unverified}], complex_names=("", ""))
+    assert named["reasons"] == [f"주택형의 단지명 1건 미확인: {unverified}"]
+
+
+def test_unverified_reception_place_holds_the_notice_but_unverified_eligibility_does_not():
+    place, calls = assessment(unresolved_data=[{"path": "receptionPlaces[0].url", "reason": "원문 불일치"}])
+    assert place["reasons"] == ["receptionPlaces[].url 1건 미확인: 원문 불일치"] and not calls
+    eligibility, _ = assessment(unresolved_data=[{"path": "eligibility.common", "reason": "원문 불일치"}])
+    assert eligibility["reasons"] == []
 
 
 def test_process_note_and_eligibility_warning_do_not_hold_the_notice():

@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import date
 from importlib.resources import files
 from types import SimpleNamespace
 from uuid import uuid4
@@ -8,7 +9,7 @@ import pymupdf
 
 import pytest
 
-from ai_worker import announcement, jev, tables
+from ai_worker import announcement, jev, publication, tables
 from ai_worker.announcement import AnnouncementPdfExtractor
 from ai_worker import openai
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
@@ -1233,6 +1234,24 @@ def test_only_server_jobs_with_a_publication_snapshot_carry_a_publication_review
     assert review["reasons"] and review["rentalType"] is None
     assert publication_review("BATCH", None) is None
     assert publication_review("ADMIN", PUBLICATION) is None
+
+
+def test_publication_asks_about_a_date_with_the_schedule_table_read_from_the_original_pdf():
+    """수집 날짜가 없는 공고(GH·SH)는 이 표를 보이고 날짜의 절차를 묻는다. 표를 읽지 못하면 그런 공고는 모두 보류된다."""
+    schedule = [["구분", "신청접수", "서류제출", "당첨자 발표", "계약체결", "입주"],
+                ["일정", "26.11.03", "26.11.10", "26.12.01", "26.12.15", "27.01"]]
+    document = pymupdf.open()
+    document.new_page().insert_text((20, 72), "표가 없는 쪽", fontname="korea", fontsize=6)
+    draw_grid(document.new_page(), schedule)
+    source = publication.Source(["", ""], {}, announcement.page_tables(document.tobytes()))
+    cite = {"page": 2, "quote": "당첨자 발표 26.12.01", "written": "26.12.01"}
+
+    check = publication.date_check("winnerAnnouncementDate", date(2026, 12, 1), cite, source)
+
+    # 선으로 그린 fixture 표는 칸 사이에 빈 칸이 끼어 읽힌다.
+    assert [[cell for cell in row if cell] for row in check.state["schedule"]] == schedule
+    assert isinstance(publication.date_check("winnerAnnouncementDate", date(2026, 12, 1), cite | {"page": 1}, source),
+                      publication.Unanswerable)
 
 
 def test_error_while_assessing_publication_keeps_the_extraction_and_holds_it(monkeypatch):

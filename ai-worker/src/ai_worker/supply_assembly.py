@@ -1040,6 +1040,10 @@ def _group_name(verified: str | None, candidate: object, field: str, row_ids: li
 
 
 
+# 추출이 값을 내지 않았고 원문 표에도 그 열의 값이 없다(열 자체가 없는 표 포함). 공개 판정(publication)이 이 사유로 가른다.
+NO_SOURCE_VALUE = "원문 표 행 ID가 없거나 해당 열의 값을 확인하지 못함"
+
+
 def _source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,
                  missing_value: str | None, required: bool = True) -> tuple[str | None, str | None]:
     """칸 초안의 표기를 같은 의미의 원문 칸에서 확인한 값(표기, 확인하지 못한 사유)."""
@@ -1053,7 +1057,7 @@ def _source_text(candidate: object, field: str, row_ids: list[str], selected: pa
     if len(source_values) == 1:
         return _normalize_source_display(source_values[0], field), None
     if required:
-        return missing_value, "원문 표 행 ID가 없거나 해당 열의 값을 확인하지 못함"
+        return missing_value, NO_SOURCE_VALUE
     if len(source_values) > 1:
         return missing_value, "여러 원문 표 값이 있어 하나로 결정하지 못함"
     return missing_value, None

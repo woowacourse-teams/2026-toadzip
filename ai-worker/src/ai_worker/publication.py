@@ -4,7 +4,8 @@
 Jev에 "추출 결과가 다 맞는가"는 묻지 않는다. 그렇게 넓게 물으면 맞는 결과에도 '모순'이라 답한다(LH 표본 17건 모두).
 사람이 한눈에 답할 수 있는 좁은 판단만 묻는다: 이 문서가 모집공고인가, 이 날짜는 어느 절차의 날짜인가,
 추출이 인용하지 않은 이 표 행이 모집 행인가, 이 인용문이 이 요건을 말하는가. 값 대조(날짜 표현, 인용 여부)는 코드가 한다.
-기관이 수집 때 준 값(collected)과 같은 날짜·유형은 두 원천이 일치한 것이라 Jev에 묻지 않는다.
+수집 때 가진 값(collected)과 같은 날짜는 두 원천이 일치한 것이라 Jev에 묻지 않는다. 수집한 유형은 PDF와 대조하지 않고 그대로 쓴다.
+일정·접수처도 Jev에 묻지 않는다. 추출 단계의 인용 확인과 미확인 표시만 본다.
 """
 import re
 import time
@@ -13,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 
-from ai_worker import checks, jev, supply_sources
+from ai_worker import checks, jev, supply_assembly, supply_sources
 
 DATES = {"applicationStartDate": "신청 접수 시작일", "applicationEndDate": "신청 접수 종료일",
          "winnerAnnouncementDate": "최종 당첨자 또는 예비입주자 발표일"}
@@ -54,6 +55,8 @@ FIELDS = {"housingTypes[].complexName": "주택형의 단지명", "housingTypes[
           "cells[].winner": "모집 수", "cells[].reserve": "예비자 수", "cells[].rentalDeposit": "임대보증금",
           "cells[].monthlyRent": "월임대료", "leaseTerms[].rentalDeposit": "임대보증금",
           "leaseTerms[].monthlyRent": "월임대료", "leaseTerms[].convertedDeposit": "전환보증금"}
+# 공고에 적용되는 값의 미확인 표시. 신청자격의 미확인은 공고 공개를 막지 않는다.
+UNRESOLVED_HOLDS = ("announcement.", "schedules", "receptionPlaces", "supplySheet")
 COMPLEX_NAME = re.compile(r"housingTypes\[\d+]\.complexName")
 
 
@@ -106,11 +109,11 @@ def one_of(instructions, criteria, reason, expected=None):
 
 def assess(tree, source, warnings, judge, deadline, collected):
     """collected는 서버가 수집 때 가진 값이다: 있으면 rentalType·recruitmentType과 날짜 셋(DATES의 키)."""
-    collected = known(collected)
     data = tree["data"]
     notice = data["announcement"]
     cites, reasons = date_citations(tree, source.texts)
-    reasons = held_by_extraction(data, source.texts, warnings) + reasons + disagreements(notice, collected)
+    reasons = (held_by_extraction(data, source.texts, warnings) + reasons + disagreements(notice, collected)
+               + unclassified(collected))
     review = held(*reasons) | {"evidence": cites}
     reasons = review["reasons"]
     if judge is None:
@@ -133,11 +136,12 @@ def assess(tree, source, warnings, judge, deadline, collected):
     return review
 
 
-def known(collected):
-    """수집값 가운데 이 판정이 아는 유형만 남긴다. 분류 목록 밖 유형(서버의 ETC '기타')은 기관이 분류하지 못한 것이라
-    수집값이 없는 것으로 보고 원문에 묻는다."""
-    choices = {"rentalType": RENT, "recruitmentType": RECRUIT}
-    return {field: value for field, value in collected.items() if field not in choices or value in choices[field]}
+def unclassified(collected):
+    """수집한 유형이 분류 목록 밖(서버의 ETC '기타')이면 수집이 분류하지 못한 공고다. 그대로 승인하지 않고, 원문에 물어 고쳐도
+    서버가 기존 값과 다르다고 보류하므로 묻지 않고 사람이 보게 한다."""
+    names = {"rentalType": ("공급유형", RENT), "recruitmentType": ("모집유형", RECRUIT)}
+    return [f"수집한 {label}이 분류 목록에 없는 값({collected[field]})이라 원문 확인이 필요합니다."
+            for field, (label, choices) in names.items() if collected.get(field) and collected[field] not in choices]
 
 
 def held(*reasons):
@@ -152,12 +156,13 @@ def held_by_extraction(data, texts, warnings):
     reasons = [w for w in warnings if not w.startswith("신청자격") and w not in PROCESS_NOTES]
     fields = sheet.get("unresolvedFields", [])
     # 단지 열이 없는 공급표(단지 하나만 모집하는 공고)는 모든 주택형의 단지명이 빈다. 서버가 공고에 연결된 단지 하나로 채우고,
-    # 연결된 단지가 하나가 아니면 서버가 보류한다.
+    # 연결된 단지가 하나가 아니면 서버가 보류한다. 추출이 단지명을 냈는데 원문에서 확인되지 않아 비운 것은 단지 구분이 있는 표라 남긴다.
     if not any(row.get("complexName") for row in sheet.get("housingTypes", [])):
-        fields = [f for f in fields if not COMPLEX_NAME.fullmatch(f.get("path") or "")]
+        fields = [f for f in fields if not (COMPLEX_NAME.fullmatch(f.get("path") or "")
+                                            and f.get("reason") == supply_assembly.NO_SOURCE_VALUE)]
     reasons += unresolved(fields)
     reasons += unresolved([f for f in data.get("unresolvedFields", [])
-                           if (f.get("path") or "").startswith(("announcement.", "schedules", "supplySheet"))])
+                           if (f.get("path") or "").startswith(UNRESOLVED_HOLDS)])
     if not all(sheet.get(key) for key in ("housingTypes", "cells", "quotas")):
         reasons.append("모집 주택형·공급대상·수량을 모두 확인할 수 없습니다.")
     if not texts or any(not text.strip() for text in texts):
@@ -196,8 +201,10 @@ def date_citations(tree, texts):
 
 
 def written_date(text, value):
-    """text에서 value를 가리키는 날짜 표현('26.11.17, 2026. 11. 17, 11월 17일)을 찾는다. 연도는 적혀 있을 때만 맞춰 본다."""
-    pattern = rf"(?:(?:20)?(\d\d)\s*[.\-/년]\s*)?(?<!\d)0?{value.month}\s*[.\-/월]\s*0?{value.day}(?!\d)"
+    """text에서 value를 가리키는 날짜 표현('26.11.17, 2026. 11. 17, 11월 17일)을 찾는다. 연도는 적혀 있을 때만 맞춰 본다.
+    앞에 숫자나 구분자가 붙은 두 자리(11.03-11.05의 03)는 앞 날짜의 일이지 연도가 아니다."""
+    pattern = (rf"(?:(?<![\d.\-/])(?:20)?(\d\d)\s*[.\-/년]\s*)?"
+               rf"(?<!\d)0?{value.month}\s*[.\-/월]\s*0?{value.day}(?!\d)")
     return next((found for found in re.finditer(pattern, text)
                  if found.group(1) is None or int(found.group(1)) == value.year % 100), None)
 
@@ -263,7 +270,7 @@ def date_check(field, value, cite, source):
 
 
 def supply_reasons(asker, sheet, rows):
-    """빠졌을 수 있는 행이 많으면 앞의 몇 줄만 보인다. 한 표가 통째로 빠지면 같은 사유가 수십 줄이 된다."""
+    """빠졌을 수 있는 행이 많으면 앞의 몇 줄만 보인다. 표의 뒤쪽이 통째로 빠지면 같은 사유가 수십 줄이 된다."""
     reasons = asker.ask(supply_check(sheet, rows))
     if len(reasons) > MAX_ROW_REASONS:
         reasons = reasons[:MAX_ROW_REASONS] + [f"공급표 행 {len(reasons) - MAX_ROW_REASONS}건 더 확인 필요"]
@@ -271,7 +278,9 @@ def supply_reasons(asker, sheet, rows):
 
 
 def supply_check(sheet, rows):
-    """추출이 인용하지 않은 공급표 행이 모집 행이면 빠진 행일 수 있다. 수량은 추출 단계가 원문 칸과 이미 대조했다."""
+    """추출이 인용하지 않은 공급표 행이 모집 행이면 빠진 행일 수 있다. 수량은 추출 단계가 원문 칸과 이미 대조했다.
+    인용된 행이 하나도 없는 표는 묻지 않는다. rows에는 일정표·소득표처럼 공급표가 아닌 표도 있어(표본 9건 중 8건) 그 표들을
+    물으면 거의 모든 공고가 보류된다. 통째로 빠진 공급표는 추출 단계의 주택형 누락 경고와 서버의 공고 단지 누락 검사가 잡는다."""
     quotes = [checks.compact_text(item.get("quote") or "") for item in sheet.get("evidence", [])]
     written = {row_id: checks.compact_text(text) for row_id, text in rows.items()}
     cited = {row_id for row_id, text in written.items() if text and any(text in quote for quote in quotes)}
