@@ -9,14 +9,15 @@ PAGES = ["행복주택 입주자 모집공고 접수 11월 3일", "주택형 36A
 
 
 def assessment(answers=None, quote="11월 3일", unresolved=(), source_rows=None, eligibility=None, warnings=(),
-               failing=(), reread=None):
+               failing=(), reread=None, judged=True, seconds=30, missing_date=None, unresolved_data=()):
     """answers는 질문 키별로 차례로 돌려줄 (선택, 확률) 목록이다. 없으면 첫 선택지를 0.99로 답한다."""
-    notice = {field: "2026-11-03" for field in policy.DATES}
+    notice = {field: None if field == missing_date else "2026-11-03" for field in policy.DATES}
     evidence = [{"path": "announcement." + field, "page": 1, "quote": quote} for field in notice]
     evidence.append({"path": "eligibility.targets[0].requirements[0]", "page": 3, "quote": "유의사항"})
     sheet = {"housingTypes": [1], "cells": [1], "quotas": [1], "unresolvedFields": list(unresolved),
              "evidence": [{"path": "housingTypes[0]", "page": 2, "quote": "36A"}]}
-    tree = {"data": {"announcement": notice, "supplySheet": sheet, "schedules": [], "eligibility": eligibility},
+    tree = {"data": {"announcement": notice, "supplySheet": sheet, "schedules": [], "eligibility": eligibility,
+                     "unresolvedFields": list(unresolved_data)},
             "evidence": evidence}
     scripted = {key: list(values) for key, values in (answers or {}).items()}
     calls = []
@@ -29,7 +30,8 @@ def assessment(answers=None, quote="11월 3일", unresolved=(), source_rows=None
             return {key: Meaning(*(scripted[key].pop(0) if scripted.get(key) else (next(iter(q["criteria"])), 0.99)))
                     for key, q in questions.items()}
 
-    decision = policy.assess(tree, PAGES, list(warnings), Judge(), time.monotonic() + 30, "행복주택 모집공고",
+    decision = policy.assess(tree, PAGES, list(warnings), Judge() if judged else None, time.monotonic() + seconds,
+                             "행복주택 모집공고",
                              reread or (lambda: [page + " (다시 읽음)" for page in PAGES]), source_rows)
     return decision, calls
 
@@ -56,8 +58,8 @@ def test_each_judgment_sees_only_the_pages_it_needs():
 
 def test_unclear_date_is_asked_again_from_the_reread_original_then_held():
     decision, calls = assessment({"applicationEndDate": [("unclear", 0.99), ("conflict", 0.99)]})
-    state, keys = calls[-1] if calls[-1][1] == ["applicationEndDate"] else next(c for c in calls if c[1] == ["applicationEndDate"])
-    assert keys == ["applicationEndDate"] and state["pages"][1].endswith("(다시 읽음)")
+    state, _ = next(call for call in calls if call[1] == ["applicationEndDate"])
+    assert state["pages"][1].endswith("(다시 읽음)")
     assert decision["reasons"] == ["신청 접수 종료일 원문 확인 필요 · 1쪽 11월 3일"]
     assert decision["rentalType"] is None
 
@@ -109,3 +111,35 @@ def test_conflicting_eligibility_keeps_the_notice_publishable_but_unverified():
     assert decision["reasons"] == []
     assert decision["rentalType"] == "HAPPY_HOUSING"
     assert decision["eligibilityVerified"] is False
+
+
+def test_without_the_source_check_model_nothing_is_approved():
+    decision, calls = assessment(judged=False)
+    assert decision["reasons"] == ["원문 대조 모델(Jev)을 쓸 수 없습니다."] and not calls
+    assert decision["rentalType"] is None
+
+
+def test_no_time_left_for_the_source_check_holds_without_asking():
+    decision, calls = assessment(seconds=0.5)
+    assert not calls and decision["rentalType"] is None
+    assert decision["reasons"][0] == "공고 성격 원문 대조 시간이 모자랍니다."
+    assert all(reason.endswith("원문 대조 시간이 모자랍니다.") for reason in decision["reasons"])
+
+
+def test_rental_type_the_model_cannot_name_is_held_and_not_approved():
+    for answer in [("unclear", 0.99), ("NOT_A_RENTAL_TYPE", 0.99)]:
+        decision, _ = assessment({"rentalType": [answer, answer]})
+        assert decision["reasons"] == ["공급유형을 원문에서 하나로 정하지 못했습니다."]
+        assert (decision["rentalType"], decision["recruitmentType"]) == (None, None)
+
+
+def test_missing_date_holds_without_model_calls():
+    decision, calls = assessment(missing_date="applicationEndDate")
+    assert decision["reasons"] == ["신청 접수 종료일 값이 없습니다."] and not calls
+
+
+def test_eligibility_with_an_unresolved_item_is_not_verified_and_not_asked():
+    field = {"path": "eligibility.targets[0].requirements[0]", "reason": "원문에서 확인하지 못함"}
+    decision, calls = assessment(eligibility={"targets": ["청년"]}, unresolved_data=[field])
+    assert decision["reasons"] == [] and decision["eligibilityVerified"] is False
+    assert not [keys for _, keys in calls if "eligibility" in keys]

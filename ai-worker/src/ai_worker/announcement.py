@@ -123,8 +123,13 @@ class AnnouncementPdfExtractor:
                             break
                         alternate.append(page.get_text("text", sort=False))
                     return alternate
-            tree["publicationReview"] = publication.assess(tree, texts, warnings, self.column_judge, deadline,
-                                                          snapshot["title"], reread, selected.supply_row_text)
+            try:
+                tree["publicationReview"] = publication.assess(tree, texts, warnings, self.column_judge, deadline,
+                                                              snapshot["title"], reread, selected.supply_row_text)
+            except Exception:
+                # 판정 오류로 유료 추출 결과까지 버리지 않는다. 결과는 남기고 운영자 검수로 보낸다.
+                log.exception("작업 %d 공개 판정 중 오류", job.id)
+                tree["publicationReview"] = publication.held("공개 판정 중 오류가 났습니다.")
         return {
             "json": json.dumps(tree, ensure_ascii=False),
             "pages": selection.pages,

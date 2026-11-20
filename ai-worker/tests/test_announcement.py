@@ -1217,3 +1217,30 @@ def test_rows_joined_by_a_merged_count_are_split_into_housing_types_in_the_suppl
             for quota in sheet["quotas"]] == [("WINNER", 70, ["h0", "h1", "h2"])]
     # 묶은 공급행 표시는 내부 값이라 결과에 남지 않는다.
     assert "_joinedSupplyRows" not in tree
+
+
+PUBLICATION = {"publication": {"title": "행복주택 입주자 모집공고"}}
+
+
+def publication_review(request_source, job_input):
+    result = AnnouncementPdfExtractor(TierModel()).extract(
+        job(pdf(COVER, SUPPLY, RENT), job_input, request_source=request_source))
+    return json.loads(result["json"]).get("publicationReview")
+
+
+def test_only_server_jobs_with_a_publication_snapshot_carry_a_publication_review():
+    review = publication_review("BATCH", PUBLICATION)
+    assert review["reasons"] and review["rentalType"] is None
+    assert publication_review("BATCH", None) is None
+    assert publication_review("ADMIN", PUBLICATION) is None
+
+
+def test_error_while_assessing_publication_keeps_the_extraction_and_holds_it(monkeypatch):
+    def broken(*args):
+        raise ValueError("판정 오류")
+    monkeypatch.setattr(announcement.publication, "assess", broken)
+
+    review = publication_review("BATCH", PUBLICATION)
+
+    assert review["reasons"] == ["공개 판정 중 오류가 났습니다."]
+    assert (review["rentalType"], review["eligibilityVerified"]) == (None, False)

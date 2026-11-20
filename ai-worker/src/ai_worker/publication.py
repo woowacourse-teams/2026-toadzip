@@ -58,8 +58,8 @@ def assess(tree, texts, warnings, judge, deadline, title, reread, source_rows=No
     data = tree["data"]
     cites, reasons = date_citations(tree, texts)
     reasons = held_by_extraction(data, texts, warnings) + reasons
-    review = {"policy": 1, "reasons": reasons, "rentalType": None, "recruitmentType": None,
-              "eligibilityVerified": False, "evidence": cites, "answers": {}}
+    review = held(*reasons) | {"evidence": cites}
+    reasons = review["reasons"]
     if judge is None:
         reasons.append("원문 대조 모델(Jev)을 쓸 수 없습니다.")
     if reasons:
@@ -78,6 +78,12 @@ def assess(tree, texts, warnings, judge, deadline, title, reread, source_rows=No
     eligibility = eligibility_check(data, evidence, warnings, texts)
     review["eligibilityVerified"] = eligibility is not None and not asker.ask(eligibility)
     return review
+
+
+def held(*reasons):
+    """통과하지 못한 판정. 승인 값은 비어 있다."""
+    return {"policy": 1, "reasons": list(reasons), "rentalType": None, "recruitmentType": None,
+            "eligibilityVerified": False, "evidence": {}, "answers": {}}
 
 
 def held_by_extraction(data, texts, warnings):
@@ -168,7 +174,8 @@ def supply_check(sheet, source_rows, texts):
 
 def eligibility_check(data, evidence, warnings, texts):
     eligibility = data.get("eligibility")
-    if not eligibility or any(w.startswith("신청자격") for w in warnings):
+    unverified = any((f.get("path") or "").startswith("eligibility") for f in data.get("unresolvedFields", []))
+    if not eligibility or unverified or any(w.startswith("신청자격") for w in warnings):
         return None
     return Check("신청자격", sorted(cited_pages(evidence, ("eligibility",), texts)), {"eligibility": eligibility},
                  {"eligibility": question("Check ALL conditions, thresholds, exceptions and target links in `eligibility` "
