@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -11,21 +12,31 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.TemporaryAttachment;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException.Reason;
 import com.toadzip.backend.announcement.exception.PdfExtractionInProgressException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
+import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,11 +45,19 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.jdbc.Sql.ExecutionPhase;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = {
         "announcement.pdf-auto-extraction.enabled=true",
@@ -47,18 +66,19 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
         "announcement.pdf-auto-extraction.initial-delay=PT24H",
         "announcement.pdf-auto-extraction.max-in-flight=2"
 })
-@org.springframework.test.context.jdbc.Sql(scripts = "/db/migration/V20261119_03__pdf_publication_decisions.sql",
-        executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.BEFORE_TEST_CLASS)
-@org.springframework.test.context.jdbc.Sql(statements = {"DROP TABLE pdf_publication_decisions", "DROP INDEX ix_ai_jobs_publication_pending"},
-        executionPhase = org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_CLASS)
+@Sql(scripts = "/db/migration/V20261119_03__pdf_publication_decisions.sql",
+        executionPhase = ExecutionPhase.BEFORE_TEST_CLASS)
+@Sql(statements = {"DROP TABLE pdf_publication_decisions", "DROP INDEX ix_ai_jobs_publication_pending"},
+        executionPhase = ExecutionPhase.AFTER_TEST_CLASS)
 @ActiveProfiles("test")
 class PdfAutoExtractionSchedulerIntegrationTest {
     private static final LocalDate TODAY = LocalDate.now(ZoneId.of("Asia/Seoul"));
 
     @Autowired private PdfPublicationScheduler publication;
-    @Autowired private tools.jackson.databind.ObjectMapper json;
-    @Autowired private com.toadzip.backend.housing.repository.HousingComplexRepository complexes;
-    @Autowired private com.toadzip.backend.housing.repository.HousingTypeRepository types;
+    @Autowired private PdfPublicationService service;
+    @Autowired private ObjectMapper json;
+    @Autowired private HousingComplexRepository complexes;
+    @Autowired private HousingTypeRepository types;
     @Autowired private PdfAutoExtractionScheduler scheduler;
     @Autowired private AnnouncementPdfExtractionService extractions;
     @Autowired private AnnouncementRepository announcements;
@@ -246,55 +266,29 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 .query().listOfRows();
     }
 
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"apply", "shadow", "changedPdf", "conflict", "published"})
+    @ParameterizedTest
+    @ValueSource(strings = {"apply", "shadow", "changedPdf", "conflict", "published"})
     void 자동_공개와_보류는_원문과_같은_판정에만_한번_적용된다(String scenario) throws IOException {
-        String name = "검증단지-" + UUID.randomUUID();
-        var address = com.toadzip.backend.housing.domain.Address.create("서울 중구 세종대로", "1111010100100010000",
-                "1111010100", "11", "11110", new java.math.BigDecimal("37.5"), new java.math.BigDecimal("126.9"));
-        var complex = complexes.saveAndFlush(com.toadzip.backend.housing.domain.HousingComplex.create(name,
-                UUID.randomUUID().toString(), "HAPPY_HOUSING", address, 10, "SH", TODAY, "INDIVIDUAL", "APARTMENT",
-                "STAIR", true, 10, null, 0));
-        types.saveAndFlush(com.toadzip.backend.housing.domain.HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(),
-                "36A", new java.math.BigDecimal("36"), null, null));
-        var notice = announcements.saveAndFlush(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고",
-                AgencyCode.SH, TODAY, "https://example.com/notice"));
+        Candidate candidate = candidate();
+        Announcement notice = candidate.notice();
         if (scenario.equals("published")) {
             jdbc.sql("UPDATE announcements SET release_status='PUBLISHED' WHERE id=?").param(notice.getId()).update();
         }
-        var pdf = attach(notice, "모집공고문.pdf", AttachmentType.ANNOUNCEMENT, 0);
-        long job = extractions.requestBatch(notice.getId(), pdf.getId());
-        var tree = json.createObjectNode();
-        var data = tree.putObject("data");
-        var metadata = data.putObject("announcement");
-        metadata.put("postedDate", TODAY.toString()).put("applicationStartDate", TODAY.toString())
-                .put("applicationEndDate", TODAY.plusDays(2).toString()).put("winnerAnnouncementDate", TODAY.plusDays(5).toString());
-        data.putArray("schedules");
-        data.putArray("receptionPlaces");
-        var sheet = data.putObject("supplySheet");
-        sheet.putArray("housingTypes").addObject().put("key", "h0").put("name", "36A").put("complexName", name).put("exclusiveArea", 36);
-        sheet.putArray("targets").addObject().put("key", "t0").put("label", "전체").putArray("groups");
-        var cell = Map.of("housingType", "h0", "target", "t0");
-        sheet.putArray("cells").add(json.valueToTree(cell));
-        sheet.putArray("quotas").addObject().put("count", 5).put("kind", "WINNER").putArray("members").add(json.valueToTree(cell));
-        sheet.putArray("leaseTerms");
-        var decision = tree.putObject("publicationReview").put("policy", 1);
-        var reasons = decision.putArray("reasons");
-        if (scenario.equals("conflict")) { reasons.add("7쪽 일정 예외"); }
-        var answers = decision.putObject("answers");
-        for (String key : List.of("notice", "supply", "schedules", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")) {
-            answers.putObject(key).put("choice", "confirmed").put("probability", 0.99);
+        ObjectNode tree = passedExtraction(candidate);
+        if (scenario.equals("conflict")) {
+            tree.withObject("publicationReview").withArray("reasons").add("7쪽 일정 예외");
         }
-        answers.putObject("rentalType").put("choice", "HAPPY_HOUSING").put("probability", 0.99);
-        answers.putObject("recruitmentType").put("choice", "NEW").put("probability", 0.99);
-        jdbc.sql("UPDATE ai_jobs SET status='SUCCEEDED', completed_at=now(), pdf=NULL, result=cast(? as jsonb) WHERE id=?")
-                .params(json.writeValueAsString(Map.of("json", tree.toString())), job).update();
-        if (scenario.equals("changedPdf")) { attachmentPdf = pdf(2); }
+        long job = succeededJob(candidate, tree);
+        if (scenario.equals("changedPdf")) {
+            attachmentPdf = pdf(2);
+        }
         if (scenario.equals("shadow")) {
             jdbc.sql("UPDATE ai_jobs SET input=jsonb_set(input, '{publication,mode}', '\"SHADOW\"') WHERE id=?").param(job).update();
         }
+
         publication.process();
         publication.process();
+
         var result = jdbc.sql("SELECT outcome, reason FROM pdf_publication_decisions WHERE job_id=?").param(job).query().singleRow();
         assertThat(result.get("outcome")).as("%s", result.get("reason")).isEqualTo(switch (scenario) {
             case "apply" -> "PUBLISHED";
@@ -302,10 +296,182 @@ class PdfAutoExtractionSchedulerIntegrationTest {
             case "shadow" -> "WOULD_PUBLISH";
             default -> "REVIEW";
         });
-        assertThat(announcements.findById(notice.getId()).orElseThrow().isPublished()).isEqualTo(scenario.equals("apply") || scenario.equals("published"));
+        assertThat(published(notice)).isEqualTo(scenario.equals("apply") || scenario.equals("published"));
         assertThat(jdbc.sql("SELECT count(*) FROM notification_outbox_events WHERE announcement_id=?")
                 .param(notice.getId()).query(Integer.class).single()).isEqualTo(scenario.equals("apply") ? 1 : 0);
     }
+
+    @Test
+    void 기관_서버가_잠깐_응답하지_않으면_판정을_미루고_다음_실행에서_공개한다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        doThrow(new AttachmentUnavailableException(Reason.UPSTREAM_FAILURE)).when(client).read(anyString());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).isEmpty();
+        assertThat(published(candidate.notice())).isFalse();
+
+        doAnswer(invocation -> file(attachmentPdf)).when(client).read(anyString());
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
+        assertThat(published(candidate.notice())).isTrue();
+    }
+
+    @Test
+    void 다운로드_실패가_작업_완료_후_한_시간을_넘기면_읽을_수_있는_사유로_검수에_넘긴다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        jdbc.sql("UPDATE ai_jobs SET completed_at = now() - interval '2 hours' WHERE id=?").param(job).update();
+        doThrow(new AttachmentUnavailableException(Reason.UPSTREAM_FAILURE)).when(client).read(anyString());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason")).isEqualTo("공고문 PDF를 다시 받지 못했습니다. 첨부를 확인하세요.");
+        });
+        assertThat(published(candidate.notice())).isFalse();
+    }
+
+    @Test
+    void 다시_받은_첨부가_PDF가_아니면_기다리지_않고_읽을_수_있는_사유로_검수에_넘긴다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        doAnswer(invocation -> file("<html>error</html>".getBytes(StandardCharsets.US_ASCII)))
+                .when(client).read(anyString());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason")).isEqualTo("공고문 PDF를 다시 받지 못했습니다. 첨부를 확인하세요.");
+        });
+        assertThat(published(candidate.notice())).isFalse();
+    }
+
+    @Test
+    void 같은_공고에_더_새로운_추출_작업이_있으면_옛_작업으로_공개하지_않는다() throws IOException {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        extractions.request(candidate.notice().getId(), "admin", "정정 공고문.pdf", pdf(2));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("REVIEW"));
+        assertThat(published(candidate.notice())).isFalse();
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void 신청자격이_확인되지_않으면_공고만_공개하고_신청자격은_검수로_남긴다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+
+        service.process(job, PublicationMode.APPLY);
+
+        assertThat(published(candidate.notice())).isTrue();
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("eligibility_status")).isEqualTo("REVIEW"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void 신청자격까지_확인된_공고는_공개하고_신청자격_자동_공개를_기다린다() {
+        Candidate candidate = candidate();
+        ObjectNode tree = passedExtraction(candidate);
+        tree.withObject("publicationReview").put("eligibilityVerified", true);
+        long job = succeededJob(candidate, tree);
+
+        service.process(job, PublicationMode.APPLY);
+
+        assertThat(published(candidate.notice())).isTrue();
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("eligibility_status")).isEqualTo("PENDING"));
+    }
+
+    @Test
+    void 공고문을_다시_받는_동안에는_DB_트랜잭션을_잡지_않는다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        List<Boolean> transactionActive = new ArrayList<>();
+        doAnswer(invocation -> {
+            transactionActive.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return file(attachmentPdf);
+        }).when(client).read(anyString());
+
+        publication.process();
+
+        assertThat(transactionActive).containsExactly(false);
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
+    }
+
+    /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */
+    private Candidate candidate() {
+        String complexName = "검증단지-" + UUID.randomUUID();
+        Address address = Address.create("서울 중구 세종대로", "1111010100100010000",
+                "1111010100", "11", "11110", new BigDecimal("37.5"), new BigDecimal("126.9"));
+        HousingComplex complex = complexes.saveAndFlush(HousingComplex.create(complexName,
+                UUID.randomUUID().toString(), "HAPPY_HOUSING", address, 10, "SH", TODAY, "INDIVIDUAL", "APARTMENT",
+                "STAIR", true, 10, null, 0));
+        types.saveAndFlush(HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(),
+                "36A", new BigDecimal("36"), null, null));
+        Announcement notice = announcements.saveAndFlush(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(),
+                "자동 공개 공고", AgencyCode.SH, TODAY, "https://example.com/notice"));
+        return new Candidate(notice, attach(notice, "모집공고문.pdf", AttachmentType.ANNOUNCEMENT, 0), complexName);
+    }
+
+    /** 워커가 원문 대조를 모두 통과시킨 추출 결과. 신청자격은 확인되지 않았다. */
+    private ObjectNode passedExtraction(Candidate candidate) {
+        ObjectNode tree = json.createObjectNode();
+        ObjectNode data = tree.putObject("data");
+        data.putObject("announcement").put("postedDate", TODAY.toString())
+                .put("applicationStartDate", TODAY.toString())
+                .put("applicationEndDate", TODAY.plusDays(2).toString())
+                .put("winnerAnnouncementDate", TODAY.plusDays(5).toString());
+        data.putArray("schedules");
+        data.putArray("receptionPlaces");
+        ObjectNode sheet = data.putObject("supplySheet");
+        sheet.putArray("housingTypes").addObject().put("key", "h0").put("name", "36A")
+                .put("complexName", candidate.complexName()).put("exclusiveArea", 36);
+        sheet.putArray("targets").addObject().put("key", "t0").put("label", "전체").putArray("groups");
+        Map<String, String> cell = Map.of("housingType", "h0", "target", "t0");
+        sheet.putArray("cells").add(json.valueToTree(cell));
+        sheet.putArray("quotas").addObject().put("count", 5).put("kind", "WINNER").putArray("members")
+                .add(json.valueToTree(cell));
+        sheet.putArray("leaseTerms");
+        ObjectNode review = tree.putObject("publicationReview").put("policy", 1)
+                .put("rentalType", "HAPPY_HOUSING").put("recruitmentType", "NEW").put("eligibilityVerified", false);
+        review.putArray("reasons");
+        review.putObject("evidence");
+        review.putObject("answers");
+        return tree;
+    }
+
+    /** 공고문 첨부로 넣은 서버 추출 작업이 이 결과로 방금 끝난 상태. */
+    private long succeededJob(Candidate candidate, ObjectNode tree) {
+        long job = extractions.requestBatch(candidate.notice().getId(), candidate.pdf().getId());
+        jdbc.sql("""
+                UPDATE ai_jobs SET status='SUCCEEDED', completed_at=now(), pdf=NULL, result=cast(? as jsonb) WHERE id=?
+                """)
+                .params(json.writeValueAsString(Map.of("json", tree.toString())), job).update();
+        return job;
+    }
+
+    private List<Map<String, Object>> decisionsOf(long job) {
+        return jdbc.sql("SELECT outcome, reason, eligibility_status FROM pdf_publication_decisions WHERE job_id=?")
+                .param(job).query().listOfRows();
+    }
+
+    private boolean published(Announcement notice) {
+        return announcements.findById(notice.getId()).orElseThrow().isPublished();
+    }
+
+    private record Candidate(Announcement notice, AnnouncementAttachment pdf, String complexName) { }
 
     private Announcement announcement(LocalDate applicationEnd) {
         return announcements.saveAndFlush(Announcement.create(UUID.randomUUID().toString(), null, null, "자동 추출 공고",

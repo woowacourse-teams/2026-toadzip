@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,14 +27,13 @@ class PdfExtractionInputs {
     private final AnnouncementRepository announcements;
     private final AgencySupplyLineRepository lines;
     private final LhCurrentSupplies lhSupplies;
+    @Value("${announcement.pdf-publication.mode}")
+    private PdfExtractionInput.PublicationMode mode;
 
     @Transactional(readOnly = true)
     PdfExtractionInput read(long announcementId) {
         return new PdfExtractionInput(announcements.findById(announcementId).map(this::sourceRows).orElse(List.of()));
     }
-
-    @org.springframework.beans.factory.annotation.Value("${announcement.pdf-publication.mode}")
-    private PdfExtractionInput.PublicationMode mode;
 
     @Transactional(readOnly = true)
     PdfExtractionInput readBatch(long announcementId, long attachmentId) {

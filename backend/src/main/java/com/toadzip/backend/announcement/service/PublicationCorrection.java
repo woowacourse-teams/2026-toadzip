@@ -29,14 +29,27 @@ class PublicationCorrection {
     private final HousingComplexRepository complexes;
     private final HousingTypeRepository types;
 
+    /** 워커가 쓴 추출 결과를 서버 보정 형식으로 읽는 경계다. 읽지 못한 값의 JDK·JSON 오류 문구는 운영자에게 보이지 않게 한다. */
     Request prepare(Workspace workspace, JsonNode tree, OffsetDateTime at, long jobId) {
+        try {
+            return read(workspace, tree, at, jobId);
+        } catch (PublicationHold hold) {
+            throw hold;
+        } catch (RuntimeException unreadable) {
+            throw new PublicationHold("추출 결과를 보정안으로 바꾸지 못했습니다. 원문과 추출값을 확인하세요.", unreadable);
+        }
+    }
+
+    private Request read(Workspace workspace, JsonNode tree, OffsetDateTime at, long jobId) {
         var current = workspace.detail().data();
-        var answers = tree.path("publicationReview").path("answers");
+        var review = tree.path("publicationReview");
         var data = tree.path("data");
         var notice = data.path("announcement");
-        var metadata = new AnnouncementRequest(current.name(), RentalType.valueOf(choice(answers, "rentalType")),
-                RecruitmentType.valueOf(choice(answers, "recruitmentType")), current.agencyCode(), current.postedDate(),
-                date(notice, "applicationStartDate"), date(notice, "applicationEndDate"), date(notice, "winnerAnnouncementDate"));
+        var metadata = new AnnouncementRequest(current.name(),
+                judged(RentalType.class, review, "rentalType", "임대유형 판정값을 확인할 수 없습니다."),
+                judged(RecruitmentType.class, review, "recruitmentType", "모집유형 판정값을 확인할 수 없습니다."),
+                current.agencyCode(), current.postedDate(), date(notice, "applicationStartDate"),
+                date(notice, "applicationEndDate"), date(notice, "winnerAnnouncementDate"));
         require(current.postedDate() != null && current.postedDate().equals(date(notice, "postedDate")),
                 "수집한 공고일과 PDF 모집공고일이 다릅니다.");
         require(!metadata.applicationEndDate().isBefore(metadata.applicationStartDate())
@@ -63,7 +76,9 @@ class PublicationCorrection {
                 "JEV 원문 대조 통과 · PDF 추출 #" + jobId, current.originalUrl(), null, sheet);
         var fields = new ArrayList<>(List.of("applicationStartDate", "applicationEndDate", "winnerAnnouncementDate",
                 "rentalType", "recruitmentType"));
-        if (!places.isEmpty() || !current.receptionPlaces().isEmpty()) { fields.add("receptionPlaces"); }
+        if (!places.isEmpty() || !current.receptionPlaces().isEmpty()) {
+            fields.add("receptionPlaces");
+        }
         return new Request(workspace.snapshotToken(), document, fields, selects, List.of(), correction, List.of(), true);
     }
 
@@ -120,7 +135,9 @@ class PublicationCorrection {
     }
 
     static void require(boolean ok, String reason) {
-        if (!ok) { throw new IllegalArgumentException(reason); }
+        if (!ok) {
+            throw new PublicationHold(reason);
+        }
     }
 
     static List<JsonNode> array(JsonNode node, String field) {
@@ -128,7 +145,13 @@ class PublicationCorrection {
         return node.path(field).valueStream().toList();
     }
 
-    private static String choice(JsonNode answers, String field) { return answers.required(field).required("choice").asString(); }
+    /** 워커가 원문 대조를 통과시킨 유형. 없거나 서버가 모르는 값이면 보류한다. */
+    private static <E extends Enum<E>> E judged(Class<E> kind, JsonNode review, String field, String missing) {
+        String name = review.path(field).asString("");
+        return Arrays.stream(kind.getEnumConstants()).filter(value -> value.name().equals(name)).findFirst()
+                .orElseThrow(() -> new PublicationHold(missing));
+    }
+
     private static LocalDate date(JsonNode node, String field) { return LocalDate.parse(node.required(field).asString()); }
     private static String key(JsonNode node, String field) { return "new:" + node.required(field).asString(); }
     private static String cell(JsonNode node) { return key(node, "housingType") + "-" + node.required("target").asString(); }

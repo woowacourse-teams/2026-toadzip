@@ -2,27 +2,52 @@ package com.toadzip.backend.announcement.service;
 
 import static com.toadzip.backend.announcement.service.PublicationCorrection.require;
 
-import com.toadzip.backend.announcement.domain.*;
+import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput.Publication;
+import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
+import com.toadzip.backend.announcement.domain.PdfExtractionJob;
+import com.toadzip.backend.announcement.domain.PdfExtractionSource;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Apply;
-import com.toadzip.backend.announcement.repository.*;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Preview;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Request;
+import com.toadzip.backend.announcement.dto.response.AttachmentContent;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
+import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
 import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
 import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
 import jakarta.validation.Validator;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
+import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 class PdfPublicationService {
+    /**
+     * 기관 서버가 잠깐 응답하지 않아 공고문을 다시 받지 못한 작업을 다음 주기로 미루는 기간(작업 완료 시각 기준).
+     * 넘기면 검수로 넘긴다. 미룬 작업이 계속 앞자리를 차지하면 뒤의 작업을 판정하지 못한다.
+     */
+    private static final Duration DOWNLOAD_RETRY_WINDOW = Duration.ofHours(1);
+
     private final PdfPublicationDecisions decisions;
     private final PdfExtractionJobRepository jobs;
     private final AnnouncementRepository announcements;
@@ -36,63 +61,124 @@ class PdfPublicationService {
     private final ObjectMapper json;
     private final Validator validator;
     private final Clock clock;
+    private final TransactionTemplate transactions;
 
-    @Transactional
-    public void process(long jobId, PdfExtractionInput.PublicationMode mode) {
-        if (!decisions.claim(jobId)) { return; }
-        var job = jobs.findById(jobId).orElseThrow();
-        var input = json.readValue(job.getInput(), PdfExtractionInput.class);
-        var snapshot = input.publication();
-        var tree = json.readTree(json.readTree(job.getResult()).required("json").asString());
-        var review = tree.path("publicationReview");
+    PdfPublicationService(PdfPublicationDecisions decisions, PdfExtractionJobRepository jobs,
+            AnnouncementRepository announcements, AnnouncementAttachmentRepository attachments,
+            AnnouncementAttachmentService documents, PdfExtractionInputs inputs,
+            AnnouncementJsonCorrectionService corrections, PublicationCorrection proposals,
+            EligibilityRuleSetService rules, EligibilityExtractionDraftService eligibility, ObjectMapper json,
+            Validator validator, Clock clock, PlatformTransactionManager transactionManager) {
+        this.decisions = decisions;
+        this.jobs = jobs;
+        this.announcements = announcements;
+        this.attachments = attachments;
+        this.documents = documents;
+        this.inputs = inputs;
+        this.corrections = corrections;
+        this.proposals = proposals;
+        this.rules = rules;
+        this.eligibility = eligibility;
+        this.json = json;
+        this.validator = validator;
+        this.clock = clock;
+        this.transactions = new TransactionTemplate(transactionManager);
+    }
+
+    /** 공고문을 기관 서버에서 다시 받는 동안에는 DB 트랜잭션과 공고 행 잠금을 잡지 않는다. 판정과 적용만 한 트랜잭션이다. */
+    public void process(long jobId, PublicationMode mode) {
+        PdfExtractionJob job = jobs.findById(jobId).orElseThrow();
+        PdfExtractionInput input = json.readValue(job.getInput(), PdfExtractionInput.class);
+        JsonNode tree = json.readTree(json.readTree(job.getResult()).required("json").asString());
+        JsonNode review = tree.path("publicationReview");
         require(review.path("policy").asInt(0) == 1, "공개 판정이 없는 추출입니다.");
-        var reasons = PublicationCorrection.array(review, "reasons").stream().map(JsonNode::asString).toList();
+        List<String> reasons = PublicationCorrection.array(review, "reasons").stream().map(JsonNode::asString).toList();
         if (!reasons.isEmpty()) {
             decisions.record(jobId, "REVIEW", String.join("\n", reasons), null, null);
             return;
         }
-        checkAnswers(review);
+        Optional<String> downloaded = downloadedSha256(job, input.publication().attachmentId());
+        if (downloaded.isEmpty()) {
+            return;
+        }
+        require(downloaded.get().equals(job.getPdfSha256()), "공고문 PDF 내용이 변경되었습니다.");
+        transactions.executeWithoutResult(status -> decide(job, input, tree, mode));
+    }
+
+    /** 지금 첨부의 SHA-256. 잠깐의 실패라 다음 주기에 다시 받을 작업이면 비어 있다. */
+    private Optional<String> downloadedSha256(PdfExtractionJob job, long attachmentId) {
+        try {
+            AttachmentContent content = documents.readForAdmin(job.getAnnouncementId(), attachmentId);
+            byte[] pdf = AnnouncementPdfExtractionService.bytesOf(content.file());
+            return Optional.of(PdfExtractionSource.of(content.fileName(), pdf).sha256());
+        } catch (AttachmentUnavailableException unavailable) {
+            if (!retriesNextCycle(job, unavailable)) {
+                throw new PublicationHold("공고문 PDF를 다시 받지 못했습니다. 첨부를 확인하세요.", unavailable);
+            }
+            log.warn("event=pdf.publication.download_deferred jobId={} attachmentId={} reason={}",
+                    job.getId(), attachmentId, unavailable.reason());
+            return Optional.empty();
+        }
+    }
+
+    private boolean retriesNextCycle(PdfExtractionJob job, AttachmentUnavailableException unavailable) {
+        Duration sinceCompleted = Duration.between(job.getCompletedAt(), clock.instant());
+        return PdfAutoExtractionScheduler.RETRYABLE.contains(unavailable.reason())
+                && sinceCompleted.compareTo(DOWNLOAD_RETRY_WINDOW) <= 0;
+    }
+
+    private void decide(PdfExtractionJob job, PdfExtractionInput input, JsonNode tree, PublicationMode mode) {
+        long jobId = job.getId();
+        if (!decisions.claim(jobId)) {
+            return;
+        }
         long id = job.getAnnouncementId();
-        var announcement = announcements.findByIdForUpdate(id).orElseThrow();
+        Publication snapshot = input.publication();
+        Announcement announcement = announcements.findByIdForUpdate(id).orElseThrow();
         require(decisions.isLatest(jobId, id) && announcement.getVersion() == snapshot.announcementVersion()
                 && !announcement.isAdminModified() && !announcement.isAdminDeleted()
                 && !announcement.isSourceReviewRequired() && !announcement.isSupplyConfirmed()
                 && announcement.getStatus() == AnnouncementPublicationType.ORIGINAL, "공고·원천이 변경되었거나 이미 검토 중입니다.");
         require(input.sourceSupplyRows().equals(inputs.read(id).sourceSupplyRows()), "기관 공급 원천이 달라졌습니다.");
-        var files = attachments.findAllByAnnouncementIdIn(List.of(id));
-        require(files.stream().noneMatch(a -> a.getFileType() == AttachmentType.CORRECTION
-                || a.getFileType() == AttachmentType.CANCELLATION), "정정·취소 첨부를 확인하세요.");
-        var pdf = PdfAutoExtractionScheduler.preferredPdf(files).orElseThrow();
-        require(pdf.getId() == snapshot.attachmentId() && pdf.getFileName().equals(job.getFileName()), "공고문 첨부가 변경되었습니다.");
-        var content = documents.readForAdmin(id, pdf.getId());
-        var fresh = PdfExtractionSource.of(content.fileName(), AnnouncementPdfExtractionService.bytesOf(content.file()));
-        require(fresh.sha256().equals(job.getPdfSha256()), "공고문 PDF 내용이 변경되었습니다.");
-        var request = proposals.prepare(corrections.workspace(id), tree, job.getCompletedAt().atOffset(ZoneOffset.UTC), jobId);
+        List<AnnouncementAttachment> files = attachments.findAllByAnnouncementIdIn(List.of(id));
+        require(files.stream().noneMatch(file -> file.getFileType() == AttachmentType.CORRECTION
+                || file.getFileType() == AttachmentType.CANCELLATION), "정정·취소 첨부를 확인하세요.");
+        // 트랜잭션 밖에서 받은 첨부가 지금도 이 공고의 공고문인지 본다.
+        AnnouncementAttachment pdf = PdfAutoExtractionScheduler.preferredPdf(files).orElseThrow();
+        require(pdf.getId() == snapshot.attachmentId() && pdf.getFileName().equals(job.getFileName()),
+                "공고문 첨부가 변경되었습니다.");
+        Request request = proposals.prepare(corrections.workspace(id), tree,
+                job.getCompletedAt().atOffset(ZoneOffset.UTC), jobId);
         require(validator.validate(request.correction()).isEmpty(), "공급표의 값·참조 형식을 확인하세요.");
-        require(!request.document().announcement().applicationEndDate().isBefore(LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")))),
-                "접수가 마감되었습니다.");
-        var preview = corrections.preview(id, request);
+        LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));
+        require(!request.document().announcement().applicationEndDate().isBefore(today), "접수가 마감되었습니다.");
+        Preview preview = corrections.preview(id, request);
         boolean previouslyPublished = announcement.isPublished();
         require(preview.publishes() || previouslyPublished, "공고를 공개할 수 없습니다.");
         for (var field : preview.fields()) {
             require(field.before() == null || field.before() instanceof JsonNode before && (before.isNull() || before.isMissingNode() || before.isArray() && before.isEmpty()),
                     "기존 값과 PDF가 다릅니다: " + field.field());
         }
-        if (mode != PdfExtractionInput.PublicationMode.APPLY || snapshot.mode() != mode) {
-            decisions.record(jobId, previouslyPublished ? "WOULD_CONFIRM" : "WOULD_PUBLISH", "공개 기준 통과 · 모의 판정", null, null);
+        if (mode != PublicationMode.APPLY || snapshot.mode() != mode) {
+            decisions.record(jobId, outcome(previouslyPublished, "WOULD_CONFIRM", "WOULD_PUBLISH"),
+                    "공개 기준 통과 · 모의 판정", null, null);
             return;
         }
         corrections.apply(id, new Apply(request, preview.confirmationToken()), PdfPublicationScheduler.ACTOR);
-        boolean verifiedEligibility = eligibilityReady(review);
-        decisions.record(jobId, previouslyPublished ? "CONFIRMED" : "PUBLISHED",
-                verifiedEligibility ? "공개 기준 통과" : "공고 보정 완료 · 신청자격의 원문 근거와 대상별 예외를 확인하세요.",
-                announcement.getVersion(), verifiedEligibility ? "PENDING" : "REVIEW");
+        String outcome = outcome(previouslyPublished, "CONFIRMED", "PUBLISHED");
+        if (tree.path("publicationReview").path("eligibilityVerified").booleanValue(false)) {
+            decisions.record(jobId, outcome, "공개 기준 통과", announcement.getVersion(), "PENDING");
+            return;
+        }
+        decisions.record(jobId, outcome, "공고 보정 완료 · 신청자격의 원문 근거와 대상별 예외를 확인하세요.",
+                announcement.getVersion(), "REVIEW");
     }
 
-    private static boolean eligibilityReady(JsonNode review) {
-        var answer = review.path("answers").path("eligibility");
-        double probability = answer.path("probability").asDouble(-1);
-        return "confirmed".equals(answer.path("choice").asString("")) && probability >= 0.95 && probability <= 1;
+    private static String outcome(boolean previouslyPublished, String confirmed, String published) {
+        if (previouslyPublished) {
+            return confirmed;
+        }
+        return published;
     }
 
     @Transactional
@@ -109,18 +195,5 @@ class PdfPublicationService {
         // 작성·공개·투영까지 같은 트랜잭션이다. 연결하지 못한 경로가 있으면 자격만 되돌린다.
         require(result.published() && result.notices().isEmpty(), "신청자격 경로 또는 원문 연결 확인이 필요합니다.");
         decisions.finishEligibility(jobId, "PUBLISHED", "공고와 신청자격 공개 완료");
-    }
-
-    private void checkAnswers(JsonNode review) {
-        var answers = review.path("answers");
-        for (String field : List.of("applicationStartDate", "applicationEndDate", "winnerAnnouncementDate",
-                "rentalType", "recruitmentType", "notice", "supply", "schedules")) {
-            var answer = answers.path(field);
-            double probability = answer.path("probability").asDouble(-1);
-            require(probability >= 0.95 && probability <= 1, "JEV 확인 필요: " + field);
-            if (!field.endsWith("Type")) {
-                require("confirmed".equals(answer.path("choice").asString("")), "JEV 원문 불일치: " + field);
-            }
-        }
     }
 }

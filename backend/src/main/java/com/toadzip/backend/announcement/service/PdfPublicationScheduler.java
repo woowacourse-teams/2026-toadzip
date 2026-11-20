@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.service;
 
+import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.global.config.SchedulingConfig;
@@ -34,7 +35,9 @@ class PdfPublicationScheduler {
     @Scheduled(fixedDelayString = "${announcement.pdf-auto-extraction.check-interval}",
             initialDelayString = "${announcement.pdf-auto-extraction.initial-delay}", scheduler = SchedulingConfig.AUTO_RUN_SCHEDULER)
     void process() {
-        if (mode == PublicationMode.OFF) { return; }
+        if (mode == PublicationMode.OFF) {
+            return;
+        }
         var previous = SecurityContextHolder.getContext();
         var context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(ACTOR, null,
@@ -48,8 +51,7 @@ class PdfPublicationScheduler {
                     return;
                 } catch (RuntimeException failure) {
                     log.warn("event=pdf.publication.held jobId={}", job, failure);
-                    String reason = failure instanceof IllegalArgumentException ? failure.getMessage() : "자동 보정 실패 · 원문과 변경안을 확인하세요.";
-                    decisions.record(job, "REVIEW", reason == null ? "공고문 확인 필요" : reason, null, null);
+                    decisions.record(job, "REVIEW", reasonOf(failure), null, null);
                 }
             }
             if (mode == PublicationMode.APPLY) {
@@ -65,5 +67,15 @@ class PdfPublicationScheduler {
         } finally {
             SecurityContextHolder.setContext(previous);
         }
+    }
+
+    /** 보류 사유와 기존 보정 서비스의 관리자 안내 문구만 검수함에 그대로 보인다. 그 밖의 실패 원인은 로그에만 남긴다. */
+    private static String reasonOf(RuntimeException failure) {
+        boolean readable = failure instanceof PublicationHold || failure instanceof IllegalArgumentException
+                || failure instanceof AdminDataConflictException;
+        if (readable && failure.getMessage() != null) {
+            return failure.getMessage();
+        }
+        return "자동 보정 실패 · 원문과 변경안을 확인하세요.";
     }
 }

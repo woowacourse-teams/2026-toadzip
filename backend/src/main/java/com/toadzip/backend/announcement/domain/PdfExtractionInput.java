@@ -1,5 +1,7 @@
 package com.toadzip.backend.announcement.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import java.util.List;
 
 /**
@@ -10,8 +12,7 @@ import java.util.List;
  *                         수집 전이면 비어 있다.
  */
 public record PdfExtractionInput(List<SourceSupplyRow> sourceSupplyRows,
-        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        Publication publication) {
+        @JsonInclude(Include.NON_NULL) Publication publication) {
     public PdfExtractionInput(List<SourceSupplyRow> sourceSupplyRows) {
         this(sourceSupplyRows, null);
     }
@@ -19,7 +20,6 @@ public record PdfExtractionInput(List<SourceSupplyRow> sourceSupplyRows,
     public enum PublicationMode { OFF, SHADOW, APPLY }
 
     public record Publication(long attachmentId, long announcementVersion, String title, PublicationMode mode) { }
-
 
     /**
      * 원천 공급 한 행. 값은 문자열이고 모르면 빈 문자열이다. source는 LH·GH, order는 원천 순번(GH는 틀 행 표시 순서),
