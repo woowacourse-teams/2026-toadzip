@@ -41,6 +41,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -58,6 +59,7 @@ import tools.jackson.databind.node.ObjectNode;
         "announcement.pdf-auto-extraction.initial-delay=PT24H"
 })
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @ContextConfiguration(initializers = PdfEligibilityPublicationIntegrationTest.SchemaInitializer.class)
 class PdfEligibilityPublicationIntegrationTest {
     private static final LocalDate TODAY = LocalDate.now(ZoneId.of("Asia/Seoul"));
