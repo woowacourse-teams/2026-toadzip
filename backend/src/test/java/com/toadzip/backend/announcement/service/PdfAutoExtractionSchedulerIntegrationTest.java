@@ -15,9 +15,11 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementComplex;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRowSeed;
 import com.toadzip.backend.announcement.domain.TemporaryAttachment;
@@ -27,6 +29,7 @@ import com.toadzip.backend.announcement.exception.PdfExtractionInProgressExcepti
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions.ReviewItem;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
@@ -109,6 +112,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private EntityManager entities;
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private PdfPublicationReviewController reviews;
+    @Autowired private AnnouncementScheduleRepository schedules;
     @MockitoBean private AnnouncementAttachmentClient client;
 
     /** 첨부 서버가 돌려주는 PDF. 만들 때마다 문서 ID가 달라지므로 같은 PDF를 올리는 경우는 이 바이트를 쓴다. */
@@ -441,9 +445,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
     @Test
     void 수집한_유형과_날짜를_작업_입력에_담고_PDF가_같은_값이면_공급표를_확정한다() {
-        Candidate collected = candidate(Announcement.create("SH:" + UUID.randomUUID(), null, null, "수집값이 있는 공고",
-                AnnouncementPublicationType.ORIGINAL, RentalType.HAPPY_HOUSING, RecruitmentType.NEW, AgencyCode.SH,
-                TODAY, TODAY, TODAY.plusDays(2), TODAY.plusDays(5), "https://example.com/notice", null, 0, null));
+        Candidate collected = candidate(collectedNotice(RentalType.HAPPY_HOUSING, RecruitmentType.NEW));
         long id = collected.notice().getId();
         long job = succeededJob(collected, passedExtraction(collected));
         Candidate unconfirmed = candidate();
@@ -642,6 +644,35 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
     }
 
+    @Test
+    void 기존_일정과_같은_일정은_더하지_않고_그_밖의_PDF_일정만_한_번씩_더한다() {
+        Candidate candidate = candidate();
+        long id = candidate.notice().getId();
+        // 수집 일정은 이름이 고정이고 시각이 없어 PDF 일정과 글자 그대로 같지 않다.
+        schedule(candidate.notice(), ScheduleType.APPLICATION, "접수", TODAY, TODAY.plusDays(2), 0);
+        schedule(candidate.notice(), ScheduleType.ETC, "서류제출 대상자 발표", TODAY.plusDays(4), TODAY.plusDays(4), 1);
+        List<Map<String, Object>> collected = scheduleRows(id);
+        ObjectNode tree = passedExtraction(candidate);
+        ObjectNode data = tree.withObject("data");
+        pdfSchedule(data, "APPLICATION", "현장 신청접수 10:00~15:00", TODAY.plusDays(2), TODAY.plusDays(2));
+        pdfSchedule(data, "DOCUMENT_SUBMISSION", "서류제출대상자 발표", TODAY.plusDays(4), TODAY.plusDays(4));
+        pdfSchedule(data, "ETC", "인터넷 접수 안내", TODAY.plusDays(1), TODAY.plusDays(1));
+        pdfSchedule(data, "CONTRACT", "계약 체결", TODAY.plusDays(1), TODAY.plusDays(1));
+        pdfSchedule(data, "APPLICATION", "추가 접수", TODAY.plusDays(3), TODAY.plusDays(3));
+        pdfSchedule(data, "MOVE_IN", "입주", TODAY.plusDays(30), TODAY.plusDays(40));
+        pdfSchedule(data, "MOVE_IN", "입주", TODAY.plusDays(30), TODAY.plusDays(40));
+        long job = succeededJob(candidate, tree);
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        List<Map<String, Object>> stored = scheduleRows(id);
+        assertThat(stored.subList(0, 2)).isEqualTo(collected);
+        assertThat(stored.subList(2, stored.size())).extracting(row -> row.get("name"))
+                .containsExactly("계약 체결", "추가 접수", "입주");
+    }
+
     /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */
     private Candidate candidate() {
         return candidate(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고", AgencyCode.SH, TODAY,
@@ -660,6 +691,32 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 "36A", new BigDecimal("36"), null, null));
         Announcement notice = announcements.saveAndFlush(unsaved);
         return new Candidate(notice, attach(notice, "모집공고문.pdf", AttachmentType.ANNOUNCEMENT, 0), complexName);
+    }
+
+    /** 유형과 날짜를 수집해 이미 공개한 공고(저장 전). 날짜는 통과한 추출 결과의 날짜와 같다. */
+    private static Announcement collectedNotice(RentalType rentalType, RecruitmentType recruitmentType) {
+        return Announcement.create("SH:" + UUID.randomUUID(), null, null, "수집값이 있는 공고",
+                AnnouncementPublicationType.ORIGINAL, rentalType, recruitmentType, AgencyCode.SH,
+                TODAY, TODAY, TODAY.plusDays(2), TODAY.plusDays(5), "https://example.com/notice", null, 0, null);
+    }
+
+    /** 수집한 일정처럼 시각 없이 날짜만 있는 기존 일정. */
+    private void schedule(Announcement notice, ScheduleType type, String name, LocalDate start, LocalDate end,
+            int order) {
+        schedules.saveAndFlush(AnnouncementSchedule.create(notice, type, name, start.atStartOfDay(),
+                end.atStartOfDay(), order));
+    }
+
+    /** 공고문에 적힌 일정. 하루 안의 시각(10시~15시)이 붙는다. */
+    private static void pdfSchedule(ObjectNode data, String type, String name, LocalDate start, LocalDate end) {
+        data.withArray("schedules").addObject().put("scheduleType", type).put("name", name)
+                .put("startAt", start.atTime(10, 0).toString())
+                .put("endAt", end.atTime(15, 0).toString());
+    }
+
+    private List<Map<String, Object>> scheduleRows(long announcementId) {
+        return jdbc.sql("SELECT * FROM announcement_schedules WHERE announcement_id = ? ORDER BY display_order, id")
+                .param(announcementId).query().listOfRows();
     }
 
     /** 워커가 원문 대조를 모두 통과시킨 추출 결과. 신청자격은 확인되지 않았다. */

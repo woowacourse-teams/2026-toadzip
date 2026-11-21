@@ -8,6 +8,7 @@ import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportReque
 import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
@@ -58,16 +59,7 @@ class PublicationCorrection {
                 .map(item -> json.treeToValue(item, ReceptionPlaceRequest.class)).toList();
         List<ScheduleRequest> schedules = array(data, "schedules").stream()
                 .map(item -> json.treeToValue(item, ScheduleRequest.class)).toList();
-        var selects = new ArrayList<Selection>();
-        require(schedules.containsAll(workspace.events().stream().map(Event::data).toList()),
-                "기존 일정과 PDF 일정이 다릅니다.");
-        for (int i = 0; i < schedules.size(); i++) {
-            var event = schedules.get(i);
-            require(Collections.frequency(schedules, event) == 1, "중복 일정의 적용 대상을 확인하세요.");
-            if (workspace.events().stream().noneMatch(e -> e.data().equals(event))) {
-                selects.add(new Selection(i, null));
-            }
-        }
+        var selects = newSchedules(schedules, workspace.events());
         var source = new SourceRequest(current.originalUrl(), "pdf-job-" + jobId, at);
         var document = new AdminAnnouncementImportRequest("admin-announcement-import/v1", source, metadata, places,
                 null, List.of(), schedules, List.of(), List.of());
@@ -80,6 +72,33 @@ class PublicationCorrection {
             fields.add("receptionPlaces");
         }
         return new Request(workspace.snapshotToken(), document, fields, selects, List.of(), correction, List.of(), true);
+    }
+
+    /**
+     * 수집한 일정은 이름이 고정이고 시각이 없어 공고문 일정과 글자 그대로 같을 수 없다. 그래서 기존 일정은 고치거나 지우지 않고,
+     * 공고문 일정 가운데 기존 일정과 같은 일정이 아닌 것만 새 일정으로 더한다. 공고문에 똑같이 여러 번 적힌 일정은 한 번만 더한다.
+     * 접수 기간과 발표일은 워커가 따로 확인하므로 일정 목록이 달라도 보류하지 않는다.
+     */
+    private static List<Selection> newSchedules(List<ScheduleRequest> schedules, List<Event> existing) {
+        var selections = new ArrayList<Selection>();
+        var added = new HashSet<ScheduleRequest>();
+        for (int index = 0; index < schedules.size(); index++) {
+            ScheduleRequest schedule = schedules.get(index);
+            boolean known = existing.stream().anyMatch(event -> sameSchedule(event.data(), schedule));
+            if (!known && added.add(schedule)) {
+                selections.add(new Selection(index, null));
+            }
+        }
+        return selections;
+    }
+
+    /** 같은 일정은 종류가 같거나 한쪽이 기타이고, 시각을 뺀 날짜 구간이 하루라도 겹치는 일정이다. */
+    private static boolean sameSchedule(ScheduleRequest existing, ScheduleRequest fromPdf) {
+        boolean comparableType = existing.scheduleType() == fromPdf.scheduleType()
+                || existing.scheduleType() == ScheduleType.ETC || fromPdf.scheduleType() == ScheduleType.ETC;
+        boolean overlapping = !fromPdf.startAt().toLocalDate().isAfter(existing.endAt().toLocalDate())
+                && !existing.startAt().toLocalDate().isAfter(fromPdf.endAt().toLocalDate());
+        return comparableType && overlapping;
     }
 
     private SupplySheetInput sheet(Workspace workspace, JsonNode sheet) {
