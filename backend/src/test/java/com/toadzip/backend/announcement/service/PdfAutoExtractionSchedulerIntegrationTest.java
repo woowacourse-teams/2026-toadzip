@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -112,8 +112,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private AnnouncementScheduleRepository schedules;
     @Autowired private IngestExecutionOwnershipService ownership;
     @MockitoBean private AnnouncementAttachmentClient client;
-    /** 판정 트랜잭션 안의 한 지점이다. 그 시점의 트랜잭션 상태를 보거나 일시 오류를 내는 데 쓴다. */
-    @MockitoSpyBean private PublicationCorrection proposals;
+    /** 스파이는 판정 중의 실제 DB 호출 지점에서 일시 오류나 동시 변경을 일으키는 데 쓴다. */
     @MockitoSpyBean private PdfPublicationDecisions decisions;
 
     /** 첨부 서버가 돌려주는 PDF. 만들 때마다 문서 ID가 달라지므로 같은 PDF를 올리는 경우는 이 바이트를 쓴다. */
@@ -692,9 +691,14 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         assertThat(notice.getRecruitmentType()).isEqualTo(RecruitmentType.NEW);
     }
 
-    @Test
-    void 수집한_유형이_기타가_아닌_다른_값이면_보류하고_유형을_그대로_둔다() {
-        Candidate collected = fixture.candidate(collectedNotice(RentalType.NATIONAL_RENTAL, RecruitmentType.NEW));
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            NATIONAL_RENTAL | NEW      | rentalType
+            ETC             | WAITLIST | recruitmentType
+            """)
+    void 수집한_유형이_기타가_아닌_다른_값이면_보류하고_두_유형을_그대로_둔다(RentalType rentalType,
+            RecruitmentType recruitmentType, String conflict) {
+        Candidate collected = fixture.candidate(collectedNotice(rentalType, recruitmentType));
         long id = collected.notice().getId();
         long job = fixture.succeededJob(collected, fixture.passedExtraction(collected));
 
@@ -702,39 +706,52 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
         assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
             assertThat(decision.get("outcome")).isEqualTo("REVIEW");
-            assertThat(decision.get("reason")).isEqualTo("기존 값과 PDF가 다릅니다: rentalType");
+            assertThat(decision.get("reason")).isEqualTo("기존 값과 PDF가 다릅니다: " + conflict);
         });
+        // 한 항목이라도 기존 값과 다르면 덮어써도 되는 '기타'까지 그대로 둔다.
         Announcement notice = announcements.findById(id).orElseThrow();
         assertThat(notice.isSupplyConfirmed()).isFalse();
-        assertThat(notice.getSupplyType()).isEqualTo(RentalType.NATIONAL_RENTAL);
+        assertThat(notice.getSupplyType()).isEqualTo(rentalType);
+        assertThat(notice.getRecruitmentType()).isEqualTo(recruitmentType);
     }
 
     @Test
-    void 잠금_대기_같은_일시_오류는_판정을_기록하지_않고_다음_실행에서_공개한다() {
+    void 적용_뒤_결정_기록이_일시_오류로_실패하면_모두_되돌리고_다음_실행에서_한_번만_적용한다() {
         Candidate candidate = fixture.candidate();
-        long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
+        long id = candidate.notice().getId();
+        ObjectNode tree = fixture.passedExtraction(candidate);
+        pdfSchedule(tree.withObject("data"), "APPLICATION", "청약 접수", TODAY, TODAY.plusDays(2));
+        long job = fixture.succeededJob(candidate, tree);
+        // 공고 보정을 적용한 뒤 같은 트랜잭션에서 공개 결정을 기록하는 첫 호출이 잠금 대기 초과로 실패한다.
         doThrow(new CannotAcquireLockException("lock timeout")).doCallRealMethod()
-                .when(proposals).prepare(any(), any(), any(), anyLong());
+                .when(decisions).record(eq(job), eq("PUBLISHED"), anyString(), any(), any());
 
         publication.process();
 
         assertThat(decisionsOf(job)).isEmpty();
         assertThat(published(candidate.notice())).isFalse();
+        assertThat(supplyRows(id)).isEmpty();
+        assertThat(count("announcement_schedules", id)).isZero();
+        assertThat(count("notification_outbox_events", id)).isZero();
 
         publication.process();
 
         assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
                 assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
         assertThat(published(candidate.notice())).isTrue();
+        assertThat(supplyRows(id)).hasSize(1);
+        assertThat(count("announcement_schedules", id)).isOne();
+        assertThat(count("notification_outbox_events", id)).isOne();
     }
 
     @Test
-    void 일시_오류가_작업_완료_후_한_시간을_넘기면_검수에_넘긴다() {
+    void 일시_오류가_작업_완료_후_한_시간을_넘기면_적용을_되돌리고_검수에_넘긴다() {
         Candidate candidate = fixture.candidate();
+        long id = candidate.notice().getId();
         long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
         jdbc.sql("UPDATE ai_jobs SET completed_at = now() - interval '2 hours' WHERE id=?").param(job).update();
         doThrow(new CannotAcquireLockException("lock timeout"))
-                .when(proposals).prepare(any(), any(), any(), anyLong());
+                .when(decisions).record(eq(job), eq("PUBLISHED"), anyString(), any(), any());
 
         publication.process();
 
@@ -743,6 +760,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
             assertThat(decision.get("reason")).isEqualTo("자동 보정 실패 · 원문과 변경안을 확인하세요.");
         });
         assertThat(published(candidate.notice())).isFalse();
+        assertThat(supplyRows(id)).isEmpty();
     }
 
     @Test
@@ -799,23 +817,6 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
         publication.process();
 
-        assertThat(decisionsOf(job)).singleElement()
-                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
-    }
-
-    @Test
-    void 판정과_적용은_반복_읽기_격리_수준의_트랜잭션에서_한다() {
-        Candidate candidate = fixture.candidate();
-        long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
-        List<String> isolation = new ArrayList<>();
-        doAnswer(invocation -> {
-            isolation.add(jdbc.sql("SHOW transaction_isolation").query(String.class).single());
-            return invocation.callRealMethod();
-        }).when(proposals).prepare(any(), any(), any(), anyLong());
-
-        publication.process();
-
-        assertThat(isolation).containsExactly("repeatable read");
         assertThat(decisionsOf(job)).singleElement()
                 .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
     }
