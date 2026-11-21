@@ -4,11 +4,14 @@ import static com.toadzip.backend.announcement.service.PdfPublicationFixture.fil
 import static com.toadzip.backend.announcement.service.PdfPublicationFixture.pdf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
 import com.toadzip.backend.announcement.service.PdfPublicationFixture.Candidate;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
@@ -25,12 +28,14 @@ import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.MapPropertySource;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -58,6 +63,8 @@ class PdfEligibilityPublicationIntegrationTest {
     @Autowired private ObjectMapper json;
     @Autowired private JdbcClient jdbc;
     @MockitoBean private AnnouncementAttachmentClient client;
+    /** 신청자격 공개 중의 실제 DB 호출 지점에서 일시 오류를 일으키는 데 쓴다. */
+    @MockitoSpyBean private PdfPublicationDecisions decisions;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -163,6 +170,29 @@ class PdfEligibilityPublicationIntegrationTest {
                 .containsEntry("eligibility_status", "REVIEW")
                 .containsEntry("reason", "공고 보정 완료 · 신청자격 조건과 대상 연결을 확인하세요.");
         assertThat(ruleSets(notice)).isEmpty();
+    }
+
+    @Test
+    void 신청자격_공개_중_일시_오류는_검수로_넘기지_않고_되돌린_뒤_다음_실행에서_공개한다() {
+        Candidate candidate = fixture.candidate();
+        Announcement notice = candidate.notice();
+        long job = succeededJob(candidate);
+        // 신청자격을 저장·공개한 뒤 같은 트랜잭션에서 결과를 기록하는 첫 호출이 잠금 대기 초과로 실패한다.
+        doThrow(new CannotAcquireLockException("lock timeout")).doCallRealMethod()
+                .when(decisions).finishEligibility(eq(job), eq("PUBLISHED"), anyString());
+
+        publication.process();
+
+        assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
+                .containsEntry("eligibility_status", "PENDING").containsEntry("reason", "공개 기준 통과");
+        assertThat(ruleSets(notice)).isEmpty();
+
+        publication.process();
+
+        assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
+                .containsEntry("eligibility_status", "PUBLISHED").containsEntry("reason", "공고와 신청자격 공개 완료");
+        assertThat(ruleSets(notice)).singleElement()
+                .satisfies(ruleSet -> assertThat(ruleSet.get("status")).isEqualTo("PUBLISHED"));
     }
 
     /** 방금 끝난 서버 추출 작업. 워커가 원문 대조를 모두 통과시켰고 신청자격도 확인했다. */

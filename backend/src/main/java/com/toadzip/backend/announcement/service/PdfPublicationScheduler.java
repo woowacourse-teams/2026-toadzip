@@ -57,8 +57,7 @@ class PdfPublicationScheduler {
                     try {
                         service.publishEligibility(job);
                     } catch (RuntimeException failure) {
-                        log.warn("event=pdf.eligibility.held jobId={}", job, failure);
-                        decisions.finishEligibility(job, "REVIEW", eligibilityReasonOf(failure));
+                        recordEligibilityFailure(job, failure);
                     }
                 }
             }
@@ -75,6 +74,16 @@ class PdfPublicationScheduler {
         }
         log.warn("event=pdf.publication.held jobId={}", job, failure);
         decisions.record(job, "REVIEW", reasonOf(failure), null, null);
+    }
+
+    /** 신청자격 공개도 다시 하면 풀리는 실패는 기록하지 않아 PENDING으로 남기고 다음 주기에 다시 공개한다. */
+    private void recordEligibilityFailure(long job, RuntimeException failure) {
+        if (service.retriesNextCycle(job, failure)) {
+            log.warn("event=pdf.eligibility.deferred jobId={}", job, failure);
+            return;
+        }
+        log.warn("event=pdf.eligibility.held jobId={}", job, failure);
+        decisions.finishEligibility(job, "REVIEW", eligibilityReasonOf(failure));
     }
 
     /**
