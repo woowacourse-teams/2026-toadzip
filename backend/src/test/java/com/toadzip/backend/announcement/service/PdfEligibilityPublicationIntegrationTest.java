@@ -111,7 +111,7 @@ class PdfEligibilityPublicationIntegrationTest {
         assertThat(content.path("guidances").valueStream()
                 .filter(guidance -> guidance.path("id").asString().equals("list-common"))
                 .flatMap(guidance -> guidance.path("items").valueStream()).map(JsonNode::asString).toList())
-                .containsExactly("무주택: 무주택세대구성원");
+                .containsExactly("세대원 모두 무주택");
     }
 
     @Test

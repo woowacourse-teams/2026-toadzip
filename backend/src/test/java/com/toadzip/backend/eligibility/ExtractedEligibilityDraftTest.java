@@ -171,8 +171,8 @@ class ExtractedEligibilityDraftTest {
         EligibilityContent content = draft(evidence(), List.of(unquoted));
 
         assertThat(youth(content, b())).isEqualTo(Status.ELIGIBLE);
-        // 같은 문구를 쓰는 다른 종류(자동차가액)의 경고가 붙지 않게 종류를 앞에 붙인다.
-        assertThat(guidance(content, "list-path-1").items()).containsExactly("자산: 총자산 34,500만원 이하");
+        // 상한 금액을 아는 자산 요건은 원문 조각 대신 값으로 쓴다.
+        assertThat(guidance(content, "list-path-1").items()).containsExactly("세대원 자산을 모두 합쳐 3억 4,500만원 이하");
         assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::label)
                 .containsExactly("만 19세 이상 39세 이하");
     }
@@ -203,6 +203,74 @@ class ExtractedEligibilityDraftTest {
         assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::label)
                 .containsExactly("만 19세 이상 39세 이하");
         assertThat(youth(content, with(b(), ProfileField.FAMILY_OWNS_HOUSE, true))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 목록은_값으로_뜻이_분명한_요건을_짧게_쓰고_이미_판정하는_요건과_가리키는_내용이_빠진_조각은_두지_않는다() {
+        // 314 공고처럼 원문 대조로 뜻을 확인하지 못한 요건이 공고문 조각 그대로 목록에 붙어 읽히지 않던 경우다.
+        Map<String, Quote> quotes = evidence();
+        for (int index = 1; index <= 4; index++) {
+            quotes.put(YOUTH + ".requirements[" + index + "]", new Quote(3, "원문 " + YOUTH + ".requirements[" + index + "]"));
+        }
+        Requirement keepNoHouse = requirement("NO_HOUSE", "HOUSEHOLD", YOUTH + ".requirements[1]",
+                "입주자모집공고일로부터 입주 시까지 무주택세대구성원을 유지해야 하며");
+        // 314처럼 출산자녀 가산이 붙은 자동차가액이다. 가산을 넣은 조건은 선택 조건이 되지만 문구는 기본 기준으로 쓴다.
+        Requirement car = new Requirement("CAR_VALUE", "HOUSEHOLD", null, null, null, null, null, null, Map.of(),
+                List.of(new Adjustment("CHILDBIRTH", "출산자녀 2인 이상 20%p 가산, 출산자녀 1인 10%p 가산")),
+                45_420_000L, List.of(), List.of(), List.of(),
+                "자동차가액 세대구성원 전원이 보유하고 있는 개별 자동차가액 ( 4,542 )만원 이하", YOUTH + ".requirements[2]");
+        Requirement foreigner = requirement("OTHER", null, YOUTH + ".requirements[3]", "외국인은 신청 불가합니다.");
+        Requirement minor = requirement("OTHER", null, YOUTH + ".requirements[4]",
+                "아래의 어느 하나에 해당하는 경우에는 미성년자도 공급 신청 가능합니다.");
+        Source base = source(quotes, null, List.of(keepNoHouse, car, foreigner, minor));
+        Set<String> unconfirmed = Set.of(YOUTH + ".requirements[1]", YOUTH + ".requirements[2]");
+        Source automatic = new Source(base.referenceDate(), base.document(), base.units(), base.eligibility(),
+                base.incomeTables(), base.regionCodes(), path -> !unconfirmed.contains(path));
+        EligibilityContent content = ExtractedEligibilityDraft.build(automatic).content();
+        validate(content);
+
+        // 세대 무주택은 공통 조건으로 이미 판정하므로 다시 두지 않는다.
+        assertThat(guidance(content, "list-path-1").items())
+                .containsExactly("세대원이 가진 자동차는 한 대씩 따져 모두 가액이 4,542만원 이하 (출산자녀 가구는 기준이 더 높아요)",
+                        "외국인은 신청 불가합니다.");
+        assertThat(youth(content, with(b(), ProfileField.FAMILY_OWNS_HOUSE, true))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 목록은_신청을_막는_조각과_원문에_없는_금액은_원문대로_두고_같은_범위에서_판정하는_요건은_다시_두지_않는다() {
+        Map<String, Quote> quotes = evidence();
+        for (int index = 1; index <= 4; index++) {
+            quotes.put(YOUTH + ".requirements[" + index + "]", new Quote(3, "원문 " + YOUTH + ".requirements[" + index + "]"));
+        }
+        Requirement judgedHouse = requirement("NO_HOUSE", "APPLICANT", YOUTH + ".requirements[1]", "공고일 현재 무주택자");
+        Requirement keepHouse = requirement("NO_HOUSE", "APPLICANT", YOUTH + ".requirements[2]", "입주 시까지 무주택 유지");
+        // 추출 금액(5,000만원)이 원문(4,542만원)과 다르다. 확인하지 못한 값을 깔끔한 문장으로 바꿔 보이지 않는다.
+        Requirement wrongCar = new Requirement("CAR_VALUE", "HOUSEHOLD", null, null, null, null, null, null, Map.of(), List.of(),
+                50_000_000L, List.of(), List.of(), List.of(), "자동차가액 4,542만원 이하", YOUTH + ".requirements[3]");
+        Requirement restricting = requirement("OTHER", null, YOUTH + ".requirements[4]",
+                "다음 각 호의 어느 하나에 해당하는 자는 신청할 수 없습니다.");
+        // 가산이 붙은 금액은 기본 기준이라 더 높은 기준을 받는 가구를 함께 적는다. 2,450만원의 450은 450만원과 맞추지 않는다.
+        quotes.put(YOUTH + ".requirements[5]", new Quote(3, "원문 " + YOUTH + ".requirements[5]"));
+        quotes.put(YOUTH + ".requirements[6]", new Quote(3, "원문 " + YOUTH + ".requirements[6]"));
+        Requirement raisedAssets = new Requirement("ASSETS", "HOUSEHOLD", null, null, null, null, null, null, Map.of(),
+                List.of(new Adjustment("DISABILITY", "장애인 가구 10% 가산")), 345_000_000L, List.of(), List.of(), List.of(),
+                "총자산 34,500만원 이하", YOUTH + ".requirements[5]");
+        Requirement partialAmount = new Requirement("CAR_VALUE", "APPLICANT", null, null, null, null, null, null, Map.of(),
+                List.of(), 4_500_000L, List.of(), List.of(), List.of(), "자동차가액 2,450만원 이하", YOUTH + ".requirements[6]");
+        Source base = source(quotes, null, List.of(judgedHouse, keepHouse, wrongCar, restricting, raisedAssets, partialAmount));
+        Set<String> unconfirmed = Set.of(YOUTH + ".requirements[2]", YOUTH + ".requirements[3]",
+                YOUTH + ".requirements[5]", YOUTH + ".requirements[6]");
+        Source automatic = new Source(base.referenceDate(), base.document(), base.units(), base.eligibility(),
+                base.incomeTables(), base.regionCodes(), path -> !unconfirmed.contains(path));
+        EligibilityContent content = ExtractedEligibilityDraft.build(automatic).content();
+        validate(content);
+
+        assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::label)
+                .containsExactly("만 19세 이상 39세 이하", "공고일 현재 무주택자");
+        assertThat(guidance(content, "list-path-1").items()).containsExactly(
+                "자동차가액: 자동차가액 4,542만원 이하", "다음 각 호의 어느 하나에 해당하는 자는 신청할 수 없습니다.",
+                "세대원 자산을 모두 합쳐 3억 4,500만원 이하 (장애인 등 가구는 기준이 더 높아요)",
+                "자동차가액: 자동차가액 2,450만원 이하");
     }
 
     @Test

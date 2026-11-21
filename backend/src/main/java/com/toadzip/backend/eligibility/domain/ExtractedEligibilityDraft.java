@@ -92,6 +92,10 @@ public final class ExtractedEligibilityDraft {
     /** 출산자녀 수별 가산 비율: "2인 이상 20%", "1인 10% 가산", "1명당 10%p". */
     private static final Pattern CHILDBIRTH_TIER = Pattern.compile("(\\d)\\s*(?:인|명)\\s*(당)?\\s*(이상)?[^\\d%]{0,10}?(\\d{1,3})\\s*(?:%|퍼센트)");
 
+    private static final Pattern DANGLING_REFERENCE = Pattern.compile(
+            "(?:아래|다음)(?:의|와 같은)?\\s*(?:어느|각\\s*[호목]|중\\s*하나|사항|요건|경우)");
+    private static final Pattern WIDENING = Pattern.compile("가능|신청할\\s*수\\s*있");
+    private static final Pattern RESTRICTING = Pattern.compile("불가|없|제외|제한|아니");
     private static final Set<String> EARLIER_UNRESOLVED_TEXTS = Set.of(
             "모델 응답에서 빠진 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.",
             "신청 대상마다 다른 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.");
@@ -547,6 +551,12 @@ public final class ExtractedEligibilityDraft {
         }
 
         private void list(String item, String evidenceId) {
+            // "아래의 어느 하나에 해당하는 경우에는 … 신청 가능"처럼 가리키는 내용이 빠진 채 자격을 넓히기만 하는 조각은
+            // 읽어도 알 수 없고 빠져도 사용자가 손해 보지 않아 보이지 않는다. 신청을 막는 조각("… 신청할 수 없습니다")은 남긴다.
+            if (item.length() <= 80 && DANGLING_REFERENCE.matcher(item).find() && WIDENING.matcher(item).find()
+                    && !RESTRICTING.matcher(item).find()) {
+                return;
+            }
             listed.add(item);
             if (evidenceId != null) {
                 listedEvidence.add(evidenceId);
@@ -591,9 +601,8 @@ public final class ExtractedEligibilityDraft {
     private void listUnmatched(Route route, Scope common) {
         String prefix = "'" + displayName(firstText(route.name(), "이름 없는 신청 대상")) + "' 대상 · ";
         for (Requirement requirement : route.group().requirements()) {
-            String text = firstText(requirement.asWritten(), requirement.kind());
-            String kindName = KIND_NAMES.get(requirement.kind());
-            common.list(prefix + (kindName == null ? text : kindName + ": " + text),
+            common.list(prefix + listedText(requirement, rule(requirement).orElse(null),
+                            firstText(requirement.asWritten(), requirement.kind())),
                     evidenceIds.get(requirement.evidencePath()));
         }
         for (ExtractedEligibility.Qualification qualification : route.group().qualifications()) {
@@ -601,9 +610,13 @@ public final class ExtractedEligibilityDraft {
         }
     }
 
+    /** 판정하지 않고 목록으로 보일 요건. rule은 원문 대조 없이 바꿔 본 판정 조건으로, 같은 조건을 이미 판정하면 목록에서 뺀다. */
+    private record Unjudged(ProfileRule rule, String text, String evidenceId) {}
+
     /** inherited는 이 범위보다 먼저 모든 경로에 적용되는 조건(공통 조건)이다. 같은 판정 조건은 다시 두지 않는다. */
     private List<ProfileCheck> checks(List<Requirement> requirements, Scope scope, List<ProfileCheck> inherited) {
         List<ProfileCheck> checks = new ArrayList<>();
+        List<Unjudged> unjudged = new ArrayList<>();
         for (Requirement requirement : requirements) {
             String text = firstText(requirement.asWritten(), requirement.kind());
             String evidence = evidenceIds.get(requirement.evidencePath());
@@ -618,8 +631,11 @@ public final class ExtractedEligibilityDraft {
             }
             if (rule.isEmpty()) {
                 // 원문에서 문구를 찾지 못했거나, 원문 대조로 뜻을 확인하지 못했거나, 입력으로 판정할 수 없거나, 조건으로 바꾸지 못한 요건이다.
-                String kindName = KIND_NAMES.get(requirement.kind());
-                scope.list(kindName == null ? text : kindName + ": " + text, evidence);
+                // 문구는 가산 전 기본 조건으로 쓰고(가산은 문구에 따로 적는다), 중복 비교는 가산까지 넣은 조건으로 한다.
+                ProfileRule base = rule(requirement).orElse(null);
+                ProfileRule candidate = base == null ? null
+                        : withAdjustments(base, requirement.adjustments(), new ArrayList<>());
+                unjudged.add(new Unjudged(candidate, listedText(requirement, base, text), evidence));
                 continue;
             }
             List<Adjustment> uncomputed = new ArrayList<>();
@@ -645,7 +661,71 @@ public final class ExtractedEligibilityDraft {
             checks.add(new ProfileCheck(scope.id + "-" + (checks.size() + 1), limit(text, 300), judged, null,
                     EligibilityContentValidator.needsFallback(judged) ? scope.fallbackId() : null, List.of(evidence)));
         }
+        // 이미 같은 조건으로 판정하는 요건(공고일 현재 무주택을 판정하는데 '입주 때까지 무주택 유지'를 확인하지 못함)은
+        // 목록에 다시 두지 않는다. 사용자에게 같은 말이 두 번 보이지 않게 한다.
+        for (Unjudged item : unjudged) {
+            boolean judgedElsewhere = item.rule() != null && Stream.concat(inherited.stream(), checks.stream())
+                    .anyMatch(check -> check.rule().equals(item.rule()));
+            if (!judgedElsewhere) {
+                scope.list(item.text(), item.evidenceId());
+            }
+        }
         return checks;
+    }
+
+    /**
+     * 목록 문구. 판정 조건으로 바꿀 수 있는 무주택·자동차·자산 요건은 원문 조각 대신 그 조건으로 짧게 쓴다.
+     * 원문 대조를 통과하지 못한 값일 수 있어, 금액은 원문에 같은 금액이 적혀 있을 때만 쓰고 가산은 받는 가구를 함께 적는다.
+     * 그 밖에는 '종류: 원문'이다. 관리자 화면이 이 꼴로 워커 경고를 항목에 붙인다.
+     */
+    private static String listedText(Requirement requirement, ProfileRule candidate, String text) {
+        String kindName = KIND_NAMES.get(requirement.kind());
+        String raw = kindName == null ? text : kindName + ": " + text;
+        if (candidate == null || candidate.field() == null) {
+            return raw;
+        }
+        String written = compact(requirement.asWritten()).replace(",", "");
+        boolean household = switch (candidate.field()) {
+            case FAMILY_OWNS_HOUSE, FAMILY_OWNS_CAR, FAMILY_TOTAL_ASSETS, FAMILY_CAR_VALUE -> true;
+            default -> false;
+        };
+        return switch (candidate.field()) {
+            case FAMILY_OWNS_HOUSE, APPLICANT_OWNS_HOUSE -> household ? "세대원 모두 무주택" : "본인 무주택";
+            case FAMILY_OWNS_CAR, APPLICANT_OWNS_CAR -> household ? "세대원 모두 자동차 없음" : "본인 자동차 없음";
+            case FAMILY_CAR_VALUE, APPLICANT_CAR_VALUE, FAMILY_TOTAL_ASSETS, APPLICANT_ASSETS -> {
+                Long maximum = candidate.maximum();
+                if (maximum == null || maximum % 10_000 != 0
+                        || !Pattern.compile("(?<!\\d)" + maximum / 10_000 + "(?!\\d)").matcher(written).find()) {
+                    yield raw;
+                }
+                boolean car = candidate.field() == ProfileField.FAMILY_CAR_VALUE
+                        || candidate.field() == ProfileField.APPLICANT_CAR_VALUE;
+                String owner = household ? "세대원이" : "본인이";
+                // 가산이 있으면 적은 금액은 기본 기준이다. 누가 더 높은 기준을 받는지 함께 적는다.
+                String raised = requirement.adjustments().isEmpty() ? ""
+                        : " (" + adjustmentNames(requirement.adjustments()) + " 가구는 기준이 더 높아요)";
+                if (!car) {
+                    yield (household ? "세대원 자산을 모두 합쳐 " : "본인 자산을 모두 합쳐 ") + won(maximum) + " 이하" + raised;
+                }
+                // '개별 자동차가액'은 차를 한 대씩 따진다. 합계로 읽히지 않게 풀어 쓴다.
+                yield (written.contains("개별")
+                        ? owner + " 가진 자동차는 한 대씩 따져 모두 가액이 " + won(maximum) + " 이하"
+                        : owner + " 가진 자동차 가액이 " + won(maximum) + " 이하") + raised;
+            }
+            default -> raw;
+        };
+    }
+
+    /** 45,420,000 → "4,542만원", 345,000,000 → "3억 4,500만원". 만원 단위로 떨어지지 않으면 원 단위로 쓴다. */
+    private static String won(long krw) {
+        if (krw % 10_000 != 0) {
+            return String.format("%,d원", krw);
+        }
+        long man = krw / 10_000;
+        if (man < 10_000) {
+            return String.format("%,d만원", man);
+        }
+        return man % 10_000 == 0 ? (man / 10_000) + "억원" : String.format("%d억 %,d만원", man / 10_000, man % 10_000);
     }
 
     private static String adjustmentNames(List<Adjustment> adjustments) {

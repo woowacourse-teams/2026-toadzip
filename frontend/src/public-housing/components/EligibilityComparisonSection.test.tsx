@@ -200,13 +200,24 @@ describe('EligibilityComparisonSection', () => {
 
   it('opens evidence pages from rows and guidances', async () => {
     const withEvidence = type('youth', '청년', 'ELIGIBLE', [check('나이', 'SATISFIED', { mine: '만 30세', evidence: { page: 5, location: null, fileName: null } })],
-      { guidances: [{ kind: 'PROCEDURE', title: '중복 신청 불가', body: '한 유형만', evidence: { page: 3, location: null, fileName: null } }] })
+      { guidances: [{ kind: 'PROCEDURE', title: '중복 신청 불가', body: '한 유형만', items: [], evidence: { page: 3, location: null, fileName: null } }] })
     const { onOpenEvidence } = renderSection(context({ loadComparison: vi.fn(async () => happyView([withEvidence])) }))
     fireEvent.click(await screen.findByRole('button', { name: '근거 공고문 5쪽 열기' }))
     expect(onOpenEvidence).toHaveBeenCalledWith({ evidence: { page: 5, location: null, fileName: null }, label: '나이' })
     expect(screen.getByText('신청 절차')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '근거 공고문 3쪽 열기' }))
     expect(onOpenEvidence).toHaveBeenLastCalledWith({ evidence: { page: 3, location: null, fileName: null }, label: '중복 신청 불가' })
+  })
+
+  it('shows each item of a guidance as its own list row', async () => {
+    const listed = type('youth', '청년', 'ELIGIBLE', [check('나이', 'SATISFIED')],
+      { guidances: [{ kind: 'REQUIRED_CHECK', title: '신청 전에 확인할 자격', body: '판정에 넣지 않은 자격이에요.',
+        items: ['세대원이 가진 자동차는 한 대씩 따져 모두 가액이 4,542만원 이하', '외국인은 신청 불가합니다.'], evidence: null }] })
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([listed])) }))
+    const first = await screen.findByText('세대원이 가진 자동차는 한 대씩 따져 모두 가액이 4,542만원 이하')
+    expect(first.tagName).toBe('LI')
+    expect(screen.getByText('외국인은 신청 불가합니다.').tagName).toBe('LI')
+    expect(screen.getByText('판정에 넣지 않은 자격이에요.')).toBeInTheDocument()
   })
 
   it('shows the preparing notice for NOT_STRUCTURED', async () => {

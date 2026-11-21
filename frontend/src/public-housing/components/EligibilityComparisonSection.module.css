@@ -535,6 +535,26 @@
   line-height: 1.5;
 }
 
+.direct .guidanceItems {
+  display: block;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.direct .guidanceItems li {
+  display: list-item;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: var(--ds-text-caption);
+  line-height: 1.5;
+}
+
+.direct .guidanceItems li + li {
+  margin-top: 4px;
+}
+
 .note {
   display: flex;
   gap: 6px;

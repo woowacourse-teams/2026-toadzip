@@ -238,14 +238,14 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
       {type.guidances.length > 0 && <div className={styles.direct}>
         <h4>신청 전 직접 확인할 것</h4>
         <ul>{type.guidances.map((guidance, index) => <li key={`${index}:${guidance.kind}:${guidance.title}`}>
-          <div><span className={styles.kind} data-kind={guidance.kind}>{GUIDANCE_KIND_LABEL[guidance.kind]}</span><strong>{guidance.title}</strong><p>{guidance.body}</p></div>
+          <div><span className={styles.kind} data-kind={guidance.kind}>{GUIDANCE_KIND_LABEL[guidance.kind]}</span><strong>{guidance.title}</strong><p>{guidance.body}</p>{guidance.items.length > 0 && <ul className={styles.guidanceItems}>{guidance.items.map((item) => <li key={item}>{item}</li>)}</ul>}</div>
           {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}
         </li>)}</ul>
       </div>}
       {Boolean(type.exclusions?.length) && <details className={styles.direct}>
         <summary>⚠️ 신청 불가능한 특수 경우</summary>
         <ul>{type.exclusions?.map((guidance) => <li key={guidance.title}>
-          <div><strong>{guidance.title}</strong><p>{guidance.body}</p></div>
+          <div><strong>{guidance.title}</strong><p>{guidance.body}</p>{guidance.items.length > 0 && <ul className={styles.guidanceItems}>{guidance.items.map((item) => <li key={item}>{item}</li>)}</ul>}</div>
           {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}
         </li>)}</ul>
       </details>}

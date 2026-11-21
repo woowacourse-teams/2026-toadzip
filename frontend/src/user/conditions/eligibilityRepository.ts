@@ -278,7 +278,7 @@ function mapCheck(raw: unknown, authored: Json[], content: Json): CheckView {
 }
 function guidance(raw: Json, content: Json): GuidanceView {
   return { kind: oneOf(raw.kind, ['REQUIRED_QUALIFICATION', 'APPLICATION_EXCLUSION', 'REQUIRED_CHECK', 'OTHER_ROUTE', 'PRIORITY_OPPORTUNITY', 'PROCEDURE']),
-    title: text(raw.title), body: [text(raw.body), ...strings(raw.items)].filter(Boolean).join('\n'), evidence: evidence(content, raw.evidenceIds) }
+    title: text(raw.title), body: text(raw.body), items: strings(raw.items), evidence: evidence(content, raw.evidenceIds) }
 }
 function mapComparison(value: unknown): ComparisonView {
   const data = object(value)
