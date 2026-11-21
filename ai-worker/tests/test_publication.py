@@ -6,7 +6,7 @@ import pytest
 from ai_worker import jev
 from ai_worker import publication as policy
 from ai_worker.jev import Meaning
-from ai_worker.supply_assembly import NO_SOURCE_VALUE
+from ai_worker.supply_assembly import NO_SOURCE_VALUE, RESERVE_MISSING
 from ai_worker.supply_sources import AMBIGUOUS_TABLE_NOTE
 from conftest import contract_example
 
@@ -84,12 +84,13 @@ def test_values_the_collection_did_not_have_are_asked_and_approved_from_the_answ
     assert "26.12.01" in questions["winnerAnnouncementDate"]["instructions"]
 
 
-def test_collected_type_outside_the_choices_is_held_without_model_calls():
-    """서버의 ETC(기타)는 수집이 분류하지 못한 공고다. 그대로 승인하지도, 물어서 기존 값을 바꾸려 하지도 않는다."""
+def test_collected_type_outside_the_choices_is_asked_like_a_missing_one():
+    """서버의 ETC(기타)는 수집이 분류하지 못한 공고다. 그대로 승인하지 않고 원문에 물어 얻은 유형을 낸다."""
     decision, calls = assessment(collected=COLLECTED | {"rentalType": "ETC", "recruitmentType": "ETC"})
-    assert decision["reasons"] == ["수집한 공급유형이 분류 목록에 없는 값(ETC)이라 원문 확인이 필요합니다.",
-                                   "수집한 모집유형이 분류 목록에 없는 값(ETC)이라 원문 확인이 필요합니다."]
-    assert (decision["rentalType"], decision["recruitmentType"]) == (None, None) and not calls
+    assert decision["reasons"] == []
+    assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
+    assert {"rentalType", "rentalListed", "mixedRental", "recruitmentType"} <= set(asked(calls))
+    assert not set(policy.DATES) & set(asked(calls))
 
 
 def test_collected_values_in_the_contract_input_example_are_the_ones_read_here():
@@ -124,14 +125,24 @@ def test_approved_decision_has_the_shape_of_the_contract_result_example():
     ({"cancelled": 0.5}, "모집 취소·철회 공고인지 확인 필요"),
     ({"mixedRental": 0.6}, "여러 공급유형을 함께 모집하는 공고인지 확인 필요"),
     ({"rentalListed": 0.6}, "공급유형이 분류 목록에 있는지 확인 필요"),
-    ({"rentalType": ("HAPPY_HOUSING", 0.9)}, "공급유형을 원문에서 하나로 정하지 못했습니다."),
+    ({"rentalType": ("HAPPY_HOUSING", 0.89)}, "공급유형을 원문에서 하나로 정하지 못했습니다."),
     ({"rentalType": ("NOT_A_RENTAL_TYPE", 0.99)}, "공급유형을 원문에서 하나로 정하지 못했습니다."),
-    ({"recruitmentType": ("WAITLIST", 0.7)}, "모집유형(신규·예비)을 원문에서 하나로 정하지 못했습니다."),
+    ({"recruitmentType": ("NEW", 0.89)}, "모집유형(신규·예비)을 원문에서 하나로 정하지 못했습니다."),
 ])
 def test_undecided_notice_kind_holds_publication(answers, reason):
     decision, _ = assessment(answers, collected={"title": "행복주택 모집공고"})
     assert decision["reasons"] == [reason]
     assert (decision["rentalType"], decision["recruitmentType"]) == (None, None)
+
+
+def test_type_and_date_step_pass_at_their_own_minimum_probabilities():
+    """유형은 고른 답이 그대로 공개 값이라 0.9, 날짜의 절차는 기대한 절차와 같아야만 통과하므로 0.7부터 받는다."""
+    at_minimum = {"rentalType": ("HAPPY_HOUSING", 0.9), "recruitmentType": ("NEW", 0.9),
+                  "applicationEndDate": ("application", 0.7), "winnerAnnouncementDate": ("final_announcement", 0.7)}
+    decision, _ = assessment(at_minimum, collected={"title": "공고"})
+    assert decision["reasons"] == [] and decision["rentalType"] == "HAPPY_HOUSING"
+    below, _ = assessment({"winnerAnnouncementDate": ("final_announcement", 0.69)}, collected={"title": "공고"})
+    assert len(below["reasons"]) == 1 and "어느 절차의 날짜인지 원문 확인 필요" in below["reasons"][0]
 
 
 def test_date_of_another_step_is_held_even_when_the_answer_is_confident():
@@ -203,6 +214,28 @@ def test_blank_complex_names_pass_only_when_the_table_has_no_complex_column_at_a
     unverified = "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"
     named, _ = assessment(unresolved=[field | {"reason": unverified}], complex_names=("", ""))
     assert named["reasons"] == [f"주택형의 단지명 1건 미확인: {unverified}"]
+
+
+RESERVE = {"path": "cells[0].reserve", "reason": RESERVE_MISSING}
+
+
+def test_new_recruitment_is_approved_without_a_reserve_count_the_table_does_not_give():
+    collected, _ = assessment(unresolved=[RESERVE])
+    assert collected["reasons"] == [] and collected["recruitmentType"] == "NEW"
+    asked_type, _ = assessment(unresolved=[RESERVE], collected={"title": "공고"})
+    assert asked_type["reasons"] == [] and asked_type["recruitmentType"] == "NEW"
+    # 수치가 원문과 맞지 않는 예비자 수는 신규 모집이어도 보류한다.
+    mismatch, _ = assessment(unresolved=[RESERVE | {"reason": "추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"}])
+    assert mismatch["reasons"] == ["예비자 수 1건 미확인: 추출한 수치가 같은 의미의 원문 표 열에서 확인되지 않음"]
+
+
+def test_reserve_only_recruitment_without_a_reserve_count_is_held():
+    """예비자만 뽑는 공고에서 예비자 수가 없으면 모집 수가 없는 것이다."""
+    reason = f"예비자 수 1건 미확인: {RESERVE_MISSING}"
+    collected, calls = assessment(unresolved=[RESERVE], collected=COLLECTED | {"recruitmentType": "WAITLIST"})
+    assert collected["reasons"] == [reason] and not calls
+    asked_type, _ = assessment({"recruitmentType": ("WAITLIST", 0.99)}, unresolved=[RESERVE], collected={"title": "공고"})
+    assert asked_type["reasons"] == [reason]
 
 
 def test_unverified_reception_place_holds_the_notice_but_unverified_eligibility_does_not():

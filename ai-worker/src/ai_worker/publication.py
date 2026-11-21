@@ -38,8 +38,11 @@ RECRUIT = {
     "WAITLIST": "Only reserve tenants (예비입주자) who wait for a vacancy. No home is assigned through this notice.",
 }
 # Choice는 이 확률 이상인 답만, Noul은 YES 이상을 '예'로 NO 이하를 '아니오'로 읽는다. 그 사이는 판단 없음이라 보류한다.
-# 실측 정확도가 쌓이기 전의 초기 값이다.
-MIN_PROBABILITY = 0.95
+# 유형은 고른 답이 그대로 공개 값이 된다. LH 표본 9건에서 맞는 답은 모두 0.96 이상이었다.
+# 날짜의 절차는 고른 답이 기대한 절차와 같아야만 통과하므로 더 낮게 둔다. 표본에서 기대한 절차를 고른 답은 0.43·0.71·0.90·0.94와
+# 0.95 이상이었고, 0.82·0.96·1.0으로 고른 다른 절차는 확률과 무관하게 보류된다. GH·SH와 부정 사례는 재지 못한 값이다.
+TYPE_PROBABILITY = 0.9
+STEP_PROBABILITY = 0.7
 YES, NO = 0.8, 0.2
 # Jev 요청 하나에 싣는 질문 수. 요청당 입력 한도(64k 토큰) 안에 들게 나눈다.
 QUESTIONS_PER_REQUEST = 40
@@ -101,19 +104,22 @@ def is_no(instructions, true, false, reason):
                lambda answer: answer <= NO, reason)
 
 
-def one_of(instructions, criteria, reason, expected=None):
+def one_of(instructions, criteria, reason, minimum, expected=None):
     return Ask({"type": "choice", "instructions": instructions, "criteria": criteria},
-               lambda answer: (answer.choice in criteria and answer.probability >= MIN_PROBABILITY
+               lambda answer: (answer.choice in criteria and answer.probability >= minimum
                                and expected in (None, answer.choice)), reason)
 
 
 def assess(tree, source, warnings, judge, deadline, collected):
     """collected는 서버가 수집 때 가진 값이다: 있으면 rentalType·recruitmentType과 날짜 셋(DATES의 키)."""
+    collected = known(collected)
     data = tree["data"]
     notice = data["announcement"]
     cites, reasons = date_citations(tree, source.texts)
-    reasons = (held_by_extraction(data, source.texts, warnings) + reasons + disagreements(notice, collected)
-               + unclassified(collected))
+    reasons = held_by_extraction(data, source.texts, warnings) + reasons + disagreements(notice, collected)
+    # 예비자만 뽑는 공고로 수집됐으면 예비자 수가 곧 모집 수다. 유형을 모르면 Jev에 물은 뒤에 정한다.
+    if collected.get("recruitmentType") not in (None, "NEW"):
+        reasons += missing_reserve(data["supplySheet"])
     review = held(*reasons) | {"evidence": cites}
     reasons = review["reasons"]
     if judge is None:
@@ -122,6 +128,8 @@ def assess(tree, source, warnings, judge, deadline, collected):
         return review
     asker = Asker(judge, deadline, review["answers"])
     reasons += asker.ask(kind_check(collected, source.texts))
+    if not collected.get("recruitmentType") and review["answers"].get("recruitmentType", {}).get("choice") != "NEW":
+        reasons += missing_reserve(data["supplySheet"])
     for field in DATES:
         if not collected.get(field):
             reasons += asker.ask(date_check(field, date.fromisoformat(notice[field]), cites[field], source))
@@ -136,12 +144,17 @@ def assess(tree, source, warnings, judge, deadline, collected):
     return review
 
 
-def unclassified(collected):
-    """수집한 유형이 분류 목록 밖(서버의 ETC '기타')이면 수집이 분류하지 못한 공고다. 그대로 승인하지 않고, 원문에 물어 고쳐도
-    서버가 기존 값과 다르다고 보류하므로 묻지 않고 사람이 보게 한다."""
-    names = {"rentalType": ("공급유형", RENT), "recruitmentType": ("모집유형", RECRUIT)}
-    return [f"수집한 {label}이 분류 목록에 없는 값({collected[field]})이라 원문 확인이 필요합니다."
-            for field, (label, choices) in names.items() if collected.get(field) and collected[field] not in choices]
+def known(collected):
+    """수집값 가운데 이 판정이 아는 유형만 남긴다. 분류 목록 밖 유형(서버의 ETC '기타')은 수집이 분류하지 못한 것이라
+    수집값이 없는 것으로 보고 원문에 묻는다. 서버는 기존 값이 ETC면 물어서 얻은 유형으로 덮는다."""
+    choices = {"rentalType": RENT, "recruitmentType": RECRUIT}
+    return {field: value for field, value in collected.items() if field not in choices or value in choices[field]}
+
+
+def missing_reserve(sheet):
+    """표에 예비자 수가 없다는 미확인. 입주자를 뽑는 신규 모집 공고는 예비자 수 없이 확정하므로 사유가 아니고,
+    예비자만 뽑는 공고에서는 모집 수가 없는 것이라 보류한다."""
+    return unresolved([f for f in sheet.get("unresolvedFields", []) if f.get("reason") == supply_assembly.RESERVE_MISSING])
 
 
 def held(*reasons):
@@ -154,7 +167,7 @@ def held_by_extraction(data, texts, warnings):
     """Jev에 묻기 전에 추출 단계가 이미 알린 보류 사유."""
     sheet = data["supplySheet"]
     reasons = [w for w in warnings if not w.startswith("신청자격") and w not in PROCESS_NOTES]
-    fields = sheet.get("unresolvedFields", [])
+    fields = [f for f in sheet.get("unresolvedFields", []) if f.get("reason") != supply_assembly.RESERVE_MISSING]
     # 단지 열이 없는 공급표(단지 하나만 모집하는 공고)는 모든 주택형의 단지명이 빈다. 서버가 공고에 연결된 단지 하나로 채우고,
     # 연결된 단지가 하나가 아니면 서버가 보류한다. 추출이 단지명을 냈는데 원문에서 확인되지 않아 비운 것은 단지 구분이 있는 표라 남긴다.
     if not any(row.get("complexName") for row in sheet.get("housingTypes", [])):
@@ -234,7 +247,7 @@ def kind_check(collected, texts):
     programmes = ", ".join(RENT.values())
     if not collected.get("rentalType"):
         asks["rentalType"] = one_of("Which rental housing programme does the notice in `pages` recruit for?", RENT,
-                                    "공급유형을 원문에서 하나로 정하지 못했습니다.")
+                                    "공급유형을 원문에서 하나로 정하지 못했습니다.", TYPE_PROBABILITY)
         asks["rentalListed"] = is_yes(
             f"Is the housing programme of the notice in `pages` one of these: {programmes}?",
             "The notice recruits for one of the listed programmes.",
@@ -247,7 +260,7 @@ def kind_check(collected, texts):
             "여러 공급유형을 함께 모집하는 공고인지 확인 필요")
     if not collected.get("recruitmentType"):
         asks["recruitmentType"] = one_of("Who does the notice in `pages` recruit?", RECRUIT,
-                                         "모집유형(신규·예비)을 원문에서 하나로 정하지 못했습니다.")
+                                         "모집유형(신규·예비)을 원문에서 하나로 정하지 못했습니다.", TYPE_PROBABILITY)
     return Check("공고 성격", {"pages": {str(number): text for number, text in enumerate(texts[:2], 1)}}, asks)
 
 
@@ -266,7 +279,7 @@ def date_check(field, value, cite, source):
         f"According to the table rows in `schedule`, which step of the application process takes place on "
         f"{cite['written']}?", STEPS,
         f"{DATES[field]} {value.isoformat()}이 어느 절차의 날짜인지 원문 확인 필요 · {cite['page']}쪽 {cite['quote']}",
-        DATE_STEP[field])})
+        STEP_PROBABILITY, DATE_STEP[field])})
 
 
 def supply_reasons(asker, sheet, rows):

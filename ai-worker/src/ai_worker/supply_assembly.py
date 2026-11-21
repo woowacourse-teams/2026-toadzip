@@ -20,7 +20,8 @@ from ai_worker.supply_sheet import (
 
 _ROW_FIELDS = (TOTAL, *AREA_FIELDS)
 _TARGET_VALUE_FIELDS = ("supplyHouseholdCount", "reserveCount", *AMOUNT_FIELDS)
-_RESERVE_MISSING = "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
+# 표에 예비자 수가 없다. 공개 판정(publication)은 입주자를 뽑는 신규 모집 공고에서 이 미확인을 보류 사유로 세지 않는다.
+RESERVE_MISSING = "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
 
 
 @dataclass(eq=False)
@@ -201,7 +202,7 @@ class _Assembly:
             return
         # reserveCount는 이번 공고의 예비자 모집수라는 제품 계약의 핵심 값이다.
         if entry.values["reserveCount"] is None and label:
-            self._find(entry, "reserveCount", _RESERVE_MISSING)
+            self._find(entry, "reserveCount", RESERVE_MISSING)
         for name, reason in item.unresolved:
             if name in entry.values:
                 self._find(entry, name, reason)
@@ -765,7 +766,7 @@ class _Assembly:
         """공통 수량 하나를 싣고, 공통 수량이 대신하는 '예비자 모집수 미확인'을 지운다."""
         self.shared.append(Shared(COUNT_KINDS[field], count, owners, page, quote))
         for owner in owners:
-            self._drop(owner, field, _RESERVE_MISSING)
+            self._drop(owner, field, RESERVE_MISSING)
 
     # ---------- 원문 대조 ----------
 
