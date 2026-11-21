@@ -3,6 +3,8 @@ package com.toadzip.backend.announcement.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -64,10 +66,12 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.jdbc.Sql.ExecutionPhase;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -114,6 +118,8 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private PdfPublicationReviewController reviews;
     @Autowired private AnnouncementScheduleRepository schedules;
     @MockitoBean private AnnouncementAttachmentClient client;
+    /** 판정 트랜잭션 안의 한 지점이다. 그 시점의 트랜잭션 상태를 보거나 일시 오류를 내는 데 쓴다. */
+    @MockitoSpyBean private PublicationCorrection proposals;
 
     /** 첨부 서버가 돌려주는 PDF. 만들 때마다 문서 ID가 달라지므로 같은 PDF를 올리는 경우는 이 바이트를 쓴다. */
     private byte[] attachmentPdf;
@@ -704,6 +710,42 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         Announcement notice = announcements.findById(id).orElseThrow();
         assertThat(notice.isSupplyConfirmed()).isFalse();
         assertThat(notice.getSupplyType()).isEqualTo(RentalType.NATIONAL_RENTAL);
+    }
+
+    @Test
+    void 잠금_대기_같은_일시_오류는_판정을_기록하지_않고_다음_실행에서_공개한다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        doThrow(new CannotAcquireLockException("lock timeout")).doCallRealMethod()
+                .when(proposals).prepare(any(), any(), any(), anyLong());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).isEmpty();
+        assertThat(published(candidate.notice())).isFalse();
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(published(candidate.notice())).isTrue();
+    }
+
+    @Test
+    void 일시_오류가_작업_완료_후_한_시간을_넘기면_검수에_넘긴다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        jdbc.sql("UPDATE ai_jobs SET completed_at = now() - interval '2 hours' WHERE id=?").param(job).update();
+        doThrow(new CannotAcquireLockException("lock timeout"))
+                .when(proposals).prepare(any(), any(), any(), anyLong());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason")).isEqualTo("자동 보정 실패 · 원문과 변경안을 확인하세요.");
+        });
+        assertThat(published(candidate.notice())).isFalse();
     }
 
     /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */

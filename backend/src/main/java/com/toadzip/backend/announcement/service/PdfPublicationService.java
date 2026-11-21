@@ -36,7 +36,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -47,10 +50,10 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 class PdfPublicationService {
     /**
-     * 기관 서버가 잠깐 응답하지 않아 공고문을 다시 받지 못한 작업을 다음 주기로 미루는 기간(작업 완료 시각 기준).
+     * 잠깐의 실패(기관 서버 무응답, DB 잠금 대기·직렬화 실패)로 판정하지 못한 작업을 다음 주기로 미루는 기간(작업 완료 시각 기준).
      * 넘기면 검수로 넘긴다. 미룬 작업이 계속 앞자리를 차지하면 뒤의 작업을 판정하지 못한다.
      */
-    private static final Duration DOWNLOAD_RETRY_WINDOW = Duration.ofHours(1);
+    private static final Duration RETRY_WINDOW = Duration.ofHours(1);
     /** 수집한 값이 '기타'면 아직 분류하지 못한 것으로 보는 기본정보 항목과 그 값. */
     private static final Map<String, String> UNCLASSIFIED_TYPES = Map.of(
             "rentalType", RentalType.ETC.name(), "recruitmentType", RecruitmentType.ETC.name());
@@ -119,7 +122,7 @@ class PdfPublicationService {
             byte[] pdf = AnnouncementPdfExtractionService.bytesOf(content.file());
             return Optional.of(PdfExtractionSource.of(content.fileName(), pdf).sha256());
         } catch (AttachmentUnavailableException unavailable) {
-            if (!retriesNextCycle(job, unavailable)) {
+            if (!PdfAutoExtractionScheduler.RETRYABLE.contains(unavailable.reason()) || !withinRetryWindow(job)) {
                 throw new PublicationHold("공고문 PDF를 다시 받지 못했습니다. 첨부를 확인하세요.", unavailable);
             }
             log.warn("event=pdf.publication.download_deferred jobId={} attachmentId={} reason={}",
@@ -128,10 +131,20 @@ class PdfPublicationService {
         }
     }
 
-    private boolean retriesNextCycle(PdfExtractionJob job, AttachmentUnavailableException unavailable) {
+    /**
+     * 잠금 대기 초과·교착·직렬화 실패·낙관적 잠금 충돌처럼 다시 하면 풀리는 DB 실패로 판정하지 못한 작업인지. 이런 작업은 결정을
+     * 남기지 않고 다음 주기에 다시 판정한다. 재시도 기간을 넘긴 작업은 해당하지 않는다.
+     */
+    public boolean retriesNextCycle(long jobId, RuntimeException failure) {
+        boolean momentary = failure instanceof TransientDataAccessException
+                || failure instanceof RecoverableDataAccessException
+                || failure instanceof CannotCreateTransactionException;
+        return momentary && withinRetryWindow(jobs.findById(jobId).orElseThrow());
+    }
+
+    private boolean withinRetryWindow(PdfExtractionJob job) {
         Duration sinceCompleted = Duration.between(job.getCompletedAt(), clock.instant());
-        return PdfAutoExtractionScheduler.RETRYABLE.contains(unavailable.reason())
-                && sinceCompleted.compareTo(DOWNLOAD_RETRY_WINDOW) <= 0;
+        return sinceCompleted.compareTo(RETRY_WINDOW) <= 0;
     }
 
     private void decide(PdfExtractionJob job, PdfExtractionInput input, JsonNode tree, PublicationMode mode) {

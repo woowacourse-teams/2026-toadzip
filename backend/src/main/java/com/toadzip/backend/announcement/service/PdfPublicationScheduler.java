@@ -50,8 +50,7 @@ class PdfPublicationScheduler {
                 } catch (IngestAlreadyRunningException busy) {
                     return;
                 } catch (RuntimeException failure) {
-                    log.warn("event=pdf.publication.held jobId={}", job, failure);
-                    decisions.record(job, "REVIEW", reasonOf(failure), null, null);
+                    recordFailure(job, failure);
                 }
             }
             if (mode == PublicationMode.APPLY) {
@@ -67,6 +66,16 @@ class PdfPublicationScheduler {
         } finally {
             SecurityContextHolder.setContext(previous);
         }
+    }
+
+    /** 다시 하면 풀리는 실패는 결정을 남기지 않아 다음 주기에 다시 판정한다. 그 밖의 실패는 검수로 넘긴다. */
+    private void recordFailure(long job, RuntimeException failure) {
+        if (service.retriesNextCycle(job, failure)) {
+            log.warn("event=pdf.publication.deferred jobId={}", job, failure);
+            return;
+        }
+        log.warn("event=pdf.publication.held jobId={}", job, failure);
+        decisions.record(job, "REVIEW", reasonOf(failure), null, null);
     }
 
     /** 보류 사유와 기존 보정 서비스의 관리자 안내 문구만 검수함에 그대로 보인다. 그 밖의 실패 원인은 로그에만 남긴다. */
