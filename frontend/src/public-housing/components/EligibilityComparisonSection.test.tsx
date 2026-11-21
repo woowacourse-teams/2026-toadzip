@@ -220,6 +220,17 @@ describe('EligibilityComparisonSection', () => {
     expect(screen.getByText('판정에 넣지 않은 자격이에요.')).toBeInTheDocument()
   })
 
+  it('names tabs by housing type when every tab shares one path name, keeping the full name in the panel', async () => {
+    const tabs = ['29', '37'].map((name) => type(name, '신청자격', 'ELIGIBLE', [check('나이', 'SATISFIED')],
+      { units: `증평송산5단지 국민임대 ${name}` }))
+    renderSection(context({ loadComparison: vi.fn(async () => happyView(tabs)) }))
+    const names = (await screen.findAllByRole('tab')).map((tab) => tab.textContent)
+    expect(names[0]).toContain('29형')
+    expect(names[1]).toContain('37형')
+    expect(names.join('')).not.toContain('신청자격')
+    expect(screen.getByText('증평송산5단지 국민임대 29')).toBeInTheDocument()
+  })
+
   it('shows the preparing notice for NOT_STRUCTURED', async () => {
     renderSection(context({ loadComparison: vi.fn(async () => happyView([], { availability: 'NOT_STRUCTURED' })) }, { hasProfile: false }))
     expect(await screen.findByText('자격 비교 준비 중')).toBeInTheDocument()

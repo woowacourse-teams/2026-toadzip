@@ -16,6 +16,28 @@ export function sortTypes(types: readonly TypeView[]): TypeView[] {
     .map(({ type }) => type)
 }
 
+/**
+ * 탭에 보일 글. 모든 탭이 같은 주택형 앞부분(단지·유형 이름)을 가지면 그 부분을 떼어 주택형만 남긴다("29형").
+ * 모든 탭의 신청 유형 이름이 같으면(공고문이 신청 대상을 나누지 않아 경로가 하나뿐) 그 이름은 탭을 가르지 못하므로
+ * 주택형을 탭 이름으로 쓴다. 탭 아래 본문은 전체 주택형 이름을 그대로 보인다.
+ */
+export function tabTexts(types: readonly TypeView[]): Array<{ label: string; units: string }> {
+  const words = types.map((type) => type.units.split(/\s+/).filter(Boolean))
+  let shared = 0
+  if (types.length > 1 && words.every((list) => list.length > 1)) {
+    const shortest = Math.min(...words.map((list) => list.length))
+    while (shared < shortest - 1 && words.every((list) => list[shared] === words[0][shared])) shared += 1
+  }
+  const units = words.map((list) => {
+    const rest = list.slice(shared).join(' ')
+    return shared > 0 && /^\d+[A-Za-z]?(-\d+)?$/.test(rest) ? `${rest}형` : rest
+  })
+  const sameLabel = types.length > 1 && types.every((type) => type.label === types[0].label)
+  return types.map((type, index) => sameLabel && units[index]
+    ? { label: units[index], units: '' }
+    : { label: type.label, units: units[index] })
+}
+
 export function sortChecks(checks: readonly CheckView[]): CheckView[] {
   return checks.map((check, index) => ({ check, index }))
     .sort((left, right) => CHECK_STATUS_ORDER[left.check.status] - CHECK_STATUS_ORDER[right.check.status] || left.index - right.index)

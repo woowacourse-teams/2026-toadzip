@@ -5,6 +5,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.HousingTypeAreas;
 import com.toadzip.backend.housing.domain.HousingTypeNames;
+import com.toadzip.backend.housing.domain.RentalType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,7 +26,9 @@ import java.util.stream.Collectors;
  *       면적은 첫 줄 전용면적이다. 고른 주택타입이 있으면 그 이름·면적을, 없으면 줄 면적(전용·공급 각각 처음 값이 있는 줄)을 보이고
  *       정본으로 복사한다. 정본으로 복사하는 주택형(신청형) 이름은 원천 형명이다.</li>
  *   <li>대상: 줄마다 하나(신청 조건 '공고문 참조'). 대상 표기는 원천이 준 표기, 없으면 형명 끝의 신청자 표기다. 신청자 표기가 없으면 한
- *       줄뿐인 공급행은 '전체', 여러 줄이면 형명 원문이고, 같은 표기가 여럿이어도 형명 원문이다. 금액이 없는 한 줄뿐인 공급행은 대상을
+ *       줄뿐인 공급행은 '전체', 여러 줄이면 국민임대·영구임대는 '일반', 그 밖은 함께 온 표기의 나머지('주거약자 외', 표기가
+ *       둘 이상이면 '그 밖의 대상')이고, 같은 표기가
+ *       여럿이면 형명 원문이다. 금액이 없는 한 줄뿐인 공급행은 대상을
  *       두지 않는다('전체' 칸이 모집수를 갖는다).</li>
  *   <li>모집수: 공급행 모집수는 줄 세대수의 합(한 줄이라도 모르면 정하지 않음), 대상 수는 그 줄 세대수다({@link SourceSupplySheet}).</li>
  * </ol>
@@ -33,6 +36,8 @@ import java.util.stream.Collectors;
 public final class AgencySupplySheet {
 
     private static final String ALL = AnnouncementSupplyTarget.EVERYONE;
+    private static final String GENERAL = "일반";
+    private static final String OTHERS = "그 밖의 대상";
     /** 원천 대상의 신청 조건. 공고문으로 확인하기 전이라는 뜻이다. */
     private static final String SOURCE_CONDITION = "공고문 참조";
     private static final int MAX_TYPE_NAME = 255;
@@ -119,7 +124,7 @@ public final class AgencySupplySheet {
 
     private static List<SourceSupplySheet.Target> targets(List<AgencySupplyLine> members) {
         Map<String, Long> labelCounts = members.stream().collect(Collectors.groupingBy(
-                line -> applicantLabel(line, members.size()), Collectors.counting()));
+                line -> applicantLabel(line, members), Collectors.counting()));
         List<SourceSupplySheet.Target> targets = new ArrayList<>();
         for (AgencySupplyLine line : members) {
             boolean priced = line.getRentalDeposit() != null && line.getMonthlyRent() != null;
@@ -127,21 +132,36 @@ public final class AgencySupplySheet {
                 continue;
             }
             String label = line.getTargetLabel() != null ? line.getTargetLabel()
-                    : labelCounts.get(applicantLabel(line, members.size())) > 1 ? line.getHousingTypeName()
-                    : applicantLabel(line, members.size());
+                    : labelCounts.get(applicantLabel(line, members)) > 1 ? line.getHousingTypeName()
+                    : applicantLabel(line, members);
             targets.add(new SourceSupplySheet.Target(label, SOURCE_CONDITION, line.getHouseholdCount(), null,
                     new LeaseTerms.Amounts(line.getRentalDeposit(), line.getMonthlyRent(), null), targets.size() + 1));
         }
         return targets;
     }
 
-    /** 형명 끝의 신청자 표기("36형 일반(고령자)" → "고령자"). 없으면 한 줄뿐인 공급행은 '전체', 여러 줄이면 형명 원문이다. */
-    private static String applicantLabel(AgencySupplyLine line, int memberCount) {
+    /**
+     * 형명 끝의 신청자 표기("36형 일반(고령자)" → "고령자"). 없으면 한 줄뿐인 공급행은 '전체'다. 같은 형에 표기가 있는 줄과
+     * 함께 온 표기 없는 줄('29'와 '29(주거약자)')은 형 이름 대신 신청 대상으로 읽히는 이름을 쓴다. 일반공급이 있는 국민임대·영구임대는
+     * '일반'이고, 그 밖(신혼희망타운 행복주택의 '55'처럼 표기 없는 줄이 일반공급이 아닌 경우)은 '주거약자 외'처럼 함께 온 표기의
+     * 나머지다. 신청자격이 '일반'을 일반공급으로 보고 대상 확인 없이 공통 요건으로 판정하므로, 일반공급이 아닌 줄을 '일반'이라 부르지 않는다.
+     */
+    private static String applicantLabel(AgencySupplyLine line, List<AgencySupplyLine> members) {
         String applicant = HousingTypeNames.applicant(line.getHousingTypeName());
         if (!applicant.isEmpty()) {
             return applicant;
         }
-        return memberCount == 1 ? ALL : line.getHousingTypeName();
+        if (members.size() == 1) {
+            return ALL;
+        }
+        RentalType supplyType = line.getAnnouncement().getSupplyType();
+        if (supplyType == RentalType.NATIONAL_RENTAL || supplyType == RentalType.PERMANENT_RENTAL) {
+            return GENERAL;
+        }
+        // 표기를 '·'로 잇지 않는다. 신청자격이 '·'로 대상 이름을 나눠 '고령자' 경로에 이 줄을 잇게 된다.
+        List<String> marked = members.stream().map(member -> HousingTypeNames.applicant(member.getHousingTypeName()))
+                .filter(name -> !name.isEmpty()).distinct().toList();
+        return marked.isEmpty() ? line.getHousingTypeName() : marked.size() == 1 ? marked.getFirst() + " 외" : OTHERS;
     }
 
     /** 정본에 쓸 수 있는 공급표 draft와 같은 공급표의 읽기 모델. */

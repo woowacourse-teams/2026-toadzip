@@ -14,6 +14,7 @@ import {
   missingNote,
   sortChecks,
   sortTypes,
+  tabTexts,
   typeStatusText,
   verdictCopy,
 } from '../presentation/comparisonPresentation'
@@ -158,6 +159,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
   if (types.length === 1) {
     return <>{required}<div className={`${styles.panel} ${styles.single}`}><TypePanel announcementId={announcementId} type={selected} just={just} onOpenEvidence={onOpenEvidence} /></div></>
   }
+  const texts = tabTexts(types)
   return <>
     {required}
     <div className={styles.tabs} role="tablist" aria-label="신청 유형">
@@ -165,7 +167,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{type.label}{type.units && <small>{type.units}</small>}</span>
+        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{texts[index].label}{texts[index].units && <small>{texts[index].units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
