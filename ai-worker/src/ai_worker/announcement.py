@@ -10,8 +10,8 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, source_frame, stage_prompts,
-                       supply_grouping, supply_sources, version)
+from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame,
+                       stage_prompts, supply_grouping, supply_sources, tables, version)
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
 
@@ -113,6 +113,16 @@ class AnnouncementPdfExtractor:
                  "usage=%s", job.id, len(selection.pages), len(texts), len(eligibility_source.pages),
                  "" if eligibility_source.section_found else "(절 제목 없음)", len(selected.supply_row_ids), len(frame),
                  len(warnings), supply.kind, usage)
+        snapshot = (job.input or {}).get("publication")
+        if job.request_source == BATCH and snapshot:
+            try:
+                tree["publicationReview"] = publication.assess(
+                    tree, publication.Source(texts, selected.supply_row_text, page_tables(job.pdf)), warnings,
+                    self.column_judge, deadline, snapshot)
+            except Exception:
+                # 판정 오류로 유료 추출 결과까지 버리지 않는다. 결과는 남기고 운영자 검수로 보낸다.
+                log.exception("작업 %d 공개 판정 중 오류", job.id)
+                tree["publicationReview"] = publication.held("공개 판정 중 오류가 났습니다.")
         return {
             "json": json.dumps(tree, ensure_ascii=False),
             "pages": selection.pages,
@@ -122,6 +132,14 @@ class AnnouncementPdfExtractor:
             # 신청자격을 읽지 못한 결과(일시 오류, 시간 부족, 형식 오류)는 다시 하면 채워질 수 있다.
             INCOMPLETE: extracted.data is None,
         }
+
+
+def page_tables(pdf: bytes):
+    """공개 판정이 날짜의 절차를 물을 때 쓰는, 원본 쪽 번호 → 그 쪽의 표 칸. 물을 때만 PDF를 다시 연다."""
+    def read(number):
+        with pages.open_pdf(pdf) as original:
+            return [table.cells for table in tables.detected_tables(original[number - 1])[0]]
+    return read
 
 
 def _eligibility_reply(model: supply_sources.Model, prompt: str, deadline: float) -> openai.Reply:

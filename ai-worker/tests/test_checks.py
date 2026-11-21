@@ -110,6 +110,14 @@ def test_warns_quote_words_missing_from_its_original_page():
     assert review(case, pages=[1, 3], texts=texts) == ["여수미평1 26A: 근거 인용문의 20이(가) 3쪽 원문에 없음"]
 
 
+def test_quote_differing_from_its_page_only_in_quotation_mark_shape_is_not_warned():
+    case = response(cites=[(0, 3, "26A 13.50 19")],
+                    evidence=[{"path": "announcement.applicationEndDate", "page": 1, "quote": "'26.09.28.(월)"}])
+    texts = ["접수 ’26.09.28.(월)", "", "주택형 26A 공용 13.50 모집호수 19"] + [""] * 7
+
+    assert review(case, pages=[1, 3], texts=texts) == []
+
+
 def test_quote_of_table_row_matches_cells_extracted_in_other_order():
     case = response(cites=[(0, 1, "경암부향 39 39.95 717")])
     texts = ["39.95\n경암부향\n717 39"]

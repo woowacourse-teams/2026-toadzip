@@ -20,7 +20,8 @@ from ai_worker.supply_sheet import (
 
 _ROW_FIELDS = (TOTAL, *AREA_FIELDS)
 _TARGET_VALUE_FIELDS = ("supplyHouseholdCount", "reserveCount", *AMOUNT_FIELDS)
-_RESERVE_MISSING = "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
+# 표에 예비자 수가 없다. 공개 판정(publication)은 입주자를 뽑는 신규 모집 공고에서 이 미확인을 보류 사유로 세지 않는다.
+RESERVE_MISSING = "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
 
 
 @dataclass(eq=False)
@@ -201,7 +202,7 @@ class _Assembly:
             return
         # reserveCount는 이번 공고의 예비자 모집수라는 제품 계약의 핵심 값이다.
         if entry.values["reserveCount"] is None and label:
-            self._find(entry, "reserveCount", _RESERVE_MISSING)
+            self._find(entry, "reserveCount", RESERVE_MISSING)
         for name, reason in item.unresolved:
             if name in entry.values:
                 self._find(entry, name, reason)
@@ -765,7 +766,7 @@ class _Assembly:
         """공통 수량 하나를 싣고, 공통 수량이 대신하는 '예비자 모집수 미확인'을 지운다."""
         self.shared.append(Shared(COUNT_KINDS[field], count, owners, page, quote))
         for owner in owners:
-            self._drop(owner, field, _RESERVE_MISSING)
+            self._drop(owner, field, RESERVE_MISSING)
 
     # ---------- 원문 대조 ----------
 
@@ -1040,6 +1041,10 @@ def _group_name(verified: str | None, candidate: object, field: str, row_ids: li
 
 
 
+# 추출이 값을 내지 않았고 원문 표에도 그 열의 값이 없다(열 자체가 없는 표 포함). 공개 판정(publication)이 이 사유로 가른다.
+NO_SOURCE_VALUE = "원문 표 행 ID가 없거나 해당 열의 값을 확인하지 못함"
+
+
 def _source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,
                  missing_value: str | None, required: bool = True) -> tuple[str | None, str | None]:
     """칸 초안의 표기를 같은 의미의 원문 칸에서 확인한 값(표기, 확인하지 못한 사유)."""
@@ -1053,7 +1058,7 @@ def _source_text(candidate: object, field: str, row_ids: list[str], selected: pa
     if len(source_values) == 1:
         return _normalize_source_display(source_values[0], field), None
     if required:
-        return missing_value, "원문 표 행 ID가 없거나 해당 열의 값을 확인하지 못함"
+        return missing_value, NO_SOURCE_VALUE
     if len(source_values) > 1:
         return missing_value, "여러 원문 표 값이 있어 하나로 결정하지 못함"
     return missing_value, None

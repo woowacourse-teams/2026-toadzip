@@ -51,6 +51,8 @@ tasks.named('test') {
 	// Tests share PostgreSQL schemas, so keep execution sequential and reuse cached contexts.
 	maxParallelForks = 1
 	maxHeapSize = '2g'
+	// 한 JVM에서 전부 돌리면 컨텍스트가 30개 가까이 쌓여 힙 2g를 다 쓴다. 오래 안 쓴 컨텍스트부터 닫는다.
+	systemProperty 'spring.test.context.cache.maxSize', '16'
 
 	// Each CI shard has its own JVM and Testcontainers databases. Local test runs remain complete.
 	def shard = providers.gradleProperty('testShard').orNull

@@ -178,6 +178,91 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 판정_조건이_같은_요건은_한_줄로_두고_근거를_함께_남긴다() {
+        // 공고문이 '공고일 현재 무주택'과 '입주 시까지 무주택 유지'를 따로 적어 추출도 둘로 나눈 경우다. 두 줄로 보이면 같은 줄이 반복된다.
+        Map<String, Quote> quotes = evidence();
+        quotes.put(YOUTH + ".requirements[2]", new Quote(3, "원문 " + YOUTH + ".requirements[2]"));
+        // 공통 조건(세대 무주택)과 겹치지 않게 본인 무주택으로 둔다.
+        EligibilityContent content = draft(quotes, List.of(
+                requirement("NO_HOUSE", "APPLICANT", YOUTH + ".requirements[1]", "공고일 현재 무주택자"),
+                requirement("NO_HOUSE", "APPLICANT", YOUTH + ".requirements[2]", "입주 시까지 무주택자 유지")));
+
+        List<EligibilityContent.ProfileCheck> checks = content.paths().getFirst().checks();
+        assertThat(checks).extracting(EligibilityContent.ProfileCheck::label)
+                .containsExactly("만 19세 이상 39세 이하", "공고일 현재 무주택자");
+        assertThat(checks.get(1).evidenceIds()).hasSize(2).doesNotHaveDuplicates();
+        assertThat(youth(content, with(b(), ProfileField.APPLICANT_OWNS_HOUSE, true))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 공통_조건과_판정이_같은_경로_요건은_경로에_다시_두지_않는다() {
+        EligibilityContent content = draft(evidence(), List.of(
+                requirement("NO_HOUSE", "HOUSEHOLD", YOUTH + ".requirements[1]", "무주택세대구성원 유지")));
+
+        assertThat(content.commonChecks()).extracting(EligibilityContent.ProfileCheck::label).contains("무주택세대구성원");
+        assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::label)
+                .containsExactly("만 19세 이상 39세 이하");
+        assertThat(youth(content, with(b(), ProfileField.FAMILY_OWNS_HOUSE, true))).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 어느_경로도_잇지_못한_일반_대상은_공통_요건으로_판정하고_잇지_못한_경로의_요건은_목록으로_보인다() {
+        Route elderly = new Route("고령자", List.of("고령자"), new Group(YOUTH, List.of(age(YOUTH + ".requirements[0]")), List.of()));
+        EligibilityContent content = draft(evidence(), List.of(elderly), List.of(new Target("일반", 10)));
+
+        assertThat(content.paths()).extracting(EligibilityContent.EligibilityPath::label).containsExactly("일반");
+        // '일반'은 대상 해당을 따로 묻지 않는다. 공통 요건(무주택·소득)만으로 판정한다.
+        assertThat(status(content, b(), "일반")).isEqualTo(Status.ELIGIBLE);
+        assertThat(status(content, with(b(), ProfileField.FAMILY_OWNS_HOUSE, true), "일반")).isEqualTo(Status.INELIGIBLE);
+        assertThat(guidance(content, "list-common").items()).contains("'고령자' 대상 · 나이: 만 19세 이상 39세 이하");
+    }
+
+    @Test
+    void 자동_공개에서_원문으로_뜻을_확인하지_못한_요건은_판정하지_않고_근거와_함께_목록으로만_둔다() {
+        String income = COMMON + ".requirements[1]";
+        Source base = source(evidence(), null, List.of());
+        Source automatic = new Source(base.referenceDate(), base.document(), base.units(), base.eligibility(),
+                base.incomeTables(), base.regionCodes(), path -> !path.equals(income));
+        EligibilityContent content = ExtractedEligibilityDraft.build(automatic).content();
+        validate(content);
+
+        // 소득은 판정하지 않아 상한을 넘어도 지원 가능이다. 확인한 무주택 요건은 그대로 판정한다.
+        assertThat(youth(content, with(b(), HOUSEHOLD_MONTHLY_INCOME, 6_452_898L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(b(), ProfileField.FAMILY_OWNS_HOUSE, true))).isEqualTo(Status.INELIGIBLE);
+        Guidance listed = guidance(content, "list-common");
+        assertThat(listed.items()).containsExactly("소득: 전년도 도시근로자 가구원수별 월평균소득 100% 이하");
+        assertThat(listed.evidenceIds()).containsExactly(content.evidences().stream()
+                .filter(item -> item.location().equals(income)).findFirst().orElseThrow().id());
+        // 관리자 보정(경로를 가리지 않는 Source)은 같은 소득 요건을 판정한다.
+        EligibilityProfile overLimit = with(b(), HOUSEHOLD_MONTHLY_INCOME, 6_452_898L);
+        assertThat(youth(draft(evidence()), overLimit)).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 자동_공개에서_확인하지_못한_선택_요건은_선택지_전체를_판정하지_않고_목록으로_둔다() {
+        // 워커는 선택지를 하나씩 묻고, 하나라도 확인하지 못하면 선택 요건(부모) 경로를 낸다.
+        String anyOf = YOUTH + ".requirements[1]";
+        Requirement marriedOrChild = new Requirement("ANY_OF", null, null, null, null, null, null, null, Map.of(),
+                List.of(), null, List.of(), List.of(), List.of(
+                        new Requirement("MARRIAGE_PERIOD", null, null, 7, null, null, null, null, Map.of(), List.of(), null,
+                                List.of(), List.of(), List.of(), "혼인기간 7년 이내", anyOf + ".options[0]"),
+                        new Requirement("AGE", "YOUNGEST_CHILD", null, 6, null, null, null, null, Map.of(), List.of(), null,
+                                List.of(), List.of(), List.of(), "6세 이하 자녀를 둔 자", anyOf + ".options[1]")),
+                "혼인기간 7년 이내 또는 6세 이하 자녀를 둔 자", anyOf);
+        Source base = source(evidence(), null, List.of(marriedOrChild));
+        Source automatic = new Source(base.referenceDate(), base.document(), base.units(), base.eligibility(),
+                base.incomeTables(), base.regionCodes(), path -> !path.equals(anyOf));
+        EligibilityContent content = ExtractedEligibilityDraft.build(automatic).content();
+        validate(content);
+
+        assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::label)
+                .containsExactly("만 19세 이상 39세 이하");
+        assertThat(guidance(content, "list-path-1").items()).containsExactly("혼인기간 7년 이내 또는 6세 이하 자녀를 둔 자");
+        // 관리자 보정은 같은 선택 요건을 판정한다.
+        assertThat(draft(evidence(), List.of(marriedOrChild)).paths().getFirst().checks()).hasSize(2);
+    }
+
+    @Test
     void 알아볼_입력이_없는_가산은_기본_기준으로_판정하고_가산을_목록에_알린다() {
         EligibilityContent content = draft(evidence(), List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null,
                 "URBAN_WORKER_MONTHLY_INCOME", 2025, 100, Map.of(), List.of(new Adjustment("DISABILITY", null)), null, List.of(), List.of(),

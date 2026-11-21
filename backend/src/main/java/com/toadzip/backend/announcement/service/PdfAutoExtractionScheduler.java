@@ -45,7 +45,8 @@ public class PdfAutoExtractionScheduler {
     private static final Pattern NOTICE_NAME = Pattern.compile("공고문|모집공고");
     /** 한 번에 살펴볼 후보 수. 받을 수 없는 첨부를 건너뛰고도 빈자리를 채울 만큼 읽는다. */
     private static final int CANDIDATE_LIMIT = 50;
-    private static final Set<AttachmentUnavailableException.Reason> RETRYABLE = EnumSet.of(
+    /** 기관 서버가 잠깐 응답하지 않은 실패. 다음 주기에 다시 받는다. */
+    static final Set<AttachmentUnavailableException.Reason> RETRYABLE = EnumSet.of(
             AttachmentUnavailableException.Reason.UPSTREAM_FAILURE, AttachmentUnavailableException.Reason.BUSY);
 
     private final AnnouncementPdfExtractionService extractions;
