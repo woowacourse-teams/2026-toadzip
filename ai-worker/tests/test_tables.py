@@ -556,3 +556,29 @@ def test_tables_found_only_without_layout_analysis_are_kept_only_when_they_look_
 
     assert tables.detected_tables(asset_rules) == ([], False)
     assert tables.detected_tables(schedule) == ([], False)
+
+
+@pytest.mark.parametrize("header, field", [
+    ("공급 호수", "totalSupplyHouseholdCount"), ("금회 공급호수", "totalSupplyHouseholdCount"),
+    ("공급세대수", "totalSupplyHouseholdCount"),
+    ("건설 호수", "constructedHouseholdCount"), ("대기 중인 예비 자수", None),
+])
+def test_supply_count_column_is_the_recruitment_count_only_without_other_count_columns(header, field):
+    # 학익 SK VIEW: '공급 호수'만 있는 표의 공급호수는 이번 공고 모집수다. 건설호수·대기 중인 예비자수는 모집수가 아니다.
+    columns = tables.SupplyTable.of(1, 1, [["주택형", header, "주거전용"], ["38", "80", "38.9945"]], None, False).columns
+
+    assert {name for name, column in columns.items() if column == 1} == ({field} if field else set())
+
+
+def test_supply_count_column_is_not_the_recruitment_count_next_to_a_recruitment_column():
+    columns = tables.SupplyTable.of(1, 1, [["주택형", "공급호수", "모집호수"], ["38", "100", "80"]], None, False).columns
+
+    assert columns["totalSupplyHouseholdCount"] == 2
+
+
+
+def test_construction_and_supply_count_columns_side_by_side_keep_their_roles():
+    columns = tables.SupplyTable.of(1, 1, [["주택형", "건설호수", "공급호수", "주거전용"], ["38", "120", "80", "38.9945"]],
+                                    None, False).columns
+
+    assert (columns["constructedHouseholdCount"], columns["totalSupplyHouseholdCount"]) == (1, 2)
