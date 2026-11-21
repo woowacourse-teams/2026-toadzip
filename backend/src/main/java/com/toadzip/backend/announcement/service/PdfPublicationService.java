@@ -11,7 +11,9 @@ import com.toadzip.backend.announcement.domain.PdfExtractionInput.Publication;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
 import com.toadzip.backend.announcement.domain.PdfExtractionJob;
 import com.toadzip.backend.announcement.domain.PdfExtractionSource;
+import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Apply;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Change;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Preview;
 import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Request;
 import com.toadzip.backend.announcement.dto.response.AttachmentContent;
@@ -23,6 +25,7 @@ import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtraction;
 import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
 import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
+import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.validation.Validator;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,6 +33,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,6 +51,9 @@ class PdfPublicationService {
      * 넘기면 검수로 넘긴다. 미룬 작업이 계속 앞자리를 차지하면 뒤의 작업을 판정하지 못한다.
      */
     private static final Duration DOWNLOAD_RETRY_WINDOW = Duration.ofHours(1);
+    /** 수집한 값이 '기타'면 아직 분류하지 못한 것으로 보는 기본정보 항목과 그 값. */
+    private static final Map<String, String> UNCLASSIFIED_TYPES = Map.of(
+            "rentalType", RentalType.ETC.name(), "recruitmentType", RecruitmentType.ETC.name());
 
     private final PdfPublicationDecisions decisions;
     private final PdfExtractionJobRepository jobs;
@@ -155,9 +162,8 @@ class PdfPublicationService {
         Preview preview = corrections.preview(id, request);
         boolean previouslyPublished = announcement.isPublished();
         require(preview.publishes() || previouslyPublished, "공고를 공개할 수 없습니다.");
-        for (var field : preview.fields()) {
-            require(field.before() == null || field.before() instanceof JsonNode before && (before.isNull() || before.isMissingNode() || before.isArray() && before.isEmpty()),
-                    "기존 값과 PDF가 다릅니다: " + field.field());
+        for (Change field : preview.fields()) {
+            require(fillsEmpty(field), "기존 값과 PDF가 다릅니다: " + field.field());
         }
         if (mode != PublicationMode.APPLY || snapshot.mode() != mode) {
             decisions.record(jobId, outcome(previouslyPublished, "WOULD_CONFIRM", "WOULD_PUBLISH"),
@@ -172,6 +178,26 @@ class PdfPublicationService {
         }
         decisions.record(jobId, outcome, "공고 보정 완료 · 신청자격의 원문 근거와 대상별 예외를 확인하세요.",
                 announcement.getVersion(), "REVIEW");
+    }
+
+    /**
+     * 자동 보정은 비어 있는 값만 채우고 이미 있는 값은 바꾸지 않는다. 수집한 유형 '기타'는 기관 분류에 맞는 유형이 없었다는 뜻이라
+     * 빈 값처럼 워커가 원문으로 확인한 유형으로 바꾼다.
+     */
+    private static boolean fillsEmpty(Change field) {
+        if (field.before() == null) {
+            return true;
+        }
+        if (!(field.before() instanceof JsonNode before)) {
+            return false;
+        }
+        if (before.isNull() || before.isMissingNode()) {
+            return true;
+        }
+        if (before.isArray()) {
+            return before.isEmpty();
+        }
+        return before.isString() && before.asString().equals(UNCLASSIFIED_TYPES.get(field.field()));
     }
 
     private static String outcome(boolean previouslyPublished, String confirmed, String published) {

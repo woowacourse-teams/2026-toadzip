@@ -673,6 +673,39 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                 .containsExactly("계약 체결", "추가 접수", "입주");
     }
 
+    @Test
+    void 수집한_유형이_기타이면_PDF로_확인한_유형으로_바꿔_확정한다() {
+        Candidate collected = candidate(collectedNotice(RentalType.ETC, RecruitmentType.ETC));
+        long id = collected.notice().getId();
+        long job = succeededJob(collected, passedExtraction(collected));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("CONFIRMED"));
+        Announcement notice = announcements.findById(id).orElseThrow();
+        assertThat(notice.isSupplyConfirmed()).isTrue();
+        assertThat(notice.getSupplyType()).isEqualTo(RentalType.HAPPY_HOUSING);
+        assertThat(notice.getRecruitmentType()).isEqualTo(RecruitmentType.NEW);
+    }
+
+    @Test
+    void 수집한_유형이_기타가_아닌_다른_값이면_보류하고_유형을_그대로_둔다() {
+        Candidate collected = candidate(collectedNotice(RentalType.NATIONAL_RENTAL, RecruitmentType.NEW));
+        long id = collected.notice().getId();
+        long job = succeededJob(collected, passedExtraction(collected));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason")).isEqualTo("기존 값과 PDF가 다릅니다: rentalType");
+        });
+        Announcement notice = announcements.findById(id).orElseThrow();
+        assertThat(notice.isSupplyConfirmed()).isFalse();
+        assertThat(notice.getSupplyType()).isEqualTo(RentalType.NATIONAL_RENTAL);
+    }
+
     /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */
     private Candidate candidate() {
         return candidate(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고", AgencyCode.SH, TODAY,
