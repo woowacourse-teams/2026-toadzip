@@ -236,7 +236,9 @@ class PdfPublicationService {
     @Transactional
     public void publishEligibility(long jobId) {
         var version = decisions.claimEligibility(jobId);
-        if (version.isEmpty()) { return; }
+        if (version.isEmpty()) {
+            return;
+        }
         var job = jobs.findById(jobId).orElseThrow();
         long id = job.getAnnouncementId();
         var notice = announcements.findByIdForUpdate(id).orElseThrow();

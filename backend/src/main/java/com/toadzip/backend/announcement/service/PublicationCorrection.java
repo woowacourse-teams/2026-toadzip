@@ -1,10 +1,16 @@
 package com.toadzip.backend.announcement.service;
 
-import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.*;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Event;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Request;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Selection;
+import com.toadzip.backend.announcement.dto.correction.AnnouncementJsonCorrection.Workspace;
 import com.toadzip.backend.announcement.dto.correction.SupplyCorrection;
 import com.toadzip.backend.announcement.dto.correction.SupplySheetInput;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.*;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.AnnouncementRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.ReceptionPlaceRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.ScheduleRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementImportRequest.SourceRequest;
 import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
@@ -16,7 +22,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -54,7 +65,8 @@ class PublicationCorrection {
         require(current.postedDate() != null && current.postedDate().equals(date(notice, "postedDate")),
                 "수집한 공고일과 PDF 모집공고일이 다릅니다.");
         require(!metadata.applicationEndDate().isBefore(metadata.applicationStartDate())
-                && !metadata.winnerAnnouncementDate().isBefore(metadata.applicationEndDate()), "신청·발표 날짜 순서를 확인하세요.");
+                && !metadata.winnerAnnouncementDate().isBefore(metadata.applicationEndDate()),
+                "신청·발표 날짜 순서를 확인하세요.");
         List<ReceptionPlaceRequest> places = array(data, "receptionPlaces").stream()
                 .map(item -> json.treeToValue(item, ReceptionPlaceRequest.class)).toList();
         List<ScheduleRequest> schedules = array(data, "schedules").stream()
@@ -71,7 +83,8 @@ class PublicationCorrection {
         if (!places.isEmpty() || !current.receptionPlaces().isEmpty()) {
             fields.add("receptionPlaces");
         }
-        return new Request(workspace.snapshotToken(), document, fields, selects, List.of(), correction, List.of(), true);
+        return new Request(workspace.snapshotToken(), document, fields, selects, List.of(), correction, List.of(),
+                true);
     }
 
     /**
@@ -111,30 +124,39 @@ class PublicationCorrection {
         Optional<String> onlyComplex = onlyLinkedComplex(workspace, housingTypes);
         for (var row : housingTypes) {
             String name = onlyComplex.orElseGet(() -> row.required("complexName").asString());
-            var links = workspace.supply().announcementComplexes().stream().filter(c -> name.equals(c.name())).toList();
+            var links = workspace.supply().announcementComplexes().stream().filter(c -> name.equals(c.name()))
+                    .toList();
             require(links.size() <= 1, "공고 단지 후보가 여러 곳입니다: " + name);
-            var link = links.isEmpty() ? null : links.getFirst();
-            Long complexId = link == null ? null : link.housingComplexId();
-            if (link != null) { usedLinks.add(link.id()); }
+            Long linkId = null;
+            Long complexId = null;
+            if (!links.isEmpty()) {
+                linkId = links.getFirst().id();
+                complexId = links.getFirst().housingComplexId();
+                usedLinks.add(linkId);
+            }
             if (complexId == null) {
                 var agency = workspace.detail().data().agencyCode();
-                var found = complexes.findByNameAndProviderInAndAdminDeletedFalse(name, List.of(agency.name(), agency.displayName()));
+                var found = complexes.findByNameAndProviderInAndAdminDeletedFalse(name,
+                        List.of(agency.name(), agency.displayName()));
                 require(found.size() == 1, "기관·단지명이 일치하는 단지 한 곳을 확인하세요: " + name);
                 complexId = found.getFirst().getId();
             }
             String type = row.required("name").asString();
             BigDecimal area = decimal(row, "exclusiveArea");
-            var matches = types.findAllByHousingComplexIdIn(List.of(complexId)).stream().filter(t -> type.equals(t.getName())
-                    && area != null && t.getExclusiveArea().compareTo(area) == 0).toList();
-            require(matches.size() == 1 && seen.add(matches.getFirst().getId()), "주택형·전용면적 연결 확인: " + name + " " + type);
+            var matches = types.findAllByHousingComplexIdIn(List.of(complexId)).stream()
+                    .filter(t -> type.equals(t.getName()) && area != null && t.getExclusiveArea().compareTo(area) == 0)
+                    .toList();
+            require(matches.size() == 1 && seen.add(matches.getFirst().getId()),
+                    "주택형·전용면적 연결 확인: " + name + " " + type);
             require(row.path("houseTypes").isEmpty(), "여러 세부 주택타입의 연결을 확인하세요: " + type);
-            String month = row.path("expectedMoveInMonth").asString(null);
-            rows.add(new SupplySheetInput.HousingType(key(row, "key"), null, link == null ? null : link.id(), name,
+            YearMonth month = yearMonth(row, "expectedMoveInMonth");
+            rows.add(new SupplySheetInput.HousingType(key(row, "key"), null, linkId, name,
                     complexId, matches.getFirst().getId(), null, type, area, decimal(row, "supplyArea"),
-                    month == null ? null : YearMonth.parse(month), null, null, rows.size()));
+                    month, null, null, rows.size()));
         }
-        require(!rows.isEmpty() && workspace.supply().announcementComplexes().stream().allMatch(c -> usedLinks.contains(c.id())),
-                "공고 단지가 공급표에서 누락됐습니다.");
+        boolean everyComplexUsed = workspace.supply().announcementComplexes().stream()
+                .allMatch(c -> usedLinks.contains(c.id()));
+        require(!rows.isEmpty() && everyComplexUsed, "공고 단지가 공급표에서 누락됐습니다.");
         var targets = new ArrayList<SupplySheetInput.Target>();
         for (var row : array(sheet, "targets")) {
             var groups = array(row, "groups").stream().map(g -> SupplyTargetGroup.valueOf(g.asString())).toList();
@@ -143,15 +165,16 @@ class PublicationCorrection {
         }
         var cells = new ArrayList<SupplySheetInput.Cell>();
         for (var row : array(sheet, "cells")) {
-            cells.add(new SupplySheetInput.Cell(cell(row), null, key(row, "housingType"), key(row, "target"), cells.size()));
+            cells.add(new SupplySheetInput.Cell(cell(row), null, key(row, "housingType"), key(row, "target"),
+                    cells.size()));
         }
         var quotas = array(sheet, "quotas").stream().map(q -> new SupplySheetInput.Quota(
                 SupplyQuota.Kind.valueOf(q.required("kind").asString()), q.required("count").asInt(),
                 array(q, "members").stream().map(PublicationCorrection::cell).toList())).toList();
         require(!cells.isEmpty() && !quotas.isEmpty(), "공급대상·모집 수량이 없습니다.");
-        var leases = array(sheet, "leaseTerms").stream().map(l -> new SupplySheetInput.Lease(decimal(l, "rentalDeposit"),
-                decimal(l, "monthlyRent"), decimal(l, "convertedDeposit"), array(l, "members").stream()
-                .map(PublicationCorrection::cell).toList())).toList();
+        var leases = array(sheet, "leaseTerms").stream().map(l -> new SupplySheetInput.Lease(
+                decimal(l, "rentalDeposit"), decimal(l, "monthlyRent"), decimal(l, "convertedDeposit"),
+                array(l, "members").stream().map(PublicationCorrection::cell).toList())).toList();
         return new SupplySheetInput(rows, targets, cells, quotas, leases);
     }
 
@@ -187,11 +210,31 @@ class PublicationCorrection {
                 .orElseThrow(() -> new PublicationHold(missing));
     }
 
-    private static LocalDate date(JsonNode node, String field) { return LocalDate.parse(node.required(field).asString()); }
-    private static String key(JsonNode node, String field) { return "new:" + node.required(field).asString(); }
-    private static String cell(JsonNode node) { return key(node, "housingType") + "-" + node.required("target").asString(); }
+    private static LocalDate date(JsonNode node, String field) {
+        return LocalDate.parse(node.required(field).asString());
+    }
+
+    private static String key(JsonNode node, String field) {
+        return "new:" + node.required(field).asString();
+    }
+
+    private static String cell(JsonNode node) {
+        return key(node, "housingType") + "-" + node.required("target").asString();
+    }
+
     private static BigDecimal decimal(JsonNode node, String field) {
         String text = node.path(field).asString(null);
-        return text == null ? null : new BigDecimal(text);
+        if (text == null) {
+            return null;
+        }
+        return new BigDecimal(text);
+    }
+
+    private static YearMonth yearMonth(JsonNode node, String field) {
+        String text = node.path(field).asString(null);
+        if (text == null) {
+            return null;
+        }
+        return YearMonth.parse(text);
     }
 }

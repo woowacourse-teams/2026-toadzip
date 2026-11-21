@@ -30,7 +30,8 @@ class PdfPublicationScheduler {
     }
 
     @Scheduled(fixedDelayString = "${announcement.pdf-auto-extraction.check-interval}",
-            initialDelayString = "${announcement.pdf-auto-extraction.initial-delay}", scheduler = SchedulingConfig.AUTO_RUN_SCHEDULER)
+            initialDelayString = "${announcement.pdf-auto-extraction.initial-delay}",
+            scheduler = SchedulingConfig.AUTO_RUN_SCHEDULER)
     void process() {
         if (mode == PublicationMode.OFF) {
             return;
