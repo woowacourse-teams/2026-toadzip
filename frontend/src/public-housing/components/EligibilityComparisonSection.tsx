@@ -15,6 +15,7 @@ import {
   sortChecks,
   sortTypes,
   tabTexts,
+  withTypeSuffix,
   typeStatusText,
   verdictCopy,
 } from '../presentation/comparisonPresentation'
@@ -235,7 +236,7 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
       <ul className={styles.checks} aria-label={`${type.label} 항목별 비교`}>
         {checks.map((check) => <CheckRow key={check.id} announcementId={announcementId} check={check} type={type} just={just.has(`${type.key}:${check.id}`)} onOpenEvidence={onOpenEvidence} />)}
       </ul>
-      {type.units && <p className={styles.units}>모집 주택형 · <b>{type.units}</b></p>}
+      {type.units && <p className={styles.units}>모집 주택형 · <b>{withTypeSuffix(type.units)}</b></p>}
       {Boolean(type.regionCodes?.length) && <p className={styles.units}>모집 지역 · {type.regionCodes?.map(regionLabel).join(', ')}</p>}
       {type.guidances.length > 0 && <div className={styles.direct}>
         <h4>신청 전 직접 확인할 것</h4>
@@ -245,7 +246,7 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
         </li>)}</ul>
       </div>}
       {Boolean(type.exclusions?.length) && <details className={styles.direct}>
-        <summary>⚠️ 신청 불가능한 특수 경우</summary>
+        <summary>{GUIDANCE_KIND_LABEL.APPLICATION_EXCLUSION}</summary>
         <ul>{type.exclusions?.map((guidance) => <li key={guidance.title}>
           <div><strong>{guidance.title}</strong><p>{guidance.body}</p>{guidance.items.length > 0 && <ul className={styles.guidanceItems}>{guidance.items.map((item) => <li key={item}>{item}</li>)}</ul>}</div>
           {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}

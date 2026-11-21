@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CheckView, ListConditionResult, TypeView } from '../../user/conditions/conditionsModel'
-import { GUIDANCE_KIND_LABEL, evidenceLabel, listResultText, missingNote, sortChecks, sortTypes, tabTexts, typeStatusText, verdictCopy } from './comparisonPresentation'
+import { GUIDANCE_KIND_LABEL, evidenceLabel, listResultText, missingNote, sortChecks, sortTypes, tabTexts, typeStatusText, verdictCopy, withTypeSuffix } from './comparisonPresentation'
 
 const check = (status: CheckView['status'], extra: Partial<CheckView> = {}): CheckView => ({
   id: status, label: '세대 소득', status, mine: null, criterion: '', basis: null, evidence: null, fields: ['HOUSEHOLD_MONTHLY_INCOME'], missingReason: null, ...extra,
@@ -63,6 +63,19 @@ describe('tabTexts', () => {
   it('uses the housing type as the tab name when every tab shares one path name', () => {
     const units = ['29', '37', '46'].map((name) => type('UNDETERMINED', { label: '신청자격', units: `증평송산5단지 국민임대 ${name}` }))
     expect(tabTexts(units)).toEqual([{ label: '29형', units: '' }, { label: '37형', units: '' }, { label: '46형', units: '' }])
+  })
+
+  it('keeps the applicant mark after the housing type in the tab name', () => {
+    const units = ['29', '29 (주거약자)', '37'].map((name) => type('UNDETERMINED', { label: '신청자격', units: `증평송산5단지 국민임대 ${name}` }))
+    expect(tabTexts(units).map((text) => text.label)).toEqual(['29형', '29형(주거약자)', '37형'])
+  })
+
+  it('adds 형 to the trailing housing type of a full name only', () => {
+    expect(withTypeSuffix('증평송산5단지 국민임대 29 (주거약자)')).toBe('증평송산5단지 국민임대 29형(주거약자)')
+    expect(withTypeSuffix('행복단지 26A-1')).toBe('행복단지 26A-1형')
+    expect(withTypeSuffix('행복단지 36A형(고령자)')).toBe('행복단지 36A형(고령자)')
+    expect(withTypeSuffix('행복단지 전용 36A형')).toBe('행복단지 전용 36A형')
+    expect(withTypeSuffix('행복단지 55A1 · 55C(주거약자)')).toBe('행복단지 55A1형 · 55C형(주거약자)')
   })
 
   it('keeps distinct path names and shortens the shared complex part of the housing type', () => {

@@ -228,7 +228,15 @@ describe('EligibilityComparisonSection', () => {
     expect(names[0]).toContain('29형')
     expect(names[1]).toContain('37형')
     expect(names.join('')).not.toContain('신청자격')
-    expect(screen.getByText('증평송산5단지 국민임대 29')).toBeInTheDocument()
+    expect(screen.getByText('증평송산5단지 국민임대 29형')).toBeInTheDocument()
+  })
+
+  it('titles the application exclusions without an emoji', async () => {
+    const excluded = type('a', '신청자격', 'UNDETERMINED', [], { exclusions: [{ kind: 'APPLICATION_EXCLUSION', title: '불법전대자 입주자격 제한',
+      body: '4년이 지나지 않으면 선정되지 않아요.', items: [], evidence: null }] })
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([excluded])) }))
+    expect(await screen.findByText('신청 불가능한 특수 경우')).toBeInTheDocument()
+    expect(screen.queryByText(/⚠️/)).not.toBeInTheDocument()
   })
 
   it('shows the preparing notice for NOT_STRUCTURED', async () => {

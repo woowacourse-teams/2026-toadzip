@@ -5,7 +5,6 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.HousingTypeAreas;
 import com.toadzip.backend.housing.domain.HousingTypeNames;
-import com.toadzip.backend.housing.domain.RentalType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -36,8 +35,6 @@ import java.util.stream.Collectors;
 public final class AgencySupplySheet {
 
     private static final String ALL = AnnouncementSupplyTarget.EVERYONE;
-    private static final String GENERAL = "일반";
-    private static final String OTHERS = "그 밖의 대상";
     /** 원천 대상의 신청 조건. 공고문으로 확인하기 전이라는 뜻이다. */
     private static final String SOURCE_CONDITION = "공고문 참조";
     private static final int MAX_TYPE_NAME = 255;
@@ -140,28 +137,12 @@ public final class AgencySupplySheet {
         return targets;
     }
 
-    /**
-     * 형명 끝의 신청자 표기("36형 일반(고령자)" → "고령자"). 없으면 한 줄뿐인 공급행은 '전체'다. 같은 형에 표기가 있는 줄과
-     * 함께 온 표기 없는 줄('29'와 '29(주거약자)')은 형 이름 대신 신청 대상으로 읽히는 이름을 쓴다. 일반공급이 있는 국민임대·영구임대는
-     * '일반'이고, 그 밖(신혼희망타운 행복주택의 '55'처럼 표기 없는 줄이 일반공급이 아닌 경우)은 '주거약자 외'처럼 함께 온 표기의
-     * 나머지다. 신청자격이 '일반'을 일반공급으로 보고 대상 확인 없이 공통 요건으로 판정하므로, 일반공급이 아닌 줄을 '일반'이라 부르지 않는다.
-     */
+    /** 형명 끝의 신청자 표기로 읽는 신청 대상({@link ApplicantLabels}). 정할 수 없으면 한 줄뿐인 공급행은 '전체', 아니면 형 이름이다. */
     private static String applicantLabel(AgencySupplyLine line, List<AgencySupplyLine> members) {
-        String applicant = HousingTypeNames.applicant(line.getHousingTypeName());
-        if (!applicant.isEmpty()) {
-            return applicant;
-        }
-        if (members.size() == 1) {
-            return ALL;
-        }
-        RentalType supplyType = line.getAnnouncement().getSupplyType();
-        if (supplyType == RentalType.NATIONAL_RENTAL || supplyType == RentalType.PERMANENT_RENTAL) {
-            return GENERAL;
-        }
-        // 표기를 '·'로 잇지 않는다. 신청자격이 '·'로 대상 이름을 나눠 '고령자' 경로에 이 줄을 잇게 된다.
-        List<String> marked = members.stream().map(member -> HousingTypeNames.applicant(member.getHousingTypeName()))
-                .filter(name -> !name.isEmpty()).distinct().toList();
-        return marked.isEmpty() ? line.getHousingTypeName() : marked.size() == 1 ? marked.getFirst() + " 외" : OTHERS;
+        String label = ApplicantLabels.of(line.getHousingTypeName(),
+                members.stream().map(AgencySupplyLine::getHousingTypeName).toList(),
+                line.getAnnouncement().getSupplyType());
+        return !label.isEmpty() ? label : members.size() == 1 ? ALL : line.getHousingTypeName();
     }
 
     /** 정본에 쓸 수 있는 공급표 draft와 같은 공급표의 읽기 모델. */

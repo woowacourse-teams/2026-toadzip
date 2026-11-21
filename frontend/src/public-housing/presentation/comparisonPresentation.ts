@@ -19,7 +19,7 @@ export function sortTypes(types: readonly TypeView[]): TypeView[] {
 /**
  * 탭에 보일 글. 모든 탭이 같은 주택형 앞부분(단지·유형 이름)을 가지면 그 부분을 떼어 주택형만 남긴다("29형").
  * 모든 탭의 신청 유형 이름이 같으면(공고문이 신청 대상을 나누지 않아 경로가 하나뿐) 그 이름은 탭을 가르지 못하므로
- * 주택형을 탭 이름으로 쓴다. 탭 아래 본문은 전체 주택형 이름을 그대로 보인다.
+ * 주택형을 탭 이름으로 쓴다. 탭 아래 본문은 단지까지 적은 전체 주택형 이름을 보인다.
  */
 export function tabTexts(types: readonly TypeView[]): Array<{ label: string; units: string }> {
   const words = types.map((type) => type.units.split(/\s+/).filter(Boolean))
@@ -30,12 +30,23 @@ export function tabTexts(types: readonly TypeView[]): Array<{ label: string; uni
   }
   const units = words.map((list) => {
     const rest = list.slice(shared).join(' ')
-    return shared > 0 && /^\d+[A-Za-z]?(-\d+)?$/.test(rest) ? `${rest}형` : rest
+    return shared > 0 && BARE_TYPE.test(rest) ? withTypeSuffix(rest) : rest
   })
   const sameLabel = types.length > 1 && types.every((type) => type.label === types[0].label)
   return types.map((type, index) => sameLabel && units[index]
     ? { label: units[index], units: '' }
     : { label: type.label, units: units[index] })
+}
+
+// 형 기호만 남은 이름: '29', '26A-1', 신청자 표기가 붙은 '29 (주거약자)'.
+const BARE_TYPE = /^\d+[A-Za-z]?\d*(-\d+)?(\s*\([^()]+\))?$/
+const TRAILING_TYPE = /(^|\s)(\d+[A-Za-z]?\d*(?:-\d+)?)\s*(\([^()]+\))?$/
+
+/** 주택형 이름 끝의 형 기호에 '형'을 붙인다("송산5단지 국민임대 29 (주거약자)" → "송산5단지 국민임대 29형(주거약자)"). */
+export function withTypeSuffix(units: string): string {
+  // 여러 표기를 이은 이름("55A1 · 55C(주거약자)")은 표기마다 붙인다.
+  return units.split(' · ').map((part) => part.replace(TRAILING_TYPE,
+    (_, space: string, code: string, mark?: string) => `${space}${code}형${mark ?? ''}`)).join(' · ')
 }
 
 export function sortChecks(checks: readonly CheckView[]): CheckView[] {
