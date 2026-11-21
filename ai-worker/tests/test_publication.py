@@ -384,12 +384,32 @@ def test_judged_requirement_without_a_quote_or_a_value_is_unconfirmed_without_as
     assert decision["eligibilityPublishable"] is True
 
 
-@pytest.mark.parametrize("eligibility, failing", [(None, ()), (ELIGIBILITY, ["eligibility.common.requirements[0]"])])
-def test_eligibility_without_an_extraction_or_a_source_check_answer_is_not_published(eligibility, failing):
-    """신청자격 단계가 실패했거나 원문 대조 응답을 받지 못하면 무엇을 판정할지 정하지 못한 것이라 신청자격만 검수로 남긴다."""
-    decision, _ = assessment(eligibility=eligibility, failing=failing)
+def test_eligibility_without_an_extraction_is_not_published():
+    """신청자격 단계가 실패해 추출이 없으면 공개할 신청자격이 없다. 공고는 그대로 공개한다."""
+    decision, _ = assessment(eligibility=None)
     assert decision["reasons"] == [] and decision["rentalType"] == "HAPPY_HOUSING"
     assert decision["eligibilityPublishable"] is False
+
+
+def test_requirements_without_a_source_check_answer_are_listed_and_eligibility_is_published():
+    """원문 대조 응답을 받지 못한 요건은 확인하지 못한 요건이다. 신청자격을 검수로 남기지 않고 그 요건을 목록으로 내린 채 공개한다."""
+    decision, _ = assessment(eligibility=ELIGIBILITY, failing=["eligibility.common.requirements[0]"])
+    assert decision["reasons"] == [] and decision["rentalType"] == "HAPPY_HOUSING"
+    assert decision["eligibilityPublishable"] is True
+    assert decision["unconfirmedRequirements"] == ["eligibility.common.requirements[0]"]
+
+
+@pytest.mark.parametrize("written, sentence", [
+    ("세대구성원 전원이 보유하고 있는 개별 자동차가액 4,542만원 이하",
+     "Each car owned by the applicant's household is worth at most 4,542만원 (개별 자동차가액)."),
+    ("총 자산 중 자동차가액이 4,542만원 이하일 것",
+     "The car value (자동차가액) of the applicant's household is at most 4,542만원.")])
+def test_car_value_sentence_follows_how_the_notice_counts_cars(written, sentence):
+    """서버는 차량 한 대씩 판정한다. 공고문이 '개별'이라 쓸 때만 한 대씩으로 묻고, 아니면 공고문처럼 세대의 자동차가액으로 묻는다.
+    출산자녀 가산은 말하지 않는다. 자동차가액 인용문에는 가산이 따로 적혀 말하면 맞는 요건도 확인되지 않았다."""
+    car = {"kind": "CAR_VALUE", "asWritten": written, "scope": "HOUSEHOLD", "amountAsWritten": "4,542만원",
+           "maximumKrw": 45420000, "adjustments": [{"kind": "CHILDBIRTH", "asWritten": "출산자녀 1인 10%p 가산"}]}
+    assert policy.meaning(car) == sentence
 
 
 def test_without_the_source_check_model_nothing_is_approved():

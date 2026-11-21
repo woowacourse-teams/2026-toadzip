@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -229,12 +230,12 @@ class PdfPublicationService {
         }
         corrections.apply(id, new Apply(request, preview.confirmationToken()), PdfPublicationScheduler.ACTOR);
         String outcome = outcome(previouslyPublished, "CONFIRMED", "PUBLISHED");
-        // 원문으로 뜻을 확인하지 못한 요건은 신청자격 공개를 막지 않는다. 신청자격 추출이 없거나 원문 대조 응답을 받지 못했을 때만 남긴다.
+        // 원문으로 뜻을 확인하지 못한 요건은 신청자격 공개를 막지 않는다. 신청자격 추출이 없을 때만 남긴다.
         if (tree.path("publicationReview").path("eligibilityPublishable").booleanValue(false)) {
             decisions.record(jobId, outcome, "공개 기준 통과", announcement.getVersion(), "PENDING");
             return;
         }
-        decisions.record(jobId, outcome, "공고 보정 완료 · 신청자격을 추출하지 못했거나 원문 대조를 마치지 못했습니다. 신청자격을 확인하세요.",
+        decisions.record(jobId, outcome, "공고 보정 완료 · 신청자격을 추출하지 못했습니다. 신청자격을 확인하세요.",
                 announcement.getVersion(), "REVIEW");
     }
 
@@ -279,13 +280,15 @@ class PdfPublicationService {
         require(rules.draft(id) == null && rules.published(id) == null, "기존 신청자격 검토본이 있습니다.");
         Set<String> unconfirmed = unconfirmedRequirements(job);
         var result = eligibility.create(id, new DraftFromExtraction(job.getPdfSha256(), null, 0L), unconfirmed);
-        // 작성·공개·투영까지 같은 트랜잭션이다. 연결하지 못한 경로가 있으면 자격만 되돌린다.
-        require(result.published() && result.notices().isEmpty(), "신청자격 경로 또는 원문 연결 확인이 필요합니다.");
-        String reason = "공고와 신청자격 공개 완료";
+        // 작성·공개·투영까지 같은 트랜잭션이다. 경로 연결 안내(대상 구분 없는 공급행에 모든 경로를 이음, 공통 요건만 담은 경로 등)는
+        // 판정을 넓히는 쪽이라 공개를 막지 않고 판정 기록에만 남긴다.
+        require(result.published(), "공고가 공개 중인 최신 공고가 아니라 신청자격을 공개하지 못했습니다.");
+        List<String> reasons = new ArrayList<>(List.of("공고와 신청자격 공개 완료"));
         if (!unconfirmed.isEmpty()) {
-            reason += " · 원문으로 뜻을 확인하지 못한 요건 " + unconfirmed.size() + "개는 판정하지 않고 공고문에서 확인할 자격으로 보임";
+            reasons.add("원문으로 뜻을 확인하지 못한 요건 " + unconfirmed.size() + "개는 판정하지 않고 공고문에서 확인할 자격으로 보임");
         }
-        decisions.finishEligibility(jobId, "PUBLISHED", reason);
+        reasons.addAll(result.notices());
+        decisions.finishEligibility(jobId, "PUBLISHED", String.join(" · ", reasons));
     }
 
     /** 워커가 원문 대조로 뜻을 확인하지 못했다고 남긴 요건의 근거 경로. 판정 기록(publicationReview)에도 그대로 남는다. */

@@ -153,7 +153,7 @@ class PdfEligibilityPublicationIntegrationTest {
     }
 
     @Test
-    void 신청자격_경로가_없는_공급대상이_있으면_신청자격을_되돌리고_그_사유로_검수에_남긴다() {
+    void 신청자격_경로가_없는_공급대상이_있어도_공통_요건_경로로_공개하고_안내는_판정_기록에_남긴다() {
         Candidate candidate = fixture.candidate();
         Announcement notice = candidate.notice();
         ObjectNode tree = verifiedExtraction(candidate);
@@ -168,9 +168,44 @@ class PdfEligibilityPublicationIntegrationTest {
         publication.process();
 
         assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
-                .containsEntry("eligibility_status", "REVIEW")
-                .containsEntry("reason", "공고 보정 완료 · 신청자격 경로 또는 원문 연결 확인이 필요합니다.");
-        assertThat(ruleSets(notice)).isEmpty();
+                .containsEntry("eligibility_status", "PUBLISHED")
+                .containsEntry("reason", "공고와 신청자격 공개 완료 · 신청자격 경로가 없는 공급대상(신혼부부)에는"
+                        + " 공통 요건만 담은 경로를 두었습니다. 공고문을 확인해 주세요.");
+        JsonNode content = json.readTree(ruleSets(notice).getFirst().get("content").toString());
+        assertThat(content.path("paths").valueStream().map(path -> path.path("label").asString()).toList())
+                .containsExactly("청년", "신혼부부");
+    }
+
+    @Test
+    void 어느_경로도_공급대상과_잇지_못해도_대상마다_공통_요건으로_판정하고_대상_해당은_직접_확인으로_공개한다() {
+        Candidate candidate = fixture.candidate();
+        Announcement notice = candidate.notice();
+        ObjectNode tree = verifiedExtraction(candidate);
+        ObjectNode target = (ObjectNode) tree.withObject("data").withObject("eligibility").withArray("targets").get(0);
+        target.put("target", "고령자").put("supplyTarget", "고령자").put("summary", "고령자");
+        target.putArray("supplyTargets").add("고령자");
+        target.putArray("supplyTargetKeys").add("t9");
+        target.putArray("groups").add("ELDERLY");
+        long job = fixture.succeededJob(candidate, tree);
+
+        publication.process();
+
+        assertThat(decisionOf(job)).containsEntry("eligibility_status", "PUBLISHED")
+                .containsEntry("reason", "공고와 신청자격 공개 완료 · 공급대상과 잇지 못한 신청자격 경로: 고령자"
+                        + " · 신청자격 경로가 없는 공급대상(청년)에는 공통 요건만 담은 경로를 두었습니다. 공고문을 확인해 주세요.");
+        JsonNode content = json.readTree(ruleSets(notice).getFirst().get("content").toString());
+        assertThat(content.path("paths").valueStream().map(path -> path.path("label").asString()).toList())
+                .containsExactly("청년");
+        assertThat(content.path("commonChecks").size()).isEqualTo(1);
+        assertThat(content.path("guidances").valueStream()
+                .filter(guidance -> guidance.path("id").asString().equals("direct-path-1"))
+                .flatMap(guidance -> guidance.path("items").valueStream()).map(JsonNode::asString).toList())
+                .containsExactly("신청 대상 '청년'에 해당하는지");
+        // 잇지 못한 경로의 요건은 판정하지 않지만 화면에서 사라지지 않게 공고 전체 목록으로 보인다.
+        assertThat(content.path("guidances").valueStream()
+                .filter(guidance -> guidance.path("id").asString().equals("list-common"))
+                .flatMap(guidance -> guidance.path("items").valueStream()).map(JsonNode::asString).toList())
+                .containsExactly("'고령자' 대상 · 입주 전까지 청약통장 가입");
     }
 
     @Test
@@ -178,12 +213,8 @@ class PdfEligibilityPublicationIntegrationTest {
         Candidate candidate = fixture.candidate();
         Announcement notice = candidate.notice();
         ObjectNode tree = verifiedExtraction(candidate);
-        // 공급대상과 이어지는 신청자격 경로가 하나도 없으면 초안 서비스가 관리자 화면용 예외로 거절한다.
-        ObjectNode target = (ObjectNode) tree.withObject("data").withObject("eligibility").withArray("targets").get(0);
-        target.put("target", "고령자").put("supplyTarget", "고령자").put("summary", "고령자");
-        target.putArray("supplyTargets").add("고령자");
-        target.putArray("supplyTargetKeys").add("t9");
-        target.putArray("groups").add("ELDERLY");
+        // 공개해도 된다는 판정과 달리 신청자격이 없는 결과다. 초안 서비스가 관리자 화면용 예외로 거절한다.
+        tree.withObject("data").remove("eligibility");
         long job = fixture.succeededJob(candidate, tree);
 
         publication.process();

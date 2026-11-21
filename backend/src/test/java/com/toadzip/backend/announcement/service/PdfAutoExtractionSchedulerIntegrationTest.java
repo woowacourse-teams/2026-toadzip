@@ -587,7 +587,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                         tuple(shadowJob, shadow.notice().getId(), false),
                         tuple(heldJob, held.notice().getId(), false));
         assertThat(page.items()).extracting(ReviewItem::reason).containsExactly(
-                "공고 보정 완료 · 신청자격을 추출하지 못했거나 원문 대조를 마치지 못했습니다. 신청자격을 확인하세요.",
+                "공고 보정 완료 · 신청자격을 추출하지 못했습니다. 신청자격을 확인하세요.",
                 "공개 기준 통과 · 모의 판정", "7쪽 일정 예외");
         assertThat(page.nextBefore()).isNull();
     }

@@ -344,7 +344,7 @@ def table_row(row_id):
 
 def eligibility_review(tree, asker):
     """신청자격을 자동 공개해도 되는지와, 원문으로 뜻을 확인하지 못해 서버가 판정에 쓰지 않을 요건의 근거 경로.
-    공개하지 않는 경우는 신청자격 추출이 없을 때(단계 실패)와 원문 대조 응답을 받지 못했을 때뿐이다.
+    공개하지 않는 경우는 신청자격 추출이 없을 때(단계 실패)뿐이다. 원문 대조 응답을 받지 못한 요건도 확인하지 못한 요건이다.
     요건 하나의 경고(숫자 확인 필요, 근거 문구 없음 등)는 막지 않는다. 추출 단계가 그 요건의 숫자를 이미 비워
     서버가 판정하지 않는 목록으로 두기 때문이다. 근거나 옮길 값이 없는 요건은 묻지 않고 확인하지 못한 요건으로 둔다."""
     data = tree["data"]
@@ -360,9 +360,8 @@ def eligibility_review(tree, asker):
             asks |= {key: requirement_ask(quote, condition) for key, (quote, condition) in questions.items()}
     if asks:
         asker.ask(Check("신청자격", {"document": ELIGIBILITY_DOCUMENT}, asks))
-    if any(key not in asker.answers for key in asks):
-        return False, []
-    confirmed = {key for key, ask in asks.items() if ask.passes(asker.answers[key]["noul"])}
+    # 응답을 받지 못한 질문(Jev 실패·시간 부족)은 확인하지 못한 것이다. 검수를 기다리게 하지 않고 그 요건을 목록으로 내린 채 공개한다.
+    confirmed = {key for key, ask in asks.items() if key in asker.answers and ask.passes(asker.answers[key]["noul"])}
     return True, [path for path, parts in pieces.items() if not parts or any(key not in confirmed for key, _ in parts)]
 
 
@@ -422,9 +421,10 @@ def meaning(requirement):
         return sentence + raised(requirement, sizes)
     # 금액은 원문 표기로 묻는다. maximumKrw는 추출 단계가 amountAsWritten을 바꾼 값이라 둘은 함께 오거나 함께 빈다.
     amount = requirement.get("amountAsWritten")
-    if kind in ("ASSETS", "CAR_VALUE") and owner and amount and requirement.get("maximumKrw"):
-        subject = "total assets of {} are" if kind == "ASSETS" else "car value (자동차가액) of {} is"
-        return f"The {subject.format(owner)} at most {amount}." + raised(requirement, [])
+    if kind == "ASSETS" and owner and amount and requirement.get("maximumKrw"):
+        return f"The total assets of {owner} are at most {amount}." + raised(requirement, [])
+    if kind == "CAR_VALUE" and owner and amount and requirement.get("maximumKrw"):
+        return car_value(requirement, owner, amount)
     if kind == "RESIDENCE" and requirement.get("regions"):
         sentence = f"The applicant lives in {', '.join(requirement['regions'])}"
         months = requirement.get("minimumMonths")
@@ -440,6 +440,17 @@ def meaning(requirement):
     if kind == "FAMILY_TYPE" and families and all(families):
         return f"The applicant is {' or '.join(families)}."
     return STATUSES.get(kind)
+
+
+def car_value(requirement, owner, amount):
+    """서버는 자동차가액을 차량 한 대씩(가족 차량 중 최고 가액) 판정한다. 공고문이 '개별 자동차가액'이라 쓰면 한 대씩으로 묻는다.
+    '세대의 자동차가액'으로 물으면 합계로 읽어 '개별 자동차가액' 인용에 0.75였고(LH 표본 2건, 한 대씩은 0.92·0.94),
+    '총자산 중 자동차가액' 인용에 한 대씩으로 물으면 0.31~0.39였다(같은 표본 5건, 세대의 자동차가액은 0.79~0.97).
+    출산자녀 가산은 말하지 않는다. 기본 상한을 확인하면 서버가 높여 판정하는 기준도 만족하고, 자동차가액 인용문에는 가산이
+    따로 적히지 않아 말하면 0.1~0.15 낮아졌다. 가산을 함께 적은 인용문은 확인되지 않고 목록으로 간다."""
+    if "개별" in (requirement.get("asWritten") or ""):
+        return f"Each car owned by {owner} is worth at most {amount} (개별 자동차가액)."
+    return f"The car value (자동차가액) of {owner} is at most {amount}."
 
 
 def age(requirement):
