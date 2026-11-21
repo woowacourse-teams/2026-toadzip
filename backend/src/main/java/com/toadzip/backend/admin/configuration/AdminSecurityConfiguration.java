@@ -69,7 +69,6 @@ public class AdminSecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/admin/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/auth/oauth2/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                         .requestMatchers("/api/admin/**").hasRole(AdminRole.ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/logout").hasRole("USER")
                         .requestMatchers("/api/v1/privacy/analytics/me").hasRole("USER")

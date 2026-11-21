@@ -117,11 +117,14 @@ class UserAuthenticationIntegrationTest {
     }
 
     @Test
-    void 유효하지_않은_콜백은_기존_관리자_로그인을_종료하지_않는다() throws Exception {
+    void 유효하지_않은_콜백은_기존_소셜_관리자_로그인을_종료하지_않는다() throws Exception {
+        User admin = User.create("google:callback-" + UUID.randomUUID(), LocalDateTime.now());
+        admin.grantAdmin();
+        String memberId = userRepository.saveAndFlush(admin).getId().toString();
         MockHttpSession session = new MockHttpSession();
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                "admin", null, AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+                memberId, null, AuthorityUtils.createAuthorityList("ROLE_USER")));
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
 
         mockMvc.perform(get("/api/auth/oauth2/callback/kakao")

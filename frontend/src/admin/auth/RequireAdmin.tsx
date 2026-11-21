@@ -23,7 +23,7 @@ export function RequireAdmin() {
   }
   if (!session) {
     // 로그인 후 보던 화면(검색 조건·오류 정보 포함)으로 돌아가도록 원래 주소를 넘긴다.
-    return <Navigate to="/admin/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+    return <Navigate to="/admin/login" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />
   }
   return <Outlet />
 }

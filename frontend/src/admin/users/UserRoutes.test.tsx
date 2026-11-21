@@ -31,6 +31,6 @@ it('미인증 회원 관리 접근은 로그인으로 보내고 회원 API를 �
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: '인증이 필요합니다.' }), { status: 401 }))
   vi.stubGlobal('fetch', fetchMock)
   render(<MemoryRouter initialEntries={['/admin/users/7']}><App /></MemoryRouter>)
-  expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
-  expect(fetchMock.mock.calls.every(([url]) => String(url).endsWith('/api/admin/auth/me'))).toBe(true)
+  expect(await screen.findByRole('heading', { name: '로그인' })).toBeVisible()
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/admin/')).every(([url]) => String(url).endsWith('/api/admin/auth/me'))).toBe(true)
 })

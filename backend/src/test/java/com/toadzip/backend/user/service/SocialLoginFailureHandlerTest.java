@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.global.security.SecurityConfiguration;
+import com.toadzip.backend.user.configuration.SocialSessionContextRepository;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -36,7 +36,7 @@ class SocialLoginFailureHandlerTest {
         MockHttpSession session = new MockHttpSession();
         SecurityContext existingContext = SecurityContextHolder.createEmptyContext();
         existingContext.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                "admin", null, AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+                "42", null, AuthorityUtils.createAuthorityList("ROLE_USER")));
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, existingContext);
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -52,7 +52,7 @@ class SocialLoginFailureHandlerTest {
 
     @Test
     void 계정_처리_실패도_기존_세션을_유지한다() throws Exception {
-        SecurityContextRepository repository = new SecurityConfiguration().securityContextRepository();
+        SecurityContextRepository repository = new SocialSessionContextRepository();
         SocialLoginFailureHandler failureHandler = new SocialLoginFailureHandler();
         ReflectionTestUtils.setField(failureHandler, "failureUrl", "/login?login=failed");
         SocialUserService userService = mock(SocialUserService.class);
@@ -65,7 +65,7 @@ class SocialLoginFailureHandlerTest {
         MockHttpSession session = new MockHttpSession();
         SecurityContext existingContext = SecurityContextHolder.createEmptyContext();
         existingContext.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                "admin", null, AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+                "42", null, AuthorityUtils.createAuthorityList("ROLE_USER")));
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, existingContext);
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
