@@ -24,21 +24,21 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 마감 전 공고 중 공고문 PDF가 있는데 추출한 적이 없는 공고에 서버 추출 작업(BATCH)을 넣는다. 결과는 관리자가 PDF 보정 화면에서
- * 검토해 적용할 때만 공고에 반영된다. 유료 호출이 한꺼번에 몰리지 않고 마감(40분) 안에 끝나도록 진행 중인 서버 작업 수를 제한한다.
+ * 마감 전 공고 중 공고문 PDF가 있는데 추출한 적이 없는 공고에 서버 추출 작업(BATCH)을 넣는다. 결과는 자동 공개 모드
+ * (PdfPublicationScheduler)에 따라 자동 공개되거나 관리자 검토 뒤에 반영된다. 켜짐 여부는 매 주기
+ * {@link PdfAutoExtractionSettingService}에서 읽어, 관리자가 운영 중에 끄면 다음 주기부터 넣지 않는다. 유료 호출이 한꺼번에
+ * 몰리지 않고 마감(40분) 안에 끝나도록 진행 중인 서버 작업 수를 제한한다.
  * 공고마다 한 번만 넣는다. 실패한 작업은 다시 넣지 않고 운영 홈의 '추출 실패'로 관리자에게 맡긴다.
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "announcement.pdf-auto-extraction.enabled", havingValue = "true")
 public class PdfAutoExtractionScheduler {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-    private static final Set<PdfExtractionJobStatus> ACTIVE = EnumSet.of(
+    static final Set<PdfExtractionJobStatus> ACTIVE = EnumSet.of(
             PdfExtractionJobStatus.PENDING, PdfExtractionJobStatus.RUNNING, PdfExtractionJobStatus.RETRY);
     /** 처리 단계 식(AnnouncementProcessingStageSql)의 PDF 첨부 기준과 같다. */
     private static final Pattern PDF = Pattern.compile("\\.pdf($|[\\s?])", Pattern.CASE_INSENSITIVE);
@@ -50,6 +50,7 @@ public class PdfAutoExtractionScheduler {
             AttachmentUnavailableException.Reason.UPSTREAM_FAILURE, AttachmentUnavailableException.Reason.BUSY);
 
     private final AnnouncementPdfExtractionService extractions;
+    private final PdfAutoExtractionSettingService settings;
     private final PdfExtractionJobRepository jobs;
     private final AnnouncementSearchRepository announcements;
     private final AnnouncementAttachmentRepository attachments;
@@ -60,6 +61,7 @@ public class PdfAutoExtractionScheduler {
 
     public PdfAutoExtractionScheduler(
             AnnouncementPdfExtractionService extractions,
+            PdfAutoExtractionSettingService settings,
             PdfExtractionJobRepository jobs,
             AnnouncementSearchRepository announcements,
             AnnouncementAttachmentRepository attachments,
@@ -70,6 +72,7 @@ public class PdfAutoExtractionScheduler {
             throw new IllegalArgumentException("announcement.pdf-auto-extraction.max-in-flight는 1 이상이어야 합니다.");
         }
         this.extractions = extractions;
+        this.settings = settings;
         this.jobs = jobs;
         this.announcements = announcements;
         this.attachments = attachments;
@@ -83,6 +86,9 @@ public class PdfAutoExtractionScheduler {
             scheduler = SchedulingConfig.AUTO_RUN_SCHEDULER
     )
     public void enqueueDue() {
+        if (!settings.enabled()) {
+            return;
+        }
         long room = maxInFlight - jobs.countByKindAndRequestSourceAndStatusIn(
                 PdfExtractionJob.KIND, PdfExtractionJob.BATCH, ACTIVE);
         if (room <= 0) {

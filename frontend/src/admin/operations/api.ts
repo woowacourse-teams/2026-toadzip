@@ -49,3 +49,17 @@ export async function loadPdfReviews(before: number | null, signal: AbortSignal)
     || !(value.nextBefore === null || Number.isSafeInteger(value.nextBefore))) throw new Error('PDF 검수 목록을 읽지 못했습니다.')
   return { items: value.items as PdfReview[], nextBefore: value.nextBefore as number | null }
 }
+
+const publicationModes = ['OFF', 'SHADOW', 'APPLY'] as const
+export type PdfAutoExtraction = { enabled: boolean; updatedBy: string | null; updatedAt: string | null
+  publicationMode: typeof publicationModes[number]; notExtracted: number; inFlight: number; maxInFlight: number; asOf: string }
+const pdfAutoExtraction = (value: unknown) => isRecord(value) && typeof value.enabled === 'boolean'
+  && (value.updatedBy === null || typeof value.updatedBy === 'string') && nullableInstant(value.updatedAt)
+  && publicationModes.some(mode => mode === value.publicationMode)
+  && counts(value, ['notExtracted', 'inFlight', 'maxInFlight'])
+export const loadPdfAutoExtraction = (signal: AbortSignal) => read<PdfAutoExtraction>('pdf-auto-extraction', pdfAutoExtraction, signal)
+export async function changePdfAutoExtraction(enabled: boolean) {
+  const value = await requestManagementApi('/api/admin/operations/pdf-auto-extraction', 'PUT', { enabled })
+  if (!isRecord(value) || !instant(value.asOf) || !pdfAutoExtraction(value)) throw new Error('자동 추출 설정 응답이 올바르지 않습니다.')
+  return value as PdfAutoExtraction
+}

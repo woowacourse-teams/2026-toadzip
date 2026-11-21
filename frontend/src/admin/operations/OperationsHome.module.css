@@ -234,6 +234,12 @@
 .taskRows strong{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
 .taskRows small{grid-column:1/-1;color:var(--ds-color-muted);font-size:11px}
 .taskRows a:hover strong{color:var(--ds-color-action)}
+.autoExtraction{margin-top:16px;padding-top:16px;border-top:1px solid var(--ds-color-divider)}
+.autoExtraction dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin:8px 0 0;font-size:12px}
+.autoExtraction dt{color:var(--ds-color-muted);font-size:11px}
+.autoExtraction dd{margin:2px 0 0;font-weight:600}
+.autoExtraction dd[data-enabled=true]{color:var(--ds-color-action)}
+.autoExtraction>button{margin-top:10px}
 .pdfReviews{margin-top:16px;padding-top:16px;border-top:1px solid var(--ds-color-divider)}
 .pdfReviewList{margin:8px 0 0;padding:0;list-style:none;font-size:12px;overflow-wrap:anywhere}
 .pdfReviewList>li{padding:8px 0;border-top:1px solid var(--ds-color-divider)}

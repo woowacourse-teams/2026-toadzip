@@ -2,11 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { OperationsHome } from './OperationsHome'
-import { loadPdfReviews, loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadTasksOverview, loadUserOverview } from './api'
+import { changePdfAutoExtraction, loadPdfAutoExtraction, loadPdfReviews, loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadTasksOverview, loadUserOverview } from './api'
 import { listFeedback } from '../feedback/api'
 import { listDeliveries } from '../notifications/deliveryApi'
 import { loadNotificationSubscriptions, loadNotificationTrend } from '../notifications/api'
-vi.mock('./api', () => ({ loadPdfReviews: vi.fn(), loadAnnouncementOverview: vi.fn(), loadCollectionOverview: vi.fn(), loadComplexOverview: vi.fn(), loadTasksOverview: vi.fn(), loadUserOverview: vi.fn() }))
+vi.mock('./api', () => ({ changePdfAutoExtraction: vi.fn(), loadPdfAutoExtraction: vi.fn(), loadPdfReviews: vi.fn(), loadAnnouncementOverview: vi.fn(), loadCollectionOverview: vi.fn(), loadComplexOverview: vi.fn(), loadTasksOverview: vi.fn(), loadUserOverview: vi.fn() }))
 vi.mock('../feedback/api', () => ({ listFeedback: vi.fn() }))
 vi.mock('../notifications/deliveryApi', () => ({ listDeliveries: vi.fn() }))
 vi.mock('../notifications/api', () => ({ loadNotificationSubscriptions: vi.fn(), loadNotificationTrend: vi.fn() }))
@@ -18,10 +18,12 @@ const userOverview = (days: number) => ({ total: 1842, newUsers: days === 7 ? 42
 const trend = (): Awaited<ReturnType<typeof loadNotificationTrend>> => ({ asOf, collectionStartedAt: '2026-08-01T00:00:00Z', days: Array.from({ length: 90 }, (_, i) => ({
   day: new Date(Date.UTC(2026, 10, 7 - 90 + 1 + i)).toISOString().slice(0, 10), activations: i >= 83 ? 3 : 1, cancellations: 0,
 })) })
+const autoExtraction = { enabled: false, updatedBy: null, updatedAt: null, publicationMode: 'APPLY' as const, notExtracted: 85, inFlight: 0, maxInFlight: 2, asOf }
 function show() { return render(<MemoryRouter><OperationsHome /></MemoryRouter>) }
 beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(loadPdfReviews).mockResolvedValue({ items: [], nextBefore: null })
+  vi.mocked(loadPdfAutoExtraction).mockResolvedValue(autoExtraction)
   vi.mocked(loadComplexOverview).mockResolvedValue(complex)
   vi.mocked(loadAnnouncementOverview).mockResolvedValue({ statuses: { BEFORE_APPLICATION: 24, APPLYING: 38, CLOSED: 3071, CONDITIONAL: 5, CANCELLED: 5, UNKNOWN: 13 }, attention: 21, reasons: { SCHEDULE_MISSING: 13, SUPPLY_MISSING: 8, UNCONFIRMED: 5 }, asOf })
   vi.mocked(loadCollectionOverview).mockResolvedValue({ sources: [
@@ -143,4 +145,46 @@ it('자동 보정 검수함은 줄바꿈으로 이어진 사유를 한 줄씩 �
   const supply = within(queue).getByRole('link', { name: '영구임대 예비모집' }).closest('li')!
   expect(within(supply).getAllByRole('listitem').map(reason => reason.textContent)).toEqual(['5쪽 접수 기간 확인'])
   expect(within(supply).queryByText('신청자격')).not.toBeInTheDocument()
+})
+
+it('자동 추출을 켤 때 유료로 추출될 추출 전 공고 수와 동시 처리 수를 확인받고, 취소하면 바꾸지 않는다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  show()
+  const card = screen.getByRole('region', { name: '자동 추출' })
+  expect(await within(card).findByText('꺼짐')).toBeVisible()
+  expect(card).toHaveTextContent('맞으면 자동 공개')
+  expect(card).toHaveTextContent('최대 85건')
+  expect(card).toHaveTextContent('관리자가 바꾼 적 없음')
+  fireEvent.click(within(card).getByRole('button', { name: '자동 추출 켜기' }))
+  expect(confirm).toHaveBeenCalledWith('마감 전 추출 전 공고 최대 85건이 차례로 유료 추출됩니다(동시 2건). 자동 추출을 켤까요?')
+  expect(changePdfAutoExtraction).not.toHaveBeenCalled()
+  confirm.mockRestore()
+})
+it('확인하면 자동 추출을 켜고 바꾼 사람을 보이며, 끌 때는 묻지 않는다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.mocked(changePdfAutoExtraction).mockResolvedValueOnce({ ...autoExtraction, enabled: true, updatedBy: 'admin-7', updatedAt: asOf, inFlight: 2, notExtracted: 83 })
+    .mockResolvedValueOnce({ ...autoExtraction, updatedBy: 'admin-7', updatedAt: asOf })
+  show()
+  const card = screen.getByRole('region', { name: '자동 추출' })
+  fireEvent.click(await within(card).findByRole('button', { name: '자동 추출 켜기' }))
+  expect(await within(card).findByText('켜짐')).toBeVisible()
+  expect(changePdfAutoExtraction).toHaveBeenCalledWith(true)
+  expect(card).toHaveTextContent('마지막 변경 admin-7')
+  expect(card).toHaveTextContent('2 / 동시 2건')
+  confirm.mockClear()
+  fireEvent.click(within(card).getByRole('button', { name: '자동 추출 끄기' }))
+  expect(await within(card).findByText('꺼짐')).toBeVisible()
+  expect(changePdfAutoExtraction).toHaveBeenLastCalledWith(false)
+  expect(confirm).not.toHaveBeenCalled()
+  confirm.mockRestore()
+})
+it('자동 추출을 바꾸지 못하면 이전 상태를 그대로 두고 실패를 알린다', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.mocked(changePdfAutoExtraction).mockRejectedValueOnce(new Error('로그인 상태를 확인해 주세요.'))
+  show()
+  const card = screen.getByRole('region', { name: '자동 추출' })
+  fireEvent.click(await within(card).findByRole('button', { name: '자동 추출 켜기' }))
+  expect(await within(card).findByRole('alert')).toHaveTextContent('변경 실패: 로그인 상태를 확인해 주세요.')
+  expect(within(card).getByText('꺼짐')).toBeVisible()
+  expect(within(card).getByRole('button', { name: '자동 추출 켜기' })).toBeEnabled()
 })
