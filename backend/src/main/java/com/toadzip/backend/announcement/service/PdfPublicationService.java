@@ -38,6 +38,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.RecoverableDataAccessException;
@@ -227,11 +229,12 @@ class PdfPublicationService {
         }
         corrections.apply(id, new Apply(request, preview.confirmationToken()), PdfPublicationScheduler.ACTOR);
         String outcome = outcome(previouslyPublished, "CONFIRMED", "PUBLISHED");
-        if (tree.path("publicationReview").path("eligibilityVerified").booleanValue(false)) {
+        // 원문으로 뜻을 확인하지 못한 요건은 신청자격 공개를 막지 않는다. 신청자격 추출이 없거나 원문 대조 응답을 받지 못했을 때만 남긴다.
+        if (tree.path("publicationReview").path("eligibilityPublishable").booleanValue(false)) {
             decisions.record(jobId, outcome, "공개 기준 통과", announcement.getVersion(), "PENDING");
             return;
         }
-        decisions.record(jobId, outcome, "공고 보정 완료 · 신청자격의 원문 근거와 대상별 예외를 확인하세요.",
+        decisions.record(jobId, outcome, "공고 보정 완료 · 신청자격을 추출하지 못했거나 원문 대조를 마치지 못했습니다. 신청자격을 확인하세요.",
                 announcement.getVersion(), "REVIEW");
     }
 
@@ -274,9 +277,21 @@ class PdfPublicationService {
         require(notice.isPublished() && !notice.isAdminDeleted() && notice.getVersion() == version.get()
                 && decisions.isLatest(jobId, id), "공고 또는 추출이 변경되었습니다.");
         require(rules.draft(id) == null && rules.published(id) == null, "기존 신청자격 검토본이 있습니다.");
-        var result = eligibility.create(id, new DraftFromExtraction(job.getPdfSha256(), null, 0L));
+        Set<String> unconfirmed = unconfirmedRequirements(job);
+        var result = eligibility.create(id, new DraftFromExtraction(job.getPdfSha256(), null, 0L), unconfirmed);
         // 작성·공개·투영까지 같은 트랜잭션이다. 연결하지 못한 경로가 있으면 자격만 되돌린다.
         require(result.published() && result.notices().isEmpty(), "신청자격 경로 또는 원문 연결 확인이 필요합니다.");
-        decisions.finishEligibility(jobId, "PUBLISHED", "공고와 신청자격 공개 완료");
+        String reason = "공고와 신청자격 공개 완료";
+        if (!unconfirmed.isEmpty()) {
+            reason += " · 원문으로 뜻을 확인하지 못한 요건 " + unconfirmed.size() + "개는 판정하지 않고 공고문에서 확인할 자격으로 보임";
+        }
+        decisions.finishEligibility(jobId, "PUBLISHED", reason);
+    }
+
+    /** 워커가 원문 대조로 뜻을 확인하지 못했다고 남긴 요건의 근거 경로. 판정 기록(publicationReview)에도 그대로 남는다. */
+    private Set<String> unconfirmedRequirements(PdfExtractionJob job) {
+        JsonNode tree = json.readTree(json.readTree(job.getResult()).required("json").asString());
+        return PublicationCorrection.array(tree.path("publicationReview"), "unconfirmedRequirements").stream()
+                .map(JsonNode::asString).collect(Collectors.toUnmodifiableSet());
     }
 }

@@ -36,6 +36,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -90,6 +91,27 @@ class PdfEligibilityPublicationIntegrationTest {
             assertThat(json.readTree(ruleSet.get("content").toString()).path("paths").get(0).path("label").asString())
                     .isEqualTo("청년");
         });
+    }
+
+    @Test
+    void 원문으로_뜻을_확인하지_못한_요건이_있어도_신청자격을_공개하고_그_요건은_판정하지_않고_목록으로만_보인다() {
+        Candidate candidate = fixture.candidate();
+        Announcement notice = candidate.notice();
+        ObjectNode tree = verifiedExtraction(candidate);
+        tree.withObject("publicationReview").putArray("unconfirmedRequirements").add("eligibility.common.requirements[0]");
+        long job = fixture.succeededJob(candidate, tree);
+
+        publication.process();
+
+        assertThat(decisionOf(job)).containsEntry("eligibility_status", "PUBLISHED").containsEntry("reason",
+                "공고와 신청자격 공개 완료 · 원문으로 뜻을 확인하지 못한 요건 1개는 판정하지 않고 공고문에서 확인할 자격으로 보임");
+        JsonNode content = json.readTree(ruleSets(notice).getFirst().get("content").toString());
+        // 무주택 요건은 판정 조건(commonChecks)에 없고 판정을 막지 않는 목록에만 있다.
+        assertThat(content.path("commonChecks").isEmpty()).isTrue();
+        assertThat(content.path("guidances").valueStream()
+                .filter(guidance -> guidance.path("id").asString().equals("list-common"))
+                .flatMap(guidance -> guidance.path("items").valueStream()).map(JsonNode::asString).toList())
+                .containsExactly("무주택: 무주택세대구성원");
     }
 
     @Test
@@ -217,7 +239,7 @@ class PdfEligibilityPublicationIntegrationTest {
                 "exclusions", List.of())));
         tree.putArray("evidence").addObject().put("path", "eligibility.common.requirements[0]").put("page", 1)
                 .put("quote", "무주택세대구성원");
-        tree.withObject("publicationReview").put("eligibilityVerified", true);
+        tree.withObject("publicationReview").put("eligibilityPublishable", true).putArray("unconfirmedRequirements");
         return tree;
     }
 

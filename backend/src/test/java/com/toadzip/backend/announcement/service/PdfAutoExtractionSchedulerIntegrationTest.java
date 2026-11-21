@@ -587,7 +587,8 @@ class PdfAutoExtractionSchedulerIntegrationTest {
                         tuple(shadowJob, shadow.notice().getId(), false),
                         tuple(heldJob, held.notice().getId(), false));
         assertThat(page.items()).extracting(ReviewItem::reason).containsExactly(
-                "공고 보정 완료 · 신청자격의 원문 근거와 대상별 예외를 확인하세요.", "공개 기준 통과 · 모의 판정", "7쪽 일정 예외");
+                "공고 보정 완료 · 신청자격을 추출하지 못했거나 원문 대조를 마치지 못했습니다. 신청자격을 확인하세요.",
+                "공개 기준 통과 · 모의 판정", "7쪽 일정 예외");
         assertThat(page.nextBefore()).isNull();
     }
 
@@ -630,7 +631,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     void 신청자격까지_확인된_공고는_공개하고_신청자격_자동_공개를_기다린다() {
         Candidate candidate = fixture.candidate();
         ObjectNode tree = fixture.passedExtraction(candidate);
-        tree.withObject("publicationReview").put("eligibilityVerified", true);
+        tree.withObject("publicationReview").put("eligibilityPublishable", true);
         long job = fixture.succeededJob(candidate, tree);
 
         service.process(job, PublicationMode.APPLY);

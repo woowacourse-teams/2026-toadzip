@@ -1262,4 +1262,4 @@ def test_error_while_assessing_publication_keeps_the_extraction_and_holds_it(mon
     review = publication_review("BATCH", PUBLICATION)
 
     assert review["reasons"] == ["공개 판정 중 오류가 났습니다."]
-    assert (review["rentalType"], review["eligibilityVerified"]) == (None, False)
+    assert (review["rentalType"], review["eligibilityPublishable"]) == (None, False)

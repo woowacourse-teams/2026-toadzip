@@ -50,7 +50,8 @@ import java.util.stream.Collectors;
 /**
  * AI 추출 신청자격과 PDF 보정을 적용한 공급행으로 신청자격을 만든다. 보정을 적용하면 곧바로 공개하므로(사용자 결정) 검토 완료(REVIEWED)로 만든다.
  * 일반 사용자가 받은 입력으로 '한번 지원해 볼 만한지'를 알 수 있는 수준까지만 판정한다(사용자 결정).
- * 조건으로 바꾼 요건만 판정하고, 그 밖의 요건(기타: 청약통장·세대원 등재·추천 등, 원문에서 문구를 찾지 못한 요건, 비운 숫자·
+ * 조건으로 바꾼 요건만 판정하고, 그 밖의 요건(기타: 청약통장·세대원 등재·추천 등, 원문에서 문구를 찾지 못한 요건,
+ * 자동 공개에서 원문 대조로 뜻을 확인하지 못한 요건, 비운 숫자·
  * 없는 소득 기준표·읽지 못한 지역·본인 소득처럼 바꾸지 못한 요건)은 판정을 막지 않는 '공고문에서 확인할 자격' 목록으로 근거와 함께 보인다.
  * 워커가 판정에 쓸 요건을 잃었다고 표시한 요건(UNRESOLVED: 경로를 나누지 못한 공고의 경로별 요건, 모델이 빠뜨린 요건)만
  * 판정을 막는 직접 확인으로 둔다. 목록으로 돌리면 남은 요건만으로 지원 가능이 되기 때문이다.
@@ -94,14 +95,26 @@ public final class ExtractedEligibilityDraft {
             "모델 응답에서 빠진 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.",
             "신청 대상마다 다른 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.");
 
-    /** 추출 PDF와 그 공고의 현재 공급행. incomeTables는 "기준표 종류:연도" → 기준표 ID다. */
+    /**
+     * 추출 PDF와 그 공고의 현재 공급행. incomeTables는 "기준표 종류:연도" → 기준표 ID다.
+     * judged는 근거 경로(eligibility.targets[0].requirements[1])로 그 요건을 판정에 써도 되는지다. 관리자 보정은 모든 요건을 쓰고,
+     * 자동 공개는 원문 대조로 뜻을 확인하지 못한 요건을 판정하지 않고 '공고문에서 확인할 자격' 목록으로 둔다.
+     */
     public record Source(
             LocalDate referenceDate,
             Document document,
             List<Unit> units,
             ExtractedEligibility eligibility,
             Map<String, Long> incomeTables,
-            Function<String, List<String>> regionCodes) {}
+            Function<String, List<String>> regionCodes,
+            Predicate<String> judged) {
+
+        /** 모든 요건을 판정에 쓰는 관리자 보정·미리보기용. */
+        public Source(LocalDate referenceDate, Document document, List<Unit> units, ExtractedEligibility eligibility,
+                Map<String, Long> incomeTables, Function<String, List<String>> regionCodes) {
+            this(referenceDate, document, units, eligibility, incomeTables, regionCodes, path -> true);
+        }
+    }
 
     public record Document(String fileName, String downloadUrl, int pageCount, String sha256) {}
 
@@ -574,9 +587,12 @@ public final class ExtractedEligibilityDraft {
                 scope.direct.add(text);
                 continue;
             }
-            Optional<ProfileRule> rule = evidence == null ? Optional.empty() : rule(requirement);
+            Optional<ProfileRule> rule = Optional.empty();
+            if (evidence != null && source.judged().test(requirement.evidencePath())) {
+                rule = rule(requirement);
+            }
             if (rule.isEmpty()) {
-                // 원문에서 문구를 찾지 못했거나, 입력으로 판정할 수 없거나, 조건으로 바꾸지 못한 요건이다.
+                // 원문에서 문구를 찾지 못했거나, 원문 대조로 뜻을 확인하지 못했거나, 입력으로 판정할 수 없거나, 조건으로 바꾸지 못한 요건이다.
                 String kindName = KIND_NAMES.get(requirement.kind());
                 scope.list(kindName == null ? text : kindName + ": " + text, evidence);
                 continue;

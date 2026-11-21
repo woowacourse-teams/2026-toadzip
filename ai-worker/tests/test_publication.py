@@ -3,6 +3,7 @@ import time
 
 import pytest
 
+from ai_worker import eligibility as extraction
 from ai_worker import jev
 from ai_worker import publication as policy
 from ai_worker.jev import Meaning
@@ -31,11 +32,13 @@ ELIGIBILITY = {"common": {"requirements": [REQUIREMENT, {"kind": "OTHER", "asWri
 
 def assessment(answers=None, collected=COLLECTED, notice=NOTICE, quotes=QUOTES, unresolved=(), rows=ROWS,
                eligibility=None, warnings=(), failing=(), judged=True, seconds=30, unresolved_data=(), tables=(SCHEDULE,),
-               complex_names=("단지",)):
-    """answers는 질문 키 → 답(Noul은 확률, Choice는 (선택, 확률))이다. 없는 키는 통과하는 답을 받는다."""
+               complex_names=("단지",), eligibility_quotes=None):
+    """answers는 질문 키 → 답(Noul은 확률, Choice는 (선택, 확률))이다. 없는 키는 통과하는 답을 받는다.
+    eligibility_quotes는 신청자격 근거 경로 → 인용문이고, 없으면 ELIGIBILITY의 두 요건 인용이다."""
     evidence = [{"path": "announcement." + field, "page": 1, "quote": quote} for field, quote in quotes.items()]
-    evidence += [{"path": "eligibility.common.requirements[0]", "page": 3, "quote": "만 19세 이상"},
-                 {"path": "eligibility.common.requirements[1]", "page": 3, "quote": "유의사항"}]
+    if eligibility_quotes is None:
+        eligibility_quotes = {"eligibility.common.requirements[0]": "만 19세 이상", "eligibility.common.requirements[1]": "유의사항"}
+    evidence += [{"path": path, "page": 3, "quote": quote} for path, quote in eligibility_quotes.items()]
     sheet = {"housingTypes": [{"name": "36A", "complexName": name} for name in complex_names], "cells": [1], "quotas": [1],
              "unresolvedFields": list(unresolved), "evidence": [{"path": "housingTypes[0]", "page": 2, "quote": "36A\t12"}]}
     tree = {"data": {"announcement": dict(notice), "supplySheet": sheet, "schedules": [], "eligibility": eligibility,
@@ -68,7 +71,7 @@ def test_notice_agreeing_with_the_collected_values_is_approved_without_asking_ab
     decision, calls = assessment(eligibility=ELIGIBILITY)
     assert decision["reasons"] == []
     assert (decision["rentalType"], decision["recruitmentType"]) == ("HAPPY_HOUSING", "NEW")
-    assert decision["eligibilityVerified"] is True
+    assert decision["eligibilityPublishable"] is True and decision["unconfirmedRequirements"] == []
     assert decision["evidence"]["winnerAnnouncementDate"]["page"] == 1
     # 수집값과 같은 유형·날짜는 묻지 않는다. 인용되지 않은 공급표 행과 구조화된 요건만 묻는다.
     assert asked(calls) == ["recruits", "cancelled", "P2:T1:R3", "eligibility.common.requirements[0]"]
@@ -241,14 +244,19 @@ def test_reserve_only_recruitment_without_a_reserve_count_is_held():
 def test_unverified_reception_place_holds_the_notice_but_unverified_eligibility_does_not():
     place, calls = assessment(unresolved_data=[{"path": "receptionPlaces[0].url", "reason": "원문 불일치"}])
     assert place["reasons"] == ["receptionPlaces[].url 1건 미확인: 원문 불일치"] and not calls
-    eligibility, _ = assessment(unresolved_data=[{"path": "eligibility.common", "reason": "원문 불일치"}])
-    assert eligibility["reasons"] == []
+    field = {"path": "eligibility.common.requirements[0]", "reason": "원문 불일치"}
+    eligibility, calls = assessment(unresolved_data=[field], eligibility=ELIGIBILITY)
+    assert eligibility["reasons"] == [] and eligibility["eligibilityPublishable"] is True
+    assert "eligibility.common.requirements[0]" in asked(calls)
 
 
-def test_process_note_and_eligibility_warning_do_not_hold_the_notice():
-    decision, _ = assessment(warnings=[AMBIGUOUS_TABLE_NOTE, "신청자격: 요건 1개를 뺐습니다."], eligibility=ELIGIBILITY)
-    assert decision["reasons"] == []
-    assert decision["eligibilityVerified"] is False
+def test_eligibility_warnings_hold_neither_the_notice_nor_its_eligibility():
+    """요건 하나의 경고는 추출 단계가 그 요건의 숫자를 비워 서버가 판정하지 않는 목록으로 둔 것이다. 신청자격 공개를 막지 않는다."""
+    warnings = [AMBIGUOUS_TABLE_NOTE, "신청자격: 어느 신청 경로에도 쓰이지 않은 요건 1개를 뺐습니다(소득).",
+                "신청자격 요건 '만 19세 이상'(나이): 숫자 확인 필요. 원문과 대조했지만 확정하지 못했습니다."]
+    decision, calls = assessment(warnings=warnings, eligibility=ELIGIBILITY)
+    assert decision["reasons"] == [] and decision["eligibilityPublishable"] is True
+    assert "eligibility.common.requirements[0]" in asked(calls)
 
 
 def test_uncited_row_that_may_recruit_is_reported_with_its_page_and_text():
@@ -278,22 +286,110 @@ def test_rejected_jev_request_holds_that_judgment():
     assert decision["rentalType"] is None
 
 
-def test_eligibility_requirement_its_quote_does_not_state_keeps_the_notice_publishable_but_unverified():
+def test_requirement_the_quote_does_not_confirm_is_left_out_of_judging_and_eligibility_still_publishes():
     decision, calls = assessment({"eligibility.common.requirements[0]": 0.5}, eligibility=ELIGIBILITY)
     assert decision["reasons"] == [] and decision["rentalType"] == "HAPPY_HOUSING"
-    assert decision["eligibilityVerified"] is False
+    assert decision["eligibilityPublishable"] is True
+    assert decision["unconfirmedRequirements"] == ["eligibility.common.requirements[0]"]
     _, questions = calls[-1]
-    # 원문을 옮긴 글은 빼고 구조화한 값만 묻는다. 글만 있는 요건은 묻지 않는다.
-    assert questions["eligibility.common.requirements[0]"]["instructions"]["requirement"] == {
-        "kind": "AGE", "scope": "APPLICANT", "minimum": 19}
+    # 요건의 뜻은 사람이 읽는 문장으로 묻는다. 판정하지 않는 요건(기타)은 묻지 않는다.
+    instructions = questions["eligibility.common.requirements[0]"]["instructions"]
+    assert instructions["quote"] == "만 19세 이상"
+    assert instructions["condition"].startswith("The applicant is aged 19 or older")
     assert list(questions) == ["eligibility.common.requirements[0]"]
 
 
-def test_eligibility_with_an_unresolved_item_is_not_verified_and_not_asked():
-    field = {"path": "eligibility.common.requirements[0]", "reason": "원문에서 확인하지 못함"}
-    decision, calls = assessment(eligibility=ELIGIBILITY, unresolved_data=[field])
-    assert decision["reasons"] == [] and decision["eligibilityVerified"] is False
+def test_requirement_sentences_leave_out_values_the_quote_does_not_carry():
+    """LH 표본에서 맞는 요건이 떨어진 원인: 질문에 보인 기준 연도, 원 단위 금액, 내부 코드가 인용문에 없었다."""
+    income = {"kind": "INCOME", "asWritten": "월평균소득이 전년도 도시근로자 가구원수별 가구당 월평균소득의 100퍼센트 이하",
+              "scope": "HOUSEHOLD", "incomeStandard": "URBAN_WORKER_MONTHLY_INCOME", "incomeBaseYear": 2025, "percent": 100,
+              "householdSizeExtraPercent": [{"householdSize": 2, "percent": 10}],
+              "adjustments": [{"kind": "DUAL_INCOME", "asWritten": "맞벌이 부부 120퍼센트 이하"}]}
+    assets = {"kind": "ASSETS", "asWritten": "총 자산가액 합산기준 34,500만원 이하", "scope": "HOUSEHOLD",
+              "amountAsWritten": "34,500만원", "maximumKrw": 345000000, "adjustments": [{"kind": "DISABILITY", "asWritten": "장애인"}]}
+    family = {"kind": "FAMILY_TYPE", "asWritten": "(신혼부부) 혼인중인 자", "familyTypes": ["COUPLE_OR_ENGAGED"]}
+    child = {"kind": "AGE", "asWritten": "6세 이하 자녀(태아포함)를 둔 자", "scope": "YOUNGEST_CHILD", "maximum": 6}
+    sentences = [policy.meaning(requirement) for requirement in (income, assets, family, child)]
+    for leaked in ("2025", "345000000", "COUPLE_OR_ENGAGED", "URBAN_WORKER", "HOUSEHOLD"):
+        assert not [sentence for sentence in sentences if leaked in sentence]
+    assert "100%" in sentences[0] and "dual-income" in sentences[0] and "household sizes" in sentences[0]
+    # 서버가 기본 기준으로 판정하는 가산(장애인)은 말하지 않는다. 인용문에 그 가산이 있으면 확인되지 않고 목록으로 간다.
+    assert sentences[1] == "The total assets of the applicant's household are at most 34,500만원."
+    assert "married, or planning to marry" in sentences[2]
+    # 서버 입력(막내 생년월일 또는 출산예정일)은 태아도 센다. 빠뜨리면 '태아 포함' 인용문에 맞는 요건도 확인되지 않는다.
+    assert "a child aged 6 or younger" in sentences[3] and "unborn" in sentences[3]
+
+
+# 서버(ExtractedEligibilityDraft.rule)가 판정하는 데 쓰는 최소 값. 새 종류가 생기면 여기서 실패해 문장을 만들게 한다.
+# 문장이 없으면 그 종류는 묻지도 않고 늘 목록으로 내려가, 원문 대조로 확인하지 못한 요건만 내린다는 기준보다 넓어진다.
+JUDGED = {"AGE": {"scope": "APPLICANT", "minimum": 19}, "NO_HOUSE": {"scope": "HOUSEHOLD"}, "NO_CAR": {"scope": "APPLICANT"},
+          "INCOME": {"scope": "HOUSEHOLD", "incomeStandard": "STANDARD_MEDIAN_INCOME", "percent": 50},
+          "ASSETS": {"scope": "HOUSEHOLD", "amountAsWritten": "3억원", "maximumKrw": 300000000},
+          "CAR_VALUE": {"scope": "APPLICANT", "amountAsWritten": "4,542만원", "maximumKrw": 45420000},
+          "RESIDENCE": {"regions": ["서울특별시"], "minimumMonths": 12}, "MARRIAGE_PERIOD": {"maximum": 7},
+          "FAMILY_TYPE": {"familyTypes": ["SINGLE_PARENT"]}, "UNIVERSITY_STUDENT": {}, "JOB_SEEKER": {}}
+
+
+@pytest.mark.parametrize("kind", sorted(extraction.KINDS - {"OTHER", "ANY_OF"}))
+def test_every_kind_the_server_judges_gets_a_sentence(kind):
+    assert policy.meaning({"kind": kind, "asWritten": "원문"} | JUDGED[kind])
+
+
+def test_every_family_type_and_income_standard_the_extraction_emits_has_words():
+    assert set(extraction.FAMILY_TYPES) == policy.FAMILIES.keys()
+    assert extraction.INCOME_STANDARDS == policy.INCOME_STANDARDS.keys()
+
+
+def test_contract_example_unconfirmed_path_is_one_the_worker_emits():
+    """서버(ExtractionContractDraftTest)가 같은 예시로 이 경로의 요건을 목록으로 내리는지 확인한다. 두 쪽의 경로 형식이 같아야 한다."""
+    tree = json.loads(contract_example("result.example.json")["json"])
+    unconfirmed = tree["publicationReview"]["unconfirmedRequirements"]
+    assert unconfirmed and set(unconfirmed) <= {path for path, _ in policy.requirements(tree["data"]["eligibility"])}
+
+
+def test_eligibility_with_only_unjudged_requirements_publishes_without_asking():
+    """기타 요건만 있으면 판정할 것이 없다. 추출이 없는 경우와 달리 신청자격을 공개하고 기타는 서버가 목록으로 둔다."""
+    only_other = {"common": {"requirements": [{"kind": "OTHER", "asWritten": "유의사항"}]}}
+    decision, calls = assessment(eligibility=only_other)
+    assert decision["eligibilityPublishable"] is True and decision["unconfirmedRequirements"] == []
     assert not [key for key in asked(calls) if key.startswith("eligibility")]
+
+
+def test_any_of_requirement_is_confirmed_only_when_every_option_is():
+    any_of = {"kind": "ANY_OF", "asWritten": "아래 중 하나에 해당하는 사람", "options": [
+        {"kind": "MARRIAGE_PERIOD", "asWritten": "혼인기간 7년 이내", "maximum": 7},
+        {"kind": "AGE", "asWritten": "6세 이하 자녀를 둔 자", "scope": "YOUNGEST_CHILD", "maximum": 6}]}
+    eligibility = {"common": {"requirements": [REQUIREMENT]}, "targets": [{"target": "신혼부부", "requirements": [any_of]}]}
+    path = "eligibility.targets[0].requirements[0]"
+    quotes = {"eligibility.common.requirements[0]": "만 19세 이상", path: "아래 중 하나에 해당하는 사람",
+              f"{path}.options[0]": "혼인기간 7년 이내", f"{path}.options[1]": "6세 이하 자녀를 둔 자"}
+
+    passed, calls = assessment(eligibility=eligibility, eligibility_quotes=quotes)
+    # '아래 중 하나' 안내 문장은 묻지 않고 선택지를 하나씩 묻는다.
+    assert [key for key in asked(calls) if key.startswith(path)] == [f"{path}.options[0]", f"{path}.options[1]"]
+    assert passed["unconfirmedRequirements"] == []
+    held, _ = assessment({f"{path}.options[1]": 0.6}, eligibility=eligibility, eligibility_quotes=quotes)
+    assert held["eligibilityPublishable"] is True and held["unconfirmedRequirements"] == [path]
+
+
+def test_judged_requirement_without_a_quote_or_a_value_is_unconfirmed_without_asking():
+    """근거가 없거나 비운 숫자의 요건은 서버도 판정하지 않는다. 묻지 않고 확인하지 못한 요건으로 둔다."""
+    empty_age = {"kind": "AGE", "asWritten": "성년자", "scope": "APPLICANT", "minimum": None, "maximum": None}
+    no_house = {"kind": "NO_HOUSE", "asWritten": "무주택세대구성원", "scope": "HOUSEHOLD"}
+    eligibility = {"common": {"requirements": [empty_age, no_house, REQUIREMENT]}}
+    quotes = {"eligibility.common.requirements[0]": "성년자", "eligibility.common.requirements[2]": "만 19세 이상"}
+    decision, calls = assessment(eligibility=eligibility, eligibility_quotes=quotes)
+    assert [key for key in asked(calls) if key.startswith("eligibility")] == ["eligibility.common.requirements[2]"]
+    assert decision["unconfirmedRequirements"] == ["eligibility.common.requirements[0]", "eligibility.common.requirements[1]"]
+    assert decision["eligibilityPublishable"] is True
+
+
+@pytest.mark.parametrize("eligibility, failing", [(None, ()), (ELIGIBILITY, ["eligibility.common.requirements[0]"])])
+def test_eligibility_without_an_extraction_or_a_source_check_answer_is_not_published(eligibility, failing):
+    """신청자격 단계가 실패했거나 원문 대조 응답을 받지 못하면 무엇을 판정할지 정하지 못한 것이라 신청자격만 검수로 남긴다."""
+    decision, _ = assessment(eligibility=eligibility, failing=failing)
+    assert decision["reasons"] == [] and decision["rentalType"] == "HAPPY_HOUSING"
+    assert decision["eligibilityPublishable"] is False
 
 
 def test_without_the_source_check_model_nothing_is_approved():

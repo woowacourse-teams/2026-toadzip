@@ -27,6 +27,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -65,9 +66,19 @@ public class EligibilityExtractionDraftService {
         this.regionSearch = regionSearch;
     }
 
-    /** 저장과 공개를 한 트랜잭션으로 묶는다. 공개가 막히면 초안 저장도 남기지 않는다. */
+    /** 저장과 공개를 한 트랜잭션으로 묶는다. 공개가 막히면 초안 저장도 남기지 않는다. 근거가 붙은 요건을 모두 판정에 쓴다. */
     @Transactional
     public ExtractionDraft create(long announcementId, DraftFromExtraction request) {
+        return create(announcementId, request, Set.of());
+    }
+
+    /**
+     * 자동 공개용. unconfirmedRequirements(원문 대조로 뜻을 확인하지 못한 요건의 근거 경로)는 판정하지 않고
+     * '공고문에서 확인할 자격' 목록으로 둔다. 판정이 넓어지는 대신 확인하지 못한 요건으로 신청자를 떨어뜨리지 않는다.
+     */
+    @Transactional
+    public ExtractionDraft create(long announcementId, DraftFromExtraction request,
+            Set<String> unconfirmedRequirements) {
         SavedAnnouncementPdfExtraction latest = latest(announcementId, request.pdfSha256());
         String url = sources.attachmentUrl(announcementId, latest.fileName()).orElseThrow(() ->
                 new EligibilityDraftUnavailableException(
@@ -75,7 +86,8 @@ public class EligibilityExtractionDraftService {
         LocalDate referenceDate = sources.postedDate(announcementId).orElseThrow(() ->
                 new EligibilityDraftUnavailableException("모집공고일이 없어 신청자격 기준일을 정할 수 없습니다. 공고 정보를 먼저 채워 주세요."));
         ExtractedEligibilityDraft.Draft draft = ExtractedEligibilityDraft.build(source(latest, url, referenceDate,
-                draftUnits.units(announcementId).stream().map(this::normalized).toList()));
+                draftUnits.units(announcementId).stream().map(this::normalized).toList(),
+                path -> !unconfirmedRequirements.contains(path)));
         try {
             RuleSet saved = ruleSets.save(announcementId,
                     new SaveDraft(request.expectedDraftId(), request.expectedRevision(), draft.content()));
@@ -102,7 +114,7 @@ public class EligibilityExtractionDraftService {
         SavedAnnouncementPdfExtraction latest = latest(announcementId, pdfSha256);
         return ExtractedEligibilityDraft.preview(source(latest,
                 sources.attachmentUrl(announcementId, latest.fileName()).orElse(null),
-                sources.postedDate(announcementId).orElse(null), List.of()));
+                sources.postedDate(announcementId).orElse(null), List.of(), path -> true));
     }
 
     private SavedAnnouncementPdfExtraction latest(long announcementId, String pdfSha256) {
@@ -117,7 +129,8 @@ public class EligibilityExtractionDraftService {
         return latest;
     }
 
-    private Source source(SavedAnnouncementPdfExtraction latest, String url, LocalDate referenceDate, List<Unit> units) {
+    private Source source(SavedAnnouncementPdfExtraction latest, String url, LocalDate referenceDate, List<Unit> units,
+            Predicate<String> judged) {
         List<RegionSearchResult> catalog = regionSearch.findByKeyword("");
         return new Source(
                 referenceDate,
@@ -125,7 +138,8 @@ public class EligibilityExtractionDraftService {
                 units,
                 reader.read(latest.extraction().json()),
                 incomeTables(),
-                name -> regionCodes(catalog, name));
+                name -> regionCodes(catalog, name),
+                judged);
     }
 
     /** 저장된 공급유형 코드를 화면 이름(행복주택 등)으로, 지역은 판정이 아는 코드만 남긴다. */

@@ -3,7 +3,8 @@
 판단은 Jev가, 공개 여부는 이 모듈이 정한다. 질문 문구·선택지·기준값은 여기에만 두고 서버는 결론(reasons와 승인 값)만 읽는다.
 Jev에 "추출 결과가 다 맞는가"는 묻지 않는다. 그렇게 넓게 물으면 맞는 결과에도 '모순'이라 답한다(LH 표본 17건 모두).
 사람이 한눈에 답할 수 있는 좁은 판단만 묻는다: 이 문서가 모집공고인가, 이 날짜는 어느 절차의 날짜인가,
-추출이 인용하지 않은 이 표 행이 모집 행인가, 이 인용문이 이 요건을 말하는가. 값 대조(날짜 표현, 인용 여부)는 코드가 한다.
+추출이 인용하지 않은 이 표 행이 모집 행인가, 이 인용문을 만족하는 사람이 이 요건(사람이 읽는 문장)도 만족하는가.
+값 대조(날짜 표현, 인용 여부, 요건의 숫자)는 코드가 한다.
 수집 때 가진 값(collected)과 같은 날짜는 두 원천이 일치한 것이라 Jev에 묻지 않는다. 수집한 유형은 PDF와 대조하지 않고 그대로 쓴다.
 일정·접수처도 Jev에 묻지 않는다. 추출 단계의 인용 확인과 미확인 표시만 본다.
 """
@@ -37,6 +38,21 @@ RECRUIT = {
            "and notices where applicants pick a unit (동호지정).",
     "WAITLIST": "Only reserve tenants (예비입주자) who wait for a vacancy. No home is assigned through this notice.",
 }
+# 신청자격 요건의 뜻을 옮길 때 쓰는 말(meaning). 키는 워커 계약의 요건 값이다.
+# 공고문 나이는 '만'을 적지 않아도 만 나이다(2023년 만 나이 통일). 적지 않으면 '6세 이하'를 세는 나이로 볼 수 있다며 망설였다.
+ELIGIBILITY_DOCUMENT = ("Eligibility conditions from a Korean public rental housing recruitment notice. "
+                        "Ages in these notices are in full years (만 나이), even when 만 is not written.")
+OWNERS = {"APPLICANT": "the applicant", "HOUSEHOLD": "the applicant's household",
+          "APPLICANT_AND_PARENTS": "the applicant and their parents together"}
+INCOME_STANDARDS = {
+    "URBAN_WORKER_MONTHLY_INCOME": "the average monthly income of urban worker households of the same size "
+                                  "(도시근로자 가구원수별 가구당 월평균소득)",
+    "STANDARD_MEDIAN_INCOME": "the standard median income (기준 중위소득)"}
+FAMILIES = {"UNMARRIED": "not married (미혼)", "SINGLE_PARENT": "a single parent (한부모가족)",
+            "COUPLE_OR_ENGAGED": "married, or planning to marry (신혼부부·예비신혼부부)"}
+RAISED = {"CHILDBIRTH": "households with children born recently (출산가구)", "DUAL_INCOME": "dual-income households (맞벌이)"}
+STATUSES = {"UNIVERSITY_STUDENT": "The applicant is a university student (대학생).",
+            "JOB_SEEKER": "The applicant is a job seeker (취업준비생)."}
 # Choice는 이 확률 이상인 답만, Noul은 YES 이상을 '예'로 NO 이하를 '아니오'로 읽는다. 그 사이는 판단 없음이라 보류한다.
 # 유형은 고른 답이 그대로 공개 값이 된다. LH 표본 9건에서 맞는 답은 모두 0.96 이상이었다.
 # 날짜의 절차는 고른 답이 기대한 절차와 같아야만 통과하므로 더 낮게 둔다. 표본에서 기대한 절차를 고른 답은 0.43·0.71·0.90·0.94와
@@ -138,9 +154,8 @@ def assess(tree, source, warnings, judge, deadline, collected):
         return review
     for field in ("rentalType", "recruitmentType"):
         review[field] = collected.get(field) or review["answers"][field]["choice"]
-    # 신청자격은 공고 공개를 막지 않는다. 확인되지 않으면 자격만 운영자 검수로 남는다.
-    eligibility = eligibility_check(tree, warnings)
-    review["eligibilityVerified"] = eligibility is not None and not asker.ask(eligibility)
+    # 신청자격은 공고 공개를 막지 않는다. 원문으로 뜻을 확인하지 못한 요건은 판정에서 빠지고 목록으로만 보인다.
+    review["eligibilityPublishable"], review["unconfirmedRequirements"] = eligibility_review(tree, asker)
     return review
 
 
@@ -160,7 +175,7 @@ def missing_reserve(sheet):
 def held(*reasons):
     """통과하지 못한 판정. 승인 값은 비어 있다."""
     return {"policy": 1, "reasons": list(reasons), "rentalType": None, "recruitmentType": None,
-            "eligibilityVerified": False, "evidence": {}, "answers": {}}
+            "eligibilityPublishable": False, "unconfirmedRequirements": [], "evidence": {}, "answers": {}}
 
 
 def held_by_extraction(data, texts, warnings):
@@ -327,54 +342,139 @@ def table_row(row_id):
     return table, int(row)
 
 
-def eligibility_check(tree, warnings):
-    """요건마다 근거 인용문이 그 요건(종류와 수치)을 말하는지 묻는다. 원문 글만 옮긴 요건(구조화한 값이 없음)은 물을 것이 없다."""
+def eligibility_review(tree, asker):
+    """신청자격을 자동 공개해도 되는지와, 원문으로 뜻을 확인하지 못해 서버가 판정에 쓰지 않을 요건의 근거 경로.
+    공개하지 않는 경우는 신청자격 추출이 없을 때(단계 실패)와 원문 대조 응답을 받지 못했을 때뿐이다.
+    요건 하나의 경고(숫자 확인 필요, 근거 문구 없음 등)는 막지 않는다. 추출 단계가 그 요건의 숫자를 이미 비워
+    서버가 판정하지 않는 목록으로 두기 때문이다. 근거나 옮길 값이 없는 요건은 묻지 않고 확인하지 못한 요건으로 둔다."""
     data = tree["data"]
-    eligibility = data.get("eligibility")
-    unverified = any((f.get("path") or "").startswith("eligibility") for f in data.get("unresolvedFields", []))
-    if not eligibility or unverified or any(w.startswith("신청자격") for w in warnings):
-        return None
+    if not data.get("eligibility"):
+        return False, []
+    quotes = {(cite.get("path") or "").removeprefix("data."): cite.get("quote") for cite in tree.get("evidence", [])}
+    pieces = {path: asked_parts(path, requirement) for path, requirement in requirements(data["eligibility"])}
     asks = {}
-    for cite in tree.get("evidence", []):
-        path = (cite.get("path") or "").removeprefix("data.")
-        if not path.startswith("eligibility."):
-            continue
-        requirement = structured(node_at(data, path))
-        # 근거가 가리키는 요건이 없으면 무엇을 확인한 것인지 알 수 없다.
-        if not isinstance(requirement, dict):
-            return None
-        if set(requirement) - {"kind"}:
-            asks[path] = is_yes(
-                {"question": "Does the quoted notice text state the condition described in `requirement`?",
-                 "quote": cite.get("quote"), "requirement": requirement},
-                "The quoted text sets the same condition with the same limits (ages, years, percentages, amounts).",
-                "The quoted text sets a different condition, or a limit differs or is missing.",
-                f"신청자격 {path} 원문 확인 필요")
-    if not asks:
+    for parts in pieces.values():
+        questions = {key: (quotes.get(key), meaning(part)) for key, part in parts}
+        # 선택지 하나라도 물을 수 없으면 그 선택 요건은 확인할 수 없으니 나머지 선택지도 묻지 않는다.
+        if parts and all(isinstance(quote, str) and condition for quote, condition in questions.values()):
+            asks |= {key: requirement_ask(quote, condition) for key, (quote, condition) in questions.items()}
+    if asks:
+        asker.ask(Check("신청자격", {"document": ELIGIBILITY_DOCUMENT}, asks))
+    if any(key not in asker.answers for key in asks):
+        return False, []
+    confirmed = {key for key, ask in asks.items() if ask.passes(asker.answers[key]["noul"])}
+    return True, [path for path, parts in pieces.items() if not parts or any(key not in confirmed for key, _ in parts)]
+
+
+def requirements(eligibility):
+    """서버가 판정에 쓸 수 있는 요건과 그 근거 경로(eligibility.targets[0].requirements[1]).
+    서버 ExtractedEligibilityReader가 만드는 경로와 같다. 기타(OTHER)와 판정을 막는 UNRESOLVED는 서버가 판정하지 않아 뺀다."""
+    groups = [("eligibility.common", eligibility.get("common") or {})]
+    groups += [(f"eligibility.targets[{index}]", target) for index, target in enumerate(eligibility.get("targets") or [])]
+    for group, node in groups:
+        for index, requirement in enumerate(node.get("requirements") or []):
+            if requirement.get("kind") not in ("OTHER", "UNRESOLVED"):
+                yield f"{group}.requirements[{index}]", requirement
+
+
+def asked_parts(path, requirement):
+    """요건을 묻는 단위와 그 근거 경로. 선택 요건은 선택지마다 근거가 따로 있어 하나씩 묻고, '아래 중 하나' 같은 안내 문장은 묻지 않는다.
+    서버는 선택지 하나라도 판정하지 못하면 그 선택 요건 전체를 목록으로 두므로, 선택지를 모두 확인해야 그 요건을 확인한 것이다."""
+    if requirement.get("kind") != "ANY_OF":
+        return [(path, requirement)]
+    return [(f"{path}.options[{index}]", option) for index, option in enumerate(requirement.get("options") or [])]
+
+
+def requirement_ask(quote, condition):
+    """인용문을 만족하는 사람이 서버가 판정할 조건도 만족하는지 묻는다. 그러면 확인한 조건은 공고문이 받는 사람을 떨어뜨리지 않는다.
+    조건이 인용문보다 넓은 것(혼인 중인 자를 '혼인 중이거나 예비신혼부부'로)은 통과한다. 판정 정밀도를 '한번 지원 넣어볼' 수준으로
+    잡은 것과 같은 방향이다. 확인하지 못한 요건은 판정에서 빠지므로 확인한 쪽보다 판정이 더 넓다."""
+    return is_yes(
+        {"question": "Does every applicant who meets the condition in `quote` also meet `condition`?",
+         "quote": quote, "condition": condition},
+        "Anyone the quoted text accepts also meets `condition`. "
+        "`condition` may use other words, or be looser than the quote.",
+        "The quoted text accepts someone who fails `condition`: for example `condition` sets a stricter "
+        "or opposite limit, is about a different person, or is about another matter.",
+        "신청자격 요건의 뜻을 원문에서 확인하지 못했습니다.")
+
+
+def meaning(requirement):
+    """서버가 판정에 쓰는 요건의 뜻(종류·누구의 조건인지·주된 값)을 사람이 읽는 문장으로 옮긴다. 옮길 값이 없으면 None이다.
+    코드가 만든 값(기준 연도, 원 단위 금액)과 내부 코드는 옮기지 않는다. 인용문에 없는 값이 보이면 맞는 요건에도 '아니오'라 답한다
+    (LH 표본에서 소득·자산·자동차·가족 형태 요건이 그렇게 떨어졌다). 숫자가 원문과 같은지는 추출 단계 코드가 이미 대조했다."""
+    kind, scope = requirement.get("kind"), requirement.get("scope")
+    owner = OWNERS.get(scope)
+    if kind == "AGE":
+        return age(requirement)
+    if kind == "NO_HOUSE" and scope == "APPLICANT":
+        return "The applicant does not own a house (무주택자)."
+    if kind == "NO_HOUSE" and scope == "HOUSEHOLD":
+        return "No member of the applicant's household owns a house (무주택세대구성원)."
+    if kind == "NO_CAR" and scope == "APPLICANT":
+        return "The applicant does not own a car."
+    if kind == "NO_CAR" and scope == "HOUSEHOLD":
+        return "No member of the applicant's household owns a car."
+    standard = INCOME_STANDARDS.get(requirement.get("incomeStandard"))
+    if kind == "INCOME" and owner and standard and requirement.get("percent"):
+        sentence = f"The monthly average income of {owner} is at most {requirement['percent']}% of {standard}."
+        sizes = ["some household sizes"] if requirement.get("householdSizeExtraPercent") else []
+        return sentence + raised(requirement, sizes)
+    # 금액은 원문 표기로 묻는다. maximumKrw는 추출 단계가 amountAsWritten을 바꾼 값이라 둘은 함께 오거나 함께 빈다.
+    amount = requirement.get("amountAsWritten")
+    if kind in ("ASSETS", "CAR_VALUE") and owner and amount and requirement.get("maximumKrw"):
+        subject = "total assets of {} are" if kind == "ASSETS" else "car value (자동차가액) of {} is"
+        return f"The {subject.format(owner)} at most {amount}." + raised(requirement, [])
+    if kind == "RESIDENCE" and requirement.get("regions"):
+        sentence = f"The applicant lives in {', '.join(requirement['regions'])}"
+        months = requirement.get("minimumMonths")
+        if months:
+            span = f"{months} months"
+            if months % 12 == 0:
+                span = f"{months // 12} year" + ("s" if months > 12 else "")
+            sentence += f" and has lived there for at least {span}"
+        return sentence + "."
+    if kind == "MARRIAGE_PERIOD" and requirement.get("maximum") is not None:
+        return f"The applicant's marriage period (혼인기간) is {requirement['maximum']} years or less."
+    families = [FAMILIES.get(value) for value in requirement.get("familyTypes") or []]
+    if kind == "FAMILY_TYPE" and families and all(families):
+        return f"The applicant is {' or '.join(families)}."
+    return STATUSES.get(kind)
+
+
+def age(requirement):
+    """만 나이 범위. 성년(만 19세)을 숫자 대신 '성년자'로 적은 공고가 있어 그 뜻을 함께 적는다.
+    막내 자녀 나이는 서버 입력이 '막내 생년월일 또는 출산예정일'이라 태아도 자녀로 센다. 상한만 있으면 공고문이 적는 대로
+    'N세 이하 자녀가 있다'로 옮긴다. '막내가 N세 이하'로 물으면 '6세 이하 자녀(태아 포함)를 둔 자'에 '아니오'라 답했다(LH 표본 13건)."""
+    low, high = requirement.get("minimum"), requirement.get("maximum")
+    scope = requirement.get("scope")
+    if scope not in ("APPLICANT", "YOUNGEST_CHILD") or (low is None and high is None):
         return None
-    return Check("신청자격", {"document": "Eligibility conditions from a Korean public rental housing recruitment notice."},
-                 asks)
+    if scope == "YOUNGEST_CHILD" and low is None:
+        return f"The applicant has a child aged {high} or younger in full years (만 나이). An unborn child also counts."
+    if low is not None and high is not None:
+        span = f"between {low} and {high}"
+    elif low is not None:
+        span = f"{low} or older"
+    else:
+        span = f"{high} or younger"
+    if scope == "YOUNGEST_CHILD":
+        return f"The applicant's youngest child, counting an unborn child, is aged {span} in full years (만 나이)."
+    adult = " (19 is the age of adulthood, 성년, in Korea)" if low == 19 else ""
+    return f"The applicant is aged {span} in full years (만 나이){adult}."
 
 
-def node_at(root, path):
-    """근거 경로(eligibility.targets[0].requirements[1])가 가리키는 값. 없으면 None."""
-    try:
-        for name, index in re.findall(r"(\w+)(?:\[(\d+)])?", path):
-            root = root[name]
-            if index:
-                root = root[int(index)]
-        return root
-    except (KeyError, IndexError, TypeError):
-        return None
-
-
-def structured(node):
-    """요건에서 원문을 옮긴 글(asWritten)을 뺀다. 그 글은 인용문과 거의 같아 남겨 두면 묻는 뜻이 없다."""
-    if isinstance(node, dict):
-        return {key: structured(value) for key, value in node.items() if key != "asWritten"}
-    if isinstance(node, list):
-        return [structured(item) for item in node]
-    return node
+def raised(requirement, reasons):
+    """서버가 판정에서 높여 주는 기준(가구원 수 가산, 출산자녀·맞벌이 가산)만 말한다. 장애인 가산처럼 서버가 기본 기준으로 판정하는
+    가산은 말하지 않아, 인용문이 그런 가산을 적었으면 확인되지 않고 목록으로 간다."""
+    kinds = [item.get("kind") for item in requirement.get("adjustments") or []]
+    reasons = list(dict.fromkeys(reasons + [RAISED[kind] for kind in kinds if kind in RAISED]))
+    if not reasons:
+        return ""
+    listed = reasons[0]
+    if len(reasons) > 1:
+        listed = ", ".join(reasons[:-1]) + " and " + reasons[-1]
+    return f" The limit is higher for {listed}."
 
 
 class Asker:

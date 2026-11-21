@@ -178,6 +178,51 @@ class ExtractedEligibilityDraftTest {
     }
 
     @Test
+    void 자동_공개에서_원문으로_뜻을_확인하지_못한_요건은_판정하지_않고_근거와_함께_목록으로만_둔다() {
+        String income = COMMON + ".requirements[1]";
+        Source base = source(evidence(), null, List.of());
+        Source automatic = new Source(base.referenceDate(), base.document(), base.units(), base.eligibility(),
+                base.incomeTables(), base.regionCodes(), path -> !path.equals(income));
+        EligibilityContent content = ExtractedEligibilityDraft.build(automatic).content();
+        validate(content);
+
+        // 소득은 판정하지 않아 상한을 넘어도 지원 가능이다. 확인한 무주택 요건은 그대로 판정한다.
+        assertThat(youth(content, with(b(), HOUSEHOLD_MONTHLY_INCOME, 6_452_898L))).isEqualTo(Status.ELIGIBLE);
+        assertThat(youth(content, with(b(), ProfileField.FAMILY_OWNS_HOUSE, true))).isEqualTo(Status.INELIGIBLE);
+        Guidance listed = guidance(content, "list-common");
+        assertThat(listed.items()).containsExactly("소득: 전년도 도시근로자 가구원수별 월평균소득 100% 이하");
+        assertThat(listed.evidenceIds()).containsExactly(content.evidences().stream()
+                .filter(item -> item.location().equals(income)).findFirst().orElseThrow().id());
+        // 관리자 보정(경로를 가리지 않는 Source)은 같은 소득 요건을 판정한다.
+        EligibilityProfile overLimit = with(b(), HOUSEHOLD_MONTHLY_INCOME, 6_452_898L);
+        assertThat(youth(draft(evidence()), overLimit)).isEqualTo(Status.INELIGIBLE);
+    }
+
+    @Test
+    void 자동_공개에서_확인하지_못한_선택_요건은_선택지_전체를_판정하지_않고_목록으로_둔다() {
+        // 워커는 선택지를 하나씩 묻고, 하나라도 확인하지 못하면 선택 요건(부모) 경로를 낸다.
+        String anyOf = YOUTH + ".requirements[1]";
+        Requirement marriedOrChild = new Requirement("ANY_OF", null, null, null, null, null, null, null, Map.of(),
+                List.of(), null, List.of(), List.of(), List.of(
+                        new Requirement("MARRIAGE_PERIOD", null, null, 7, null, null, null, null, Map.of(), List.of(), null,
+                                List.of(), List.of(), List.of(), "혼인기간 7년 이내", anyOf + ".options[0]"),
+                        new Requirement("AGE", "YOUNGEST_CHILD", null, 6, null, null, null, null, Map.of(), List.of(), null,
+                                List.of(), List.of(), List.of(), "6세 이하 자녀를 둔 자", anyOf + ".options[1]")),
+                "혼인기간 7년 이내 또는 6세 이하 자녀를 둔 자", anyOf);
+        Source base = source(evidence(), null, List.of(marriedOrChild));
+        Source automatic = new Source(base.referenceDate(), base.document(), base.units(), base.eligibility(),
+                base.incomeTables(), base.regionCodes(), path -> !path.equals(anyOf));
+        EligibilityContent content = ExtractedEligibilityDraft.build(automatic).content();
+        validate(content);
+
+        assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::label)
+                .containsExactly("만 19세 이상 39세 이하");
+        assertThat(guidance(content, "list-path-1").items()).containsExactly("혼인기간 7년 이내 또는 6세 이하 자녀를 둔 자");
+        // 관리자 보정은 같은 선택 요건을 판정한다.
+        assertThat(draft(evidence(), List.of(marriedOrChild)).paths().getFirst().checks()).hasSize(2);
+    }
+
+    @Test
     void 알아볼_입력이_없는_가산은_기본_기준으로_판정하고_가산을_목록에_알린다() {
         EligibilityContent content = draft(evidence(), List.of(new Requirement("INCOME", "HOUSEHOLD", null, null, null,
                 "URBAN_WORKER_MONTHLY_INCOME", 2025, 100, Map.of(), List.of(new Adjustment("DISABILITY", null)), null, List.of(), List.of(),

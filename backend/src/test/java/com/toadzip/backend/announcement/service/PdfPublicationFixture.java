@@ -107,8 +107,9 @@ class PdfPublicationFixture {
                 .add(json.valueToTree(cell));
         sheet.putArray("leaseTerms");
         ObjectNode review = tree.putObject("publicationReview").put("policy", 1)
-                .put("rentalType", "HAPPY_HOUSING").put("recruitmentType", "NEW").put("eligibilityVerified", false);
+                .put("rentalType", "HAPPY_HOUSING").put("recruitmentType", "NEW").put("eligibilityPublishable", false);
         review.putArray("reasons");
+        review.putArray("unconfirmedRequirements");
         review.putObject("evidence");
         review.putObject("answers");
         return tree;
