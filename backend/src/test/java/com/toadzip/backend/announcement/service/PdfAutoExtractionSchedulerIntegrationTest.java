@@ -606,6 +606,49 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"SH", "GH"})
+    void SH_GH_공고는_같은_주소나_같은_이름의_단지가_하나_있어도_잇지_않고_관리자_확정을_기다린다(String agency) {
+        Candidate candidate = fixture.candidate(Announcement.createUnconfirmed(agency + ":" + UUID.randomUUID(),
+                "자동 공개 공고", AgencyCode.valueOf(agency), TODAY, "https://example.com/notice"));
+        String road = uniqueRoad();
+        // 같은 주소의 단지와, 공급표 단지명과 이름이 같은 같은 기관 단지가 모두 하나씩 있다.
+        HousingComplex nearby = complexAt("같은 곳 단지", "서울특별시 중구 " + road + " 7", "HAPPY_HOUSING");
+        jdbc.sql("UPDATE housing_complexes SET provider = ? WHERE name = ?").params(agency, candidate.complexName()).update();
+        announcementComplexes.saveAndFlush(AnnouncementComplex.observe(candidate.notice(), candidate.complexName(),
+                "서울특별시 중구 " + road + " 7", null));
+        long job = fixture.succeededJob(candidate, extractionFor(candidate, candidate.complexName(), null));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason"))
+                    .isEqualTo("SH·GH 공고의 단지는 관리자가 확정합니다. 단지를 확인하세요: " + candidate.complexName());
+        });
+        assertThat(published(candidate.notice())).isFalse();
+        assertThat(linkedComplexIds(candidate.notice().getId())).isEmpty();
+        assertThat(complexName(nearby.getId())).isEqualTo("같은 곳 단지");
+    }
+
+    @Test
+    void SH_공고도_관리자가_확정한_공고_단지_연결은_그대로_쓴다() {
+        Candidate candidate = fixture.candidate(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고",
+                AgencyCode.SH, TODAY, "https://example.com/notice"));
+        long complexId = jdbc.sql("SELECT id FROM housing_complexes WHERE name = ?").param(candidate.complexName())
+                .query(Long.class).single();
+        AnnouncementComplex confirmed = AnnouncementComplex.observe(candidate.notice(), candidate.complexName(), null, null);
+        confirmed.linkByAdmin(housingComplexes.findById(complexId).orElseThrow(), "admin", java.time.Instant.now());
+        announcementComplexes.saveAndFlush(confirmed);
+        long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(linkedComplexIds(candidate.notice().getId())).containsExactly(complexId);
+    }
+
     @Test
     void 공고_단지가_없어도_공고문_개요_주소와_같은_곳의_단지에_잇고_공급표_단지명으로는_이름을_바꾸지_않는다() {
         Candidate candidate = fixture.candidate();
@@ -1075,8 +1118,8 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
     /** 유형과 날짜를 수집해 이미 공개한 공고(저장 전). 날짜는 통과한 추출 결과의 날짜와 같다. */
     private static Announcement collectedNotice(RentalType rentalType, RecruitmentType recruitmentType) {
-        return Announcement.create("SH:" + UUID.randomUUID(), null, null, "수집값이 있는 공고",
-                AnnouncementPublicationType.ORIGINAL, rentalType, recruitmentType, AgencyCode.SH,
+        return Announcement.create("LH:" + UUID.randomUUID(), null, null, "수집값이 있는 공고",
+                AnnouncementPublicationType.ORIGINAL, rentalType, recruitmentType, AgencyCode.LH,
                 TODAY, TODAY, TODAY.plusDays(2), TODAY.plusDays(5), "https://example.com/notice", null, 0, null);
     }
 
@@ -1138,7 +1181,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         HousingComplex complex = housingComplexes.saveAndFlush(HousingComplex.create(name,
                 UUID.randomUUID().toString(), supplyType, Address.create(roadAddress, null, "1114010100", "11",
                         "11140", new BigDecimal("37.5"), new BigDecimal("126.9")),
-                10, "SH", TODAY, "INDIVIDUAL", "APARTMENT", "STAIR", true, 10, null, 0));
+                10, "LH", TODAY, "INDIVIDUAL", "APARTMENT", "STAIR", true, 10, null, 0));
         housingTypes.saveAndFlush(HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(), "36A",
                 new BigDecimal("36"), null, null));
         return complex;

@@ -15,6 +15,7 @@ import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -202,13 +203,16 @@ class PublicationCorrection {
     }
 
     /**
-     * 단지에 이어지지 않은 공고 단지의 단지. 같은 곳(주소 키·공급유형)의 단지와 기관·단지명이 같은 단지를 함께 본다.
+     * 단지에 이어지지 않은 공고 단지의 단지. SH·GH 공고는 관리자가 확정한 연결만 쓰므로 보류한다. LH 공고는 같은 곳(주소 키·공급유형)의 단지와 기관·단지명이 같은 단지를 함께 본다.
      * 공고문 개요 주소와 원천 도로명주소가 서로 다른 단지를 가리키거나, 같은 곳 단지 하나와 이름이 같은 단지가 서로 다르면 어느 쪽인지
      * 알 수 없어 보류한다. 같은 곳 단지가 여럿이면 그중 이름도 같은 하나만 고른다. 같은 곳 단지가 없으면(동 단위 주소 포함) 이름이 같은
      * 단지 하나다.
      */
     private Long unlinkedComplex(Workspace workspace, String name, List<String> pdfAddresses, String sourceAddress,
             RentalType rentalType) {
+        var agency = workspace.detail().data().agencyCode();
+        // SH·GH 단지는 마이홈 단지에만 있어 주소·이름으로 맞춰도 맞는지 알 수 없다. 관리자가 확정해야 공개한다(사용자 결정: 관리자 확인 후 공개).
+        require(agency != AgencyCode.SH && agency != AgencyCode.GH, "SH·GH 공고의 단지는 관리자가 확정합니다. 단지를 확인하세요: " + name);
         var fromPdf = ids(sameAddress.find(pdfAddresses, rentalType));
         var fromSource = ids(sameAddress.find(sourceAddress == null ? List.of() : List.of(sourceAddress), rentalType));
         if (!fromPdf.isEmpty() && !fromSource.isEmpty() && !fromPdf.equals(fromSource)) {
@@ -219,7 +223,6 @@ class PublicationCorrection {
         }
         var nearby = new LinkedHashSet<>(fromPdf);
         nearby.addAll(fromSource);
-        var agency = workspace.detail().data().agencyCode();
         var named = ids(complexes.findByNameAndProviderInAndAdminDeletedFalse(name,
                 List.of(agency.name(), agency.displayName())));
         if (nearby.size() == 1) {

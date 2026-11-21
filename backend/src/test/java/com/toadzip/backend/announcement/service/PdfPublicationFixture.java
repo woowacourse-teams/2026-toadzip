@@ -59,19 +59,22 @@ class PdfPublicationFixture {
     /** 공고, 그 공고문 PDF 첨부, 공급표 주택형이 가리킬 단지 이름. */
     record Candidate(Announcement notice, AnnouncementAttachment pdf, String complexName) { }
 
-    /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */
+    /**
+     * 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 LH 공고. 자동 공개는 LH 공고만 공고 단지를 주소·이름으로 잇는다
+     * (SH·GH는 관리자가 확정한다).
+     */
     Candidate candidate() {
-        return candidate(Announcement.createUnconfirmed("SH:" + UUID.randomUUID(), "자동 공개 공고", AgencyCode.SH, TODAY,
+        return candidate(Announcement.createUnconfirmed("LH:" + UUID.randomUUID(), "자동 공개 공고", AgencyCode.LH, TODAY,
                 "https://example.com/notice"));
     }
 
-    /** 저장하지 않은 공고에 공급표를 연결할 단지·주택형과 공고문 PDF 첨부를 붙인다. 공고의 기관은 SH여야 단지를 찾는다. */
+    /** 저장하지 않은 공고에 공급표를 연결할 단지·주택형과 공고문 PDF 첨부를 붙인다. 공고의 기관은 LH여야 이름으로 단지를 찾는다. */
     Candidate candidate(Announcement unsaved) {
         String complexName = "검증단지-" + UUID.randomUUID();
         Address address = Address.create("서울 중구 세종대로", "1111010100100010000",
                 "1111010100", "11", "11110", new BigDecimal("37.5"), new BigDecimal("126.9"));
         HousingComplex complex = complexes.saveAndFlush(HousingComplex.create(complexName,
-                UUID.randomUUID().toString(), "HAPPY_HOUSING", address, 10, "SH", TODAY, "INDIVIDUAL", "APARTMENT",
+                UUID.randomUUID().toString(), "HAPPY_HOUSING", address, 10, "LH", TODAY, "INDIVIDUAL", "APARTMENT",
                 "STAIR", true, 10, null, 0));
         types.saveAndFlush(HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(),
                 "36A", new BigDecimal("36"), null, null));
