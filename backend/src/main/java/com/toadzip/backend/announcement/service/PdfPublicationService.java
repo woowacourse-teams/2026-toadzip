@@ -203,13 +203,19 @@ class PdfPublicationService {
         require(decisions.isLatest(jobId, id) && announcement.getVersion() == snapshot.announcementVersion()
                 && !announcement.isAdminModified() && !announcement.isAdminDeleted()
                 && !announcement.isSourceReviewRequired() && !announcement.isSupplyConfirmed()
-                && announcement.getStatus() == AnnouncementPublicationType.ORIGINAL, "공고·원천이 변경되었거나 이미 검토 중입니다.");
+                && announcement.getStatus() != AnnouncementPublicationType.CANCELLATION,
+                "공고·원천이 변경되었거나 이미 검토 중입니다.");
         require(input.sourceSupplyRows().equals(inputs.read(id).sourceSupplyRows()), "기관 공급 원천이 달라졌습니다.");
         List<AnnouncementAttachment> files = attachments.findAllByAnnouncementIdIn(List.of(id));
-        require(files.stream().noneMatch(file -> file.getFileType() == AttachmentType.CORRECTION
-                || file.getFileType() == AttachmentType.CANCELLATION), "정정·취소 첨부를 확인하세요.");
         // 트랜잭션 밖에서 받은 첨부가 지금도 이 공고의 공고문인지 본다.
-        AnnouncementAttachment pdf = PdfAutoExtractionScheduler.preferredPdf(files).orElseThrow();
+        AnnouncementAttachment pdf = PdfAutoExtractionScheduler.preferredPdf(files)
+                .orElseThrow(() -> new PublicationHold("공고문 첨부가 변경되었습니다."));
+        // 정정공고는 정정 내용을 반영한 공고문을 다시 내므로 그 공고문으로 판정한다(사용자 결정: "정정도 자동으로").
+        // 정정 내역 문서는 정정공고의 공고문 PDF를 고른 경우에만 넘긴다. 원공고에 붙은 정정 문서와 취소 문서는 검수로 보낸다.
+        boolean correctedNotice = announcement.getStatus() == AnnouncementPublicationType.CORRECTION
+                && pdf.getFileType() == AttachmentType.ANNOUNCEMENT;
+        require(files.stream().noneMatch(file -> file.getFileType() == AttachmentType.CANCELLATION
+                || file.getFileType() == AttachmentType.CORRECTION && !correctedNotice), "정정·취소 첨부를 확인하세요.");
         require(pdf.getId() == snapshot.attachmentId() && pdf.getFileName().equals(job.getFileName()),
                 "공고문 첨부가 변경되었습니다.");
         Request request = proposals.prepare(corrections.workspace(id), tree,

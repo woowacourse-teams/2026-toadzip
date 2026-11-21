@@ -410,12 +410,34 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 정정공고도_공고문_PDF가_원문과_맞으면_자동으로_보정해_공개한다(boolean correctionNoticeAttached) {
+        // 정정공고는 정정 내용을 반영한 공고문을 다시 낸다. 정정 내역 문서가 따로 붙어도 판정은 공고문 PDF로 한다(사용자 결정: "정정도 자동으로").
+        Candidate candidate = fixture.candidate();
+        long id = candidate.notice().getId();
+        change(id, "status = 'CORRECTION'");
+        if (correctionNoticeAttached) {
+            fixture.attach(candidate.notice(), "정정내역.pdf", AttachmentType.CORRECTION, 1);
+        }
+        long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(published(candidate.notice())).isTrue();
+    }
+
+    @ParameterizedTest
     @CsvSource(delimiter = '|', textBlock = """
             differentEndDate     | 기존 값과 PDF가 다릅니다: applicationEndDate
             existingSupplyRows   | 기존 공급표가 있어 교체·삭제 검토가 필요합니다.
             versionRaised        | 공고·원천이 변경되었거나 이미 검토 중입니다.
             adminModified        | 공고·원천이 변경되었거나 이미 검토 중입니다.
             supplyConfirmed      | 공고·원천이 변경되었거나 이미 검토 중입니다.
+            cancelled            | 공고·원천이 변경되었거나 이미 검토 중입니다.
+            correctionOnlyPdf    | 정정·취소 첨부를 확인하세요.
+            correctionCancelled  | 정정·취소 첨부를 확인하세요.
             correctionAttached   | 정정·취소 첨부를 확인하세요.
             cancellationAttached | 정정·취소 첨부를 확인하세요.
             """)
@@ -434,6 +456,17 @@ class PdfAutoExtractionSchedulerIntegrationTest {
             case "versionRaised" -> change(id, "version = version + 1");
             case "adminModified" -> change(id, "admin_modified = true");
             case "supplyConfirmed" -> change(id, "supply_confirmed_at = now()");
+            case "cancelled" -> change(id, "status = 'CANCELLATION'");
+            case "correctionOnlyPdf" -> {
+                // 정정공고에 공고문 종류 PDF가 없어 정정 내역 문서를 추출한 경우다. 정정 내역만으로는 공고를 채우지 않는다.
+                change(id, "status = 'CORRECTION'");
+                jdbc.sql("UPDATE announcement_attachments SET file_type = 'CORRECTION' WHERE announcement_id = ?")
+                        .param(id).update();
+            }
+            case "correctionCancelled" -> {
+                change(id, "status = 'CORRECTION'");
+                fixture.attach(candidate.notice(), "취소공고문.pdf", AttachmentType.CANCELLATION, 1);
+            }
             case "correctionAttached" ->
                     fixture.attach(candidate.notice(), "정정공고문.pdf", AttachmentType.CORRECTION, 1);
             case "cancellationAttached" ->
