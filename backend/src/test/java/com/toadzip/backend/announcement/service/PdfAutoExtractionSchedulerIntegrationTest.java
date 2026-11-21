@@ -43,12 +43,17 @@ import com.toadzip.backend.announcement.repository.PdfPublicationDecisions.Revie
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
 import com.toadzip.backend.announcement.service.PdfPublicationFixture.Candidate;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.persistence.EntityManager;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -119,6 +124,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private PdfPublicationReviewController reviews;
     @Autowired private AnnouncementScheduleRepository schedules;
     @Autowired private IngestExecutionOwnershipService ownership;
+    @Autowired private HousingComplexRepository housingComplexes;
     @MockitoBean private AnnouncementAttachmentClient client;
     /** 스파이는 판정 중의 실제 DB 호출 지점에서 일시 오류나 동시 변경을 일으키는 데 쓴다. */
     @MockitoSpyBean private PdfPublicationDecisions decisions;
@@ -559,6 +565,120 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         // 보류한 공고에 공고 단지를 새로 만들지 않는다.
         assertThat(jdbc.sql("SELECT source_complex_name FROM announcement_complexes WHERE announcement_id = ?")
                 .param(id).query(String.class).list()).containsExactlyInAnyOrderElementsOf(names);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 공고_단지와_같은_주소의_기존_단지가_하나면_이름이_달라도_그_단지에_잇고_관리자가_고치지_않았으면_공고_단지명으로_바꾼다(
+            boolean adminModified) {
+        Candidate candidate = fixture.candidate();
+        String road = uniqueRoad();
+        String announced = "공고 단지 " + road;
+        HousingComplex existing = complexAt("옛 단지 이름", "서울특별시 중구 " + road + " 7", "HAPPY_HOUSING");
+        if (adminModified) {
+            jdbc.sql("UPDATE housing_complexes SET admin_modified = true WHERE id = ?").param(existing.getId()).update();
+        }
+        // 기관 원천(공고 상세)이 주소와 함께 알려 준 공고 단지. 시도 표기와 괄호 동 이름이 달라도 같은 곳이다.
+        announcementComplexes.saveAndFlush(AnnouncementComplex.observe(candidate.notice(), announced,
+                "서울 중구 " + road + " 7(태평로1가)", null));
+        long job = fixture.succeededJob(candidate, extractionFor(candidate, announced, null));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(linkedComplexIds(candidate.notice().getId())).containsExactly(existing.getId());
+        assertThat(complexName(existing.getId())).isEqualTo(adminModified ? "옛 단지 이름" : announced);
+        List<Map<String, Object>> renames = jdbc.sql("""
+                SELECT actor, before_value, after_value FROM admin_data_changes
+                WHERE resource_type = 'COMPLEX' AND resource_id = ? AND action = 'RENAME_FROM_ANNOUNCEMENT'
+                """).param(existing.getId()).query().listOfRows();
+        if (adminModified) {
+            assertThat(renames).isEmpty();
+        } else {
+            assertThat(renames).singleElement().satisfies(change -> {
+                assertThat(change.get("actor")).isEqualTo(PdfPublicationScheduler.ACTOR);
+                assertThat(json.readTree((String) change.get("before_value")).get("name").asString())
+                        .isEqualTo("옛 단지 이름");
+                assertThat(json.readTree((String) change.get("after_value")).get("name").asString())
+                        .isEqualTo(announced);
+            });
+        }
+    }
+
+    @Test
+    void 공고_단지가_없어도_공고문_개요_주소와_같은_곳의_단지에_잇고_공급표_단지명으로는_이름을_바꾸지_않는다() {
+        Candidate candidate = fixture.candidate();
+        String road = uniqueRoad();
+        HousingComplex existing = complexAt("증평송산 휴먼시아5단지", "충청북도 증평군 증평읍 " + road + " 30", "HAPPY_HOUSING");
+        long job = fixture.succeededJob(candidate,
+                extractionFor(candidate, "증평송산5", "충북 증평군 증평읍 " + road + " 30"));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(linkedComplexIds(candidate.notice().getId())).containsExactly(existing.getId());
+        assertThat(complexName(existing.getId())).isEqualTo("증평송산 휴먼시아5단지");
+    }
+
+    @Test
+    void 같은_주소의_단지가_여럿이면_그중_기관과_단지명이_같은_하나에_잇는다() {
+        Candidate candidate = fixture.candidate();
+        String road = uniqueRoad();
+        String announced = "공고 단지 " + road;
+        String address = "서울특별시 중구 " + road + " 7";
+        complexAt("같은 곳 다른 단지", address, "HAPPY_HOUSING");
+        HousingComplex named = complexAt(announced, address, "HAPPY_HOUSING");
+        announcementComplexes.saveAndFlush(AnnouncementComplex.observe(candidate.notice(), announced, address, null));
+        long job = fixture.succeededJob(candidate, extractionFor(candidate, announced, null));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(linkedComplexIds(candidate.notice().getId())).containsExactly(named.getId());
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            두 단지       | 같은 주소의 단지가 여러 곳입니다. 단지를 확인하세요: %s
+            동 단위       | 기관·단지명이 일치하는 단지 한 곳을 확인하세요: %s
+            다른 유형     | 기관·단지명이 일치하는 단지 한 곳을 확인하세요: %s
+            이름 다른 단지 | 같은 주소의 단지와 기관·단지명이 같은 단지가 다릅니다. 단지를 확인하세요: %s
+            주소 불일치   | 공고문 주소와 원천 주소가 서로 다른 단지를 가리킵니다. 단지를 확인하세요: %s
+            """)
+    void 같은_주소_후보가_하나로_정해지지_않거나_이름_후보와_다르거나_두_주소가_다른_단지를_가리키면_잇지_않고_검수로_남긴다(
+            String scenario, String reason) {
+        Candidate candidate = fixture.candidate();
+        String road = uniqueRoad();
+        String announced = "공고 단지 " + road;
+        String address = scenario.equals("동 단위") ? "인천광역시 미추홀구 학익동" : "서울특별시 중구 " + road + " 7";
+        List<HousingComplex> made = new ArrayList<>(List.of(complexAt("옛 단지 이름", address,
+                scenario.equals("다른 유형") ? "NATIONAL_RENTAL" : "HAPPY_HOUSING")));
+        String overview = null;
+        switch (scenario) {
+            case "두 단지" -> made.add(complexAt("같은 곳 다른 단지", address, "HAPPY_HOUSING"));
+            // 이름이 같은 단지는 다른 곳에 있다.
+            case "이름 다른 단지" -> made.add(complexAt(announced, "서울특별시 중구 " + road + " 99", "HAPPY_HOUSING"));
+            case "주소 불일치" -> {
+                overview = "서울특별시 중구 " + road + " 9";
+                made.add(complexAt("옆 건물 단지", overview, "HAPPY_HOUSING"));
+            }
+            default -> { }
+        }
+        announcementComplexes.saveAndFlush(AnnouncementComplex.observe(candidate.notice(), announced, address, null));
+        long job = fixture.succeededJob(candidate, extractionFor(candidate, announced, overview));
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason")).isEqualTo(reason.formatted(announced));
+        });
+        assertThat(published(candidate.notice())).isFalse();
+        assertThat(linkedComplexIds(candidate.notice().getId())).isEmpty();
+        assertThat(made).allSatisfy(complex -> assertThat(complexName(complex.getId())).isEqualTo(complex.getName()));
     }
 
     @Test
@@ -1006,6 +1126,47 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         ObjectNode type = (ObjectNode) data.withObject("supplySheet").withArray("housingTypes").get(0);
         type.put("complexName", candidate.complexName()).put("name", "36A").put("exclusiveArea", 36.0);
         return tree;
+    }
+
+    /** 다른 테스트가 남긴 단지와 주소가 겹치지 않는 도로명. 주소 키는 (시도, 도로명, 건물번호)다. */
+    private static String uniqueRoad() {
+        return "검증" + UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 8) + "로";
+    }
+
+    /** 이 주소에 있는 단지와 그 주택형 36A(전용 36). */
+    private HousingComplex complexAt(String name, String roadAddress, String supplyType) {
+        HousingComplex complex = housingComplexes.saveAndFlush(HousingComplex.create(name,
+                UUID.randomUUID().toString(), supplyType, Address.create(roadAddress, null, "1114010100", "11",
+                        "11140", new BigDecimal("37.5"), new BigDecimal("126.9")),
+                10, "SH", TODAY, "INDIVIDUAL", "APARTMENT", "STAIR", true, 10, null, 0));
+        housingTypes.saveAndFlush(HousingType.createFromAnnouncement(complex, UUID.randomUUID().toString(), "36A",
+                new BigDecimal("36"), null, null));
+        return complex;
+    }
+
+    /** 공급표 단지명이 complexName이고, overviewAddress가 있으면 공고문 단지 개요에 그 주소를 적은 통과 추출 결과. */
+    private ObjectNode extractionFor(Candidate candidate, String complexName, String overviewAddress) {
+        ObjectNode tree = fixture.passedExtraction(candidate);
+        ObjectNode data = tree.withObject("data");
+        ((ObjectNode) data.withObject("supplySheet").withArray("housingTypes").get(0)).put("complexName", complexName);
+        if (overviewAddress != null) {
+            data.putArray("complexes").addObject().put("sourceComplexName", complexName)
+                    .put("address", overviewAddress).putNull("totalHouseholdCount").putNull("parkingCount");
+        }
+        return tree;
+    }
+
+    private List<Long> linkedComplexIds(long announcementId) {
+        return jdbc.sql("""
+                SELECT DISTINCT c.housing_complex_id FROM supply_rows r
+                JOIN announcement_complexes c ON c.id = r.announcement_complex_id
+                WHERE r.announcement_id = ? AND c.housing_complex_id IS NOT NULL
+                """).param(announcementId).query(Long.class).list();
+    }
+
+    private String complexName(long complexId) {
+        return jdbc.sql("SELECT name FROM housing_complexes WHERE id = ?").param(complexId).query(String.class)
+                .single();
     }
 
     /** 서버가 작업에 담은 자동 공개 스냅숏(ai_jobs.input.publication). */

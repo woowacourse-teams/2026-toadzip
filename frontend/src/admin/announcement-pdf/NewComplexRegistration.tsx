@@ -43,6 +43,8 @@ export function NewComplexRegistration({ index, defaultName, defaultAddress = ''
   const [advanced, setAdvanced] = useState(false)
   const [addressStatus, setAddressStatus] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [type, setType] = useState(rentalType)
+  // 관리자가 폼을 연 채 공고의 공급유형을 바꾸면 그 값을 따른다.
+  useEffect(() => { setType(rentalType) }, [rentalType])
   const [keyword, setKeyword] = useState(initialAddress), [searching, setSearching] = useState(false)
   const [candidates, setCandidates] = useState<AddressCandidate[] | null>(null), [searchError, setSearchError] = useState('')
   // 고른 검색 결과의 행정구역 코드. 주소를 직접 고치면 그 주소의 코드가 아니므로 버린다.

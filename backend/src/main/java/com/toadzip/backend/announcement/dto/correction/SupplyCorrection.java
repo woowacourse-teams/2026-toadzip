@@ -30,6 +30,8 @@ public final class SupplyCorrection {
     /** linkMethod는 AUTO·ADMIN·MIGRATED, 연결이 없으면(휴지통 단지 포함) null이다. rowCount는 이 공고 단지의 주택형 수다. */
     public record AnnouncementComplexView(long id, String name, String roadAddress, Long housingComplexId, String housingComplexName,
             String linkMethod, int rowCount) { }
+    /** 공고 단지와 같은 곳(시도, 도로명, 건물번호, 공급유형)의 기존 단지. renamable이면 관리자가 고치거나 등록하지 않은 단지라 공고 단지명으로 바뀔 수 있다. */
+    public record SameAddressComplex(long housingComplexId, String name, String roadAddress, boolean renamable) { }
     public record ComplexLinkRequest(@NotBlank @Size(max = 200) String snapshotToken, @Positive long housingComplexId) { }
     /** 원천 공급 행 하나. householdCount는 원천의 이번 공급 수(정수가 아니면 null)다. */
     public record SourceReference(String complexLabel, String typeName, BigDecimal exclusiveArea, Integer householdCount) { }

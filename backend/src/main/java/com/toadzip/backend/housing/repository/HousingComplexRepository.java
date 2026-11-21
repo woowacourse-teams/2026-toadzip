@@ -68,4 +68,13 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
             ORDER BY complex.id
             """)
     List<HousingComplex> findAllActiveByRoadName(@Param("provinceCode") String provinceCode, @Param("road") String road);
+
+    /** 도로명이 들어간 휴지통 밖 단지. 시도 코드 없이 주소 글자만 있을 때 쓴다. 같은 (시도, 도로명, 건물번호)인지는 호출한 쪽이 다시 확인한다. */
+    @Query("""
+            SELECT complex
+            FROM HousingComplex complex
+            WHERE complex.adminDeleted = false AND complex.address.roadAddress LIKE CONCAT('%', :road, '%')
+            ORDER BY complex.id
+            """)
+    List<HousingComplex> findAllActiveByRoad(@Param("road") String road);
 }

@@ -267,6 +267,28 @@ public class HousingComplex {
         return sourceComplexIdentifier.startsWith(ADMIN_SOURCE_PREFIX);
     }
 
+    /**
+     * 공고문 보정이 확인한 공고의 단지명으로 이름을 바꿀 수 있는지. 관리자가 직접 고치거나 등록한 단지의 이름은 관리자가 정한 이름이라
+     * 덮지 않는다(사용자 결정: 관리자가 고친 값은 공고 값으로 덮지 않는다).
+     */
+    public boolean acceptsAnnouncementName() {
+        return !adminModified && !adminDeleted && !isAdminRegistered();
+    }
+
+    /** 공고의 단지명으로 바꾼다. 관리자 수정으로 표시하지 않는다. 바뀌었으면 true다. */
+    public boolean renameFromAnnouncement(String announcedName) {
+        validateNotBlank(announcedName, "단지명");
+        if (!acceptsAnnouncementName()) {
+            throw new IllegalStateException("관리자가 정한 단지명은 공고 단지명으로 바꾸지 않는다.");
+        }
+        String stripped = announcedName.strip();
+        if (name.equals(stripped)) {
+            return false;
+        }
+        name = stripped;
+        return true;
+    }
+
     public boolean fillBlanksFromMyHome(LocalDate completionDate, String heatingType, String housingType,
             String corridorType, Boolean elevatorInstalled, Integer parkingSpaceCount) {
         boolean changed = false;

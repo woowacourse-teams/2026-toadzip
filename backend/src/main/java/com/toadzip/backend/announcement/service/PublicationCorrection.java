@@ -15,6 +15,7 @@ import com.toadzip.backend.announcement.domain.SupplyQuota;
 import com.toadzip.backend.announcement.domain.SupplyTargetGroup;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
@@ -25,7 +26,9 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,7 @@ class PublicationCorrection {
     private final ObjectMapper json;
     private final HousingComplexRepository complexes;
     private final HousingTypeRepository types;
+    private final SameAddressComplexes sameAddress;
 
     /**
      * 워커가 쓴 추출 결과를 서버 보정 형식으로 읽는 경계다. 읽지 못한 값의 JDK·JSON 오류 문구는 운영자에게 보이지 않게 한다.
@@ -80,7 +84,7 @@ class PublicationCorrection {
         var source = new SourceRequest(current.originalUrl(), "pdf-job-" + jobId, at);
         var document = new AdminAnnouncementImportRequest("admin-announcement-import/v1", source, metadata, places,
                 null, List.of(), schedules, List.of(), List.of());
-        var sheet = sheet(workspace, data.path("supplySheet"));
+        var sheet = sheet(workspace, data, metadata.rentalType());
         var correction = new SupplyCorrection.Request(UUID.randomUUID(), workspace.supply().snapshotToken(),
                 "JEV 원문 대조 통과 · PDF 추출 #" + jobId, current.originalUrl(), null, sheet);
         var fields = new ArrayList<>(List.of("applicationStartDate", "applicationEndDate", "winnerAnnouncementDate",
@@ -119,7 +123,8 @@ class PublicationCorrection {
         return comparableType && overlapping;
     }
 
-    private SupplySheetInput sheet(Workspace workspace, JsonNode sheet) {
+    private SupplySheetInput sheet(Workspace workspace, JsonNode data, RentalType rentalType) {
+        var sheet = data.path("supplySheet");
         require(!workspace.supply().supplyConfirmed() && workspace.supply().sheet().housingTypes().isEmpty(),
                 "기존 공급표가 있어 교체·삭제 검토가 필요합니다.");
         var rows = new ArrayList<SupplySheetInput.HousingType>();
@@ -128,23 +133,22 @@ class PublicationCorrection {
         var housingTypes = array(sheet, "housingTypes");
         Optional<String> onlyComplex = onlyLinkedComplex(workspace, housingTypes);
         for (var row : housingTypes) {
-            String name = onlyComplex.orElseGet(() -> row.required("complexName").asString());
+            String pdfName = row.required("complexName").asString();
+            String name = onlyComplex.orElse(pdfName);
             var links = workspace.supply().announcementComplexes().stream().filter(c -> name.equals(c.name()))
                     .toList();
             require(links.size() <= 1, "공고 단지 후보가 여러 곳입니다: " + name);
             Long linkId = null;
             Long complexId = null;
+            String sourceAddress = null;
             if (!links.isEmpty()) {
                 linkId = links.getFirst().id();
                 complexId = links.getFirst().housingComplexId();
                 usedLinks.add(linkId);
+                sourceAddress = links.getFirst().roadAddress();
             }
             if (complexId == null) {
-                var agency = workspace.detail().data().agencyCode();
-                var found = complexes.findByNameAndProviderInAndAdminDeletedFalse(name,
-                        List.of(agency.name(), agency.displayName()));
-                require(found.size() == 1, "기관·단지명이 일치하는 단지 한 곳을 확인하세요: " + name);
-                complexId = found.getFirst().getId();
+                complexId = unlinkedComplex(workspace, name, pdfAddresses(data, pdfName), sourceAddress, rentalType);
             }
             String type = row.required("name").asString();
             BigDecimal area = decimal(row, "exclusiveArea");
@@ -195,6 +199,60 @@ class PublicationCorrection {
         var linked = workspace.supply().announcementComplexes();
         require(linked.size() == 1, "공급표에 단지명이 없고 공고에 연결된 단지가 한 곳이 아닙니다(" + linked.size() + "곳).");
         return Optional.of(linked.getFirst().name());
+    }
+
+    /**
+     * 단지에 이어지지 않은 공고 단지의 단지. 같은 곳(주소 키·공급유형)의 단지와 기관·단지명이 같은 단지를 함께 본다.
+     * 공고문 개요 주소와 원천 도로명주소가 서로 다른 단지를 가리키거나, 같은 곳 단지 하나와 이름이 같은 단지가 서로 다르면 어느 쪽인지
+     * 알 수 없어 보류한다. 같은 곳 단지가 여럿이면 그중 이름도 같은 하나만 고른다. 같은 곳 단지가 없으면(동 단위 주소 포함) 이름이 같은
+     * 단지 하나다.
+     */
+    private Long unlinkedComplex(Workspace workspace, String name, List<String> pdfAddresses, String sourceAddress,
+            RentalType rentalType) {
+        var fromPdf = ids(sameAddress.find(pdfAddresses, rentalType));
+        var fromSource = ids(sameAddress.find(sourceAddress == null ? List.of() : List.of(sourceAddress), rentalType));
+        if (!fromPdf.isEmpty() && !fromSource.isEmpty() && !fromPdf.equals(fromSource)) {
+            // 한쪽이 여럿을 가리키면 주소가 엇갈린 것보다 같은 곳 단지가 여럿인 것이 먼저다.
+            require(fromPdf.size() == 1 && fromSource.size() == 1,
+                    "같은 주소의 단지가 여러 곳입니다. 단지를 확인하세요: " + name);
+            require(false, "공고문 주소와 원천 주소가 서로 다른 단지를 가리킵니다. 단지를 확인하세요: " + name);
+        }
+        var nearby = new LinkedHashSet<>(fromPdf);
+        nearby.addAll(fromSource);
+        var agency = workspace.detail().data().agencyCode();
+        var named = ids(complexes.findByNameAndProviderInAndAdminDeletedFalse(name,
+                List.of(agency.name(), agency.displayName())));
+        if (nearby.size() == 1) {
+            require(named.isEmpty() || named.containsAll(nearby),
+                    "같은 주소의 단지와 기관·단지명이 같은 단지가 다릅니다. 단지를 확인하세요: " + name);
+            return nearby.getFirst();
+        }
+        if (nearby.size() > 1) {
+            var both = nearby.stream().filter(named::contains).toList();
+            require(both.size() == 1, "같은 주소의 단지가 여러 곳입니다. 단지를 확인하세요: " + name);
+            return both.getFirst();
+        }
+        require(named.size() == 1, "기관·단지명이 일치하는 단지 한 곳을 확인하세요: " + name);
+        return named.getFirst();
+    }
+
+    private static List<Long> ids(List<HousingComplex> found) {
+        return found.stream().map(HousingComplex::getId).sorted().toList();
+    }
+
+    /**
+     * 공고문 단지 개요의 주소. 개요는 공급표 단지명(sourceComplexName)으로 공급표 주택형과 이어진다. 단지 열이 없는 공급표(단지명이 빈
+     * 주택형)는 개요가 하나일 때만 그 주소다.
+     */
+    private static List<String> pdfAddresses(JsonNode data, String pdfName) {
+        List<JsonNode> overviews = data.path("complexes").isArray() ? data.path("complexes").valueStream().toList()
+                : List.of();
+        var named = overviews.stream().filter(item -> pdfName.equals(item.path("sourceComplexName").asString(""))).toList();
+        if (named.isEmpty() && pdfName.isBlank() && overviews.size() == 1) {
+            named = overviews;
+        }
+        return named.stream().map(item -> item.path("address").asString(null)).filter(Objects::nonNull)
+                .toList();
     }
 
     static void require(boolean ok, String reason) {

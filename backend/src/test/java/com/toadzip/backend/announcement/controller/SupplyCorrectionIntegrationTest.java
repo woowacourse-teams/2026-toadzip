@@ -809,6 +809,51 @@ class SupplyCorrectionIntegrationTest {
                 .contentType("application/json").content(json.writeValueAsString(review))).andExpect(status().isOk());
     }
 
+    @Test
+    void 같은_주소_단지는_도로명_건물번호와_공급유형이_같은_휴지통_밖_단지를_한_번씩_주고_동_단위_주소로는_찾지_않는다() throws Exception {
+        long id = new NotificationFixtures(entities, jdbc).announcement().getId(); // 국민임대 공고
+        String road = "검증" + UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 8) + "로";
+        var same = complexAt("같은 곳 국민임대", "서울특별시 중구 " + road + " 7", "NATIONAL_RENTAL");
+        var modified = complexAt("관리자가 고친 단지", "서울 중구 " + road + " 7", "NATIONAL_RENTAL");
+        complexAt("같은 곳 행복주택", "서울특별시 중구 " + road + " 7", "HAPPY_HOUSING");
+        complexAt("옆 건물", "서울특별시 중구 " + road + " 9", "NATIONAL_RENTAL");
+        var trashed = complexAt("휴지통 단지", "서울특별시 중구 " + road + " 7", "NATIONAL_RENTAL");
+        jdbc.update("UPDATE housing_complexes SET admin_modified = true WHERE id = ?", modified);
+        jdbc.update("UPDATE housing_complexes SET admin_deleted = true WHERE id = ?", trashed);
+        entities.clear();
+
+        // 공고문 개요 주소와 원천 도로명주소가 같은 곳을 가리키면 한 번만 센다.
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "서울 중구 " + road + " 7(태평로1가)", "서울특별시 중구 " + road + " 7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].housingComplexId").value(same))
+                .andExpect(jsonPath("$.data[0].renamable").value(true))
+                .andExpect(jsonPath("$.data[1].housingComplexId").value(modified))
+                .andExpect(jsonPath("$.data[1].renamable").value(false));
+        // 화면이 정한 공급유형이 저장된 공고 값보다 먼저다.
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "서울특별시 중구 " + road + " 7").param("rentalType", "HAPPY_HOUSING"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("같은 곳 행복주택"));
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "서울특별시 중구 태평로1가"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "가", "나", "다"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private long complexAt(String name, String roadAddress, String supplyType) {
+        var complex = com.toadzip.backend.housing.domain.HousingComplex.create(name, UUID.randomUUID().toString(),
+                supplyType, com.toadzip.backend.housing.domain.Address.create(roadAddress, null, "1114010100", "11",
+                        "11140", new BigDecimal("37.5"), new BigDecimal("126.9")),
+                10, "LH", LocalDate.of(2020, 1, 1), "INDIVIDUAL", "APARTMENT", "STAIR", true, 10, null, 0);
+        entities.persist(complex);
+        entities.flush();
+        return complex.getId();
+    }
+
     private ResultActions reviews(long id) throws Exception {
         return mvc.perform(get(root(id) + "/reviews").with(user("admin").roles("ADMIN"))).andExpect(status().isOk());
     }

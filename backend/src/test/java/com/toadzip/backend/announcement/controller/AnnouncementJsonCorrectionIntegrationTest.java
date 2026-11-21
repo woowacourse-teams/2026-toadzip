@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -164,6 +166,73 @@ class AnnouncementJsonCorrectionIntegrationTest {
                 .containsExactly("CONFIRM_FROM_PDF");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_supply_corrections WHERE announcement_id = ?", Long.class, id))
                 .isZero();
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            기본                    | 세종 국민임대
+            관리자 수정             | 알림 테스트 단지
+            관리자 등록             | 알림 테스트 단지
+            주소 없음               | 알림 테스트 단지
+            다른 공고 다른 이름     | 알림 테스트 단지
+            다른 공고 같은 이름     | 세종 국민임대
+            다른 공고 원천에서 빠짐 | 세종 국민임대
+            한 공고 두 이름         | 알림 테스트 단지
+            """)
+    void PDF_보정은_연결한_단지_이름을_기관이_알려_준_공고_단지명이_하나일_때만_바꾸고_관리자가_정한_이름은_두다(
+            String scenario, String expected) throws Exception {
+        long id = linkedRow();
+        long complexId = jdbc.queryForObject("SELECT housing_complex_id FROM announcement_complexes WHERE announcement_id = ?",
+                Long.class, id);
+        String address = "서울특별시 중구 세종대로 110";
+        if (scenario.equals("한 공고 두 이름")) {
+            // 같은 공고의 다른 공고 단지도 이 단지를 가리키고 기관 원천 단지명이 다르다.
+            var complex = entities.find(HousingComplex.class, complexId);
+            var row = SupplyRowSeed.create(entities, entities.find(Announcement.class, id), complex, type(complex, "36A", "36.0000"),
+                    1, "세종 국민임대 2단지", "36A", "1114010100100010000", null, SupplyCategory.NEW_SUPPLY);
+            entities.persist(row);
+            new SupplySheetSeed(entities).target(row, "일반", "공고문 확인", 5, null, new BigDecimal("100000000"),
+                    new BigDecimal("200000"), null, 0);
+            entities.flush();
+            jdbc.update("UPDATE announcement_complexes SET road_address = ? WHERE announcement_id = ?", address, id);
+        }
+        // 기관 원천이 알려 준 공고 단지는 주소가 있다. 주소가 없으면 공급표 단지명으로 만든 공고 단지다.
+        jdbc.update("UPDATE announcement_complexes SET source_complex_name = '세종 국민임대', road_address = ?"
+                + " WHERE announcement_id = ? AND source_complex_name = '알림 테스트 단지'", scenario.equals("주소 없음") ? null : address, id);
+        switch (scenario) {
+            case "관리자 수정" -> jdbc.update("UPDATE housing_complexes SET admin_modified = true WHERE id = ?", complexId);
+            case "관리자 등록" -> jdbc.update("UPDATE housing_complexes SET source_complex_identifier = ? WHERE id = ?",
+                    HousingComplex.ADMIN_SOURCE_PREFIX + UUID.randomUUID(), complexId);
+            case "다른 공고 다른 이름", "다른 공고 같은 이름", "다른 공고 원천에서 빠짐" -> {
+                long other = new NotificationFixtures(entities, jdbc).announcement().getId();
+                jdbc.update("""
+                        INSERT INTO announcement_complexes (announcement_id, source_complex_name, road_address, present_in_source,
+                            housing_complex_id, link_method) VALUES (?, ?, ?, ?, ?, 'AUTO')
+                        """, other, scenario.equals("다른 공고 같은 이름") ? "세종 국민임대" : "세종 행복주택", address,
+                        !scenario.equals("다른 공고 원천에서 빠짐"), complexId);
+            }
+            default -> { }
+        }
+        entities.clear();
+        var request = request(id);
+        ((ArrayNode) request.path("fields")).removeAll();
+
+        var preview = preview(id, request);
+        boolean renames = expected.equals("세종 국민임대");
+        assertThat(keys(preview.path("warnings"), null)).filteredOn(warning -> warning.startsWith("단지 이름"))
+                .isEqualTo(renames ? List.of("단지 이름 '알림 테스트 단지'을(를) 공고의 단지명 '세종 국민임대'(으)로 바꿉니다.") : List.of());
+        if (!scenario.equals("한 공고 두 이름")) {
+            assertThat(preview.path("unchanged").asBoolean()).isEqualTo(!renames);
+        }
+        apply(id, request, preview.path("confirmationToken").asText()).andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("SELECT name FROM housing_complexes WHERE id = ?", String.class, complexId))
+                .isEqualTo(expected);
+        assertThat(jdbc.queryForObject("SELECT admin_modified FROM housing_complexes WHERE id = ?", Boolean.class, complexId))
+                .isEqualTo(scenario.equals("관리자 수정"));
+        assertThat(jdbc.queryForList("SELECT actor FROM admin_data_changes WHERE resource_type = 'COMPLEX' AND resource_id = ?"
+                + " AND action = 'RENAME_FROM_ANNOUNCEMENT'", String.class, complexId))
+                .isEqualTo(renames ? List.of("admin") : List.of());
     }
 
     @Test

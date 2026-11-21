@@ -8,6 +8,7 @@ import { editCell } from './review'
 
 const api = vi.hoisted(() => ({ types: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: api.types }))
+vi.mock('../supply/supplyCorrectionApi', () => ({ findSameAddressComplexes: async () => [] }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(),
   getManagementDetail: async () => ({ data: { address: { pnu: '1114010100100010000' } } }) }))
 vi.mock('../management/ComplexPicker', () => ({ ComplexPicker: ({ onSelect }: { onSelect: (item: { id: number; name: string }) => void }) =>
@@ -30,7 +31,7 @@ it('단지 조회 응답을 기다리는 동안 고친 다른 값은 응답 완�
     </>
   }
   render(<MemoryRouter><Harness /></MemoryRouter>)
-  fireEvent.click(screen.getByRole('button', { name: '단지 선택' }))
+  fireEvent.click(await screen.findByRole('button', { name: '단지 선택' }))
   await waitFor(() => expect(api.types).toHaveBeenCalled())
   fireEvent.click(screen.getByRole('button', { name: '다른 값 수정' }))
   await act(async () => finish([]))
@@ -53,10 +54,12 @@ it.each(['동일 단지', '다른 단지', '후보 갱신'])('%s 선택 후에�
     </>
   }
   render(<MemoryRouter><Harness /></MemoryRouter>)
-  fireEvent.click(screen.getByRole('button', { name: '단지 선택' }))
+  fireEvent.click(await screen.findByRole('button', { name: '단지 선택' }))
   await screen.findByText(/연결 단지: 선택 단지/)
   fireEvent.click(screen.getByRole('button', { name: '면적 직접 입력' }))
   if (mode === '후보 갱신') api.types.mockResolvedValue([{ id: 71, name: '26A', exclusiveArea: 26, supplyArea: null }])
+  // 정한 단지는 '다른 단지로 바꾸기'로만 다시 고른다.
+  fireEvent.click(screen.getByRole('button', { name: '다른 단지로 바꾸기' }))
   fireEvent.click(screen.getByRole('button', { name: mode === '다른 단지' ? '다른 단지 선택' : '단지 선택' }))
   await waitFor(() => expect(api.types).toHaveBeenCalledTimes(2))
   await act(async () => {})

@@ -51,6 +51,21 @@ const path = (id: string) => `/api/admin/announcements/${encodeURIComponent(id)}
 export async function loadSupplyWorkspace(id: string, signal?: AbortSignal): Promise<SupplyWorkspace> {
   return parseSupplyWorkspace(await requestManagementApi(path(id), 'GET', undefined, signal))
 }
+/** 공고 단지와 같은 곳(시도·도로명·건물번호·공급유형)의 기존 단지. renamable이면 적용할 때 공고의 단지명으로 이름을 바꿀 수 있다. */
+export type SameAddressComplex = { housingComplexId: number; name: string; roadAddress: string | null; renamable: boolean }
+/**
+ * PDF 단지 정하기의 같은 곳 기존 단지. addresses는 공고문 단지 개요 주소와 원천 도로명주소(빈 값은 뺀다), rentalType은 화면에서 정한 공급유형이다.
+ * 건물번호가 없는 주소(동 단위)로는 서버가 찾지 않는다. 후보가 하나면 화면이 관리자 선택 없이 잇는다.
+ */
+export async function findSameAddressComplexes(id: string, addresses: string[], rentalType: string, signal?: AbortSignal): Promise<SameAddressComplex[]> {
+  const params = new URLSearchParams(addresses.map(address => ['address', address]))
+  if (rentalType) params.set('rentalType', rentalType)
+  const value = await requestManagementApi(`${path(id)}/same-address-complexes?${params}`, 'GET', undefined, signal)
+  if (!Array.isArray(value)) invalid()
+  return value.filter(isRecord).filter(item => count(item.housingComplexId) && typeof item.name === 'string').map(item => ({
+    housingComplexId: item.housingComplexId as number, name: item.name as string,
+    roadAddress: typeof item.roadAddress === 'string' ? item.roadAddress : null, renamable: item.renamable === true }))
+}
 /** 공고 단지 하나를 관리자가 정한 단지에 연결한다. 화면이 본 뒤 공급정보가 바뀌었으면 409(ADMIN_DATA_STALE)다. */
 export async function linkAnnouncementComplex(id: string, announcementComplexId: number, input: { snapshotToken: string; housingComplexId: number }): Promise<SupplyWorkspace> {
   return parseSupplyWorkspace(await requestManagementApi(`${path(id)}/announcement-complexes/${announcementComplexId}/link`, 'POST', input))
