@@ -42,6 +42,7 @@ import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
@@ -96,6 +97,9 @@ class PdfPublicationService {
         this.validator = validator;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
+        // 보정 서비스의 REPEATABLE_READ는 이미 열린 트랜잭션에 합류하면 적용되지 않으므로 판정 트랜잭션을 그 격리 수준으로 연다.
+        // 판정 중에 다른 트랜잭션이 같은 행을 바꾸면 직렬화 실패가 나고, 그 작업은 다음 주기에 다시 판정한다.
+        this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
         this.ownership = ownership;
     }
 

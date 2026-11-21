@@ -33,6 +33,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
+import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions.ReviewItem;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
 import com.toadzip.backend.housing.domain.Address;
@@ -58,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeEach;
@@ -122,6 +124,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @MockitoBean private AnnouncementAttachmentClient client;
     /** 판정 트랜잭션 안의 한 지점이다. 그 시점의 트랜잭션 상태를 보거나 일시 오류를 내는 데 쓴다. */
     @MockitoSpyBean private PublicationCorrection proposals;
+    @MockitoSpyBean private PdfPublicationDecisions decisions;
 
     /** 첨부 서버가 돌려주는 PDF. 만들 때마다 문서 ID가 달라지므로 같은 PDF를 올리는 경우는 이 바이트를 쓴다. */
     private byte[] attachmentPdf;
@@ -789,6 +792,47 @@ class PdfAutoExtractionSchedulerIntegrationTest {
 
         assertThat(decisionsOf(job)).singleElement()
                 .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
+    }
+
+    @Test
+    void 판정과_적용은_반복_읽기_격리_수준의_트랜잭션에서_한다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        List<String> isolation = new ArrayList<>();
+        doAnswer(invocation -> {
+            isolation.add(jdbc.sql("SHOW transaction_isolation").query(String.class).single());
+            return invocation.callRealMethod();
+        }).when(proposals).prepare(any(), any(), any(), anyLong());
+
+        publication.process();
+
+        assertThat(isolation).containsExactly("repeatable read");
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
+    }
+
+    @Test
+    void 판정_중에_공고_행이_동시에_바뀌어_직렬화에_실패하면_판정을_미루고_다음_실행에서_공개한다() {
+        Candidate candidate = candidate();
+        long id = candidate.notice().getId();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        // 판정 트랜잭션이 작업을 선점해 스냅숏을 잡은 직후 다른 트랜잭션이 공고 행을 고치고 커밋한다.
+        doAnswer(invocation -> {
+            Object claimed = invocation.callRealMethod();
+            CompletableFuture.runAsync(() -> change(id, "name = name")).join();
+            return claimed;
+        }).doCallRealMethod().when(decisions).claim(job);
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).isEmpty();
+        assertThat(published(candidate.notice())).isFalse();
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(published(candidate.notice())).isTrue();
     }
 
     /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */
