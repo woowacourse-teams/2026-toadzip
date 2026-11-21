@@ -26,7 +26,9 @@ import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtracti
 import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
 import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService.Execution;
 import jakarta.validation.Validator;
 import java.time.Clock;
 import java.time.Duration;
@@ -37,12 +39,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
@@ -123,8 +128,23 @@ class PdfPublicationService {
             return;
         }
         require(downloaded.get().equals(job.getPdfSha256()), "공고문 PDF 내용이 변경되었습니다.");
-        try (var lease = ownership.acquire()) {
+        try (var lease = acquireOwnership()) {
             transactions.executeWithoutResult(status -> decide(job, input, tree, mode));
+        }
+    }
+
+    /**
+     * 소유권 잠금은 잠금용 DB 연결을 얻지 못한 실패를 IllegalStateException으로 감싸 던지고, 저장소 예외 변환이 이를 다시
+     * InvalidDataAccessApiUsageException으로 바꾼다. 어느 쪽이든 다시 하면 풀릴 수 있는 실패라 다음 주기에 다시 판정하도록 일시
+     * 오류로 바꾼다. 수집·정제가 돌고 있다는 IngestAlreadyRunningException만 그대로 올린다.
+     */
+    private Execution acquireOwnership() {
+        try {
+            return ownership.acquire();
+        } catch (IngestAlreadyRunningException busy) {
+            throw busy;
+        } catch (RuntimeException unavailable) {
+            throw new TransientDataAccessResourceException("수집 실행 소유권을 확인하지 못했습니다.", unavailable);
         }
     }
 
@@ -146,13 +166,22 @@ class PdfPublicationService {
 
     /**
      * 잠금 대기 초과·교착·직렬화 실패·낙관적 잠금 충돌처럼 다시 하면 풀리는 DB 실패로 판정하지 못한 작업인지. 이런 작업은 결정을
-     * 남기지 않고 다음 주기에 다시 판정한다. 재시도 기간을 넘긴 작업은 해당하지 않는다.
+     * 남기지 않고 다음 주기에 다시 판정한다. 재시도 기간을 넘긴 작업은 해당하지 않는다. 신청자격 공개의 실패에도 같은 기준을 쓴다.
      */
     public boolean retriesNextCycle(long jobId, RuntimeException failure) {
         boolean momentary = failure instanceof TransientDataAccessException
                 || failure instanceof RecoverableDataAccessException
                 || failure instanceof CannotCreateTransactionException;
-        return momentary && withinRetryWindow(jobs.findById(jobId).orElseThrow());
+        if (!momentary) {
+            return false;
+        }
+        try {
+            return withinRetryWindow(jobs.findById(jobId).orElseThrow());
+        } catch (DataAccessException | TransactionException unreachable) {
+            // DB에 닿지 못해 재시도 기간을 확인할 수 없다. 결정도 기록할 수 없으니 미루고 남은 작업을 이어서 본다.
+            log.warn("event=pdf.publication.retry_window_unknown jobId={}", jobId, unreachable);
+            return true;
+        }
     }
 
     private boolean withinRetryWindow(PdfExtractionJob job) {

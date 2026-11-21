@@ -29,7 +29,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -41,12 +43,15 @@ class PublicationCorrection {
     private final HousingComplexRepository complexes;
     private final HousingTypeRepository types;
 
-    /** 워커가 쓴 추출 결과를 서버 보정 형식으로 읽는 경계다. 읽지 못한 값의 JDK·JSON 오류 문구는 운영자에게 보이지 않게 한다. */
+    /**
+     * 워커가 쓴 추출 결과를 서버 보정 형식으로 읽는 경계다. 읽지 못한 값의 JDK·JSON 오류 문구는 운영자에게 보이지 않게 한다.
+     * 단지·주택형을 찾는 조회의 DB 실패는 추출 결과의 문제가 아니므로 감싸지 않는다. 일시 오류면 다음 주기에 다시 판정한다.
+     */
     Request prepare(Workspace workspace, JsonNode tree, OffsetDateTime at, long jobId) {
         try {
             return read(workspace, tree, at, jobId);
-        } catch (PublicationHold hold) {
-            throw hold;
+        } catch (PublicationHold | DataAccessException | TransactionException passed) {
+            throw passed;
         } catch (RuntimeException unreadable) {
             throw new PublicationHold("추출 결과를 보정안으로 바꾸지 못했습니다. 원문과 추출값을 확인하세요.", unreadable);
         }

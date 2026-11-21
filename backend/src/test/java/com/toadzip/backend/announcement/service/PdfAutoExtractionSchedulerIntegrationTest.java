@@ -10,7 +10,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -23,6 +25,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
+import com.toadzip.backend.announcement.domain.PdfExtractionJob;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
@@ -34,12 +37,15 @@ import com.toadzip.backend.announcement.repository.AnnouncementComplexRepository
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
+import com.toadzip.backend.announcement.repository.PdfExtractionJobRepository;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions.ReviewItem;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
 import com.toadzip.backend.announcement.service.PdfPublicationFixture.Candidate;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.persistence.EntityManager;
 import java.io.IOException;
@@ -50,6 +56,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -62,6 +69,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
@@ -114,6 +122,9 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @MockitoBean private AnnouncementAttachmentClient client;
     /** 스파이는 판정 중의 실제 DB 호출 지점에서 일시 오류나 동시 변경을 일으키는 데 쓴다. */
     @MockitoSpyBean private PdfPublicationDecisions decisions;
+    @MockitoSpyBean private PdfExtractionJobRepository jobs;
+    @MockitoSpyBean private HousingTypeRepository housingTypes;
+    @MockitoSpyBean private DataPipelineExecutionLock executionLock;
 
     /** 첨부 서버가 돌려주는 PDF. 만들 때마다 문서 ID가 달라지므로 같은 PDF를 올리는 경우는 이 바이트를 쓴다. */
     private byte[] attachmentPdf;
@@ -745,6 +756,26 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     @Test
+    void 보정안을_만드는_조회의_일시_오류는_판정을_기록하지_않고_다음_실행에서_공개한다() {
+        Candidate candidate = fixture.candidate();
+        long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
+        // 추출 결과를 보정안으로 읽는 중에 단지의 주택형을 찾는 조회가 잠금 대기 초과로 실패한다.
+        doThrow(new CannotAcquireLockException("lock timeout")).when(housingTypes).findAllByHousingComplexIdIn(any());
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).isEmpty();
+        assertThat(published(candidate.notice())).isFalse();
+
+        reset(housingTypes);
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(published(candidate.notice())).isTrue();
+    }
+
+    @Test
     void 일시_오류가_작업_완료_후_한_시간을_넘기면_적용을_되돌리고_검수에_넘긴다() {
         Candidate candidate = fixture.candidate();
         long id = candidate.notice().getId();
@@ -761,6 +792,49 @@ class PdfAutoExtractionSchedulerIntegrationTest {
         });
         assertThat(published(candidate.notice())).isFalse();
         assertThat(supplyRows(id)).isEmpty();
+    }
+
+    @Test
+    void 수집_실행_소유권을_확인하다_난_실패는_판정을_기록하지_않고_다음_실행에서_공개한다() {
+        Candidate candidate = fixture.candidate();
+        long job = fixture.succeededJob(candidate, fixture.passedExtraction(candidate));
+        // 잠금용 DB 연결을 얻지 못하면 소유권 잠금이 이 예외로 감싸 던지고, 저장소 예외 변환을 거쳐 판정 서비스에 닿는다.
+        doThrow(new IllegalStateException("데이터 수집·정제 실행 잠금을 처리하지 못했습니다.")).doCallRealMethod()
+                .when(executionLock).tryAcquire();
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).isEmpty();
+        assertThat(published(candidate.notice())).isFalse();
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+    }
+
+    @Test
+    void 일시_오류_뒤_작업_조회까지_실패하면_결정을_기록하지_않고_남은_작업을_이어서_판정한다() {
+        Candidate unreachable = fixture.candidate();
+        long unreachableJob = fixture.succeededJob(unreachable, fixture.passedExtraction(unreachable));
+        // 재시도 기간이 지난 작업이다. 작업을 읽을 수 있었다면 검수로 넘겼을 것이다.
+        jdbc.sql("UPDATE ai_jobs SET completed_at = now() - interval '2 hours' WHERE id=?")
+                .param(unreachableJob).update();
+        Candidate next = fixture.candidate();
+        long nextJob = fixture.succeededJob(next, fixture.passedExtraction(next));
+        doThrow(new CannotAcquireLockException("lock timeout"))
+                .when(decisions).record(eq(unreachableJob), eq("PUBLISHED"), anyString(), any(), any());
+        // 판정을 시작할 때는 작업을 읽었지만, 실패한 뒤 재시도 기간을 확인하려는 조회는 DB에 닿지 못한다.
+        Optional<PdfExtractionJob> stored = jobs.findById(unreachableJob);
+        doReturn(stored).doThrow(new DataAccessResourceFailureException("connection lost"))
+                .when(jobs).findById(unreachableJob);
+
+        publication.process();
+
+        assertThat(decisionsOf(unreachableJob)).isEmpty();
+        assertThat(published(unreachable.notice())).isFalse();
+        assertThat(decisionsOf(nextJob)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
     }
 
     @Test
