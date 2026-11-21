@@ -26,6 +26,7 @@ import com.toadzip.backend.eligibility.dto.EligibilityRequests.DraftFromExtracti
 import com.toadzip.backend.eligibility.service.EligibilityExtractionDraftService;
 import com.toadzip.backend.eligibility.service.EligibilityRuleSetService;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.validation.Validator;
 import java.time.Clock;
 import java.time.Duration;
@@ -72,13 +73,15 @@ class PdfPublicationService {
     private final Validator validator;
     private final Clock clock;
     private final TransactionTemplate transactions;
+    private final IngestExecutionOwnershipService ownership;
 
     PdfPublicationService(PdfPublicationDecisions decisions, PdfExtractionJobRepository jobs,
             AnnouncementRepository announcements, AnnouncementAttachmentRepository attachments,
             AnnouncementAttachmentService documents, PdfExtractionInputs inputs,
             AnnouncementJsonCorrectionService corrections, PublicationCorrection proposals,
             EligibilityRuleSetService rules, EligibilityExtractionDraftService eligibility, ObjectMapper json,
-            Validator validator, Clock clock, PlatformTransactionManager transactionManager) {
+            Validator validator, Clock clock, PlatformTransactionManager transactionManager,
+            IngestExecutionOwnershipService ownership) {
         this.decisions = decisions;
         this.jobs = jobs;
         this.announcements = announcements;
@@ -93,9 +96,13 @@ class PdfPublicationService {
         this.validator = validator;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.ownership = ownership;
     }
 
-    /** 공고문을 기관 서버에서 다시 받는 동안에는 DB 트랜잭션과 공고 행 잠금을 잡지 않는다. 판정과 적용만 한 트랜잭션이다. */
+    /**
+     * 공고문을 기관 서버에서 다시 받는 동안에는 DB 트랜잭션, 공고 행 잠금, 수집 실행 소유권을 잡지 않는다. 공고를 읽고 쓰는 판정과
+     * 적용만 소유권 안의 한 트랜잭션이다. 수집·정제가 돌고 있으면 판정하지 않고 IngestAlreadyRunningException을 던진다.
+     */
     public void process(long jobId, PublicationMode mode) {
         PdfExtractionJob job = jobs.findById(jobId).orElseThrow();
         PdfExtractionInput input = json.readValue(job.getInput(), PdfExtractionInput.class);
@@ -112,7 +119,9 @@ class PdfPublicationService {
             return;
         }
         require(downloaded.get().equals(job.getPdfSha256()), "공고문 PDF 내용이 변경되었습니다.");
-        transactions.executeWithoutResult(status -> decide(job, input, tree, mode));
+        try (var lease = ownership.acquire()) {
+            transactions.executeWithoutResult(status -> decide(job, input, tree, mode));
+        }
     }
 
     /** 지금 첨부의 SHA-256. 잠깐의 실패라 다음 주기에 다시 받을 작업이면 비어 있다. */

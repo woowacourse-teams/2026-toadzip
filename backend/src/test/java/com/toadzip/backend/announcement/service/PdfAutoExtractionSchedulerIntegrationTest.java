@@ -42,6 +42,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.persistence.EntityManager;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -117,6 +118,7 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private PdfPublicationReviewController reviews;
     @Autowired private AnnouncementScheduleRepository schedules;
+    @Autowired private IngestExecutionOwnershipService ownership;
     @MockitoBean private AnnouncementAttachmentClient client;
     /** 판정 트랜잭션 안의 한 지점이다. 그 시점의 트랜잭션 상태를 보거나 일시 오류를 내는 데 쓴다. */
     @MockitoSpyBean private PublicationCorrection proposals;
@@ -746,6 +748,47 @@ class PdfAutoExtractionSchedulerIntegrationTest {
             assertThat(decision.get("reason")).isEqualTo("자동 보정 실패 · 원문과 변경안을 확인하세요.");
         });
         assertThat(published(candidate.notice())).isFalse();
+    }
+
+    @Test
+    void 공고문을_다시_받는_동안에는_수집_실행_소유권을_잡지_않는다() {
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+        List<Boolean> ingestCouldStart = new ArrayList<>();
+        doAnswer(invocation -> {
+            try (var ingest = ownership.acquire()) {
+                ingestCouldStart.add(true);
+            }
+            return file(attachmentPdf);
+        }).when(client).read(anyString());
+
+        publication.process();
+
+        assertThat(ingestCouldStart).containsExactly(true);
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
+    }
+
+    @Test
+    void 수집이_도는_동안에는_워커_보류만_기록하고_판정은_다음_실행으로_미룬다() {
+        Candidate held = candidate();
+        long heldJob = succeededJob(held, heldExtraction(held));
+        Candidate candidate = candidate();
+        long job = succeededJob(candidate, passedExtraction(candidate));
+
+        try (var ingest = ownership.acquire()) {
+            publication.process();
+        }
+
+        assertThat(decisionsOf(heldJob)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("REVIEW"));
+        assertThat(decisionsOf(job)).isEmpty();
+        assertThat(published(candidate.notice())).isFalse();
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement()
+                .satisfies(decision -> assertThat(decision.get("outcome")).isEqualTo("PUBLISHED"));
     }
 
     /** 공급표를 연결할 단지·주택형이 있고 공고문 PDF 첨부가 붙은 미확정 공고. */

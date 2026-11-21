@@ -4,7 +4,6 @@ import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.announcement.domain.PdfExtractionInput.PublicationMode;
 import com.toadzip.backend.announcement.repository.PdfPublicationDecisions;
 import com.toadzip.backend.global.config.SchedulingConfig;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -22,14 +21,12 @@ class PdfPublicationScheduler {
     private final PdfPublicationDecisions decisions;
     private final PdfPublicationService service;
     private final PublicationMode mode;
-    private final IngestExecutionOwnershipService ownership;
 
     PdfPublicationScheduler(PdfPublicationDecisions decisions, PdfPublicationService service,
-            IngestExecutionOwnershipService ownership, @Value("${announcement.pdf-publication.mode}") PublicationMode mode) {
+            @Value("${announcement.pdf-publication.mode}") PublicationMode mode) {
         this.decisions = decisions;
         this.service = service;
         this.mode = mode;
-        this.ownership = ownership;
     }
 
     @Scheduled(fixedDelayString = "${announcement.pdf-auto-extraction.check-interval}",
@@ -45,9 +42,10 @@ class PdfPublicationScheduler {
         try {
             SecurityContextHolder.setContext(context);
             for (Long job : decisions.pending()) {
-                try (var lease = ownership.acquire()) {
+                try {
                     service.process(job, mode);
                 } catch (IngestAlreadyRunningException busy) {
+                    // 수집·정제가 공고를 고치는 중이다. 결정을 남기지 않고 이번 주기를 끝내 다음 주기에 다시 판정한다.
                     return;
                 } catch (RuntimeException failure) {
                     recordFailure(job, failure);
