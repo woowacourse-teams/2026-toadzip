@@ -63,7 +63,6 @@ import tools.jackson.databind.node.ObjectNode;
 @ContextConfiguration(initializers = PdfEligibilityPublicationIntegrationTest.SchemaInitializer.class)
 class PdfEligibilityPublicationIntegrationTest {
     private static final LocalDate TODAY = LocalDate.now(ZoneId.of("Asia/Seoul"));
-    private static final String ELIGIBILITY_HELD = "공고 보정 완료 · 신청자격 조건과 대상 연결을 확인하세요.";
 
     @Autowired private PdfPublicationScheduler publication;
     @Autowired private PdfPublicationService service;
@@ -115,7 +114,8 @@ class PdfEligibilityPublicationIntegrationTest {
         publication.process();
 
         assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
-                .containsEntry("eligibility_status", "REVIEW").containsEntry("reason", ELIGIBILITY_HELD);
+                .containsEntry("eligibility_status", "REVIEW")
+                .containsEntry("reason", "공고 보정 완료 · 기존 신청자격 검토본이 있습니다.");
         assertThat(before).singleElement()
                 .satisfies(ruleSet -> assertThat(ruleSet.get("status")).isEqualTo("PUBLISHED"));
         assertThat(ruleSets(notice)).isEqualTo(before);
@@ -132,7 +132,48 @@ class PdfEligibilityPublicationIntegrationTest {
         publication.process();
 
         assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
-                .containsEntry("eligibility_status", "REVIEW").containsEntry("reason", ELIGIBILITY_HELD);
+                .containsEntry("eligibility_status", "REVIEW")
+                .containsEntry("reason", "공고 보정 완료 · 공고 또는 추출이 변경되었습니다.");
+        assertThat(ruleSets(notice)).isEmpty();
+    }
+
+    @Test
+    void 신청자격_경로가_없는_공급대상이_있으면_신청자격을_되돌리고_그_사유로_검수에_남긴다() {
+        Announcement notice = candidate();
+        ObjectNode tree = extraction(notice.getName());
+        ObjectNode sheet = tree.withObject("data").withObject("supplySheet");
+        sheet.withArray("targets").addObject().put("key", "t1").put("label", "신혼부부").putArray("groups")
+                .add("NEWLYWED");
+        Map<String, String> cell = Map.of("housingType", "h0", "target", "t1");
+        sheet.withArray("cells").add(json.valueToTree(cell));
+        ((ObjectNode) sheet.withArray("quotas").get(0)).withArray("members").add(json.valueToTree(cell));
+        long job = succeededJob(notice, tree);
+
+        publication.process();
+
+        assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
+                .containsEntry("eligibility_status", "REVIEW")
+                .containsEntry("reason", "공고 보정 완료 · 신청자격 경로 또는 원문 연결 확인이 필요합니다.");
+        assertThat(ruleSets(notice)).isEmpty();
+    }
+
+    @Test
+    void 신청자격_초안을_만들지_못한_내부_사유는_검수함에_보이지_않는다() {
+        Announcement notice = candidate();
+        ObjectNode tree = extraction(notice.getName());
+        // 공급대상과 이어지는 신청자격 경로가 하나도 없으면 초안 서비스가 관리자 화면용 예외로 거절한다.
+        ObjectNode target = (ObjectNode) tree.withObject("data").withObject("eligibility").withArray("targets").get(0);
+        target.put("target", "고령자").put("supplyTarget", "고령자").put("summary", "고령자");
+        target.putArray("supplyTargets").add("고령자");
+        target.putArray("supplyTargetKeys").add("t9");
+        target.putArray("groups").add("ELDERLY");
+        long job = succeededJob(notice, tree);
+
+        publication.process();
+
+        assertThat(decisionOf(job)).containsEntry("outcome", "PUBLISHED")
+                .containsEntry("eligibility_status", "REVIEW")
+                .containsEntry("reason", "공고 보정 완료 · 신청자격 조건과 대상 연결을 확인하세요.");
         assertThat(ruleSets(notice)).isEmpty();
     }
 
@@ -157,9 +198,13 @@ class PdfEligibilityPublicationIntegrationTest {
      * 공고 이름이 곧 공급표 주택형의 단지명이다.
      */
     private long succeededJob(Announcement notice) {
+        return succeededJob(notice, extraction(notice.getName()));
+    }
+
+    private long succeededJob(Announcement notice, ObjectNode tree) {
         long attachment = attachments.findAllByAnnouncementIdIn(List.of(notice.getId())).getFirst().getId();
         long job = extractions.requestBatch(notice.getId(), attachment);
-        String result = json.writeValueAsString(Map.of("json", extraction(notice.getName()).toString(),
+        String result = json.writeValueAsString(Map.of("json", tree.toString(),
                 "pages", List.of(1), "totalPages", 1, "warnings", List.of(),
                 "usage", Map.of("promptTokens", 1, "outputTokens", 1, "thinkingTokens", 0)));
         jdbc.sql("""

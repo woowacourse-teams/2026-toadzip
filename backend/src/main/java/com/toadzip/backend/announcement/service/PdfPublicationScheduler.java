@@ -57,7 +57,7 @@ class PdfPublicationScheduler {
                         service.publishEligibility(job);
                     } catch (RuntimeException failure) {
                         log.warn("event=pdf.eligibility.held jobId={}", job, failure);
-                        decisions.finishEligibility(job, "REVIEW", "공고 보정 완료 · 신청자격 조건과 대상 연결을 확인하세요.");
+                        decisions.finishEligibility(job, "REVIEW", eligibilityReasonOf(failure));
                     }
                 }
             }
@@ -76,13 +76,23 @@ class PdfPublicationScheduler {
         decisions.record(job, "REVIEW", reasonOf(failure), null, null);
     }
 
-    /** 보류 사유와 기존 보정 서비스의 관리자 안내 문구만 검수함에 그대로 보인다. 그 밖의 실패 원인은 로그에만 남긴다. */
+    /**
+     * 보류 사유와 보정 서비스의 충돌 안내 문구만 검수함에 그대로 보인다. IllegalArgumentException은 JDK·내부 검증 문구가 섞여
+     * 있어 보이지 않는다. 그 밖의 실패 원인은 로그에만 남긴다.
+     */
     private static String reasonOf(RuntimeException failure) {
-        boolean readable = failure instanceof PublicationHold || failure instanceof IllegalArgumentException
-                || failure instanceof AdminDataConflictException;
+        boolean readable = failure instanceof PublicationHold || failure instanceof AdminDataConflictException;
         if (readable && failure.getMessage() != null) {
             return failure.getMessage();
         }
         return "자동 보정 실패 · 원문과 변경안을 확인하세요.";
+    }
+
+    /** 공고는 이미 공개했다. 신청자격을 공개하지 않은 보류 사유만 그대로 보이고 그 밖의 실패 원인은 로그에만 남긴다. */
+    private static String eligibilityReasonOf(RuntimeException failure) {
+        if (failure instanceof PublicationHold && failure.getMessage() != null) {
+            return "공고 보정 완료 · " + failure.getMessage();
+        }
+        return "공고 보정 완료 · 신청자격 조건과 대상 연결을 확인하세요.";
     }
 }

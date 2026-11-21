@@ -754,6 +754,23 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     @Test
+    void 보정_서비스가_입력을_거절한_내부_문구는_검수함에_보이지_않는다() {
+        Candidate candidate = candidate();
+        ObjectNode tree = passedExtraction(candidate);
+        // 종료가 시작보다 빠른 일정은 보정 서비스가 IllegalArgumentException으로 거절한다.
+        pdfSchedule(tree.withObject("data"), "APPLICATION", "청약 접수", TODAY.plusDays(2), TODAY);
+        long job = succeededJob(candidate, tree);
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision -> {
+            assertThat(decision.get("outcome")).isEqualTo("REVIEW");
+            assertThat(decision.get("reason")).isEqualTo("자동 보정 실패 · 원문과 변경안을 확인하세요.");
+        });
+        assertThat(published(candidate.notice())).isFalse();
+    }
+
+    @Test
     void 공고문을_다시_받는_동안에는_수집_실행_소유권을_잡지_않는다() {
         Candidate candidate = candidate();
         long job = succeededJob(candidate, passedExtraction(candidate));
