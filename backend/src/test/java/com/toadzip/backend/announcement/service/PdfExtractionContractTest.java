@@ -36,6 +36,7 @@ class PdfExtractionContractTest {
                         "16A(대학생/청년)", "16.37", "27.6384", "78", "78"),
                         new PdfExtractionInput.SourceSupplyRow("GH", 1, "GH:801:다산 센트럴파크6단지:36A", "다산 센트럴파크6단지",
                                 "36A 청년", "36.8", "", "60", "")),
+                RentalType.HAPPY_HOUSING,
                 new PdfExtractionInput.Publication(3301, 4, "인천부평 행복주택 입주자 모집",
                         PdfExtractionInput.PublicationMode.SHADOW, RentalType.HAPPY_HOUSING, RecruitmentType.NEW,
                         LocalDate.of(2026, 11, 3), LocalDate.of(2026, 11, 5), null));

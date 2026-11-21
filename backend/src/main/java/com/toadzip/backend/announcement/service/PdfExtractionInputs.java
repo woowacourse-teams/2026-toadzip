@@ -39,13 +39,16 @@ class PdfExtractionInputs {
 
     @Transactional(readOnly = true)
     PdfExtractionInput read(long announcementId) {
-        return new PdfExtractionInput(announcements.findById(announcementId).map(this::sourceRows).orElse(List.of()));
+        return announcements.findById(announcementId)
+                .map(announcement -> new PdfExtractionInput(sourceRows(announcement), announcement.getSupplyType(), null))
+                .orElseGet(() -> new PdfExtractionInput(List.of()));
     }
 
     @Transactional(readOnly = true)
     PdfExtractionInput readBatch(long announcementId, long attachmentId) {
         var announcement = announcements.findById(announcementId).orElseThrow();
-        return new PdfExtractionInput(sourceRows(announcement), publication(announcement, attachmentId));
+        return new PdfExtractionInput(sourceRows(announcement), announcement.getSupplyType(),
+                publication(announcement, attachmentId));
     }
 
     /** 자동 공개를 껐거나 공급을 이미 확정한 공고는 자동 공개 대상이 아니라 스냅숏을 담지 않는다. */

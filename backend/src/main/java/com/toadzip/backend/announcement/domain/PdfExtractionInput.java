@@ -12,11 +12,14 @@ import java.util.List;
  *
  * @param sourceSupplyRows 이 공고의 기관 공급 원천 행(LH 공급 API 행이나 GH 공급행 틀). 공급행 틀로 쓴다. 원천이 없는 공고(SH 등)거나
  *                         수집 전이면 비어 있다.
+ * @param rentalType       작업을 넣을 때 공고의 임대유형. 워커가 형명 끝 신청자 표기('29 (주거약자)')를 공급대상으로 나눌 때 표기 없는 줄을
+ *                         '일반'(국민임대·영구임대)으로 부를지 정한다. 이 필드가 생기기 전에 넣은 작업에는 없다.
  */
 public record PdfExtractionInput(List<SourceSupplyRow> sourceSupplyRows,
+        @JsonInclude(Include.NON_NULL) RentalType rentalType,
         @JsonInclude(Include.NON_NULL) Publication publication) {
     public PdfExtractionInput(List<SourceSupplyRow> sourceSupplyRows) {
-        this(sourceSupplyRows, null);
+        this(sourceSupplyRows, null, null);
     }
 
     public enum PublicationMode { OFF, SHADOW, APPLY }

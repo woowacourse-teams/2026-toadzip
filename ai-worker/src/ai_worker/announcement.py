@@ -10,7 +10,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import (checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame,
+from ai_worker import (applicant_types, checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame,
                        stage_prompts, supply_grouping, supply_sources, tables, version)
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
@@ -86,6 +86,8 @@ class AnnouncementPdfExtractor:
             if eligibility_future:
                 eligibility_reply, eligibility_error = _optional_reply(eligibility_future)
         supply = source.read()
+        # 신청자 표기만 다른 주택형을 공급대상으로 나눈다. 신청 조건(merge)이 대상 이름으로 붙기 전에 한다.
+        applicant_types.fold(supply.sheet, job.input)
         notice_tree = checks.first_json_object(notice_reply.content, {
             "announcement": dict, "receptionPlaces": list, "complexes": list, "schedules": list,
             "unresolvedFields": list,

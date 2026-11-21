@@ -287,8 +287,9 @@ def missing_housing_types(sheet: dict, row_values: dict[str, dict[str, str]],
 
 def _covered(name: str, extracted: set[str]) -> bool:
     """주택형 칸 값이 결과 주택형 이름과 같거나, 칸에 적은 형마다 결과에 있으면 결과에 있는 것이다.
-    형명 끝의 신청자·용도 괄호(31AS (주거약자용))는 떼고도 맞대 본다(화면이 주택형을 짝짓는 기준과 같다)."""
-    names = dict.fromkeys([name, re.sub(r"\s*\([^)]*\)\s*$", "", name)])
+    형명 끝의 신청자·용도 괄호(31AS (주거약자용))는 떼고도 맞대 본다(화면이 주택형을 짝짓는 기준과 같다). 앞 괄호도 뗀다. 윗행
+    '29 (주거약자)'의 줄바꿈된 표기가 다음 행 칸에 붙어 '(주거약자) 37'로 읽히고, 신청자 표기는 공급대상이 되어 결과 주택형 이름에 없다."""
+    names = dict.fromkeys([name, re.sub(r"\s*\([^)]*\)\s*$", "", name), re.sub(r"^\s*\([^)]*\)\s*", "", name)])
     return any(_type_key(value) in extracted or bool(tokens := _type_tokens(value)) and all(token in extracted for token in tokens)
                for value in names if value)
 
