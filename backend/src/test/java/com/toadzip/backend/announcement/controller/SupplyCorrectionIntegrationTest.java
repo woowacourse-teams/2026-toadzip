@@ -68,6 +68,7 @@ class SupplyCorrectionIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private QualityComparisonService comparisons;
     @MockitoBean private IngestExecutionOwnershipService ownership;
+    @MockitoBean private com.toadzip.backend.ingest.location.repository.external.JusoAddressClient juso;
 
     @BeforeEach
     void lease() {
@@ -844,9 +845,75 @@ class SupplyCorrectionIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void 지번_주소는_주소_검색이_같은_번지의_필지_하나를_찾을_때만_그_필지와_도로명주소로_같은_주소_단지를_찾는다() throws Exception {
+        // 학익 SK VIEW 공고문은 건설위치를 지번(학익동 757)으로만 적고, 등록된 단지는 도로명주소(매소홀로 385)로 저장돼 있다.
+        long id = new NotificationFixtures(entities, jdbc).announcement().getId(); // 국민임대 공고
+        String road = "검증" + UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 8) + "로";
+        String parcel = "1114010100107570000";
+        var byRoad = complexAt("도로명으로 저장한 단지", "서울특별시 중구 " + road + " 385", "NATIONAL_RENTAL");
+        var byParcel = complexAt("필지만 같은 단지", "서울특별시 중구 다른" + road + " 1", "NATIONAL_RENTAL", parcel);
+        complexAt("같은 필지 행복주택", "서울특별시 중구 " + road + " 385", "HAPPY_HOUSING", parcel);
+        entities.clear();
+        var exact = new com.toadzip.backend.ingest.location.domain.JusoAddress("서울특별시 중구 " + road + " 385",
+                "서울특별시 중구 태평로1가 757", "1114010100", "111403100001", false, 385, 0, false, 757, 0);
+        var nextLot = new com.toadzip.backend.ingest.location.domain.JusoAddress("서울특별시 중구 " + road + " 387",
+                "서울특별시 중구 태평로1가 757-1", "1114010100", "111403100001", false, 387, 0, false, 757, 1);
+        org.mockito.Mockito.when(juso.search("서울특별시 중구 태평로1가 757", 5)).thenReturn(List.of(nextLot, exact));
+
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "서울특별시 중구 태평로1가 757"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].housingComplexId").value(byParcel))
+                .andExpect(jsonPath("$.data[1].housingComplexId").value(byRoad));
+
+        // 적은 번지와 같은 필지가 없으면(757-1만 나옴) 찾지 않는다. 번지 없는 동 단위 주소는 검색하지 않는다.
+        org.mockito.Mockito.when(juso.search("서울특별시 중구 태평로1가 758", 5)).thenReturn(List.of(nextLot));
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "서울특별시 중구 태평로1가 758"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+        // 주소 검색을 쓸 수 없으면 찾지 않고 관리자가 고르게 둔다.
+        org.mockito.Mockito.when(juso.search("서울특별시 중구 태평로1가 759", 5)).thenThrow(
+                new com.toadzip.backend.ingest.location.exception.AddressLookupException("주소 검색을 사용할 수 없습니다.", true));
+        mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN"))
+                        .param("address", "서울특별시 중구 태평로1가 759"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+        // 같은 번지가 다른 동에도 있거나(필지 둘), 산 번지만 나오거나, 다른 동의 번지만 나오면 어느 곳인지 몰라 찾지 않는다.
+        var otherDong = new com.toadzip.backend.ingest.location.domain.JusoAddress("서울특별시 중구 " + road + " 9",
+                "서울특별시 중구 태평로2가 760", "1114010200", "111403100001", false, 9, 0, false, 760, 0);
+        var mountain = new com.toadzip.backend.ingest.location.domain.JusoAddress("서울특별시 중구 " + road + " 385",
+                "서울특별시 중구 태평로1가 산 760", "1114010100", "111403100001", false, 385, 0, true, 760, 0);
+        var sameLotOtherDong = new com.toadzip.backend.ingest.location.domain.JusoAddress("서울특별시 중구 " + road + " 385",
+                "서울특별시 중구 태평로1가 761", "1114010100", "111403100001", false, 385, 0, false, 761, 0);
+        var sameLotOtherDong2 = new com.toadzip.backend.ingest.location.domain.JusoAddress("서울특별시 중구 " + road + " 1",
+                "서울특별시 중구 태평로1가 761", "1114010300", "111403100001", false, 1, 0, false, 761, 0);
+        org.mockito.Mockito.when(juso.search("서울특별시 중구 태평로1가 760", 5)).thenReturn(List.of(otherDong, mountain));
+        org.mockito.Mockito.when(juso.search("서울특별시 중구 태평로1가 761", 5)).thenReturn(List.of(sameLotOtherDong, sameLotOtherDong2));
+        // 점검 중 응답처럼 클라이언트가 감싸지 않는 실패도 찾지 않음으로 끝난다.
+        org.mockito.Mockito.when(juso.search("서울특별시 중구 태평로1가 762", 5))
+                .thenThrow(new org.springframework.web.client.RestClientException("응답 형식 오류"));
+        for (String address : List.of("서울특별시 중구 태평로1가 760", "서울특별시 중구 태평로1가 761", "서울특별시 중구 태평로1가 762",
+                "서울특별시 중구 태평로1가")) {
+            mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN")).param("address", address))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+        }
+        // 번지가 없거나(동 단위), 시도가 없거나, 블록 표기거나, 번지로 맞을 수 없는 숫자면 검색하지 않는다.
+        for (String address : List.of("중구 태평로1가 757", "서울특별시 중구 태평로1가 3 블록", "서울특별시 중구 태평로1가 12345678901")) {
+            mvc.perform(get(root(id) + "/same-address-complexes").with(user("admin").roles("ADMIN")).param("address", address))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+        }
+        org.mockito.Mockito.verify(juso, org.mockito.Mockito.times(6)).search(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
     private long complexAt(String name, String roadAddress, String supplyType) {
+        return complexAt(name, roadAddress, supplyType, null);
+    }
+
+    private long complexAt(String name, String roadAddress, String supplyType, String pnu) {
         var complex = com.toadzip.backend.housing.domain.HousingComplex.create(name, UUID.randomUUID().toString(),
-                supplyType, com.toadzip.backend.housing.domain.Address.create(roadAddress, null, "1114010100", "11",
+                supplyType, com.toadzip.backend.housing.domain.Address.create(roadAddress, pnu, "1114010100", "11",
                         "11140", new BigDecimal("37.5"), new BigDecimal("126.9")),
                 10, "LH", LocalDate.of(2020, 1, 1), "INDIVIDUAL", "APARTMENT", "STAIR", true, 10, null, 0);
         entities.persist(complex);

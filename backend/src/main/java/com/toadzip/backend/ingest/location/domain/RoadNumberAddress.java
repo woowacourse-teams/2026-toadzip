@@ -42,7 +42,7 @@ public record RoadNumberAddress(String province, String road, String buildingNum
     }
 
     /** 주소 맨 앞의 시도 표기를 짧은 표기로 맞춘다. 시도로 시작하지 않으면 비어 있다. */
-    static Optional<String> province(String address) {
+    public static Optional<String> province(String address) {
         if (address == null) {
             return Optional.empty();
         }
