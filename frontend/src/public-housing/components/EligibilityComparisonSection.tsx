@@ -14,6 +14,8 @@ import {
   missingNote,
   sortChecks,
   sortTypes,
+  tabTexts,
+  withTypeSuffix,
   typeStatusText,
   verdictCopy,
 } from '../presentation/comparisonPresentation'
@@ -158,6 +160,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
   if (types.length === 1) {
     return <>{required}<div className={`${styles.panel} ${styles.single}`}><TypePanel announcementId={announcementId} type={selected} just={just} onOpenEvidence={onOpenEvidence} /></div></>
   }
+  const texts = tabTexts(types)
   return <>
     {required}
     <div className={styles.tabs} role="tablist" aria-label="신청 유형">
@@ -165,7 +168,7 @@ function Comparison({ announcementId, types: raw, revision, onOpenEvidence }: {
         ref={(node) => { if (node) tabRefs.current.set(type.key, node); else tabRefs.current.delete(type.key) }}
         aria-selected={type === selected} aria-controls={`${tabsId}-panel`} tabIndex={type === selected ? 0 : -1}
         className={styles.tab} onClick={() => setSelectedKey(type.key)} onKeyDown={(event) => onTabKey(event, index)}>
-        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{type.label}{type.units && <small>{type.units}</small>}</span>
+        <span className={styles.tabLabel}><span className={styles.tabMark}><StatusMark status={markOfType(type.status)} size={16} className={styles.mark} /></span>{texts[index].label}{texts[index].units && <small>{texts[index].units}</small>}</span>
         <span className={styles.visuallyHidden}>, {typeStatusText(type)}</span>
       </button>)}
     </div>
@@ -233,19 +236,19 @@ function TypePanel({ announcementId, type, just, onOpenEvidence }: { readonly an
       <ul className={styles.checks} aria-label={`${type.label} 항목별 비교`}>
         {checks.map((check) => <CheckRow key={check.id} announcementId={announcementId} check={check} type={type} just={just.has(`${type.key}:${check.id}`)} onOpenEvidence={onOpenEvidence} />)}
       </ul>
-      {type.units && <p className={styles.units}>모집 주택형 · <b>{type.units}</b></p>}
+      {type.units && <p className={styles.units}>모집 주택형 · <b>{withTypeSuffix(type.units)}</b></p>}
       {Boolean(type.regionCodes?.length) && <p className={styles.units}>모집 지역 · {type.regionCodes?.map(regionLabel).join(', ')}</p>}
       {type.guidances.length > 0 && <div className={styles.direct}>
         <h4>신청 전 직접 확인할 것</h4>
         <ul>{type.guidances.map((guidance, index) => <li key={`${index}:${guidance.kind}:${guidance.title}`}>
-          <div><span className={styles.kind} data-kind={guidance.kind}>{GUIDANCE_KIND_LABEL[guidance.kind]}</span><strong>{guidance.title}</strong><p>{guidance.body}</p></div>
+          <div><span className={styles.kind} data-kind={guidance.kind}>{GUIDANCE_KIND_LABEL[guidance.kind]}</span><strong>{guidance.title}</strong><p>{guidance.body}</p>{guidance.items.length > 0 && <ul className={styles.guidanceItems}>{guidance.items.map((item) => <li key={item}>{item}</li>)}</ul>}</div>
           {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}
         </li>)}</ul>
       </div>}
       {Boolean(type.exclusions?.length) && <details className={styles.direct}>
-        <summary>⚠️ 신청 불가능한 특수 경우</summary>
+        <summary>{GUIDANCE_KIND_LABEL.APPLICATION_EXCLUSION}</summary>
         <ul>{type.exclusions?.map((guidance) => <li key={guidance.title}>
-          <div><strong>{guidance.title}</strong><p>{guidance.body}</p></div>
+          <div><strong>{guidance.title}</strong><p>{guidance.body}</p>{guidance.items.length > 0 && <ul className={styles.guidanceItems}>{guidance.items.map((item) => <li key={item}>{item}</li>)}</ul>}</div>
           {guidance.evidence && <EvidenceButton evidence={guidance.evidence} label={guidance.title} onOpen={onOpenEvidence} />}
         </li>)}</ul>
       </details>}

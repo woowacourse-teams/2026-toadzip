@@ -25,11 +25,22 @@ _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
 _AREA_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _HOUSE_TYPE_HEADER = re.compile(r"주택형|주택타입|신청형")
+# 단지명 열 머리글 낱말(블록·단지·지구). 후보가 아니다.
+_COMPLEX_HEADER = re.compile(r"블록|단지|지구")
+# 단지명이 아닌 첫 열 머리글
+_NOT_COMPLEX_HEADER = re.compile(r"유형|주택형|자격")
 _TABLE_HEADER = re.compile(r"단지명|공급형|주택형|공급대상|공급계층|청약구분|전용|임대조건|임대보증금|월임대료")
 # 머리글 줄 뒤에 데이터 줄 글자(26·31)가 이어 붙을 수 있어 앞에서부터 보고, 뒤에 한글 낱말이 붙은 "공급형별 임대보증금" 같은 열은 뺀다.
 # 다만 합계 줄 표기(총계·합계·계)가 머리글에 이어 붙은 "공급형별총계"는 주택형 열이다(대구연호 통합공공임대).
 _HOUSING_TYPE_FALLBACK = re.compile(r"공급형별?(?:\([^)]*\))?(?:(?:총계|합계|소계|계)(?![가-힣])|(?![가-힣]))")
 _MONEY_FIELDS = ("rentalDeposit", "monthlyRent", "convertedDeposit")
+_AREA_FIELDS = ("exclusiveArea", "commonArea", "supplyArea")
+# 모집 열이 없는 표의 '공급 호수' 열(학익 SK VIEW 재개발임대: 주택유형 | 주택형 | 공급 호수 | 호별 주택면적). 상위 머리글로
+# 아래 줄마다 다시 이어 붙고(공급호수공급호수) 데이터 줄 숫자가 뒤에 붙어 읽힌다. 우선·일반 하위 열이나 당첨자·예비자 하위 열이
+# 붙은 머리글은 아니다.
+_SUPPLY_COUNT_HEADER = re.compile(r"(?:금회)?(?:공급(?:호수|세대수))+[\d,]*")
+# 주택형 칸 하나에 세부 타입을 묶고(26B/C) 면적 칸마다 그 순서대로 값을 적은 칸(26.70/ 26.71)의 구분
+_SLASH = re.compile(r"\s*/\s*")
 # 전환가능 보증금 한도액 칸은 증액(+)·감액(-) 한도를 한 칸에 함께 적거나("(+) 5,000,000 (-) 26,000,000") 위아래 줄로 나누고,
 # 부호를 왼쪽 칸에 따로 적기도 한다("(+)" | "27,000,000"). 부호 표시는 "( ) , (- )"처럼 쪼개져 나오기도 한다.
 _SIGN_MARK = re.compile(r"\(\s*[+-]?\s*\)")
@@ -94,7 +105,8 @@ class SupplyTable:
         """셀에서 열 역할과 행 값을 읽어 공급표를 만든다. 머리글에서 열 역할을 찾지 못하면 inherited_columns를 쓴다."""
         own_columns = _table_field_columns(cells)
         columns = own_columns or inherited_columns or {}
-        subtypes = _house_type_subtypes(cells, columns)
+        subtypes = _house_type_subtypes(cells, columns) or {
+            index: found for index, row in enumerate(cells) if (found := _slash_subtypes(row, columns))}
         rows = [TableRow(source_row_id(page, number, index), "\t".join(cell or "" for cell in row),
                          _table_row_field_values(cells, index - 1, columns), _row_target_group_values(cells, index - 1),
                          subtypes.get(index - 1, ()))
@@ -198,6 +210,11 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
             indexes = _conversion_limit_columns(rows, normalized_headers, indexes)
         if len(indexes) == 1:
             columns[name] = indexes[0]
+    # 모집수를 읽을 다른 수량 열이 없을 때만 '공급 호수' 열이 이번 공고 모집수다. 건설호수·대기 중인 예비자수는 모집수가 아니다.
+    if not {"totalSupplyHouseholdCount", "supplyHouseholdCount", "reserveCount", "priorityCount", "generalCount"} & columns.keys():
+        indexes = _matching_columns(normalized_headers, lambda header: bool(_SUPPLY_COUNT_HEADER.fullmatch(header)))
+        if len(indexes) == 1:
+            columns["totalSupplyHouseholdCount"] = indexes[0]
     # 하위 열 없는 모집호수 옆에 예비자 열이 따로 있으면 모집호수는 입주자(당첨자) 수다. 모집수는 둘의 합이라(사용자 결정)
     # 당첨자 열로 두어 원문 대조·채움이 합을 쓰게 한다. 모집호수 계·합계 열은 이미 합이다.
     # 머리글 줄 뒤에 데이터 줄 글자가 이어 붙을 수 있어(모집호수계13) 끝이 아니라 포함으로 본다.
@@ -294,6 +311,39 @@ def _house_type_subtypes(cells: list[list[str | None]], columns: dict[str, int])
             else:
                 members.append((_WHITESPACE.sub(" ", name).strip(), area_row))
     return {start: _area_subtypes(members, columns) for start, members in blocks.items() if members}
+
+
+def _slash_subtypes(row: list[str | None], columns: dict[str, int]) -> tuple[TableSubtype, ...]:
+    """주택타입 열 없이 주택형 칸 하나에 세부 타입을 묶고(수원당수 2단지 26B/C, 26B/26C) 면적 칸마다 그 순서대로
+    값을 적은 행(26.70/ 26.71)의 세부 타입. 이름 수와 전용면적 값 수가 같을 때만 읽는다. 공용·공급면적 칸은 값 수가 같을 때만 둔다.
+    숫자 없이 적은 뒤 이름(C)은 앞 이름의 형 번호를 붙인다(26C)."""
+    housing, area = columns.get("housingType"), columns.get("exclusiveArea")
+    if housing is None or area is None or "houseType" in columns:
+        return ()
+    names = _SLASH.split((_cell(row, housing) or "").strip())
+    areas = _slash_values(row, area, len(names))
+    base = re.match(r"\d+", names[0])
+    if len(names) < 2 or areas is None or base is None or not all(names):
+        return ()
+    names = [name if name[0].isdigit() else base.group() + name for name in names]
+    common = _slash_values(row, columns.get("commonArea"), len(names)) or [None] * len(names)
+    supply = _slash_values(row, columns.get("supplyArea"), len(names)) or [None] * len(names)
+    return unique_subtypes(TableSubtype(name, *values) for name, *values in zip(names, areas, common, supply))
+
+
+def _slash_values(row: list[str | None], column: int | None, count: int) -> list[float] | None:
+    values = _SLASH.split((_cell(row, column) or "").strip()) if column is not None else []
+    if len(values) != count or not all(_AREA_NUMBER.fullmatch(value) for value in values):
+        return None
+    return [float(value) for value in values]
+
+
+def type_area_cell(cell: str, field: str) -> str:
+    """주택형 면적으로 대조할 칸 글. 세부 타입마다 '26.70/ 26.71'로 적은 면적 칸(_slash_subtypes)의 주택형 면적은 첫 값이다.
+    면적 열(전용·공용·공급)만 그렇다. 건설호수 '100/ 42'처럼 다른 열의 슬래시 칸은 그대로 두어 어떤 수로도 확인되지 않는다."""
+    if field not in _AREA_FIELDS:
+        return cell
+    return _SLASH.split(cell.strip())[0]
 
 
 def _starts_with_house_types(cells: list[list[str | None]], columns: dict[str, int]) -> bool:
@@ -393,12 +443,15 @@ def _table_row_field_values(rows: list[list[str | None]], row_index: int,
     # 함께 쓴다). 주택형 칸이 없는 행은 위 행의 이어지는 줄(전환 감액 줄 등)이라 대상·금액을 이어받지 않는다. 수량 칸은
     # 이어받지 않는다. 세로로 병합된 수량은 여러 행이 함께 쓰는 공통 수량이라 행마다 같은 수를 두면 중복으로 센다
     # (supply_assembly._merged_count_rows).
+    # 면적 칸도 같다(인천논현4 25B/B1 (주거약자용)이 25A/A1의 면적 칸을 함께 쓴다). 다만 병합이 시작된 행부터 이 행까지 단지명
+    # 칸이 병합으로 이어지지 않으면(새 단지명 칸) 다른 단지의 면적이라 이어받지 않는다. 코드 경로(supply_grouping._share_merged_areas)는
+    # 이어받은 단지명 값이 같은지로 보고 쪽을 넘은 빈 면적 칸도 이어받는다. 여기서는 한 표 안의 세로 병합(None)만 본다.
     own_type = bool(values.get("housingType"))
-    for name in ("complexName", *(("target", "rentalDeposit", "monthlyRent") if own_type else ())):
+    for name in ("complexName", *(("target", "rentalDeposit", "monthlyRent", *_AREA_FIELDS) if own_type else ())):
         column = columns.get(name)
         if column is not None and name not in values and column < len(row) and row[column] is None:
             origin = _merged_origin_above(rows, row_index, column)
-            if origin is not None:
+            if origin is not None and (name not in _AREA_FIELDS or _same_complex(rows, origin, row_index, columns)):
                 values[name] = rows[origin][column]
     # 보증금 칸이 병합된 형 행은 위 행의 임대조건을 함께 쓴다. 전환 한도의 증액(+) 줄이 병합을 시작한 행에만 있으면(아래 행은
     # 감액(-) 줄) 그 증액 한도가 이 행의 한도다.
@@ -411,6 +464,12 @@ def _table_row_field_values(rows: list[list[str | None]], row_index: int,
             values["convertedDeposit"] = limit
     _add_money_units(values, columns, table_column_headers(rows[:min(row_index, 6)], max(map(len, rows))))
     return values
+
+
+def _same_complex(rows: list[list[str | None]], origin: int, row_index: int, columns: dict[str, int]) -> bool:
+    """origin 행부터 row_index 행까지 단지명 칸이 세로 병합으로 이어져 같은 단지인가. 단지명 열이 없는 표는 한 단지다."""
+    column = columns.get("complexName")
+    return column is None or all(_cell(rows[at], column) is None for at in range(origin + 1, row_index + 1))
 
 
 def _merged_origin_above(rows: list[list[str | None]], row_index: int, column: int) -> int | None:
@@ -525,7 +584,7 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
             supply_table = SupplyTable.of(page_number, table_index, table.cells, last_columns, table.ambiguous)
             last_columns = supply_table.columns
             supply_tables.append(supply_table)
-            candidates.extend(_complex_name_candidates(table.cells))
+            candidates.extend(_complex_name_candidates(table.cells, supply_table.columns))
         continuation = SupplyContinuation(
             page_number, max(len(table.cells[0]) if table.cells else 0 for table in page_supply_tables), last_columns)
     rental: set[tuple[str, str]] = set()
@@ -599,12 +658,21 @@ def source_row_id(page_number: int, table_number: int, row_number: int) -> str:
     return f"P{page_number}:T{table_number}:R{row_number}"
 
 
-def _complex_name_candidates(cells: list[list[str | None]]) -> list[str]:
+def _complex_name_candidates(cells: list[list[str | None]], columns: dict[str, int]) -> list[str]:
+    """단지명 열의 값. 단지명 열 역할을 읽지 못한 표는 첫 열을 본다('모집 단지'처럼 역할 규칙에 없는 머리글도 있다). 다만 첫 열이
+    다른 역할(주택형 등)이거나 머리글이 주택유형·신청자격이면 단지명 열이 아니다(블록 제목형 표는 단지명이 표 위 제목에, 단지 한 곳 공고
+    학익 SK VIEW는 표 밖 건설위치에 있고 첫 열이 주택유형이다)."""
+    column = columns.get("complexName")
+    if column is None:
+        header = next((cell for row in cells for cell in row[:1] if cell and cell.strip()), "")
+        if 0 in columns.values() or _NOT_COMPLEX_HEADER.search(_compact(header)):
+            return []
+        column = 0
     candidates = []
     for row in cells:
-        name = (row[0] or "").strip() if row else ""
-        if (not name or _TABLE_HEADER.search(_compact(name)) or _compact(name).isdigit()
-                or _AREA_CELL.search(name)):
+        name = (row[column] or "").strip() if len(row) > column else ""
+        if (not name or (columns and "complexName" not in columns and name == header) or _TABLE_HEADER.search(_compact(name))
+                or _COMPLEX_HEADER.fullmatch(_compact(name)) or _compact(name).isdigit() or _AREA_CELL.search(name)):
             continue
         if not any(_compact(name) == _compact(candidate) for candidate in candidates):
             candidates.append(name)

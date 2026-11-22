@@ -80,8 +80,9 @@ def _check_texts(owner: Unit | Entry, row_ids: set[str], selected: pages.PromptP
         value = getattr(owner, attribute)
         if not isinstance(value, str) or not value or confirmed.get(name) == value:
             continue
-        if any(normalize_source_text(cell) == normalize_source_text(value)
-               for cell in source_texts(source_field, row_ids, values, selected.supply_row_target_values)):
+        condition = owner.values.get("applicationCondition") if isinstance(owner, Entry) else None
+        if matching_text(value, source_texts(source_field, row_ids, values, selected.supply_row_target_values),
+                         source_field, condition) is not None:
             continue
         if source_field == "complexName" and headings is not None and headings.confirms(value, row_ids, values):
             continue
@@ -154,6 +155,56 @@ def normalize_source_text(value: str) -> str:
     return re.sub(r"[\s,，、․·]+", "", value)
 
 
+def matching_text(candidate: str, cells: list[str], field: str, condition: object = None) -> str | None:
+    """표기(candidate)와 같은 원문 칸 표기. 공백·쉼표·가운뎃점 차이는 무시한다. 공급대상은 소득 유무 표기(소득無·소득 없음)도
+    하나로 맞춰 비교하고(canonical_target), 쉼표로 여러 대상을 나열한 칸(대학생, 청년(소득無))이면 괄호 밖 쉼표로 나눈 이름 하나와도
+    맞댄다. 없으면 None이다.
+    소득 유무로 보증금이 나뉘면 대상이 둘이다(사용자 결정). 그래서 가리킨 칸 가운데 소득 구분이 적힌 칸이 있으면, 나열 칸을 나눈
+    조각 가운데 소득 구분이 없는 이름(공급표 '대학생, 청년, 주거급여 수급자'의 청년)은 근거로 쓰지 않는다.
+    공급 단계는 소득 구간을 이름 대신 신청 조건(condition: 소득無)에 적는다. 이름에 소득 구분이 없고 조건이 소득 구분이면
+    이름과 조건을 합친 이름(청년(소득有))으로도 맞대고, 그때는 원문 칸의 이름을 돌려준다."""
+    if field != "target":
+        wanted = normalize_source_text(candidate)
+        return next((cell for cell in cells if normalize_source_text(cell) == wanted), None)
+    income = any(_has_income(cell) for cell in cells)
+    parts = [*cells, *(part for cell in cells for part in _listed_targets(cell)[1:] if not income or _has_income(part))]
+    wanted = [_text_key(candidate)]
+    mark = _INCOME.match(condition.strip()) if isinstance(condition, str) else None
+    if mark and not _has_income(candidate):
+        # 소득 구간을 적은 대상은 소득 구분이 붙은 칸이 먼저다. 통째 칸 '청년'이 함께 있어도 그 대상은 청년(소득有)이다.
+        wanted.insert(0, _text_key(f"{candidate}(소득{mark['mark']})"))
+    for key in wanted:
+        found = next((part for part in parts if part.strip() and _text_key(part) == key), None)
+        if found is not None:
+            return found
+    return None
+
+
+def _listed_targets(cell: str) -> list[str]:
+    """괄호 밖 쉼표로 나눈 대상 이름들(첫 값은 칸 전체). 괄호 안 쉼표(가군(생계·의료급여 수급자, 국가유공자 등))는 나누지 않는다."""
+    parts, depth, current = [], 0, ""
+    for char in cell:
+        if char in "([":
+            depth += 1
+        elif char in ")]":
+            depth = max(depth - 1, 0)
+        if char in ",，、" and depth == 0:
+            parts.append(current.strip())
+            current = ""
+        else:
+            current += char
+    parts.append(current.strip())
+    return [cell, *parts] if len(parts) > 1 else [cell]
+
+
+def _has_income(name: str) -> bool:
+    return bool(_INCOME.match(canonical_target(name)))
+
+
+def _text_key(value: str) -> str:
+    return normalize_source_text(canonical_target(value))
+
+
 def numeric_cell_matches(value: object, cell: str, field: str, unit: str | None = None) -> bool:
     if not isinstance(cell, str) or not isinstance(value, (int, float)) or isinstance(value, bool):
         return False
@@ -161,6 +212,7 @@ def numeric_cell_matches(value: object, cell: str, field: str, unit: str | None 
         expected = Decimal(str(value))
     except InvalidOperation:
         return False
+    cell = tables.type_area_cell(cell, field)
     try:
         actual = Decimal(re.sub(r"[^\d.-]", "", cell).replace(",", ""))
     except InvalidOperation:
@@ -254,3 +306,22 @@ def target_cells(target: object, row_id: str, row_values: dict[str, dict[str, st
 def _group_names(label: str) -> list[str]:
     short = re.sub(r"\s*\(.*\)\s*$", "", label)
     return [label, short] if short else [label]
+
+
+_INCOME = re.compile(r"^(?P<base>.*?)[\s(]*소득\s*\(?\s*(?P<mark>無|有|없음|있음|무|유|×|✕|[xX]|○|◯|[oO])\s*\)?\s*\)?$")
+_INCOME_NONE = {"無", "없음", "무", "×", "✕", "x", "X"}
+
+
+def canonical_target(name: str) -> str:
+    """소득 유무로 나눈 공급대상 이름을 `청년(소득 없음)`·`청년(소득 있음)`으로 맞춘다(사용자 결정: 소득 유무로 나뉘면 대상이 둘).
+    공고마다 소득無·소득(×)·소득 X처럼 달라 단지에 쌓이는 대상 이름이 갈리기 때문이다. 다른 이름은 그대로 둔다."""
+    # 가운뎃점은 공고마다 다른 문자(·․‧・･ㆍ)와 띄어쓰기로 적어(신혼부부․ 한부모가족) 붙여 쓴 ·로 맞춘다.
+    name = re.sub(r"\s*[·․‧・･ㆍ]\s*", "·", name.strip())
+    # 영구임대 대상 표기도 공고마다 「가」군·가군으로 달라 낫표를 뗀다.
+    name = re.sub(r"[「」『』]", "", name)
+    match = _INCOME.match(name)
+    if not match:
+        return name
+    label = "소득 없음" if match["mark"] in _INCOME_NONE else "소득 있음"
+    base = match["base"].strip()
+    return f"{base}({label})" if base else label

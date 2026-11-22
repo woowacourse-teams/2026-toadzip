@@ -46,11 +46,13 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * AI 추출 신청자격과 PDF 보정을 적용한 공급행으로 신청자격을 만든다. 보정을 적용하면 곧바로 공개하므로(사용자 결정) 검토 완료(REVIEWED)로 만든다.
  * 일반 사용자가 받은 입력으로 '한번 지원해 볼 만한지'를 알 수 있는 수준까지만 판정한다(사용자 결정).
- * 조건으로 바꾼 요건만 판정하고, 그 밖의 요건(기타: 청약통장·세대원 등재·추천 등, 원문에서 문구를 찾지 못한 요건, 비운 숫자·
+ * 조건으로 바꾼 요건만 판정하고, 그 밖의 요건(기타: 청약통장·세대원 등재·추천 등, 원문에서 문구를 찾지 못한 요건,
+ * 자동 공개에서 원문 대조로 뜻을 확인하지 못한 요건, 비운 숫자·
  * 없는 소득 기준표·읽지 못한 지역·본인 소득처럼 바꾸지 못한 요건)은 판정을 막지 않는 '공고문에서 확인할 자격' 목록으로 근거와 함께 보인다.
  * 워커가 판정에 쓸 요건을 잃었다고 표시한 요건(UNRESOLVED: 경로를 나누지 못한 공고의 경로별 요건, 모델이 빠뜨린 요건)만
  * 판정을 막는 직접 확인으로 둔다. 목록으로 돌리면 남은 요건만으로 지원 가능이 되기 때문이다.
@@ -90,18 +92,34 @@ public final class ExtractedEligibilityDraft {
     /** 출산자녀 수별 가산 비율: "2인 이상 20%", "1인 10% 가산", "1명당 10%p". */
     private static final Pattern CHILDBIRTH_TIER = Pattern.compile("(\\d)\\s*(?:인|명)\\s*(당)?\\s*(이상)?[^\\d%]{0,10}?(\\d{1,3})\\s*(?:%|퍼센트)");
 
+    private static final Pattern DANGLING_REFERENCE = Pattern.compile(
+            "(?:아래|다음)(?:의|와 같은)?\\s*(?:어느|각\\s*[호목]|중\\s*하나|사항|요건|경우)");
+    private static final Pattern WIDENING = Pattern.compile("가능|신청할\\s*수\\s*있");
+    private static final Pattern RESTRICTING = Pattern.compile("불가|없|제외|제한|아니");
     private static final Set<String> EARLIER_UNRESOLVED_TEXTS = Set.of(
             "모델 응답에서 빠진 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.",
             "신청 대상마다 다른 요건이 있습니다. 공고문에서 신청자격을 확인해 주세요.");
 
-    /** 추출 PDF와 그 공고의 현재 공급행. incomeTables는 "기준표 종류:연도" → 기준표 ID다. */
+    /**
+     * 추출 PDF와 그 공고의 현재 공급행. incomeTables는 "기준표 종류:연도" → 기준표 ID다.
+     * judged는 근거 경로(eligibility.targets[0].requirements[1])로 그 요건을 판정에 써도 되는지다. 관리자 보정은 모든 요건을 쓰고,
+     * 자동 공개는 원문 대조로 뜻을 확인하지 못한 요건을 판정하지 않고 '공고문에서 확인할 자격' 목록으로 둔다.
+     */
     public record Source(
             LocalDate referenceDate,
             Document document,
             List<Unit> units,
             ExtractedEligibility eligibility,
             Map<String, Long> incomeTables,
-            Function<String, List<String>> regionCodes) {}
+            Function<String, List<String>> regionCodes,
+            Predicate<String> judged) {
+
+        /** 모든 요건을 판정에 쓰는 관리자 보정·미리보기용. */
+        public Source(LocalDate referenceDate, Document document, List<Unit> units, ExtractedEligibility eligibility,
+                Map<String, Long> incomeTables, Function<String, List<String>> regionCodes) {
+            this(referenceDate, document, units, eligibility, incomeTables, regionCodes, path -> true);
+        }
+    }
 
     public record Document(String fileName, String downloadUrl, int pageCount, String sha256) {}
 
@@ -207,7 +225,7 @@ public final class ExtractedEligibilityDraft {
         List<Route> routes = routes(unmatched, openOnly);
         Scope common = new Scope("common", new GuidanceTarget(TargetScope.ANNOUNCEMENT, null, null),
                 source.eligibility().common().evidencePath());
-        List<ProfileCheck> commonChecks = checks(source.eligibility().common().requirements(), common);
+        List<ProfileCheck> commonChecks = checks(source.eligibility().common().requirements(), common, List.of());
         List<String> commonQualifications = names(source.eligibility().common().qualifications());
         if (!routes.isEmpty() && !commonQualifications.isEmpty()) {
             common.direct.add("다음 자격 중 하나: " + String.join(", ", commonQualifications));
@@ -218,6 +236,7 @@ public final class ExtractedEligibilityDraft {
         List<ApplicationOption> options = new ArrayList<>();
         List<Scope> scopes = new ArrayList<>();
         for (Route route : routes) {
+            boolean routeConnected = false;
             for (Alternative alternative : alternatives(route, routes.size() == 1 && route.name() == null)) {
                 String pathId = "path-" + (paths.size() + 1);
                 List<ApplicationOption> connected = options(pathId, target -> wants(route, target));
@@ -225,9 +244,10 @@ public final class ExtractedEligibilityDraft {
                     unmatched.add(alternative.label());
                     continue;
                 }
+                routeConnected = true;
                 Scope scope = new Scope(pathId, new GuidanceTarget(TargetScope.PATH, pathId, null),
                         route.group().evidencePath());
-                List<ProfileCheck> checks = checks(route.group().requirements(), scope);
+                List<ProfileCheck> checks = checks(route.group().requirements(), scope, commonChecks);
                 if (route.name() != null && checks.isEmpty() && alternative.qualificationIds().isEmpty()
                         && scope.direct.isEmpty()) {
                     // 경로 이름이 곧 자격인데 요건을 하나도 못 뽑은 경로다. 공통 조건만으로 지원 가능이 되지 않게 직접 확인을 둔다.
@@ -239,9 +259,13 @@ public final class ExtractedEligibilityDraft {
                 options.addAll(connected);
                 scopes.add(scope);
             }
+            if (!routeConnected) {
+                listUnmatched(route, common);
+            }
         }
-        // 경로를 하나도 잇지 못했으면 대상 이름이 어긋난 것이므로 공통 요건 경로로 덮지 않고 아래에서 초안을 막는다.
-        List<Target> uncovered = paths.isEmpty() ? List.of() : uncoveredTargets(routes);
+        // 경로를 하나도 잇지 못했어도(대상 이름이 어긋남) 대상마다 공통 요건 경로를 두고 대상에 해당하는지는 직접 확인으로 둔다.
+        // 신청자격을 공개하지 않은 채 검수를 기다리게 하지 않는다. 어긋난 이름은 아래 안내로 남는다.
+        List<Target> uncovered = uncoveredTargets(routes);
         for (Target target : uncovered) {
             // 이어지는 경로가 없는 대상(표기 '일반' 등)도 공고 전체의 공통 요건(무주택세대구성원·소득·자산 등)으로 판정한다.
             // 빠뜨리면 그 대상의 사용자는 다른 대상의 경로로만 판정되어 공고 전체가 미충족으로 보인다.
@@ -527,6 +551,12 @@ public final class ExtractedEligibilityDraft {
         }
 
         private void list(String item, String evidenceId) {
+            // "아래의 어느 하나에 해당하는 경우에는 … 신청 가능"처럼 가리키는 내용이 빠진 채 자격을 넓히기만 하는 조각은
+            // 읽어도 알 수 없고 빠져도 사용자가 손해 보지 않아 보이지 않는다. 신청을 막는 조각("… 신청할 수 없습니다")은 남긴다.
+            if (item.length() <= 80 && DANGLING_REFERENCE.matcher(item).find() && WIDENING.matcher(item).find()
+                    && !RESTRICTING.matcher(item).find()) {
+                return;
+            }
             listed.add(item);
             if (evidenceId != null) {
                 listedEvidence.add(evidenceId);
@@ -564,8 +594,29 @@ public final class ExtractedEligibilityDraft {
         }
     }
 
-    private List<ProfileCheck> checks(List<Requirement> requirements, Scope scope) {
+    /**
+     * 어느 공급대상과도 잇지 못한 경로의 요건·자격. 판정하지 않지만 사용자 화면에서 사라지지 않게 공고 전체의
+     * '신청 전에 확인할 자격' 목록으로 둔다. 잇지 못한 경로 이름은 검토 안내로도 남는다.
+     */
+    private void listUnmatched(Route route, Scope common) {
+        String prefix = "'" + displayName(firstText(route.name(), "이름 없는 신청 대상")) + "' 대상 · ";
+        for (Requirement requirement : route.group().requirements()) {
+            common.list(prefix + listedText(requirement, rule(requirement).orElse(null),
+                            firstText(requirement.asWritten(), requirement.kind())),
+                    evidenceIds.get(requirement.evidencePath()));
+        }
+        for (ExtractedEligibility.Qualification qualification : route.group().qualifications()) {
+            common.list(prefix + qualification.exactName(), evidenceIds.get(qualification.evidencePath()));
+        }
+    }
+
+    /** 판정하지 않고 목록으로 보일 요건. rule은 원문 대조 없이 바꿔 본 판정 조건으로, 같은 조건을 이미 판정하면 목록에서 뺀다. */
+    private record Unjudged(ProfileRule rule, String text, String evidenceId) {}
+
+    /** inherited는 이 범위보다 먼저 모든 경로에 적용되는 조건(공통 조건)이다. 같은 판정 조건은 다시 두지 않는다. */
+    private List<ProfileCheck> checks(List<Requirement> requirements, Scope scope, List<ProfileCheck> inherited) {
         List<ProfileCheck> checks = new ArrayList<>();
+        List<Unjudged> unjudged = new ArrayList<>();
         for (Requirement requirement : requirements) {
             String text = firstText(requirement.asWritten(), requirement.kind());
             String evidence = evidenceIds.get(requirement.evidencePath());
@@ -574,11 +625,17 @@ public final class ExtractedEligibilityDraft {
                 scope.direct.add(text);
                 continue;
             }
-            Optional<ProfileRule> rule = evidence == null ? Optional.empty() : rule(requirement);
+            Optional<ProfileRule> rule = Optional.empty();
+            if (evidence != null && source.judged().test(requirement.evidencePath())) {
+                rule = rule(requirement);
+            }
             if (rule.isEmpty()) {
-                // 원문에서 문구를 찾지 못했거나, 입력으로 판정할 수 없거나, 조건으로 바꾸지 못한 요건이다.
-                String kindName = KIND_NAMES.get(requirement.kind());
-                scope.list(kindName == null ? text : kindName + ": " + text, evidence);
+                // 원문에서 문구를 찾지 못했거나, 원문 대조로 뜻을 확인하지 못했거나, 입력으로 판정할 수 없거나, 조건으로 바꾸지 못한 요건이다.
+                // 문구는 가산 전 기본 조건으로 쓰고(가산은 문구에 따로 적는다), 중복 비교는 가산까지 넣은 조건으로 한다.
+                ProfileRule base = rule(requirement).orElse(null);
+                ProfileRule candidate = base == null ? null
+                        : withAdjustments(base, requirement.adjustments(), new ArrayList<>());
+                unjudged.add(new Unjudged(candidate, listedText(requirement, base, text), evidence));
                 continue;
             }
             List<Adjustment> uncomputed = new ArrayList<>();
@@ -588,10 +645,87 @@ public final class ExtractedEligibilityDraft {
                 scope.list(adjustmentNames(uncomputed) + " 가구는 " + KIND_NAMES.getOrDefault(requirement.kind(), "이")
                         + " 기준이 더 높아요. 얼마나 높은지는 공고문에서 확인해 주세요.", evidence);
             }
+            // 판정 조건이 같은 요건(공고일 현재 무주택, 입주 때까지 무주택 유지)은 한 줄로 두고 근거만 더한다.
+            // 공통 조건과 같은 경로 요건은 모든 경로가 이미 공통 조건으로 판정하므로 두지 않는다.
+            if (inherited.stream().anyMatch(check -> check.rule().equals(judged))) {
+                continue;
+            }
+            Optional<ProfileCheck> same = checks.stream().filter(check -> check.rule().equals(judged)).findFirst();
+            if (same.isPresent()) {
+                ProfileCheck first = same.get();
+                checks.set(checks.indexOf(first), new ProfileCheck(first.id(), first.label(), first.rule(),
+                        first.appliesWhen(), first.fallbackGuidanceId(),
+                        Stream.concat(first.evidenceIds().stream(), Stream.of(evidence)).distinct().toList()));
+                continue;
+            }
             checks.add(new ProfileCheck(scope.id + "-" + (checks.size() + 1), limit(text, 300), judged, null,
                     EligibilityContentValidator.needsFallback(judged) ? scope.fallbackId() : null, List.of(evidence)));
         }
+        // 이미 같은 조건으로 판정하는 요건(공고일 현재 무주택을 판정하는데 '입주 때까지 무주택 유지'를 확인하지 못함)은
+        // 목록에 다시 두지 않는다. 사용자에게 같은 말이 두 번 보이지 않게 한다.
+        for (Unjudged item : unjudged) {
+            boolean judgedElsewhere = item.rule() != null && Stream.concat(inherited.stream(), checks.stream())
+                    .anyMatch(check -> check.rule().equals(item.rule()));
+            if (!judgedElsewhere) {
+                scope.list(item.text(), item.evidenceId());
+            }
+        }
         return checks;
+    }
+
+    /**
+     * 목록 문구. 판정 조건으로 바꿀 수 있는 무주택·자동차·자산 요건은 원문 조각 대신 그 조건으로 짧게 쓴다.
+     * 원문 대조를 통과하지 못한 값일 수 있어, 금액은 원문에 같은 금액이 적혀 있을 때만 쓰고 가산은 받는 가구를 함께 적는다.
+     * 그 밖에는 '종류: 원문'이다. 관리자 화면이 이 꼴로 워커 경고를 항목에 붙인다.
+     */
+    private static String listedText(Requirement requirement, ProfileRule candidate, String text) {
+        String kindName = KIND_NAMES.get(requirement.kind());
+        String raw = kindName == null ? text : kindName + ": " + text;
+        if (candidate == null || candidate.field() == null) {
+            return raw;
+        }
+        String written = compact(requirement.asWritten()).replace(",", "");
+        boolean household = switch (candidate.field()) {
+            case FAMILY_OWNS_HOUSE, FAMILY_OWNS_CAR, FAMILY_TOTAL_ASSETS, FAMILY_CAR_VALUE -> true;
+            default -> false;
+        };
+        return switch (candidate.field()) {
+            case FAMILY_OWNS_HOUSE, APPLICANT_OWNS_HOUSE -> household ? "세대원 모두 무주택" : "본인 무주택";
+            case FAMILY_OWNS_CAR, APPLICANT_OWNS_CAR -> household ? "세대원 모두 자동차 없음" : "본인 자동차 없음";
+            case FAMILY_CAR_VALUE, APPLICANT_CAR_VALUE, FAMILY_TOTAL_ASSETS, APPLICANT_ASSETS -> {
+                Long maximum = candidate.maximum();
+                if (maximum == null || maximum % 10_000 != 0
+                        || !Pattern.compile("(?<!\\d)" + maximum / 10_000 + "(?!\\d)").matcher(written).find()) {
+                    yield raw;
+                }
+                boolean car = candidate.field() == ProfileField.FAMILY_CAR_VALUE
+                        || candidate.field() == ProfileField.APPLICANT_CAR_VALUE;
+                String owner = household ? "세대원이" : "본인이";
+                // 가산이 있으면 적은 금액은 기본 기준이다. 누가 더 높은 기준을 받는지 함께 적는다.
+                String raised = requirement.adjustments().isEmpty() ? ""
+                        : " (" + adjustmentNames(requirement.adjustments()) + " 가구는 기준이 더 높아요)";
+                if (!car) {
+                    yield (household ? "세대원 자산을 모두 합쳐 " : "본인 자산을 모두 합쳐 ") + won(maximum) + " 이하" + raised;
+                }
+                // '개별 자동차가액'은 차를 한 대씩 따진다. 합계로 읽히지 않게 풀어 쓴다.
+                yield (written.contains("개별")
+                        ? owner + " 가진 자동차는 한 대씩 따져 모두 가액이 " + won(maximum) + " 이하"
+                        : owner + " 가진 자동차 가액이 " + won(maximum) + " 이하") + raised;
+            }
+            default -> raw;
+        };
+    }
+
+    /** 45,420,000 → "4,542만원", 345,000,000 → "3억 4,500만원". 만원 단위로 떨어지지 않으면 원 단위로 쓴다. */
+    private static String won(long krw) {
+        if (krw % 10_000 != 0) {
+            return String.format("%,d원", krw);
+        }
+        long man = krw / 10_000;
+        if (man < 10_000) {
+            return String.format("%,d만원", man);
+        }
+        return man % 10_000 == 0 ? (man / 10_000) + "억원" : String.format("%d억 %,d만원", man / 10_000, man % 10_000);
     }
 
     private static String adjustmentNames(List<Adjustment> adjustments) {

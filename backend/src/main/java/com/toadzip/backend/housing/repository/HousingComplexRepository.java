@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface HousingComplexRepository extends JpaRepository<HousingComplex, Long> {
+    List<HousingComplex> findByNameAndProviderInAndAdminDeletedFalse(String name, List<String> providers);
+
     /**
      * 단지명은 공백·'-'와 블록 접미어(BL·블록·블럭)를 빼고도 비교한다. 공고문은 "동탄2 A63BL", 단지는 "화성동탄2 A63블록"처럼
      * 블록 표기가 달라서다. 키워드 패턴의 이스케이프(!)는 그대로 남는다.
@@ -66,4 +68,13 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
             ORDER BY complex.id
             """)
     List<HousingComplex> findAllActiveByRoadName(@Param("provinceCode") String provinceCode, @Param("road") String road);
+
+    /** 도로명이 들어간 휴지통 밖 단지. 시도 코드 없이 주소 글자만 있을 때 쓴다. 같은 (시도, 도로명, 건물번호)인지는 호출한 쪽이 다시 확인한다. */
+    @Query("""
+            SELECT complex
+            FROM HousingComplex complex
+            WHERE complex.adminDeleted = false AND complex.address.roadAddress LIKE CONCAT('%', :road, '%')
+            ORDER BY complex.id
+            """)
+    List<HousingComplex> findAllActiveByRoad(@Param("road") String road);
 }

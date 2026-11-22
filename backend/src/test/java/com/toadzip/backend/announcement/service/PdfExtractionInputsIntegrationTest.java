@@ -14,6 +14,8 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import jakarta.persistence.EntityManager;
+import com.toadzip.backend.housing.domain.RentalType;
+import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
@@ -49,6 +51,17 @@ class PdfExtractionInputsIntegrationTest {
                 new PdfExtractionInput.SourceSupplyRow("GH", 0, "GH:9101:다산:33A", "다산", "33A", "", "", "", ""),
                 new PdfExtractionInput.SourceSupplyRow("GH", 1, "GH:9101:다산:36A", "다산", "36A 청년", "36.8", "", "60",
                         ""));
+    }
+
+    @Test
+    void 관리자_작업과_자동_작업_모두_공고의_임대유형을_담는다() {
+        // 워커가 형명 끝 신청자 표기를 공급대상으로 나눌 때 표기 없는 행을 '일반'으로 부를지 이 값으로 정한다.
+        Announcement announcement = announcement("LH:9103", AgencyCode.LH);
+        ReflectionTestUtils.setField(announcement, "supplyType", RentalType.NATIONAL_RENTAL);
+        announcements.saveAndFlush(announcement);
+
+        assertThat(inputs.read(announcement.getId()).rentalType()).isEqualTo(RentalType.NATIONAL_RENTAL);
+        assertThat(inputs.readBatch(announcement.getId(), 1L).rentalType()).isEqualTo(RentalType.NATIONAL_RENTAL);
     }
 
     @Test

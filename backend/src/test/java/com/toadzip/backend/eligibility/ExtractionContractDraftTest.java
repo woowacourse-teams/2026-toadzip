@@ -19,7 +19,10 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -67,5 +70,30 @@ class ExtractionContractDraftTest {
         assertThat(listed.items()).containsExactly("입주 전까지 주택청약종합저축 가입");
         assertThat(content.paths().getFirst().checks()).extracting(EligibilityContent.ProfileCheck::fallbackGuidanceId)
                 .doesNotContain(listed.id());
+    }
+
+    @Test
+    void 계약_예시에서_원문으로_뜻을_확인하지_못한_요건은_자동_공개가_판정하지_않고_목록으로_둔다() throws Exception {
+        // 워커 테스트가 같은 예시의 경로를 워커가 내는 요건 경로로 확인한다. 두 쪽 경로 형식이 어긋나면 둘 중 하나가 실패한다.
+        JsonMapper json = JsonMapper.builder().build();
+        String extraction = json.readTree(Files.readString(EXAMPLE)).path("json").asString();
+        Set<String> unconfirmed = json.readTree(extraction).path("publicationReview").path("unconfirmedRequirements")
+                .valueStream().map(JsonNode::asString).collect(Collectors.toSet());
+        assertThat(unconfirmed).containsExactly("eligibility.targets[0].requirements[1]");
+
+        EligibilityContent content = ExtractedEligibilityDraft.build(new Source(LocalDate.of(2026, 9, 30),
+                new Document("notice.pdf", "https://apply.lh.or.kr/notice.pdf", 35, "a".repeat(64)),
+                List.of(new Unit("1", "인천부평", "16A", new BigDecimal("16.37"), null, null, "행복주택", List.of(),
+                        List.of(new Target("청년", "무주택세대구성원인 만 19~39세 미혼 청년", 78)))),
+                new ExtractedEligibilityReader(json).read(extraction),
+                Map.of("URBAN_WORKER_MONTHLY_INCOME:2025", 1L), name -> List.of(), path -> !unconfirmed.contains(path)))
+                .content();
+
+        // 청년 경로의 미혼 요건(가족 형태)은 판정 조건에서 빠지고 나이만 남는다.
+        assertThat(content.paths().getFirst().checks()).extracting(check -> check.rule().field())
+                .containsExactly(ProfileField.BIRTH_DATE);
+        EligibilityContent.Guidance listed = content.guidances().stream()
+                .filter(guidance -> guidance.id().equals("list-path-1")).findFirst().orElseThrow();
+        assertThat(listed.items()).containsExactlyInAnyOrder("가족 형태: 혼인 중이 아닐 것", "입주 전까지 주택청약종합저축 가입");
     }
 }

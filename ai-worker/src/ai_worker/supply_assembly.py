@@ -11,8 +11,8 @@ from dataclasses import dataclass, field as data_field, replace
 from ai_worker import checks, pages, tables
 from ai_worker.checks import deduplicate
 from ai_worker.source_check import (
-    Headings, check_source, count_cell, count_or_dash, normalize_source_text, numeric_cell_matches,
-    recruitment_count, source_cell_matches, source_texts, target_cells,
+    Headings, canonical_target, check_source, count_cell, count_or_dash, matching_text, normalize_source_text,
+    numeric_cell_matches, recruitment_count, source_cell_matches, source_texts, target_cells,
 )
 from ai_worker.supply_sheet import (
     AMOUNT_FIELDS, AREA_FIELDS, COUNT_KINDS, TOTAL, Cite, Entry, Finding, HousingType, Shared, SupplySheet, Unit,
@@ -20,7 +20,8 @@ from ai_worker.supply_sheet import (
 
 _ROW_FIELDS = (TOTAL, *AREA_FIELDS)
 _TARGET_VALUE_FIELDS = ("supplyHouseholdCount", "reserveCount", *AMOUNT_FIELDS)
-_RESERVE_MISSING = "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
+# 표에 예비자 수가 없다. 공개 판정(publication)은 입주자를 뽑는 신규 모집 공고에서 이 미확인을 보류 사유로 세지 않는다.
+RESERVE_MISSING = "이번 공고의 예비자 모집수를 표에서 확인하지 못함"
 
 
 @dataclass(eq=False)
@@ -157,7 +158,8 @@ class _Assembly:
         # 대상 열이 없는 표에서 모델이 target을 빠뜨려도 대상 값(예비자 수·보증금)이 있으면 대상 하나다. 버리면 그 값이 사라진다.
         has_target = item.targeted or any(item.values.get(name) is not None
                                           for name in (*_TARGET_VALUE_FIELDS, "applicationCondition"))
-        label, label_reason = _source_text(item.target, "target", row_ids, selected, "", required=has_target) \
+        label, label_reason = _source_text(item.target, "target", row_ids, selected, "", required=has_target,
+                                           condition=item.values.get("applicationCondition")) \
             if has_target else (None, None)
         label = _with_supply_type_qualifier(label, housing_type or item.housing_type, row_ids, selected)
 
@@ -201,7 +203,7 @@ class _Assembly:
             return
         # reserveCount는 이번 공고의 예비자 모집수라는 제품 계약의 핵심 값이다.
         if entry.values["reserveCount"] is None and label:
-            self._find(entry, "reserveCount", _RESERVE_MISSING)
+            self._find(entry, "reserveCount", RESERVE_MISSING)
         for name, reason in item.unresolved:
             if name in entry.values:
                 self._find(entry, name, reason)
@@ -620,7 +622,8 @@ class _Assembly:
                     and normalize_source_text(values.get("houseType", "")) != wanted:
                 continue
             try:
-                areas.add(float(str(values.get("exclusiveArea", "")).replace(",", "").strip()))
+                areas.add(float(tables.type_area_cell(str(values.get("exclusiveArea", "")), "exclusiveArea")
+                                .replace(",", "").strip()))
             except ValueError:
                 continue
         if not areas and unit.name:
@@ -765,7 +768,7 @@ class _Assembly:
         """공통 수량 하나를 싣고, 공통 수량이 대신하는 '예비자 모집수 미확인'을 지운다."""
         self.shared.append(Shared(COUNT_KINDS[field], count, owners, page, quote))
         for owner in owners:
-            self._drop(owner, field, _RESERVE_MISSING)
+            self._drop(owner, field, RESERVE_MISSING)
 
     # ---------- 원문 대조 ----------
 
@@ -1040,20 +1043,25 @@ def _group_name(verified: str | None, candidate: object, field: str, row_ids: li
 
 
 
+# 추출이 값을 내지 않았고 원문 표에도 그 열의 값이 없다(열 자체가 없는 표 포함). 공개 판정(publication)이 이 사유로 가른다.
+NO_SOURCE_VALUE = "원문 표 행 ID가 없거나 해당 열의 값을 확인하지 못함"
+
+
 def _source_text(candidate: object, field: str, row_ids: list[str], selected: pages.PromptPages,
-                 missing_value: str | None, required: bool = True) -> tuple[str | None, str | None]:
-    """칸 초안의 표기를 같은 의미의 원문 칸에서 확인한 값(표기, 확인하지 못한 사유)."""
+                 missing_value: str | None, required: bool = True,
+                 condition: object = None) -> tuple[str | None, str | None]:
+    """칸 초안의 표기를 같은 의미의 원문 칸에서 확인한 값(표기, 확인하지 못한 사유). condition은 공급대상의 신청 조건이다
+    (소득 구간을 이름 대신 조건에 적은 대상, source_check.matching_text)."""
     source_values = source_texts(field, row_ids, selected.supply_row_values, selected.supply_row_target_values)
     if isinstance(candidate, str) and candidate.strip():
-        matched = next((value for value in source_values
-                        if normalize_source_text(value) == normalize_source_text(candidate)), None)
+        matched = matching_text(candidate, source_values, field, condition)
         if matched is not None:
             return _normalize_source_display(matched, field), None
         return missing_value, "추출한 값이 같은 의미의 원문 표 열에서 확인되지 않음"
     if len(source_values) == 1:
         return _normalize_source_display(source_values[0], field), None
     if required:
-        return missing_value, "원문 표 행 ID가 없거나 해당 열의 값을 확인하지 못함"
+        return missing_value, NO_SOURCE_VALUE
     if len(source_values) > 1:
         return missing_value, "여러 원문 표 값이 있어 하나로 결정하지 못함"
     return missing_value, None
@@ -1118,7 +1126,10 @@ def _quotes(row_ids: list[str], selected: pages.PromptPages) -> list[tuple[int, 
 
 
 def _normalize_source_display(value: str, field: str) -> str:
-    """PDF 줄바꿈 때문에 대상 이름 괄호 주변에 생긴 추출 공백을 정리하고, 소득 유무 표기를 하나로 맞춘다."""
+    """PDF 줄바꿈 때문에 대상 이름 괄호 주변에 생긴 추출 공백을 정리하고, 소득 유무 표기를 하나로 맞춘다.
+    단지명은 글자마다 띄어 읽힌 이름(논 현 4 단 지)을 붙인다."""
+    if field == "complexName":
+        return _joined_spaced_letters(value)
     if field != "target":
         return value
     value = re.sub(r"\s+", " ", value).strip()
@@ -1127,23 +1138,14 @@ def _normalize_source_display(value: str, field: str) -> str:
     return canonical_target(re.sub(r"\s+\)", ")", value))
 
 
-_INCOME = re.compile(r"^(?P<base>.*?)[\s(]*소득\s*\(?\s*(?P<mark>無|有|없음|있음|무|유|×|✕|[xX]|○|◯|[oO])\s*\)?\s*\)?$")
-_INCOME_NONE = {"無", "없음", "무", "×", "✕", "x", "X"}
-
-
-def canonical_target(name: str) -> str:
-    """소득 유무로 나눈 공급대상 이름을 `청년(소득 없음)`·`청년(소득 있음)`으로 맞춘다(사용자 결정: 소득 유무로 나뉘면 대상이 둘).
-    공고마다 소득無·소득(×)·소득 X처럼 달라 단지에 쌓이는 대상 이름이 갈리기 때문이다. 다른 이름은 그대로 둔다."""
-    # 가운뎃점은 공고마다 다른 문자(·․‧・･ㆍ)와 띄어쓰기로 적어(신혼부부․ 한부모가족) 붙여 쓴 ·로 맞춘다.
-    name = re.sub(r"\s*[·․‧・･ㆍ]\s*", "·", name.strip())
-    # 영구임대 대상 표기도 공고마다 「가」군·가군으로 달라 낫표를 뗀다.
-    name = re.sub(r"[「」『』]", "", name)
-    match = _INCOME.match(name)
-    if not match:
-        return name
-    label = "소득 없음" if match["mark"] in _INCOME_NONE else "소득 있음"
-    base = match["base"].strip()
-    return f"{base}({label})" if base else label
+def _joined_spaced_letters(name: str) -> str:
+    """좁은 칸의 단지명이 글자 사이 공백과 함께 읽히면(인천논현 '논 현 4 단 지') 붙여 쓴다(논현4단지). 한글 한 글자씩인
+    조각이 둘 이상이고 나머지가 숫자뿐일 때만이다. 띄어 쓴 낱말(수원 당수 1단지)은 그대로 둔다."""
+    parts = name.split()
+    if len(parts) > 1 and all(len(part) == 1 or part.isdigit() for part in parts) \
+            and sum(1 for part in parts if re.fullmatch(r"[가-힣]", part)) >= 2:
+        return "".join(parts)
+    return name
 
 
 def add_complex_name(names: list[str], name: object) -> None:

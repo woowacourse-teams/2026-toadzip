@@ -267,6 +267,7 @@
 .complexDecision header span { font-size:var(--ds-text-caption); color:var(--pdf-quiet-text); }
 .complexDecision :global(.complex-picker) { margin:0; }
 .decided { margin:0; font-weight:var(--ds-weight-strong); }
+.decidedRow { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--ds-space-2); overflow-wrap:anywhere; }
 .checks ul { margin:0; padding-left:1.2em; }
 .subtypeLinks ul { margin:0; padding-left:var(--ds-space-4); font-size:var(--ds-text-caption); }
 .subtypeLinks li { line-height:1.7; margin-block:var(--ds-space-1); }

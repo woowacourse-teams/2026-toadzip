@@ -3,7 +3,7 @@ import time
 import pymupdf
 import pytest
 
-from ai_worker import pages, tables
+from ai_worker import pages, tables, stage_prompts
 from ai_worker.extraction import PermanentError
 from conftest import COVER, NOTICE, RENT, RENT_CELLS, SUPPLY, text_pdf as pdf
 
@@ -473,3 +473,13 @@ def test_money_unit_written_just_above_a_table_is_the_unit_of_money_columns_with
     values = table.rows[1].values
     assert table.money_unit == unit
     assert (values.get("rentalDepositUnit"), values.get("monthlyRentUnit")) == (unit, "원")
+
+
+def test_block_heading_tables_have_no_column_candidates_and_the_notice_stage_is_told_so():
+    # 블록 제목 아래 표를 둔 여러 단지 공고는 단지명 열이 없다. 본문 단계는 표 밖(건설위치·제목)에서 단지마다 개요를 만든다.
+    with pages.open_pdf(block_heading_tables_pdf()) as document:
+        split = pages.prompt_pages(document, [1], later())
+
+    assert split.supply_tables and not split.table_structure_fallback
+    assert split.complex_candidates == []
+    assert "[공급 표에서 읽은 단지명 후보]\n(후보 없음: 공급 표에 단지명 열이 없음)" in stage_prompts.notice_prompt(split)

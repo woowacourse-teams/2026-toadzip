@@ -73,6 +73,7 @@ public class AnnouncementJsonCorrectionService {
     private final NotificationOutboxRepository notificationOutbox;
     private final AnnouncementHousingComplexRepository links;
     private final HousingComplexRepository complexes;
+    private final AnnouncementComplexNames complexNames;
 
     public Workspace workspace(long id) {
         find(id);
@@ -92,6 +93,7 @@ public class AnnouncementJsonCorrectionService {
         var announcement = announcements.findByIdForUpdate(id).orElseThrow(AnnouncementNotFoundException::new);
         var request = apply.request();
         housingTypes.lockComplexes(request.correction().sheet(), request.housingTypeValues());
+        complexNames.lock(request.correction().sheet());
         var plan = prepare(id, request);
         if (!plan.preview().confirmationToken().equals(apply.confirmationToken())) {
             throw new AdminDataConflictException("변경안이나 연결 후보가 달라졌습니다. 다시 미리보기 하세요.");
@@ -112,6 +114,7 @@ public class AnnouncementJsonCorrectionService {
         if (!plan.preview().fields().isEmpty()) {
             announcement.reviseByAdmin(incoming(announcement, plan.metadata()));
         }
+        complexNames.apply(plan.renames(), id, actor);
         announcement.recordAdminDocumentReview();
         writeEvents(announcement, plan.preview().schedules());
         writeAttachments(announcement, plan.preview().attachments());
@@ -127,6 +130,7 @@ public class AnnouncementJsonCorrectionService {
         audit.put("source", request.document().source());
         audit.put("fields", request.fields());
         if (!plan.preview().housingTypes().isEmpty()) { audit.put("housingTypes", plan.preview().housingTypes()); }
+        if (!plan.renames().isEmpty()) { audit.put("complexRenames", plan.renames()); }
         var change = changes.saveAndFlush(new AdminDataChange("ANNOUNCEMENT", id, "CORRECT_FROM_PDF", actor,
                 json.writeValueAsString(Map.of("detail", plan.before().detail(), "events", plan.before().events(),
                         "sheet", plan.before().supply().sheet())), json.writeValueAsString(audit)));
@@ -192,8 +196,10 @@ public class AnnouncementJsonCorrectionService {
             verifyLinkedToComplex(planned);
         }
         // 공고문과 지금 값이 같으면 거절하지 않고 '변경 없음'으로 끝낸다. 적용도 아무것도 쓰지 않는다(사용자 결정).
+        // 공고에 연결한 기존 단지의 이름을 공고의 단지명으로 맞춘다. 공고 값과 같은지 확인한 보정도 이름이 다르면 바꾼다.
+        var renames = complexNames.plan(find(id), planned);
         boolean unchanged = !publishes && fieldChanges.isEmpty() && supply == null && eventChanges.isEmpty()
-                && attachmentChanges.isEmpty() && typeChanges.isEmpty()
+                && attachmentChanges.isEmpty() && typeChanges.isEmpty() && renames.isEmpty()
                 && !housingTypes.advancesObservation(postedDate, supplyPlan, request.housingTypeValues());
         if (find(id).isPublished()) {
             warnings.add("공급표를 보내면 그 공급표에 없는 주택형·공급대상은 지우고, JSON에 없는 일정·첨부파일은 유지합니다. 새 공고·신규 공고 알림을 만들지 않습니다.");
@@ -203,14 +209,15 @@ public class AnnouncementJsonCorrectionService {
         if (before.detail().scheduleReviewed()) {
             warnings.add("단지·순위별로 확인된 접수 일정은 유지합니다. JSON의 일반 일정은 해당 확인 기록을 대신하지 않습니다.");
         }
+        warnings.addAll(complexNames.warnings(renames));
         if (request.document().unresolvedFields() != null && !request.document().unresolvedFields().isEmpty()) {
             warnings.add("추출 자료에 미확인 항목이 있습니다. 미확인 값은 적용하지 말고 원문을 다시 확인하세요.");
         }
         String supplyToken = "";
         if (supply != null) { supplyToken = supply.confirmationToken(); }
         String token = hash(List.of(request, fieldChanges, eventChanges, attachmentChanges, supplyToken, typeChanges,
-                publishes));
-        return new Prepared(before, metadata, supplyPlan, new Preview(token, fieldChanges, supply,
+                publishes, renames));
+        return new Prepared(before, metadata, supplyPlan, renames, new Preview(token, fieldChanges, supply,
                 eventChanges, attachmentChanges, typeChanges, List.copyOf(typeWarnings), warnings, publishes, unchanged));
     }
 
@@ -439,5 +446,5 @@ public class AnnouncementJsonCorrectionService {
 
     private String hash(Object value) { return importJson.hash(json.writeValueAsString(value)); }
     private record Prepared(Workspace before, AdminAnnouncementUpdateRequest metadata, SupplySheetPlan supply,
-            Preview preview) { }
+            List<AnnouncementComplexNames.Rename> renames, Preview preview) { }
 }

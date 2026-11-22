@@ -247,3 +247,17 @@ def test_eligibility_path_without_supply_target_links_every_target_even_if_its_n
 
     assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
         ["신혼부부·한부모가족", "신혼부부·한부모가족(주거약자용)"], ["신혼부부·한부모가족", "신혼부부·한부모가족(주거약자용)"]]
+
+
+def test_eligibility_path_links_both_income_split_targets_of_its_supply_target():
+    """소득 유무로 나뉜 공급대상(청년(소득 없음)·청년(소득 있음))은 둘 다 신청자격 경로 '청년'의 공급대상이다."""
+    supply, sheet, notice, _ = _condition_stages([], [
+        ("청년(소득 없음)", None), ("청년(소득 있음)", None), ("고령자", None)], [])
+    group = {"requirements": [], "qualifications": [], "summary": None}
+    data = {"common": dict(group), "exclusions": [], "targets": [
+        {"target": "청년", "supplyTarget": "청년", **group}]}
+
+    tree, _ = merge.merge(supply, sheet, notice, Extracted(data))
+
+    assert [target["supplyTargets"] for target in tree["data"]["eligibility"]["targets"]] == [
+        ["청년(소득 없음)", "청년(소득 있음)"]]

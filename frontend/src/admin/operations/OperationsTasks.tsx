@@ -1,3 +1,5 @@
+import { PdfAutoExtractionCard } from './PdfAutoExtractionCard'
+import { PdfPublicationReviews } from './PdfPublicationReviews'
 import { Link } from 'react-router'
 import { processingStages } from '../management/listFilterLabels'
 import { loadTasksOverview } from './api'
@@ -31,6 +33,8 @@ export function OperationsTasks({ revision, onHelp }: { revision: number; onHelp
           <small>처리 중 {operationCount(queue?.running, tasks)} · 가장 오래 기다림 {queue ? operationDuration(queue.oldestWaitSeconds) : '—'} · 최근 24시간 실패 {operationCount(queue?.recentFailed, tasks)}</small></div>
         <Link to="/admin/failures?domain=announcement&category=all" aria-label={`미해결 수집·정제 실패 ${operationCount(tasks.data?.unresolvedFailures, tasks)}`}><span>미해결 수집·정제 실패</span><strong>{operationCount(tasks.data?.unresolvedFailures, tasks)}</strong><small>실패 검토로 이동 →</small></Link>
       </div>
+      <PdfAutoExtractionCard key={`auto-${revision}`} />
+      <PdfPublicationReviews key={revision} />
       <OperationsStatus query={tasks} /><CheckedAt value={tasks.data?.asOf ?? null} />
     </div>
   </section>

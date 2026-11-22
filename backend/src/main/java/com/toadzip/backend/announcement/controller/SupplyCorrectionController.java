@@ -7,7 +7,9 @@ import com.toadzip.backend.announcement.service.SupplyReviewService;
 import com.toadzip.backend.announcement.dto.correction.SupplyReview;
 import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.security.Principal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @AdminManagementApi
@@ -48,6 +51,16 @@ public class SupplyCorrectionController {
     public ApiResponse<SupplyCorrection.Preview> preview(@PathVariable long id,
             @Valid @RequestBody SupplyCorrection.Request request) {
         return new ApiResponse<>(service.preview(id, request));
+    }
+
+    /** PDF 보정 단지 정하기에서 공고 단지 주소와 같은 곳의 기존 단지. 주소는 한두 개(공고문 개요 주소·원천 도로명주소)다. */
+    @GetMapping("/same-address-complexes")
+    public ApiResponse<List<SupplyCorrection.SameAddressComplex>> sameAddressComplexes(@PathVariable long id,
+            @RequestParam("address") List<String> addresses, @RequestParam(required = false) RentalType rentalType) {
+        if (addresses.size() > 2 || addresses.stream().anyMatch(address -> address.isBlank() || address.length() > 500)) {
+            throw new IllegalArgumentException("주소는 500자 이하로 두 개까지 보낼 수 있습니다.");
+        }
+        return new ApiResponse<>(service.sameAddressComplexes(id, addresses, rentalType));
     }
 
     /** 공고 단지 하나의 연결 단지를 관리자가 바꾼다. 그 공고 단지의 공급행도 새 단지로 옮긴다. */

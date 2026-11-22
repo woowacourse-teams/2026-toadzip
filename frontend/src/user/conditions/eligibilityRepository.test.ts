@@ -111,7 +111,7 @@ it('판정을 막지 않는 신청 전 확인 안내를 지원 가능 선택지�
   const view = await createEligibilityRepository(vi.fn<typeof fetch>().mockResolvedValue(response(data))).loadComparison(ref)
   expect(view.types[0].status).toBe('ELIGIBLE')
   expect(view.types[0].guidances).toEqual([expect.objectContaining({ kind: 'REQUIRED_CHECK', title: '공고문에서 확인할 자격',
-    body: '공고문 원문에서 확인\n입주 전까지 주택청약종합저축 가입' })])
+    body: '공고문 원문에서 확인', items: ['입주 전까지 주택청약종합저축 가입'] })])
 })
 
 it('가산 대상처럼 기준이 그대로 적용되지 않은 조건은 기본 기준과 확인 안내를 함께 알린다', async () => {

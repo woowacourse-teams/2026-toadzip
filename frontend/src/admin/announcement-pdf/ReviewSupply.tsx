@@ -14,7 +14,9 @@ import type { TargetGroup } from '../supply/targetGroups'
 import { houseTypesOf, supplyView, targetMatches } from './supplyView'
 import styles from './PdfCorrection.module.css'
 
-export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, warnings = [], savesHousingTypes = true, selected, onSelect, onJump }: { warnings?: string[]
+export function ReviewSupply({ review, workspace, housing, complexes, filter, empty, onChange, onEvidence, warnings = [], savesHousingTypes = true, selected, onSelect, onJump, rentalType }: { warnings?: string[]
+  /** 관리자가 고른 공고의 공급유형(미확정 공고 공개). 단지 정하기의 같은 주소 단지와 새 단지 등록이 쓴다. */
+  rentalType?: string
   /** 검토 항목(data-review-id)으로 이동한다. 상태 배지와 단지 정하기 안내가 쓴다. */
   onJump?: (target: string) => void
   /** 편집 영역에 보일 주택형 번호. 확인 필요 이동·오류 이동이 이 값을 바꾼다. */
@@ -60,7 +62,7 @@ export function ReviewSupply({ review, workspace, housing, complexes, filter, em
       <div id="supply-notices" className={styles.noticeBody} hidden={!noticesOpen}>{notices.map(notice => <div key={notice.key}>{notice.body}</div>)}</div>
     </div>}
     {/* 단지 정하기는 저장 전에 꼭 할 결정이라 접지 않고 단지 영역 맨 위에 둔다. 어느 필터에서도 숨기지 않는다. */}
-    {decisions && <ComplexDecisions review={review} workspace={workspace} only={group?.indexes} onChange={onChange} />}
+    {decisions && <ComplexDecisions review={review} workspace={workspace} only={group?.indexes} rentalType={rentalType} onChange={onChange} />}
     {review.rows.length > 0 && <div className={styles.supplyLayout} data-panel={panelOpen}>
       <SupplyRowList review={review} pending={pending} selected={current} visible={visible} onSelect={onSelect} onJump={onJump} />
       <div className={styles.rowEditor}>{current >= 0 && supplyRow(review.rows[current], current)}

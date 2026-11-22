@@ -24,6 +24,8 @@ _TARGET_NOTATION = re.compile(r"「|\s\(")
 _WHITESPACE = re.compile(r"\s+")
 # PDF 글꼴에 따라 가운뎃점이 여러 글자로 뽑힌다. 모델이 그중 하나로 옮겨도 같은 글로 본다.
 _MIDDLE_DOTS = re.compile(r"[ㆍ․‧•∙・]")
+# 공고문은 연도 앞 따옴표를 섞어 쓰고(‘26, ’26, '26) 모델은 인용하며 다른 모양으로 옮긴다.
+_QUOTE_MARKS = re.compile("[‘’`´]")
 _DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
 
 
@@ -123,15 +125,19 @@ def remap_pages(items: list[dict], pages: list[int], warnings: list[str]) -> lis
 
 def missing_words(quote: str, page_text: str) -> list[str]:
     """quote의 낱말 가운데 쪽 글에 없는 것. 모델은 표 한 줄을 칸 순서대로 이어 인용하는데 PDF 글은 칸을 다른 순서로 뽑기도 해서,
-    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈은 무시한다."""
+    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈, 가운뎃점·따옴표의 모양 차이는 무시한다."""
     compact = compact_text(page_text)
-    return [word for word in _MIDDLE_DOTS.sub("·", quote).split() if word not in compact]
+    return [word for word in quote.split() if _same_marks(word) not in compact]
 
 
 # 같은 쪽 글을 요건마다 다시 줄이지 않게 기억한다. 워커는 오래 떠 있으므로 한 공고의 쪽 수만큼만 기억한다.
 @lru_cache(maxsize=256)
 def compact_text(text: str) -> str:
-    return _MIDDLE_DOTS.sub("·", _WHITESPACE.sub("", text))
+    return _same_marks(_WHITESPACE.sub("", text))
+
+
+def _same_marks(text: str) -> str:
+    return _QUOTE_MARKS.sub("'", _MIDDLE_DOTS.sub("·", text))
 
 
 def _check_quotes(evidence: list[dict], texts: list[str], warnings: list[str]) -> None:
@@ -281,8 +287,9 @@ def missing_housing_types(sheet: dict, row_values: dict[str, dict[str, str]],
 
 def _covered(name: str, extracted: set[str]) -> bool:
     """주택형 칸 값이 결과 주택형 이름과 같거나, 칸에 적은 형마다 결과에 있으면 결과에 있는 것이다.
-    형명 끝의 신청자·용도 괄호(31AS (주거약자용))는 떼고도 맞대 본다(화면이 주택형을 짝짓는 기준과 같다)."""
-    names = dict.fromkeys([name, re.sub(r"\s*\([^)]*\)\s*$", "", name)])
+    형명 끝의 신청자·용도 괄호(31AS (주거약자용))는 떼고도 맞대 본다(화면이 주택형을 짝짓는 기준과 같다). 앞 괄호도 뗀다. 윗행
+    '29 (주거약자)'의 줄바꿈된 표기가 다음 행 칸에 붙어 '(주거약자) 37'로 읽히고, 신청자 표기는 공급대상이 되어 결과 주택형 이름에 없다."""
+    names = dict.fromkeys([name, re.sub(r"\s*\([^)]*\)\s*$", "", name), re.sub(r"^\s*\([^)]*\)\s*", "", name)])
     return any(_type_key(value) in extracted or bool(tokens := _type_tokens(value)) and all(token in extracted for token in tokens)
                for value in names if value)
 

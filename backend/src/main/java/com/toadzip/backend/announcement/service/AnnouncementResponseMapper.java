@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.ApplicantLabels;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.dto.response.ApplicationScheduleResponse;
 import com.toadzip.backend.announcement.dto.response.LhRevisionResponse;
@@ -27,10 +28,13 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.HousingTypeNames;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +90,7 @@ final class AnnouncementResponseMapper {
             LocalDate today
     ) {
         ListAggregate aggregate = aggregate(linkedComplexes, supply.sheet());
-        SupplyComposition supplyComposition = composeSupplyRows(supply.sheet());
+        SupplyComposition supplyComposition = composeSupplyRows(supply.sheet(), announcement.getSupplyType());
         return new AnnouncementDetailResponse(
                 announcement.getId(),
                 announcement.getStatus(),
@@ -233,7 +237,7 @@ final class AnnouncementResponseMapper {
         );
     }
 
-    private SupplyComposition composeSupplyRows(SupplySheet sheet) {
+    private SupplyComposition composeSupplyRows(SupplySheet sheet, RentalType supplyType) {
         List<SupplyRowResponse> responses = new ArrayList<>();
         Set<String> targets = new LinkedHashSet<>();
         for (SupplySheet.Row row : sheet.rows()) {
@@ -247,7 +251,48 @@ final class AnnouncementResponseMapper {
             responses.add(supplyRowResponse(row, sheet, targetResponses));
             cells.stream().filter(cell -> !cell.everyone()).map(SupplySheet.Cell::label).forEach(targets::add);
         }
+        if (targets.isEmpty()) {
+            targets.addAll(applicantsFromTypeNames(sheet.rows(), supplyType));
+        }
         return new SupplyComposition(List.copyOf(responses), List.copyOf(targets));
+    }
+
+    /**
+     * 공급대상을 '전체' 하나로 두고 신청 대상을 형명 끝에 적은 공급표('29'와 '29 (주거약자)'를 따로 둔 행)의 신청 대상. 같은 단지에서
+     * 신청형 키({@link HousingTypeNames#key})가 같은 행끼리 {@link ApplicantLabels}로 읽는다. 어느 행에도 표기가 없으면 비어 있다.
+     */
+    private static Set<String> applicantsFromTypeNames(List<SupplySheet.Row> rows, RentalType supplyType) {
+        Set<String> applicants = new LinkedHashSet<>();
+        if (rows.stream().allMatch(row -> HousingTypeNames.applicant(typeName(row)).isEmpty())) {
+            return applicants;
+        }
+        Map<List<String>, List<String>> siblings = new LinkedHashMap<>();
+        for (SupplySheet.Row row : rows) {
+            siblings.computeIfAbsent(sameTypeKey(row), key -> new ArrayList<>()).add(typeName(row));
+        }
+        boolean generalSupply = supplyType == RentalType.NATIONAL_RENTAL || supplyType == RentalType.PERMANENT_RENTAL;
+        for (SupplySheet.Row row : rows) {
+            String label = ApplicantLabels.of(typeName(row), siblings.get(sameTypeKey(row)), supplyType);
+            if (!label.isEmpty()) {
+                applicants.add(label);
+            } else if (generalSupply) {
+                // 표기 없는 짝 없는 줄('37')은 국민·영구임대의 일반공급이다.
+                applicants.add(ApplicantLabels.GENERAL);
+            } else {
+                // 표기 없는 줄이 누구의 것인지 모르면 일부 대상만 보이지 않고 '공고문 확인'으로 둔다.
+                return new LinkedHashSet<>();
+            }
+        }
+        return applicants;
+    }
+
+    private static List<String> sameTypeKey(SupplySheet.Row row) {
+        String place = row.complex() != null ? "c:" + row.complex().getId() : "n:" + row.sourceComplexName();
+        return List.of(place, HousingTypeNames.key(typeName(row)));
+    }
+
+    private static String typeName(SupplySheet.Row row) {
+        return row.displayTypeName() != null ? row.displayTypeName() : row.sourceHousingTypeName();
     }
 
     private SupplyRowResponse supplyRowResponse(

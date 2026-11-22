@@ -25,7 +25,9 @@ import java.util.stream.Collectors;
  *       면적은 첫 줄 전용면적이다. 고른 주택타입이 있으면 그 이름·면적을, 없으면 줄 면적(전용·공급 각각 처음 값이 있는 줄)을 보이고
  *       정본으로 복사한다. 정본으로 복사하는 주택형(신청형) 이름은 원천 형명이다.</li>
  *   <li>대상: 줄마다 하나(신청 조건 '공고문 참조'). 대상 표기는 원천이 준 표기, 없으면 형명 끝의 신청자 표기다. 신청자 표기가 없으면 한
- *       줄뿐인 공급행은 '전체', 여러 줄이면 형명 원문이고, 같은 표기가 여럿이어도 형명 원문이다. 금액이 없는 한 줄뿐인 공급행은 대상을
+ *       줄뿐인 공급행은 '전체', 여러 줄이면 국민임대·영구임대는 '일반', 그 밖은 함께 온 표기의 나머지('주거약자 외', 표기가
+ *       둘 이상이면 '그 밖의 대상')이고, 같은 표기가
+ *       여럿이면 형명 원문이다. 금액이 없는 한 줄뿐인 공급행은 대상을
  *       두지 않는다('전체' 칸이 모집수를 갖는다).</li>
  *   <li>모집수: 공급행 모집수는 줄 세대수의 합(한 줄이라도 모르면 정하지 않음), 대상 수는 그 줄 세대수다({@link SourceSupplySheet}).</li>
  * </ol>
@@ -119,7 +121,7 @@ public final class AgencySupplySheet {
 
     private static List<SourceSupplySheet.Target> targets(List<AgencySupplyLine> members) {
         Map<String, Long> labelCounts = members.stream().collect(Collectors.groupingBy(
-                line -> applicantLabel(line, members.size()), Collectors.counting()));
+                line -> applicantLabel(line, members), Collectors.counting()));
         List<SourceSupplySheet.Target> targets = new ArrayList<>();
         for (AgencySupplyLine line : members) {
             boolean priced = line.getRentalDeposit() != null && line.getMonthlyRent() != null;
@@ -127,21 +129,20 @@ public final class AgencySupplySheet {
                 continue;
             }
             String label = line.getTargetLabel() != null ? line.getTargetLabel()
-                    : labelCounts.get(applicantLabel(line, members.size())) > 1 ? line.getHousingTypeName()
-                    : applicantLabel(line, members.size());
+                    : labelCounts.get(applicantLabel(line, members)) > 1 ? line.getHousingTypeName()
+                    : applicantLabel(line, members);
             targets.add(new SourceSupplySheet.Target(label, SOURCE_CONDITION, line.getHouseholdCount(), null,
                     new LeaseTerms.Amounts(line.getRentalDeposit(), line.getMonthlyRent(), null), targets.size() + 1));
         }
         return targets;
     }
 
-    /** 형명 끝의 신청자 표기("36형 일반(고령자)" → "고령자"). 없으면 한 줄뿐인 공급행은 '전체', 여러 줄이면 형명 원문이다. */
-    private static String applicantLabel(AgencySupplyLine line, int memberCount) {
-        String applicant = HousingTypeNames.applicant(line.getHousingTypeName());
-        if (!applicant.isEmpty()) {
-            return applicant;
-        }
-        return memberCount == 1 ? ALL : line.getHousingTypeName();
+    /** 형명 끝의 신청자 표기로 읽는 신청 대상({@link ApplicantLabels}). 정할 수 없으면 한 줄뿐인 공급행은 '전체', 아니면 형 이름이다. */
+    private static String applicantLabel(AgencySupplyLine line, List<AgencySupplyLine> members) {
+        String label = ApplicantLabels.of(line.getHousingTypeName(),
+                members.stream().map(AgencySupplyLine::getHousingTypeName).toList(),
+                line.getAnnouncement().getSupplyType());
+        return !label.isEmpty() ? label : members.size() == 1 ? ALL : line.getHousingTypeName();
     }
 
     /** 정본에 쓸 수 있는 공급표 draft와 같은 공급표의 읽기 모델. */

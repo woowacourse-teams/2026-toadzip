@@ -154,6 +154,14 @@ public class AnnouncementComplex {
         return true;
     }
 
+    /**
+     * 기관 원천(LH·GH 공고 상세)이 주소와 함께 알려 준 공고 단지인지. 이런 공고 단지의 이름은 기관이 공고에 적은 단지명이다.
+     * PDF·관리자 보정이 공급표 단지명(공급표 칸의 줄임 표기일 수 있음)으로 만든 공고 단지는 주소가 없다.
+     */
+    public boolean namedBySource() {
+        return roadAddress != null && !roadAddress.isBlank();
+    }
+
     /** 연결된 제품 단지. 연결 단지가 휴지통에 있으면 미연결로 본다. */
     public HousingComplex linkedComplex() {
         if (housingComplex == null || housingComplex.isAdminDeleted()) {

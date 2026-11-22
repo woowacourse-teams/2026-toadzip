@@ -200,13 +200,43 @@ describe('EligibilityComparisonSection', () => {
 
   it('opens evidence pages from rows and guidances', async () => {
     const withEvidence = type('youth', '청년', 'ELIGIBLE', [check('나이', 'SATISFIED', { mine: '만 30세', evidence: { page: 5, location: null, fileName: null } })],
-      { guidances: [{ kind: 'PROCEDURE', title: '중복 신청 불가', body: '한 유형만', evidence: { page: 3, location: null, fileName: null } }] })
+      { guidances: [{ kind: 'PROCEDURE', title: '중복 신청 불가', body: '한 유형만', items: [], evidence: { page: 3, location: null, fileName: null } }] })
     const { onOpenEvidence } = renderSection(context({ loadComparison: vi.fn(async () => happyView([withEvidence])) }))
     fireEvent.click(await screen.findByRole('button', { name: '근거 공고문 5쪽 열기' }))
     expect(onOpenEvidence).toHaveBeenCalledWith({ evidence: { page: 5, location: null, fileName: null }, label: '나이' })
     expect(screen.getByText('신청 절차')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '근거 공고문 3쪽 열기' }))
     expect(onOpenEvidence).toHaveBeenLastCalledWith({ evidence: { page: 3, location: null, fileName: null }, label: '중복 신청 불가' })
+  })
+
+  it('shows each item of a guidance as its own list row', async () => {
+    const listed = type('youth', '청년', 'ELIGIBLE', [check('나이', 'SATISFIED')],
+      { guidances: [{ kind: 'REQUIRED_CHECK', title: '신청 전에 확인할 자격', body: '판정에 넣지 않은 자격이에요.',
+        items: ['세대원이 가진 자동차는 한 대씩 따져 모두 가액이 4,542만원 이하', '외국인은 신청 불가합니다.'], evidence: null }] })
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([listed])) }))
+    const first = await screen.findByText('세대원이 가진 자동차는 한 대씩 따져 모두 가액이 4,542만원 이하')
+    expect(first.tagName).toBe('LI')
+    expect(screen.getByText('외국인은 신청 불가합니다.').tagName).toBe('LI')
+    expect(screen.getByText('판정에 넣지 않은 자격이에요.')).toBeInTheDocument()
+  })
+
+  it('names tabs by housing type when every tab shares one path name, keeping the full name in the panel', async () => {
+    const tabs = ['29', '37'].map((name) => type(name, '신청자격', 'ELIGIBLE', [check('나이', 'SATISFIED')],
+      { units: `증평송산5단지 국민임대 ${name}` }))
+    renderSection(context({ loadComparison: vi.fn(async () => happyView(tabs)) }))
+    const names = (await screen.findAllByRole('tab')).map((tab) => tab.textContent)
+    expect(names[0]).toContain('29형')
+    expect(names[1]).toContain('37형')
+    expect(names.join('')).not.toContain('신청자격')
+    expect(screen.getByText('증평송산5단지 국민임대 29형')).toBeInTheDocument()
+  })
+
+  it('titles the application exclusions without an emoji', async () => {
+    const excluded = type('a', '신청자격', 'UNDETERMINED', [], { exclusions: [{ kind: 'APPLICATION_EXCLUSION', title: '불법전대자 입주자격 제한',
+      body: '4년이 지나지 않으면 선정되지 않아요.', items: [], evidence: null }] })
+    renderSection(context({ loadComparison: vi.fn(async () => happyView([excluded])) }))
+    expect(await screen.findByText('신청 불가능한 특수 경우')).toBeInTheDocument()
+    expect(screen.queryByText(/⚠️/)).not.toBeInTheDocument()
   })
 
   it('shows the preparing notice for NOT_STRUCTURED', async () => {

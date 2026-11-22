@@ -66,6 +66,63 @@ class AnnouncementSuppliesIntegrationTest {
     }
 
     @Test
+    void 국민임대에서_같은_형에_신청자_표기가_없는_줄과_있는_줄이_있으면_표기_없는_줄은_일반_대상이다() {
+        // LH 314 공고처럼 '29'와 '29(주거약자)'가 함께 오면 표기 없는 줄은 일반공급이다. 형 이름 '29'를 신청 대상으로 보이지 않는다.
+        Announcement staged = announcement("국민임대");
+        AnnouncementComplex complex = complex(staged, "행복단지");
+        line(staged, complex, "LH:1", 0, "29", 50, null, null);
+        line(staged, complex, "LH:2", 1, "29(주거약자)", 30, null, null);
+
+        SupplySheet sheet = read(staged).sheet();
+
+        assertThat(sheet.cells(sheet.rows().getFirst().id())).extracting(SupplySheet.Cell::label)
+                .containsExactly("일반", "주거약자");
+    }
+
+    @Test
+    void 일반공급이_없는_공급유형의_표기_없는_줄은_일반이_아니라_함께_온_표기의_나머지다() {
+        // 신혼희망타운 행복주택의 '55'는 신혼부부 공급이다. '일반'이라 부르면 신청자격이 대상 확인 없이 공통 요건으로 판정한다.
+        Announcement staged = announcement("행복주택");
+        AnnouncementComplex complex = complex(staged, "희망단지");
+        line(staged, complex, "LH:1", 0, "55", 40, null, null);
+        line(staged, complex, "LH:2", 1, "55(주거약자)", 10, null, null);
+
+        SupplySheet sheet = read(staged).sheet();
+
+        assertThat(sheet.cells(sheet.rows().getFirst().id())).extracting(SupplySheet.Cell::label)
+                .containsExactly("주거약자 외", "주거약자");
+    }
+
+    @Test
+    void 함께_온_표기가_둘_이상이면_표기_없는_줄은_다른_대상_이름을_품지_않은_그_밖의_대상이다() {
+        // '고령자·주거약자 외'로 이으면 신청자격이 '·'로 나눠 이 줄을 '고령자' 경로에 잇는다.
+        Announcement staged = announcement("행복주택");
+        AnnouncementComplex complex = complex(staged, "희망단지");
+        line(staged, complex, "LH:1", 0, "55", 40, null, null);
+        line(staged, complex, "LH:2", 1, "55(고령자)", 10, null, null);
+        line(staged, complex, "LH:3", 2, "55(주거약자)", 10, null, null);
+
+        SupplySheet sheet = read(staged).sheet();
+
+        assertThat(sheet.cells(sheet.rows().getFirst().id())).extracting(SupplySheet.Cell::label)
+                .containsExactly("그 밖의 대상", "고령자", "주거약자");
+    }
+
+    @Test
+    void 표기_없는_줄이_여럿이면_서로_가를_수_있게_형명_원문을_쓴다() {
+        Announcement staged = announcement("국민임대");
+        AnnouncementComplex complex = complex(staged, "행복단지");
+        line(staged, complex, "LH:1", 0, "29", 50, null, null);
+        line(staged, complex, "LH:2", 1, "29형", 20, null, null);
+        line(staged, complex, "LH:3", 2, "29(주거약자)", 30, null, null);
+
+        SupplySheet sheet = read(staged).sheet();
+
+        assertThat(sheet.cells(sheet.rows().getFirst().id())).extracting(SupplySheet.Cell::label)
+                .containsExactly("29", "29형", "주거약자");
+    }
+
+    @Test
     void 주택타입을_고르지_못한_준비_공급행은_줄_면적을_보이고_정본_복사본에도_싣는다() {
         Announcement staged = announcement();
         AnnouncementComplex complex = complex(staged, "영구임대단지");
@@ -177,10 +234,14 @@ class AnnouncementSuppliesIntegrationTest {
     }
 
     private Announcement announcement() {
+        return announcement("행복주택");
+    }
+
+    private Announcement announcement(String supplyType) {
         String suffix = UUID.randomUUID().toString();
         LocalDate today = LocalDate.of(2026, 11, 14);
         Announcement announcement = Announcement.create("source-" + suffix, null, null, "공고 " + suffix, "ORIGINAL",
-                "행복주택", "신규모집", "LH", today, today, today.plusDays(3), today.plusMonths(1),
+                supplyType, "신규모집", "LH", today, today, today.plusDays(3), today.plusMonths(1),
                 "https://example.com/announcements/" + suffix, null, 0, null, null,
                 List.of(ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)));
         entities.persist(announcement);

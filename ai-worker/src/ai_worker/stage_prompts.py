@@ -66,7 +66,10 @@ def supply_prompt(rows: list[SourceSupplyRow], selected: pages.PromptPages) -> s
 
 
 def notice_prompt(selected: pages.PromptPages) -> str:
-    candidates = "\n".join(f"- {name}" for name in selected.complex_candidates) or "(후보를 읽지 못함)"
+    # 공급표의 열 역할을 읽었는데 단지명 열이 없으면 단지명이 표 밖(건설위치·블록 제목)에 있다. 표를 읽지 못했으면 단지명 열이 있는지 모른다.
+    no_column = selected.supply_tables and not selected.table_structure_fallback
+    candidates = "\n".join(f"- {name}" for name in selected.complex_candidates) or (
+        "(후보 없음: 공급 표에 단지명 열이 없음)" if no_column else "(후보를 읽지 못함)")
     context = "[공급 표에서 읽은 단지명 후보]\n" + candidates + "\n\n"
     return (_TEXT_PREFACE + "[추출 단계: 공고 본문]\n" + _INSTRUCTIONS + "\n\n" + context + _SCHEMA_SUFFIX
             + _notice_schema() + "\n\n" + selected.notice_text)

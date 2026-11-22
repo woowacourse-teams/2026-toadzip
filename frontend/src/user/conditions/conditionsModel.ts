@@ -82,6 +82,8 @@ export interface GuidanceView {
   readonly kind: GuidanceKind
   readonly title: string
   readonly body: string
+  /** 안내 아래 따로 보일 항목. 한 줄에 하나씩 점 목록으로 보인다. */
+  readonly items: readonly string[]
   readonly evidence: EvidenceRef | null
 }
 

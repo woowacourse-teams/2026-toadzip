@@ -285,3 +285,17 @@ it('공고에 공급유형이 있으면(LH·GH) 고르게 하지 않고 그 공�
   render(<NewComplexRegistration index={0} defaultName="탑석 센트럴 자이" rentalType="LONG_TERM_JEONSE" agencyCode="GH" onSelectExisting={vi.fn()} onCreated={vi.fn()} />)
   expect(within(screen.getByRole('group', { name: '주택형 1 새 단지 등록' })).queryByLabelText('공급유형')).not.toBeInTheDocument()
 })
+
+it('폼을 연 채 공고의 공급유형이 바뀌면 바뀐 공급유형으로 등록한다', async () => {
+  lookup.lookupAddresses.mockResolvedValue([{ roadAddress: '인천광역시 부평구 경원대로 1', jibunAddress: '', pnu: '2823710100100010000',
+    legalDongCode: '2823710100', provinceCode: '28', cityCountyDistrictCode: '28237', latitude: 37.5, longitude: 126.7 }])
+  registration.createHousingComplex.mockResolvedValue({ housingComplexId: 1, name: '인천부평' })
+  const props = { index: 0, defaultName: '인천부평', agencyCode: 'LH', onSelectExisting: vi.fn(), onCreated: vi.fn() }
+  const { rerender } = render(<NewComplexRegistration {...props} rentalType="NATIONAL_RENTAL" />)
+  rerender(<NewComplexRegistration {...props} rentalType="HAPPY_HOUSING" />)
+  const form = screen.getByRole('group', { name: '주택형 1 새 단지 등록' })
+  search(form, '경원대로 1')
+  fireEvent.click(await within(form).findByRole('button', { name: /경원대로 1/ }))
+  fireEvent.click(within(form).getByRole('button', { name: '단지 등록하고 연결' }))
+  await waitFor(() => expect(registration.createHousingComplex).toHaveBeenCalledWith(expect.objectContaining({ rentalType: 'HAPPY_HOUSING' })))
+})

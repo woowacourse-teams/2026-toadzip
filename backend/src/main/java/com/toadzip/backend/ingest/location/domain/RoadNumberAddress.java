@@ -11,7 +11,11 @@ import java.util.regex.Pattern;
  */
 public record RoadNumberAddress(String province, String road, String buildingNumber) {
 
-    private static final Pattern ROAD = Pattern.compile("([가-힣A-Za-z0-9·.]+(?:로|길))\\s*([0-9]+(?:-[0-9]+)?)");
+    /**
+     * 도로명(…로·…길)과 바로 뒤의 건물번호. 번호 뒤에 숫자나 '가'가 이어지면 건물번호가 아니라 동 이름(종로1가·을지로3가·충무로2가)이라
+     * 읽지 않는다.
+     */
+    private static final Pattern ROAD = Pattern.compile("([가-힣A-Za-z0-9·.]+(?:로|길))\\s*([0-9]+(?:-[0-9]+)?)(?![0-9가-])");
     /** 시도 표기 앞부분과 그 시도. 긴 앞부분부터 비교한다(`충청북` 다음 `충북`). 특별자치도 표기도 앞부분으로 흡수한다. */
     private static final List<ProvincePrefix> PROVINCES = List.of(
             new ProvincePrefix("충청북", "충북"), new ProvincePrefix("충청남", "충남"),
@@ -38,7 +42,7 @@ public record RoadNumberAddress(String province, String road, String buildingNum
     }
 
     /** 주소 맨 앞의 시도 표기를 짧은 표기로 맞춘다. 시도로 시작하지 않으면 비어 있다. */
-    static Optional<String> province(String address) {
+    public static Optional<String> province(String address) {
         if (address == null) {
             return Optional.empty();
         }

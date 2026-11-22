@@ -5,7 +5,8 @@ import dataclasses
 
 import pytest
 
-from ai_worker import checks, pages, supply_assembly, tables
+from ai_worker import checks, pages, supply_assembly, supply_grouping, tables
+from ai_worker.source_frame import SourceSupplyRow
 from conftest import evidence_at, model_stage, model_supply, readable, sheet_answer
 
 
@@ -1207,3 +1208,320 @@ def test_units_with_the_same_name_are_told_apart_in_warnings_by_their_first_sour
     assert area_only_warnings(["P2:T1:R3"]) == expected
     # 두 단위가 함께 가진 첫 행(면적을 물려준 위 행 등)은 그 단위만의 행이 있으면 자리로 쓰지 않는다.
     assert area_only_warnings(["P2:T1:R2", "P2:T1:R3"]) == expected
+
+
+def several_tables_pages(*tables_):
+    """여러 표(공급표·임대조건표)를 표 판독기로 읽은 입력."""
+    rows = [row for table in tables_ for row in table.rows]
+    return pages.PromptPages(
+        rental_rows=0, supply_text="table", supply_pages=sorted({table.page for table in tables_}),
+        supply_row_ids=frozenset(row.id for row in rows), supply_row_text={row.id: row.text for row in rows},
+        notice_text="body", notice_pages=[1], complex_candidates=[], table_structure_fallback=False,
+        ambiguous_supply_tables=False, supply_row_values={row.id: row.values for row in rows},
+        supply_row_subtypes={row.id: row.subtypes for row in rows if row.subtypes}, supply_tables=list(tables_))
+
+
+def lh_warnings(supply, lh_rows, selected):
+    """공급 단계 결과를 LH 공급행과 맞댄 경고(모집수 합계, 빠진 주택형)."""
+    supply.tree["data"]["announcement"] = {}
+    warnings = checks.review(supply.tree, supply.sheet, [1, 2, 3, 4, 5], [""] * 5, lh_rows, 0)
+    sheet = supply.sheet.emit(None)
+    warnings += checks.missing_housing_types(sheet, supply_grouping.type_cells(selected.supply_tables), lh_rows)
+    return [warning for warning in warnings if "LH" in warning]
+
+
+# 인천논현4 1블록 창업지원주택 공급표. 25B/B1 (주거약자용) 행의 면적 칸은 25A/A1 행과 세로로 병합된 칸이다.
+NONHYEON_SUPPLY = [
+    ["공급 형별", "공급대상", "건설호수", "금회 모집호수", "세대당 계약면적(㎡)", None, None, None, None, "구조 및 난방"],
+    [None, None, None, None, "주거 전용", "주거 공용", "그 밖의 공용면적", None, "합계", None],
+    [None, None, None, None, None, None, "기타 공용", "주차장", None, None],
+    ["25A/A1", "청년 창업인", "194", "49", "25.77", "11.96", "10.0029", "10.4914", "58.2243", "철근 콘크리트 / 지역난방"],
+    ["25B/B1 (주거약자용)", "청년 창업인 중 주거약자", "20", "5", None, None, None, None, None, None],
+    ["44A", "청년 창업인", "24", "1", "44.51", "20.6574", "17.2771", "18.1209", "100.5654", None],
+]
+
+
+@pytest.mark.parametrize("model_area", [{"exclusiveArea": 25.77, "commonArea": 11.96}, {}])
+def test_type_row_under_a_merged_area_cell_has_the_area_of_the_row_above(model_area):
+    # 모델이 25B/B1 행만 가리키면 그 행의 면적 칸은 비어 있어(병합) 25.77이 확인되지 않았다. 면적이 비면 LH의 25.77 두 줄
+    # (49 + 5)이 25A/A1의 49와만 맞대져 모집수가 다르다는 경고가 났다.
+    selected = table_pages(NONHYEON_SUPPLY, page=4)
+    rows = [{"rowIds": ["P4:T1:R4"], "housingType": "25A/A1", "target": "청년 창업인", "totalSupplyHouseholdCount": 49,
+             "exclusiveArea": 25.77, "commonArea": 11.96, "constructedHouseholdCount": 194},
+            {"rowIds": ["P4:T1:R5"], "housingType": "25B/B1 (주거약자용)", "target": "청년 창업인 중 주거약자",
+             "totalSupplyHouseholdCount": 5, "constructedHouseholdCount": 20, **model_area},
+            {"rowIds": ["P4:T1:R6"], "housingType": "44A", "target": "청년 창업인", "totalSupplyHouseholdCount": 1,
+             "exclusiveArea": 44.51}]
+    supply = model_stage(selected, sheet_answer({"data": {"rows": rows}}))
+    result = model_supply(selected, rows=rows)
+
+    assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in result.sheet["housingTypes"]] == [
+        ("25A/A1", 25.77, 11.96), ("25B/B1 (주거약자용)", 25.77, 11.96 if model_area else None), ("44A", 44.51, None)]
+    assert not [path for path in result.unresolved() if "Area" in path]
+    # 윗행을 근거 행에 넣지 않아 윗행의 모집수(49)가 25B/B1의 수로 확인되지 않는다.
+    assert [count for _, count, _ in readable(result.sheet)["quotas"]] == [49, 5, 1]
+    lh_rows = [SourceSupplyRow("LH", None, "인천논현4 1블록", "25A/A1 창업인", "25.77", "37.73", "49"),
+               SourceSupplyRow("LH", None, "인천논현4 1블록", "25B/B1 창업인(주거약자용)", "25.77", "37.73", "5"),
+               SourceSupplyRow("LH", None, "인천논현4 1블록", "44A/A1 창업인", "44.51", "65.1674", "1")]
+    assert lh_warnings(supply, lh_rows, selected) == []
+
+
+def test_merged_area_cell_is_not_inherited_from_a_row_of_another_complex():
+    # 단지명 칸이 새로 시작하는 행은 다른 단지다. 그 행의 비어 있는 면적 칸을 윗단지 면적으로 채우지 않는다.
+    cells = [["단지명", "주택형", "공급대상", "모집호수", "주거전용"],
+             ["가단지", "26A", "청년", "10", "26.71"],
+             ["나단지", "26A", "청년", "5", None]]
+
+    values = tables.SupplyTable.of(4, 1, cells, None, False).rows[2].values
+
+    assert "exclusiveArea" not in values
+
+
+# 수원당수 2단지 공급표. 주택형 26B/C가 세부 타입 26B·26C를 묶고 면적 칸마다 그 순서대로 값을 '/'로 나눠 적는다.
+DANGSU_SUPPLY = [
+    ["단지", "공급 형별", "공급대상 (계층)", "건설 호수 (호)", "금회모집 호수", "세대당 계약면적(㎡)", None, None, None, None],
+    [None, None, None, None, None, "주거 전용", "주거 공용", "그 밖의 공용면적", None, "합계"],
+    [None, None, None, None, None, None, None, "기타공용", "주차장", None],
+    ["수원 당수 2단지", "14", "대학생, 청년, 주거급여 수급자", "288", "68", "14.88", "8.6635", "1.6589", "6.7491", "31.9515"],
+    [None, "26B/C", None, "142", "17", "26.70/ 26.71", "14.3445/ 13.9885", "2.9766/ 2.9777", "12.1104/ 12.1149",
+     "56.1315/ 55.7911"],
+]
+
+
+@pytest.mark.parametrize("model_house_types", [
+    [{"name": "26B", "exclusiveArea": 26.70, "commonArea": 14.3445}, {"name": "26C", "exclusiveArea": 26.71}], []])
+def test_house_types_written_with_slashes_in_one_type_cell_take_their_areas_in_order(model_house_types):
+    # 세부 타입 26C는 칸에 'C'로만 적혀 있고 면적 칸은 두 값을 함께 적어, 모델이 낸 세부 타입이 모두 미확인이었다.
+    # 세부 타입도 단위 면적도 없으니 LH '26B/26C(전용 26.70)'와 맞는 주택형이 없다는 경고가 났다.
+    selected = table_pages(DANGSU_SUPPLY, page=4)
+    rows = [{"rowIds": ["P4:T1:R5"], "complexName": "수원 당수 2단지", "housingType": "26B/C",
+             "target": "대학생, 청년, 주거급여 수급자", "totalSupplyHouseholdCount": 17, "subtypes": model_house_types}]
+    supply = model_stage(selected, sheet_answer({"data": {"rows": rows}}))
+    result = model_supply(selected, rows=rows)
+
+    [housing_type] = result.sheet["housingTypes"]
+    assert [(item["name"], item["exclusiveArea"], item["commonArea"]) for item in housing_type["houseTypes"]] == [
+        ("26B", 26.70, 14.3445), ("26C", 26.71, 13.9885)]
+    assert housing_type["exclusiveArea"] == 26.70
+    assert not [path for path in result.unresolved() if "housingTypes" in path]
+    lh_rows = [SourceSupplyRow("LH", None, "수원당수 A-2블록 행복주택", "26B/26C(대학생,청년, 주거급여수급자)", "26.7",
+                               "41.0445", "34")]
+    # LH 모집수(34)는 PDF(17)의 두 배라 모집수 경고는 남는다(실제 공고는 단지가 둘이라 LH 단지와 잇지 못해 이 경고도 없다).
+    assert [warning for warning in lh_warnings(supply, lh_rows, selected) if "모집수" not in warning] == []
+
+
+@pytest.mark.parametrize("model_area, confirmed", [(26.70, True), (26.71, False)])
+def test_type_area_of_a_slash_area_cell_is_its_first_value(model_area, confirmed):
+    selected = table_pages(DANGSU_SUPPLY, page=4)
+    result = supplied(selected, {"rowIds": ["P4:T1:R5"], "complexName": "수원 당수 2단지", "housingType": "26B/C",
+                                 "target": "대학생, 청년, 주거급여 수급자", "exclusiveArea": model_area})
+
+    assert (result.sheet["housingTypes"][0]["exclusiveArea"] == model_area) is confirmed
+    assert ("housingTypes[0].exclusiveArea" in result.unresolved()) is not confirmed
+
+
+@pytest.mark.parametrize("type_cell, area_cell", [("26B/C", "26.70"), ("26B/C", "26.70/ 26.71/ 26.72"), ("26B", "26.70/ 26.71")])
+def test_slash_house_types_need_one_area_per_name(type_cell, area_cell):
+    cells = [row[:] for row in DANGSU_SUPPLY]
+    cells[4][1], cells[4][5] = type_cell, area_cell
+
+    assert tables.SupplyTable.of(4, 1, cells, None, False).rows[4].subtypes == ()
+
+
+# 수원당수 임대조건표. 공급표는 대상을 '대학생, 청년, 주거급여 수급자' 한 칸에 적고, 임대조건표는 소득 유무로 나눠 적는다.
+DANGSU_RENT = [
+    ["단지", "공급 형별", "공급대상(계층)", "임대조건", None, None, None, "전환가능 보증금 한도액(천원)"],
+    [None, None, None, "임대보증금(천원)", None, None, "월임대료 (원)", None],
+    [None, None, None, "계", "계약금", "잔금", None, None],
+    ["수원당수 2단지", "14", "대학생, 청년(소득無)", "23,120", "1,000", "22,120", "102,110", "+ 8,000"],
+    [None, None, "청년(소득有)", "24,480", None, "23,480", "108,120", "+ 9,000"],
+    [None, None, "주거급여수급자", "37,200", None, "36,200", "164,300", "+ 19,000"],
+]
+
+
+def dangsu_targets(*targets):
+    """수원당수 2단지 14형 공급표 행과 임대조건표 행을 함께 가리킨 대상들(이름, 신청 조건, 임대조건표 행 번호)."""
+    selected = several_tables_pages(tables.SupplyTable.of(4, 1, DANGSU_SUPPLY[:4], None, False),
+                                    tables.SupplyTable.of(5, 1, DANGSU_RENT, None, False))
+    amounts = {4: (23120000, 102110), 5: (24480000, 108120), 6: (37200000, 164300)}
+    return supplied(selected, *({"rowIds": ["P4:T1:R4", f"P5:T1:R{row}"], "complexName": "수원 당수 2단지",
+                                 "housingType": "14", "target": label, "applicationCondition": condition,
+                                 "rentalDeposit": amounts[row][0], "monthlyRent": amounts[row][1]}
+                                for label, condition, row in targets))
+
+
+@pytest.mark.parametrize("targets", [
+    # 임대조건표 칸 그대로
+    [("대학생, 청년(소득無)", None, 4), ("청년(소득有)", None, 5), ("주거급여수급자", None, 6)],
+    # 공급 단계가 소득 구간을 이름 대신 신청 조건에 적은 모양(프롬프트: 같은 label, applicationCondition에 구간)
+    [("대학생·청년", "소득無", 4), ("청년", "소득有", 5), ("주거급여수급자", None, 6)],
+    [("대학생·청년(소득 없음)", "소득 없음", 4), ("청년(소득 있음)", "소득 있음", 5), ("주거급여 수급자", None, 6)],
+])
+def test_targets_listed_in_one_cell_or_split_by_income_in_the_rent_table_are_confirmed(targets):
+    # 수원당수: 모델이 낸 이름이 원문 칸 '대학생, 청년(소득無)'과 쉼표·가운뎃점·소득 표기만 달라 모두 미확인이었다.
+    # 확인한 이름은 원문 칸의 이름(소득 구분 포함)이라 소득 유무로 나뉜 두 대상이 이름으로도 갈린다.
+    result = dangsu_targets(*targets)
+
+    assert [target["label"] for target in result.sheet["targets"]][:2] == ["대학생, 청년(소득 없음)", "청년(소득 있음)"]
+    assert result.sheet["targets"][2]["label"].replace(" ", "") == "주거급여수급자"
+    assert not [path for path in result.unresolved() if path.endswith(".label")]
+
+
+def test_a_name_split_from_a_listed_cell_is_not_an_income_split_targets_name():
+    # 소득 유무로 보증금이 나뉘면 대상이 둘이다(사용자 결정). 가리킨 임대조건표 칸에 소득 구분이 있으면, 공급표 나열 칸
+    # '대학생, 청년, 주거급여 수급자'에서 쪼갠 '청년'·'대학생'은 소득 구분 없는 이름의 근거가 아니다.
+    result = dangsu_targets(("대학생", None, 4), ("청년", None, 5))
+
+    assert {target["label"] for target in result.sheet["targets"]} == {""}
+    assert "targets[0].label" in result.unresolved()
+
+
+@pytest.mark.parametrize("label, condition", [
+    ("취업준비생", None), ("청년(소득 있음)", None), ("대학생·청년", None), ("청년", "소득有"), ("대학생·청년", "소득 있음"),
+])
+def test_target_not_written_in_the_cited_cells_stays_unconfirmed(label, condition):
+    # 원문에 없는 이름(취업준비생), 가리킨 행과 다른 소득 구분(이름이나 신청 조건), 쉼표로 나열한 이름을 이어 붙였지만 칸에 적힌
+    # 소득 구분을 뺀 이름은 확인된 이름이 아니다.
+    selected = several_tables_pages(tables.SupplyTable.of(5, 1, DANGSU_RENT, None, False))
+
+    result = supplied(selected, {"rowIds": ["P5:T1:R4"], "complexName": "수원당수 2단지", "housingType": "14",
+                                 "target": label, "applicationCondition": condition})
+
+    assert [target["label"] for target in result.sheet["targets"]] == [""]
+    assert "targets[0].label" in result.unresolved()
+
+
+def test_commas_inside_parentheses_do_not_split_a_target_name():
+    # 영구임대 '가군(생계·의료급여 수급자, 국가유공자 등)'의 괄호 안 쉼표는 대상 나열이 아니다. 괄호 안 조각은 대상 이름이 아니다.
+    rows = [["주택형", "공급대상", "모집호수"], ["26A", "가군(생계·의료급여 수급자, 국가유공자 등), 나군", "10"]]
+    selected = table_pages(rows, page=2)
+
+    def label(target):
+        result = supplied(selected, {"rowIds": ["P2:T1:R2"], "housingType": "26A", "target": target})
+        return result.sheet["targets"][0]["label"]
+
+    assert label("가군(생계·의료급여 수급자, 국가유공자 등)") == "가군(생계·의료급여 수급자, 국가유공자 등)"
+    assert label("나군") == "나군"
+    assert label("국가유공자 등)") == ""
+
+
+def test_count_of_a_listed_target_cell_is_not_multiplied_by_its_targets():
+    # 수원당수 2단지 14형의 모집 68은 '대학생, 청년, 주거급여 수급자' 칸 하나의 수다. 대상 셋이 같은 행을 가리켜도 68은 한 번만 센다.
+    selected = table_pages(DANGSU_SUPPLY[:4], page=4)
+    result = supplied(selected, *({"rowIds": ["P4:T1:R4"], "complexName": "수원 당수 2단지", "housingType": "14",
+                                   "target": label} for label in ("대학생", "청년", "주거급여 수급자")))
+
+    assert result.sheet["housingTypes"][0]["exclusiveArea"] == 14.88
+    assert sum(count for kind, count, _ in readable(result.sheet)["quotas"] if kind == "WINNER") == 68
+
+
+# 인천논현 영구·국민임대 예비자 모집표(328번 공고 4쪽 표)의 머리글과 서창14단지 행을 표 판독기가 읽은 셀 그대로 옮겼다.
+# 단지 칸은 글자마다 띄어 읽히고, 대상 칸이 소득 유무를 '(소득無)'로 적으며, 대상 행마다 전환 감액 줄 '(-)23,000'이 끼어 있다.
+NONHYEON_RESERVE = [
+    ["단 지", "공급 형별", "공급 대상", "대기 중인 예비 자수", "모집 예비 자수 (60)", "세대당 계약면적(㎡)", None, None, None, None,
+     "임대조건", None, None, None, "전환가능 보증금 한도액 (천원)", "최대전환 시 임대조건", None, "최대 거주 기간 (년)"],
+    [None, None, None, None, None, "주거 전용", "주거 공용", "그 밖의 공용면적", None, "합계", "임대보증금(천원)", None, None,
+     "월 임대료 (원)", None, None, None, None],
+    [None, None, None, None, None, None, None, "기타 공용", "주차장", None, "계", "계약 금 (5%)", "잔금 (95%)", None, None,
+     "임대 보증금 (천원)", "월 임대료 (원)", None],
+    ["서 창 14 단 지", "26A", "대학생· 청년 (소득無)", "16", "20", "26.8", "13.5268", "2.4296", "10.2734", "53.0298", "28,220",
+     "1,411", "26,809", "131,690", "(+)14,000", "42,220", "61,690", "10"],
+    [None, None, None, None, None, None, None, None, None, None, None, None, None, None, "(-)23,000", "5,220", "198,770", None],
+    [None, None, "청년 (소득有)", None, None, None, None, None, None, None, "29,880", "1,494", "28,386", "139,440", "(+)15,000",
+     "44,880", "64,440", None],
+    [None, None, None, None, None, None, None, None, None, None, None, None, None, None, "(-)24,000", "5,880", "209,440", None],
+]
+
+
+@pytest.mark.parametrize("targets", [
+    # 원문 그대로, 소득 표기를 맞춘 이름, 공급 단계 프롬프트대로 소득 구간을 신청 조건에 적은 이름
+    [("대학생· 청년 (소득無)", None), ("청년 (소득有)", None)],
+    [("대학생·청년(소득 없음)", None), ("청년(소득 있음)", None)],
+    [("대학생·청년", "소득無"), ("청년", "소득有")],
+    [("대학생· 청년", "소득 없음"), ("청년", "소득 있음")],
+])
+def test_income_marked_targets_of_one_table_keep_their_confirmed_name(targets):
+    # 인천논현(328): 확인 뒤 '대학생·청년(소득 없음)'으로 바뀐 이름이 원문 대조에서 다시 지워졌고, 재추출에서는 모델이 소득 구간을
+    # 신청 조건(소득無·소득有)에 적고 이름에서 빼 원문 칸 '대학생· 청년 (소득無)'과 맞지 않았다.
+    selected = table_pages(NONHYEON_RESERVE, page=4)
+    items = [{"rowIds": ["P4:T1:R4", "P4:T1:R5", "P4:T1:R6", "P4:T1:R7"], "complexName": "서 창 14 단 지",
+              "housingType": "26A", "target": label, "applicationCondition": condition,
+              "rentalDeposit": deposit, "monthlyRent": rent}
+             for (label, condition), deposit, rent in zip(targets, (28220000, 29880000), (131690, 139440))]
+
+    result = supplied(selected, *items, shared=[
+        {"rowIndexes": [0, 1], "field": "reserveCount", "count": 20, "rowIds": ["P4:T1:R4"]}])
+
+    assert [target["label"] for target in result.sheet["targets"]] == ["대학생·청년(소득 없음)", "청년(소득 있음)"]
+    assert not [path for path in result.unresolved() if path.endswith(".label")]
+
+
+def test_income_tier_in_the_condition_must_be_the_one_written_in_the_cited_cell():
+    # 같은 이름에 다른 소득 구분을 붙인 대상(대학생·청년 소득有)은 원문에 없는 이름이다.
+    result = supplied(table_pages(NONHYEON_RESERVE, page=4),
+                      {"rowIds": ["P4:T1:R4", "P4:T1:R6"], "complexName": "서 창 14 단 지", "housingType": "26A",
+                       "target": "대학생·청년", "applicationCondition": "소득有"})
+
+    assert [target["label"] for target in result.sheet["targets"]] == [""]
+
+
+@pytest.mark.parametrize("cell, expected", [
+    ("서 창 14 단 지", "서창14단지"), ("논 현 4 단 지", "논현4단지"), ("수원 당수 1단지", "수원 당수 1단지"),
+    ("A 1 블록", "A 1 블록"),
+])
+def test_complex_name_read_letter_by_letter_is_joined(cell, expected):
+    # 좁은 단지 칸의 이름은 글자 사이 공백과 함께 읽힌다. 띄어 쓴 낱말은 그대로 둔다.
+    cells = [row[:] for row in NONHYEON_RESERVE]
+    cells[3][0] = cell
+    selected = table_pages(cells, page=4)
+
+    result = supplied(selected, {"rowIds": ["P4:T1:R4"], "complexName": cell, "housingType": "26A",
+                                 "target": "대학생·청년(소득 없음)", "reserveCount": 20})
+
+    assert result.sheet["housingTypes"][0]["complexName"] == expected
+    assert [item["sourceComplexName"] for item in result.tree["data"]["complexes"]] == [expected]
+    assert "housingTypes[0].complexName" not in result.unresolved()
+
+
+# 학익 SK VIEW 재개발임대 공급표. 모집 열 없이 '공급 호수'가 이번 공고 모집수다.
+HAGIK_SUPPLY = [
+    ["주택유형", "주택형", "공급 호수", "호별 주택면적 (㎡)", None, None, None, None],
+    [None, None, None, "주거전용", "주거공용", "그 밖의 공용면적", None, "계약면적"],
+    [None, None, None, None, None, "기타공용", "주차장", None],
+    ["국민임대 (재개발임대주택)", "38", "80", "38.9945", "13.6271", "1.2892", "22.6416", "76.5524"],
+]
+
+
+def test_supply_count_column_without_a_recruitment_column_is_the_recruitment_count():
+    # 학익: '공급 호수' 열을 모집수 열로 읽지 못해 모델이 낸 모집수 80이 미확인이었다.
+    result = supplied(table_pages(HAGIK_SUPPLY, page=1),
+                      {"rowIds": ["P1:T1:R4"], "complexName": "", "housingType": "38", "target": "전체",
+                       "supplyHouseholdCount": 80})
+
+    assert readable(result.sheet)["quotas"] == [("WINNER", 80, ["38/전체"])]
+    assert not [path for path in result.unresolved() if path.startswith("cells")]
+
+
+
+def test_household_count_written_with_a_slash_is_not_confirmed_as_its_first_value():
+    # 첫 값 규칙은 세부 타입 면적 칸만이다. 건설호수 '142/ 42'의 142는 확인된 건설호수가 아니다.
+    cells = [row[:] for row in DANGSU_SUPPLY]
+    cells[4][3] = "142/ 42"
+    result = supplied(table_pages(cells, page=4),
+                      {"rowIds": ["P4:T1:R5"], "complexName": "수원 당수 2단지", "housingType": "26B/C",
+                       "target": "대학생, 청년, 주거급여 수급자", "constructedHouseholdCount": 142, "exclusiveArea": 26.70})
+
+    assert result.sheet["housingTypes"][0]["constructedHouseholdCount"] is None
+    assert "housingTypes[0].constructedHouseholdCount" in result.unresolved()
+    assert result.sheet["housingTypes"][0]["exclusiveArea"] == 26.70
+
+
+def test_income_tier_in_the_condition_prefers_the_income_marked_cell_over_a_whole_cell_of_the_same_name():
+    # 공급표 대상 칸이 통째로 '청년'이고 임대조건표가 '청년(소득有)'이면, 소득有 구간 대상은 청년(소득 있음)이다.
+    supply = tables.SupplyTable.of(4, 1, [["주택형", "공급대상", "모집호수"], ["14", "청년", "68"]], None, False)
+    rent = tables.SupplyTable.of(5, 1, [["주택형", "공급대상", "임대보증금(천원)"], ["14", "청년(소득有)", "24,480"]], None, False)
+    result = supplied(several_tables_pages(supply, rent),
+                      {"rowIds": ["P4:T1:R2", "P5:T1:R2"], "housingType": "14", "target": "청년",
+                       "applicationCondition": "소득有", "rentalDeposit": 24480000})
+
+    assert [target["label"] for target in result.sheet["targets"]] == ["청년(소득 있음)"]

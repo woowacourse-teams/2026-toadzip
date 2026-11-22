@@ -110,6 +110,14 @@ def test_warns_quote_words_missing_from_its_original_page():
     assert review(case, pages=[1, 3], texts=texts) == ["여수미평1 26A: 근거 인용문의 20이(가) 3쪽 원문에 없음"]
 
 
+def test_quote_differing_from_its_page_only_in_quotation_mark_shape_is_not_warned():
+    case = response(cites=[(0, 3, "26A 13.50 19")],
+                    evidence=[{"path": "announcement.applicationEndDate", "page": 1, "quote": "'26.09.28.(월)"}])
+    texts = ["접수 ’26.09.28.(월)", "", "주택형 26A 공용 13.50 모집호수 19"] + [""] * 7
+
+    assert review(case, pages=[1, 3], texts=texts) == []
+
+
 def test_quote_of_table_row_matches_cells_extracted_in_other_order():
     case = response(cites=[(0, 1, "경암부향 39 39.95 717")])
     texts = ["39.95\n경암부향\n717 39"]
@@ -352,6 +360,15 @@ def test_a_merged_housing_type_cell_is_found_by_either_column(extracted):
     rows = cells(("P4:T1:R2", "84", "84A"), ("P4:T1:R3", "", "84B"))
 
     assert checks.missing_housing_types(extracted, rows, []) == []
+
+
+def test_an_applicant_mark_wrapped_into_the_next_row_is_not_a_missing_type():
+    # 공급대상 열이 없는 표에서 '29 (주거약자)'의 표기가 줄바꿈되어 다음 행 칸에 붙는다. 신청자 표기는 공급대상이 되어 결과 주택형은 29·37이다.
+    rows = cells(("P4:T1:R2", "29", None), ("P4:T1:R3", "29 (주거약자)", None), ("P4:T1:R4", "(주거약자) 37", None))
+
+    assert checks.missing_housing_types(sheet(("29", 29.39, []), ("37", 37.28, [])), rows, []) == []
+    assert checks.missing_housing_types(sheet(("29", 29.39, [])), rows, []) == [
+        "원본 4쪽 공급표의 주택형 (주거약자) 37이(가) 추출 결과에 없어 저장하면 지금 공급표의 그 주택형이 지워질 수 있음"]
 
 
 def test_a_missing_house_type_row_names_both_columns():

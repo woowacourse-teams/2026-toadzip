@@ -365,7 +365,24 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getByRole('region', { name: '새솔마을 접수 일정' })).toBeVisible()
     const unknown = screen.getByRole('region', { name: '대상 단지: 공고문 확인 접수 일정' })
     expect(within(unknown).getByRole('heading', { name: '접수' })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '전체 단지 공통' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '전체 단지 공통 접수 일정' })).not.toBeInTheDocument()
+  })
+
+  it('단지가 적힌 일정이 없으면 단지 하나인 공고는 그 단지, 여럿인 공고는 전체 단지 공통으로 묶는다', () => {
+    const schedules = [legacySchedule({ scheduleId: 'only', complexName: null })]
+    const { rerender } = render(<HousingAnnouncementDetailPanel detail={detail({ schedules,
+      supplyRows: [supplyRow()] })} onClose={vi.fn()} />)
+    expect(screen.getByRole('region', { name: '새솔마을 접수 일정' })).toBeVisible()
+    expect(screen.queryByText(/대상 단지: 공고문 확인/)).not.toBeInTheDocument()
+
+    rerender(<HousingAnnouncementDetailPanel detail={detail({ schedules, supplyRows: [
+      supplyRow(),
+      supplyRow({ supplyRowId: '402', sourceComplexName: '봇들마을',
+        complex: { ...supplyRow().complex!, complexId: '102', name: '봇들마을' } }),
+    ] })} onClose={vi.fn()} />)
+    expect(screen.getByRole('region', { name: '전체 단지 공통 접수 일정' })).toBeVisible()
+    rerender(<HousingAnnouncementDetailPanel detail={detail({ schedules, supplyRows: [] })} onClose={vi.fn()} />)
+    expect(screen.getByRole('region', { name: '대상 단지: 공고문 확인 접수 일정' })).toBeVisible()
   })
 
   it('검토된 일정도 내용과 출처가 같으면 대상 단지명 아래 한 번만 표시한다', () => {

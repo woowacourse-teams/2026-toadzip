@@ -75,6 +75,10 @@ import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.ParameterizedTest;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -776,6 +780,56 @@ class AnnouncementQueryServiceTest {
         assertNull(response.supplyHouseholdCount());
         assertNull(response.competition().actualRate());
         assertNull(response.competition().predictedRate());
+    }
+
+    static Stream<Arguments> 형명_표기와_신청_대상() {
+        return Stream.of(
+                // 37은 표기 있는 짝이 없는 국민임대 일반공급이다.
+                Arguments.of(RentalType.NATIONAL_RENTAL, List.of("29", "29 (주거약자)", "37", "46", "46 (주거약자)"),
+                        List.of("일반", "주거약자")),
+                // 형명 정규화가 달라도('29형') 같은 형이다.
+                Arguments.of(RentalType.NATIONAL_RENTAL, List.of("29형", "29 (주거약자)"), List.of("일반", "주거약자")),
+                Arguments.of(RentalType.NATIONAL_RENTAL, List.of("29 (주거약자)", "37"), List.of("주거약자", "일반")),
+                Arguments.of(RentalType.HAPPY_HOUSING, List.of("55", "55(주거약자)"), List.of("주거약자 외", "주거약자")),
+                // 표기 없는 줄의 대상을 모르면 일부 대상만 보이지 않는다.
+                Arguments.of(RentalType.HAPPY_HOUSING, List.of("55(주거약자)", "37"), List.of()),
+                Arguments.of(RentalType.NATIONAL_RENTAL, List.of("29", "37"), List.of()));
+    }
+
+    @ParameterizedTest
+    @MethodSource("형명_표기와_신청_대상")
+    void 공급대상이_전체뿐이면_형명_끝의_신청자_표기로_신청_대상을_읽는다(RentalType supplyType, List<String> typeNames,
+            List<String> expected) {
+        Announcement announcement = typeNameAnnouncement(supplyType);
+        for (String typeName : typeNames) {
+            sheet.row(withId(SupplyRowSeed.create(announcement, null, null, 0, "송산5단지", typeName, null, null,
+                    SupplyCategory.RESUPPLY)), 10);
+        }
+        when(announcementRepository.findDetailById(announcement.getId())).thenReturn(Optional.of(announcement));
+
+        assertEquals(expected, announcementQueryService.getAnnouncement(announcement.getId()).targets());
+    }
+
+    @Test
+    void 공급대상_칸에_대상이_있으면_형명_표기로_신청_대상을_읽지_않는다() {
+        Announcement announcement = typeNameAnnouncement(RentalType.NATIONAL_RENTAL);
+        SupplyRow marked = withId(SupplyRowSeed.create(announcement, null, null, 0, "송산5단지", "29 (주거약자)", null,
+                null, SupplyCategory.RESUPPLY));
+        SupplyRow plain = withId(SupplyRowSeed.create(announcement, null, null, 1, "송산5단지", "29", null, null,
+                SupplyCategory.RESUPPLY));
+        sheet.row(marked, 10);
+        sheet.cell(plain, "우선공급", "", 0);
+        when(announcementRepository.findDetailById(announcement.getId())).thenReturn(Optional.of(announcement));
+
+        assertEquals(List.of("우선공급"), announcementQueryService.getAnnouncement(announcement.getId()).targets());
+    }
+
+    private Announcement typeNameAnnouncement(RentalType supplyType) {
+        return withId(Announcement.create(
+                "type-name-applicants", null, null, "형명 표기 공고", AnnouncementPublicationType.ORIGINAL,
+                supplyType, RecruitmentType.WAITLIST, AgencyCode.LH, LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10), LocalDate.of(2026, 8, 10), LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/type-name-applicants", null, 0L, null));
     }
 
     @Test

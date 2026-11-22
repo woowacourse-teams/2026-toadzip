@@ -19,6 +19,7 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplySheetStore;
 import com.toadzip.backend.announcement.repository.SupplySheetViewQueryRepository;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import jakarta.persistence.EntityManager;
@@ -68,6 +69,7 @@ public class SupplyCorrectionService {
     private final AnnouncementSupplies supplies;
     private final AnnouncementAttachmentRepository attachments;
     private final EntityManager entities;
+    private final SameAddressComplexes sameAddress;
     private final ObjectMapper json;
 
     /**
@@ -152,6 +154,21 @@ public class SupplyCorrectionService {
                 json.writeValueAsString(Map.of("sheet", current.sheet())),
                 json.writeValueAsString(Map.of("sheet", after.sheet()))));
         return after;
+    }
+
+    /**
+     * PDF 보정 단지 정하기의 같은 곳 기존 단지. addresses는 공고문 단지 개요 주소와 원천 도로명주소다. rentalType은 화면이 보낸
+     * 공급유형으로, 화면은 관리자가 미확정 공고 공개에서 고른 공급유형이 있으면 그 값을, 없으면 저장된 공고 값을 보낸다. 보내지 않으면
+     * 저장된 공고 값이다. 후보가 하나면 화면이 관리자 선택 없이 잇는다. renamable은 관리자가 고치거나 등록하지 않은 단지인지다.
+     * 실제로 이름을 바꾸는지는 다른 공고의 단지명까지 보는 적용 미리보기가 정한다.
+     */
+    public List<SupplyCorrection.SameAddressComplex> sameAddressComplexes(long id, List<String> addresses,
+            RentalType rentalType) {
+        var announcement = find(id);
+        var type = rentalType != null ? rentalType : announcement.getSupplyType();
+        return sameAddress.find(addresses, type).stream().map(complex -> new SupplyCorrection.SameAddressComplex(
+                complex.getId(), complex.getName(), complex.getAddress().getRoadAddress(),
+                complex.acceptsAnnouncementName())).toList();
     }
 
     /**

@@ -22,3 +22,8 @@ app:
 comparison:
   recheck:
     enabled: false
+
+announcement:
+  pdf-auto-extraction:
+    # 캐시된 컨텍스트의 자동 추출·자동 공개 스케줄러가 테스트 중에 스스로 돌지 않게 한다.
+    initial-delay: PT24H

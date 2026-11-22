@@ -523,26 +523,27 @@ function ScheduleSection({ detail, groups }: {
         {hasVerifiedSchedules && <ApplicationScheduleGroups schedules={applicationSchedules} complexes={groups} />}
         {!hasApplicationSchedule && !hasApplicationFallback && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
         {!hasVerifiedSchedules && receptionSchedules.length > 0 && (
-          <AnnouncementScheduleGroups schedules={receptionSchedules} caption="접수 일정"
+          <AnnouncementScheduleGroups schedules={receptionSchedules} complexes={groups} caption="접수 일정"
             current={hasApplicationFallback && detail.applicationStatus === 'APPLYING'} />
         )}
       </DetailSection>
       {followUpSchedules.length > 0 && (
         <DetailSection appearance="block" title="후속 일정">
-          <AnnouncementScheduleGroups schedules={followUpSchedules} caption="후속 일정" />
+          <AnnouncementScheduleGroups schedules={followUpSchedules} complexes={groups} caption="후속 일정" />
         </DetailSection>
       )}
     </>
   )
 }
 
-function AnnouncementScheduleGroups({ schedules, caption, current = false }: {
+function AnnouncementScheduleGroups({ schedules, complexes, caption, current = false }: {
   schedules: readonly HousingAnnouncementDetailSchedule[]
+  complexes: readonly HousingAnnouncementSupplyComplexGroup[]
   caption: string
   current?: boolean
 }) {
   return <div className={scheduleStyles.groups}>
-    {groupAnnouncementSchedules(schedules).map((group) => (
+    {groupAnnouncementSchedules(schedules, complexes).map((group) => (
       <ScheduleGroupCard key={group.key} name={group.name} targets={group.targets} caption={caption}>
         {group.schedules.map((schedule) => (
           <ScheduleItem key={schedule.scheduleId} label={schedule.name ?? schedule.typeLabel}
