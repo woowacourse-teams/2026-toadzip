@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ComplexDecisions } from './ComplexDecision'
 import { scenario } from './fixtures/workspace'
-import { editCell } from './review'
+import { createReview, editCell } from './review'
 
 const api = vi.hoisted(() => ({ types: vi.fn() }))
 vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: api.types }))
@@ -65,4 +65,34 @@ it.each(['동일 단지', '다른 단지', '후보 갱신'])('%s 선택 후에�
   await act(async () => {})
   expect(screen.getByLabelText('입력한 면적')).toHaveTextContent('26.6')
   expect(await screen.findByText(mode === '다른 단지' ? /연결 단지: 다른 단지/ : /연결 단지: 선택 단지/)).toBeVisible()
+})
+
+it('단지명 열이 없는 공급표는 PDF 단지 개요가 하나뿐이면 그 주소·세대수로 새 단지 양식을 채운다', async () => {
+  api.types.mockResolvedValue([])
+  const { workspace: base, housing, extraction } = scenario('hansville')
+  // 학익 SK VIEW 공고처럼 공급표에 단지명 열이 없어 주택형의 단지명이 비고, 본문 건설위치에서 단지 개요 하나를 읽었다.
+  const workspace = { ...base, supply: { ...base.supply, announcementComplexes: [] } }
+  const review = createReview({ ...extraction,
+    sheet: { ...extraction.sheet, housingTypes: extraction.sheet.housingTypes.map(type => ({ ...type, complexName: '' })) },
+    complexes: [{ name: '학익 SK VIEW', address: '인천광역시 미추홀구 학익동 757', totalHouseholdCount: 1581, parkingCount: null }] }, workspace, housing)
+  render(<MemoryRouter><ComplexDecisions review={review} workspace={workspace} onChange={vi.fn()} /></MemoryRouter>)
+
+  expect(await screen.findByText(/인천광역시 미추홀구 학익동 757 · 주택형/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '찾는 단지가 없으면 새 단지 등록' }))
+  expect(screen.getByLabelText('주소(도로명 또는 지번)')).toHaveValue('인천광역시 미추홀구 학익동 757')
+  expect(screen.getByLabelText('전체 세대수')).toHaveValue(1581)
+  expect(screen.getByLabelText('단지명')).toHaveValue('학익 SK VIEW')
+})
+
+it('단지명이 빈 주택형은 PDF 단지 개요가 여럿이면 어느 단지인지 몰라 개요를 쓰지 않는다', async () => {
+  api.types.mockResolvedValue([])
+  const { workspace: base, housing, extraction } = scenario('hansville')
+  const workspace = { ...base, supply: { ...base.supply, announcementComplexes: [] } }
+  const review = createReview({ ...extraction,
+    sheet: { ...extraction.sheet, housingTypes: extraction.sheet.housingTypes.map(type => ({ ...type, complexName: '' })) },
+    complexes: [{ name: '가 단지', address: '서울특별시 종로구 세종대로 1', totalHouseholdCount: 100, parkingCount: null },
+      { name: '나 단지', address: '서울특별시 종로구 세종대로 2', totalHouseholdCount: 200, parkingCount: null }] }, workspace, housing)
+  render(<MemoryRouter><ComplexDecisions review={review} workspace={workspace} onChange={vi.fn()} /></MemoryRouter>)
+
+  expect(await screen.findByText(/주소 미확인 · 주택형/)).toBeVisible()
 })

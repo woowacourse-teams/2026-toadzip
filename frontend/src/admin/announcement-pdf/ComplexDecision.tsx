@@ -44,7 +44,9 @@ function ComplexDecision({ groupKey, name, indexes, review, workspace, chosenRen
   const request = useRef<AbortController | null>(null)
   const latest = useRef(review); latest.current = review
   useEffect(() => () => request.current?.abort(), [])
-  const overview = review.extraction.complexes.find(item => item.name === groupKey)
+  // 단지명 열이 없는 공급표는 주택형의 단지명이 빈다. 그때 PDF 단지 개요가 하나뿐이면 그 단지다(서버 자동 공개와 같은 규칙).
+  const overviews = review.extraction.complexes
+  const overview = overviews.find(item => item.name === groupKey) ?? (!groupKey && overviews.length === 1 ? overviews[0] : undefined)
   const decided = review.complexes[groupKey]?.chosen ? review.complexes[groupKey] : undefined
   const undecided = indexes.filter(index => needsComplex(review, index))
   const types = indexes.map(index => review.extraction.sheet.housingTypes[index].name ?? `주택형 ${index + 1}`).join(' · ')
@@ -139,7 +141,7 @@ function ComplexDecision({ groupKey, name, indexes, review, workspace, chosenRen
           onSelect={item => void choose(item.id, item.name, false)}
           onInitialResults={items => { if (!items.length && !nearby.length && !decided) setRegistering(true) }} />
         {registering
-          ? <NewComplexRegistration index={indexes[0]} defaultName={announcedName ?? groupKey} defaultAddress={overview?.address ?? source?.roadAddress ?? ''}
+          ? <NewComplexRegistration index={indexes[0]} defaultName={announcedName ?? (groupKey || overview?.name || '')} defaultAddress={overview?.address ?? source?.roadAddress ?? ''}
             defaultHouseholds={overview?.totalHouseholdCount ?? null} defaultParking={overview?.parkingCount ?? null}
             rentalType={rentalType} agencyCode={String(workspace.detail.data.agencyCode ?? '')} onCreated={complex => void choose(complex.id, complex.name, true)}
             onSelectExisting={complex => void choose(complex.id, complex.name, false)} />

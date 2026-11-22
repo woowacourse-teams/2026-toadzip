@@ -25,6 +25,10 @@ _AREA_CELL = re.compile(r"\d{2,3}\.\d{2,4}")
 _MONEY_CELL = re.compile(r"\d{1,3}(?:,\d{3})+")
 _AREA_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _HOUSE_TYPE_HEADER = re.compile(r"주택형|주택타입|신청형")
+# 단지명 열 머리글 낱말(블록·단지·지구). 후보가 아니다.
+_COMPLEX_HEADER = re.compile(r"블록|단지|지구")
+# 단지명이 아닌 첫 열 머리글
+_NOT_COMPLEX_HEADER = re.compile(r"유형|주택형|자격")
 _TABLE_HEADER = re.compile(r"단지명|공급형|주택형|공급대상|공급계층|청약구분|전용|임대조건|임대보증금|월임대료")
 # 머리글 줄 뒤에 데이터 줄 글자(26·31)가 이어 붙을 수 있어 앞에서부터 보고, 뒤에 한글 낱말이 붙은 "공급형별 임대보증금" 같은 열은 뺀다.
 # 다만 합계 줄 표기(총계·합계·계)가 머리글에 이어 붙은 "공급형별총계"는 주택형 열이다(대구연호 통합공공임대).
@@ -580,7 +584,7 @@ def page_tables(page: pymupdf.Page, page_number: int, previous: SupplyContinuati
             supply_table = SupplyTable.of(page_number, table_index, table.cells, last_columns, table.ambiguous)
             last_columns = supply_table.columns
             supply_tables.append(supply_table)
-            candidates.extend(_complex_name_candidates(table.cells))
+            candidates.extend(_complex_name_candidates(table.cells, supply_table.columns))
         continuation = SupplyContinuation(
             page_number, max(len(table.cells[0]) if table.cells else 0 for table in page_supply_tables), last_columns)
     rental: set[tuple[str, str]] = set()
@@ -654,12 +658,21 @@ def source_row_id(page_number: int, table_number: int, row_number: int) -> str:
     return f"P{page_number}:T{table_number}:R{row_number}"
 
 
-def _complex_name_candidates(cells: list[list[str | None]]) -> list[str]:
+def _complex_name_candidates(cells: list[list[str | None]], columns: dict[str, int]) -> list[str]:
+    """단지명 열의 값. 단지명 열 역할을 읽지 못한 표는 첫 열을 본다('모집 단지'처럼 역할 규칙에 없는 머리글도 있다). 다만 첫 열이
+    다른 역할(주택형 등)이거나 머리글이 주택유형·신청자격이면 단지명 열이 아니다(블록 제목형 표는 단지명이 표 위 제목에, 단지 한 곳 공고
+    학익 SK VIEW는 표 밖 건설위치에 있고 첫 열이 주택유형이다)."""
+    column = columns.get("complexName")
+    if column is None:
+        header = next((cell for row in cells for cell in row[:1] if cell and cell.strip()), "")
+        if 0 in columns.values() or _NOT_COMPLEX_HEADER.search(_compact(header)):
+            return []
+        column = 0
     candidates = []
     for row in cells:
-        name = (row[0] or "").strip() if row else ""
-        if (not name or _TABLE_HEADER.search(_compact(name)) or _compact(name).isdigit()
-                or _AREA_CELL.search(name)):
+        name = (row[column] or "").strip() if len(row) > column else ""
+        if (not name or (columns and "complexName" not in columns and name == header) or _TABLE_HEADER.search(_compact(name))
+                or _COMPLEX_HEADER.fullmatch(_compact(name)) or _compact(name).isdigit() or _AREA_CELL.search(name)):
             continue
         if not any(_compact(name) == _compact(candidate) for candidate in candidates):
             candidates.append(name)

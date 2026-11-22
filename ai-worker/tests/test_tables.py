@@ -582,3 +582,29 @@ def test_construction_and_supply_count_columns_side_by_side_keep_their_roles():
                                     None, False).columns
 
     assert (columns["constructedHouseholdCount"], columns["totalSupplyHouseholdCount"]) == (1, 2)
+
+
+def test_complex_candidates_come_only_from_the_complex_name_column():
+    # 단지 한 곳 공고(학익 SK VIEW)는 단지명 열이 없고 첫 열이 주택유형이다. 그 값을 단지명 후보로 주면 모델이 단지 개요를 만들지 않는다.
+    one_complex = [["주택유형", "주택형", "공급 호수", "주거전용", "주거공용"],
+                   ["국민임대 (재개발임대주택)", "38", "80", "38.9945", "13.6271"]]
+    several = [["단지명", "주택형", "공급 호수", "주거전용", "주거공용"],
+               ["단지A", "26", "10", "26.44", "15.20"], [None, "36", "5", "36.00", "17.00"], ["단지B", "26", "4", "26.44", "15.20"]]
+
+    def candidates(cells):
+        return tables._complex_name_candidates(cells, tables.SupplyTable.of(1, 1, cells, None, False).columns)
+
+    assert candidates(one_complex) == []
+    assert candidates(several) == ["단지A", "단지B"]
+    # 첫 열이 아니라 단지명 역할 열을 읽는다.
+    second = [["구분", "단지명", "주택형", "공급 호수", "주거전용"], ["국민임대", "단지D", "26", "10", "26.44"]]
+    assert candidates(second) == ["단지D"]
+    district = [["지구", "주택형", "공급 호수", "주거전용", "주거공용"], ["화성동탄2", "26", "10", "26.44", "15.20"]]
+    assert candidates(district) == ["화성동탄2"]
+    # 단지명 열 역할을 읽지 못한 표는 첫 열을 본다(전주 평화 공고의 '모집 단지' 머리글).
+    recruiting = [["모집 단지", "주택형", "공급 호수", "주거전용", "주거공용"], ["전주 평화 1단지", "26", "10", "26.44", "15.20"]]
+    assert candidates(recruiting) == ["전주 평화 1단지"]
+    assert tables._complex_name_candidates([["단지C", "26", "10"]], {}) == ["단지C"]
+    # 일정표가 공급표로 잡혀도 첫 열 머리글이 신청자격이면 단지명이 아니다(학익 SK VIEW 4쪽).
+    schedule = [["신청자격", "신청접수", "당첨자 발표"], ["당해 사업지구 철거민·세입자", "26.12.01", "27.01.13"]]
+    assert tables._complex_name_candidates(schedule, {"supplyHouseholdCount": 1}) == []

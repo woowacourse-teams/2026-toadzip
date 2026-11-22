@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from ai_worker import pages, stage_prompts
 from ai_worker.eligibility_pages import EligibilityPages
 from ai_worker.source_frame import SourceSupplyRow
@@ -34,3 +36,19 @@ def test_stage_prompts_include_projected_schema_and_separate_inputs():
     # LH 행은 번호 없는 참고 목록이다. 번호를 붙이면 모델이 줄마다 공급행을 만들거나 번호로 맞추려 한다.
     assert "\n- 단지= | 주택형=39 | 전용=39.95 | 공급=55.10 | 모집수=20\n" in supply
     assert "1. 주택형" not in supply and "lhSourceRow" not in supply
+
+
+def test_notice_prompt_says_whether_missing_candidates_mean_no_complex_column():
+    def notice(**changes):
+        base = dict(rental_rows=0, supply_text="", supply_pages=[2], supply_row_ids=frozenset(), supply_row_text={},
+                    notice_text="1. 건설위치: 인천광역시 미추홀구 학익동 757", notice_pages=[1], complex_candidates=[],
+                    table_structure_fallback=False, ambiguous_supply_tables=False)
+        return stage_prompts.notice_prompt(pages.PromptPages(**{**base, **changes}))
+
+    table = SimpleNamespace(columns={"housingType": 1})
+    # 표의 열 역할을 읽었는데 단지명 열이 없으면 본문 건설위치에서 단지를 만들게 한다(지시문 [단지]).
+    assert "[공급 표에서 읽은 단지명 후보]\n(후보 없음: 공급 표에 단지명 열이 없음)" in notice(supply_tables=[table])
+    # 표를 읽지 못했으면 단지명 열이 없는지 알 수 없다.
+    assert "(후보를 읽지 못함)" in notice(supply_tables=[table], table_structure_fallback=True)
+    assert "(후보를 읽지 못함)" in notice()
+    assert "(후보 없음: 공급 표에 단지명 열이 없음)" in stage_prompts._INSTRUCTIONS
