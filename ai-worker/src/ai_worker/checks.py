@@ -110,17 +110,30 @@ def _check_lh_type_names(sheet: "SupplySheet", lh_types: set[str], warnings: lis
             warnings.append(f"{unit.label()} 주택형 이름: 근거 인용에 없는 LH 주택형 이름({housing_type})")
 
 
-def remap_pages(items: list[dict], pages: list[int], warnings: list[str]) -> list[dict]:
-    """원본 쪽 번호로 바꾼 항목을 돌려준다. 범위를 벗어난 항목은 그대로 두고 경고한다."""
+def remap_pages(items: list[dict], pages: list[int], warnings: list[str],
+                texts: list[str] | None = None) -> list[dict]:
+    """원본 쪽 번호로 바꾼 항목을 돌려준다. 범위를 벗어난 항목은 그대로 두고 경고한다.
+    texts(원본 쪽마다의 글)를 주면, 모델이 [첨부 N쪽 / 원본 M쪽] 표시에서 첨부 번호 대신 원본 번호 M을 적은 경우를 바로잡는다:
+    첨부 번호로 바꾼 쪽에 인용문이 없고, 적은 번호가 보낸 원본 쪽이며 그 쪽에 인용문이 있으면 그 쪽을 쓴다."""
     remapped = []
     for item in items:
         page = item.get("page")
-        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= len(pages):
+        whole = isinstance(page, int) and not isinstance(page, bool)
+        mapped = pages[page - 1] if whole and 1 <= page <= len(pages) else None
+        if texts is not None and whole and page in pages and page != mapped and _quoted_on(item, texts, page) \
+                and (mapped is None or not _quoted_on(item, texts, mapped)):
+            mapped = page
+        if mapped is None:
             warnings.append(f"{_label(item)}: 첨부한 쪽 범위를 벗어난 근거 쪽 번호({page})")
             continue
-        item["page"] = pages[page - 1]
+        item["page"] = mapped
         remapped.append(item)
     return remapped
+
+
+def _quoted_on(item: dict, texts: list[str], page: int) -> bool:
+    quote = _text(item.get("quote"))
+    return bool(quote.split()) and 1 <= page <= len(texts) and not missing_words(quote, texts[page - 1])
 
 
 def missing_words(quote: str, page_text: str) -> list[str]:

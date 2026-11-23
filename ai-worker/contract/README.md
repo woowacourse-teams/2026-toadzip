@@ -5,7 +5,7 @@ Spring 테스트(`PdfExtractionContractTest`)와 워커 테스트가 같은 파�
 필드를 바꾸면 이 예시와 양쪽 코드를 함께 고친다.
 
 - `announcement-pdf-extraction/input.example.json`: 기관 공급 원천 행(`sourceSupplyRows`). 행마다 원천(`source`: `LH`·`GH`)과 공급 보정 작업실이 그 행을 찾는 식별자(`rowIdentifier`)를 담고, 값은 문자열이다(모르면 빈 문자열). LH 행은 LH 공급 API가 보낸 값 그대로, GH 행은 GH 공급행 틀의 값(지구명·주택형 이름·전용면적·세대수)이다. 원천이 없는 공고(SH 등)는 빈 목록이다. 예시는 두 원천의 행 모양을 함께 보이지만 실제 한 공고는 한 기관 원천만 가진다. 서버가 자동 공개 판정을 맡긴 작업(공급을 확정하지 않은 공고의 `BATCH` 작업, `PDF_PUBLICATION_MODE`가 `SHADOW`·`APPLY`)에만 `publication`이 있다(아래 '자동 공개 판정').
-- `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다. 예시의 `publicationReview`는 입력에 `publication`이 있을 때만 붙는다.
+- `announcement-pdf-extraction/result.example.json`: PDF 보정 화면이 읽는 추출 결과. `json`은 추출 JSON을 문자열로 담고, 근거 쪽 번호는 원본 PDF 기준이다. 모델은 첨부 쪽 번호로 답하고 워커가 원본 쪽으로 바꾸는데, 본문 근거의 인용문이 바꾼 쪽에 없고 모델이 적은 번호를 원본 쪽 번호로 읽은 쪽(보낸 쪽일 때)에 있으면 그 쪽으로 바로잡는다(첨부 번호 대신 표시된 원본 번호를 적은 응답). 예시의 `publicationReview`는 입력에 `publication`이 있을 때만 붙는다.
 
 ### 공급행 단계의 규칙과 원천 행
 
