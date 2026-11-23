@@ -32,7 +32,7 @@ ELIGIBILITY = {"common": {"requirements": [REQUIREMENT, {"kind": "OTHER", "asWri
 
 def assessment(answers=None, collected=COLLECTED, notice=NOTICE, quotes=QUOTES, unresolved=(), rows=ROWS,
                eligibility=None, warnings=(), failing=(), judged=True, seconds=30, unresolved_data=(), tables=(SCHEDULE,),
-               complex_names=("단지",), eligibility_quotes=None):
+               complex_names=("단지",), eligibility_quotes=None, schedules=()):
     """answers는 질문 키 → 답(Noul은 확률, Choice는 (선택, 확률))이다. 없는 키는 통과하는 답을 받는다.
     eligibility_quotes는 신청자격 근거 경로 → 인용문이고, 없으면 ELIGIBILITY의 두 요건 인용이다."""
     evidence = [{"path": "announcement." + field, "page": 1, "quote": quote} for field, quote in quotes.items()]
@@ -41,7 +41,7 @@ def assessment(answers=None, collected=COLLECTED, notice=NOTICE, quotes=QUOTES, 
     evidence += [{"path": path, "page": 3, "quote": quote} for path, quote in eligibility_quotes.items()]
     sheet = {"housingTypes": [{"name": "36A", "complexName": name} for name in complex_names], "cells": [1], "quotas": [1],
              "unresolvedFields": list(unresolved), "evidence": [{"path": "housingTypes[0]", "page": 2, "quote": "36A\t12"}]}
-    tree = {"data": {"announcement": dict(notice), "supplySheet": sheet, "schedules": [], "eligibility": eligibility,
+    tree = {"data": {"announcement": dict(notice), "supplySheet": sheet, "schedules": list(schedules), "eligibility": eligibility,
                      "unresolvedFields": list(unresolved_data)},
             "evidence": evidence}
     calls = []
@@ -248,6 +248,30 @@ def test_unverified_reception_place_holds_the_notice_but_unverified_eligibility_
     eligibility, calls = assessment(unresolved_data=[field], eligibility=ELIGIBILITY)
     assert eligibility["reasons"] == [] and eligibility["eligibilityPublishable"] is True
     assert "eligibility.common.requirements[0]" in asked(calls)
+
+
+PDF_SCHEDULES = [{"scheduleType": "APPLICATION", "name": "신청접수"}, {"scheduleType": "CONTRACT", "name": "계약"},
+                 {"scheduleType": "DOCUMENT_SUBMISSION", "name": "서류접수"}]
+
+
+def test_unverified_schedule_is_left_out_without_holding_the_notice():
+    """접수 기간·발표일은 공고 날짜로 따로 확인한다. 일정 목록의 미확인은 그 일정만 적용하지 않는다."""
+    unresolved = [{"path": "schedules[2].endAt", "reason": "마감일을 확인할 수 없음"},
+                  {"path": "schedules", "reason": "서류제출 일정은 시작일만 확인됨"}]
+    decision, calls = assessment(unresolved_data=unresolved, schedules=PDF_SCHEDULES)
+    assert decision["reasons"] == [] and decision["skippedSchedules"] == [2] and calls
+    # 모든 일정을 가리키는 미확인(checks가 schedules[].endAt을 바꾼 모양)은 모든 일정을 뺀다.
+    every, _ = assessment(unresolved_data=[{"path": "schedules[*].endAt", "reason": "마감일 없음"}], schedules=PDF_SCHEDULES)
+    assert every["reasons"] == [] and every["skippedSchedules"] == [0, 1, 2]
+
+
+def test_schedule_whose_quote_is_not_on_its_page_is_left_out_but_other_quotes_still_hold():
+    warning = "schedules[1]: 근거 인용문의 2026.12.28이(가) 9쪽 원문에 없음"
+    schedule, _ = assessment(warnings=["data." + warning], schedules=PDF_SCHEDULES)
+    assert schedule["reasons"] == [] and schedule["skippedSchedules"] == [1]
+    place_warning = "receptionPlaces[0]: 근거 인용문의 LH청약플러스이(가) 9쪽 원문에 없음"
+    place, calls = assessment(warnings=[warning, place_warning], schedules=PDF_SCHEDULES)
+    assert place["reasons"] == [place_warning] and not calls
 
 
 def test_eligibility_warnings_hold_neither_the_notice_nor_its_eligibility():
