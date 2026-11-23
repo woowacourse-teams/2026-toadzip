@@ -159,6 +159,27 @@ def test_quote_differing_from_its_page_only_in_quotation_mark_shape_is_not_warne
     assert review(case, pages=[1, 3], texts=texts) == []
 
 
+def test_quote_shortened_with_ellipsis_is_matched_by_the_words_around_it():
+    case = response(evidence=[
+        {"path": "complexes[0]", "page": 1, "quote": "물금읍 청운로 41 ... 1105호"},
+        {"path": "complexes[1]", "page": 1, "quote": "동면 금산2길 12…1,300호"},
+        {"path": "complexes[2]", "page": 1, "quote": "번영로 435 ... 999호"},
+        {"path": "complexes[3]", "page": 1, "quote": "동면⋯1,300호 .. 937호"},
+        {"path": "complexes[4]", "page": 1, "quote": " … "},
+    ])
+    texts = ["양산시 물금읍 청운로 41 (가촌리) 공공임대 1105호 동면 금산2길 12 1,300호 번영로 435 937호"]
+
+    # 줄임표 자체는 원문에 없어도 되지만, 줄임표 앞뒤 낱말은 여전히 원문에 있어야 한다.
+    assert review(case, pages=[1], texts=texts) == ["complexes[2]: 근거 인용문의 999호이(가) 1쪽 원문에 없음",
+                                                    "complexes[4]: 근거 인용문의 …이(가) 1쪽 원문에 없음"]
+
+
+def test_quote_of_only_an_ellipsis_is_not_evidence_for_any_page():
+    item = {"path": "complexes[0]", "page": 1, "quote": "..."}
+
+    assert not checks._quoted_on(item, ["물금읍 청운로 41"], 1)
+
+
 def test_quote_of_table_row_matches_cells_extracted_in_other_order():
     case = response(cites=[(0, 1, "경암부향 39 39.95 717")])
     texts = ["39.95\n경암부향\n717 39"]

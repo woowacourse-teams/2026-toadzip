@@ -26,6 +26,8 @@ _WHITESPACE = re.compile(r"\s+")
 _MIDDLE_DOTS = re.compile(r"[ㆍ․‧•∙・]")
 # 공고문은 연도 앞 따옴표를 섞어 쓰고(‘26, ’26, '26) 모델은 인용하며 다른 모양으로 옮긴다.
 _QUOTE_MARKS = re.compile("[‘’`´]")
+# 모델은 긴 원문을 줄여 인용하며 가운데를 줄임표로 잇는다(물금읍 청운로 41 ... 1105호). 줄임표는 원문 글이 아니라 조각의 경계다.
+_ELLIPSIS = re.compile(r"\.{2,}|[…⋯]")
 _DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
 
 
@@ -138,9 +140,13 @@ def _quoted_on(item: dict, texts: list[str], page: int) -> bool:
 
 def missing_words(quote: str, page_text: str) -> list[str]:
     """quote의 낱말 가운데 쪽 글에 없는 것. 모델은 표 한 줄을 칸 순서대로 이어 인용하는데 PDF 글은 칸을 다른 순서로 뽑기도 해서,
-    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈, 가운뎃점·따옴표의 모양 차이는 무시한다."""
+    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈, 가운뎃점·따옴표의 모양 차이는 무시한다.
+    줄임표로 줄인 인용문은 줄임표를 빼고 앞뒤 조각의 낱말을 같은 방식으로 찾는다. 줄임표뿐인 인용문은 근거가 아니라 통째로 없는 것으로 본다."""
+    words = _ELLIPSIS.sub(" ", quote).split()
+    if not words and quote.strip():
+        return [quote.strip()]
     compact = compact_text(page_text)
-    return [word for word in quote.split() if _same_marks(word) not in compact]
+    return [word for word in words if _same_marks(word) not in compact]
 
 
 # 같은 쪽 글을 요건마다 다시 줄이지 않게 기억한다. 워커는 오래 떠 있으므로 한 공고의 쪽 수만큼만 기억한다.
