@@ -20,10 +20,10 @@
 .locationStage>header { margin-bottom:var(--ds-space-4); padding-block:var(--ds-space-2); }
 .stageTitle { display:flex; align-items:center; gap:12px; min-height:44px; }
 .helpLabel { position:relative; display:inline-flex; align-items:center; width:fit-content; max-width:100%; }
-.stageHelp { display:inline-flex; flex:none; align-self:flex-start; margin:-6px 0 0 2px; }
-.infoButton[class][data-design-system] { width:24px; height:24px; border-radius:50%; color:color-mix(in srgb,var(--ds-color-muted) 85%,var(--ds-color-surface)); }
+.stageHelp { display:inline-flex; flex:none; align-self:center; margin:0 0 0 4px; }
+.infoButton[class][data-design-system] { width:24px; height:24px; border-radius:50%; color:var(--ds-color-muted); }
 .infoButton[class]:hover { background:var(--ds-color-control-hover); color:var(--ds-color-muted); }
-.infoButton[class] svg { width:12px; height:12px; }
+.infoButton[class] svg { width:16px; height:16px; }
 .stageHelpText { position:absolute; z-index:5; top:calc(100% + 8px); left:0; box-sizing:border-box; width:280px; max-width:calc(100vw - 112px); padding:12px 14px; border:1px solid var(--ds-color-divider); border-radius:var(--admin-radius-control); background:var(--ds-color-surface); color:var(--ds-color-label); box-shadow:var(--admin-shadow-overlay); font-size:var(--admin-text-meta); font-weight:var(--admin-weight-regular); line-height:1.7; }
 .stageHelp::after { content:''; position:absolute; top:100%; right:0; width:100%; height:8px; }
 .stage h2 { margin:0; font-size:var(--admin-text-heading); font-weight:var(--admin-weight-strong); }

@@ -19,6 +19,7 @@ import { Button } from '../../design-system/components/Button'
 import workflow from './PipelineWorkflow.module.css'
 import { ComplexIngestStages } from './ComplexIngestStages'
 import { pipelineStepSequences } from './pipelineSteps'
+import { AdminIcon } from '../shared/AdminIcon'
 
 type DataPipelineType = SharedDataPipelineType
 
@@ -324,7 +325,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     return <div className={workflow.recent}>
       <div className={workflow.recentHeading}>
         <span>마지막 결과</span>
-        {latest && <button type="button" className={workflow.resultLink} onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button>}
+        {latest && <button type="button" className="admin-text-button" onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button>}
       </div>
       {latest ? <div className={workflow.recentValue}>
         <strong className={`pipeline-badge pipeline-${latest.status.toLowerCase()}`}>{pipelineStatusLabels[latest.status]}</strong>
@@ -360,7 +361,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
         {agencySources.map(source => <section key={source.id} aria-labelledby={`${source.id}-source`} className={workflow.source}>
           <header>
             <h2 id={`${source.id}-source`}>{source.title}</h2>
-            <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey(source.runType)}
+            <Button data-design-system variant="secondary" disabled={isAnyPipelineRunning || blockedByServiceKey(source.runType)}
               onClick={() => handleRun(source.runType)}>{pipelineLabels[source.runType]}</Button>
           </header>
           {recent(source)}
@@ -373,7 +374,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
   {history}
   {/* LH 공급 감소 보류 승인은 이 메뉴에서만 할 수 있어 지우지 않고 맨 아래에 접어 둔다. */}
   {!activeType && <details className={workflow.quality} open={qualityOpen} onToggle={event => setQualityOpen(event.currentTarget.open)}>
-    <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
+    <summary>LH 데이터 품질·공급 감소 보류 확인<AdminIcon name="chevronDown" size={16} className={workflow.qualityChevron} /></summary>
     {qualityOpen && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
       pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution)} />}
   </details>}

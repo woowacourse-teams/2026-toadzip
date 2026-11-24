@@ -36,8 +36,6 @@
 .page .content { margin: var(--ds-space-2) 0 0; padding: var(--ds-space-5); border-radius: var(--admin-radius-inner); background: var(--ds-color-surface-subtle); color: var(--ds-color-text); font-size: var(--admin-text-body); line-height: 1.9; white-space: pre-wrap; }
 .page .empty, .page .loading { margin: 0; padding: 56px var(--ds-space-6); text-align: center; color: var(--ds-color-label); font-size: var(--ds-text-body); line-height: 1.7; }
 .pagination { padding: 0 var(--ds-space-6) var(--ds-space-5); border-top: 1px solid var(--ds-color-divider); }
-.error { margin-bottom: var(--ds-space-4); padding: var(--ds-space-4) var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-inner); background: var(--ds-color-surface); }
-.page .error p { margin: 0 0 var(--ds-space-3); color: var(--ds-color-deadline); font-size: var(--ds-text-body); line-height: 1.7; }
 .page :is(input, button, summary):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 
 @media (max-width: 600px) {

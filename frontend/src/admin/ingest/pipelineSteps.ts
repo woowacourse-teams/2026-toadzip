@@ -1,4 +1,5 @@
 import type { DataPipelineExecution, DataPipelineType } from './api'
+import type { AdminIconName } from '../shared/AdminIcon'
 
 const definitions = {
   COLLECT_MYHOME_COMPLEXES: '마이홈 단지 수집',
@@ -71,11 +72,12 @@ function sequenceOf(execution: DataPipelineExecution): Step[] {
   if (!steps.includes('MAP_LH_ANNOUNCEMENTS') || !legacyAnnouncementRefinement.some(wasRecorded)) return collection
   return [...collection.filter(step => step !== 'MAP_LH_ANNOUNCEMENTS'), ...legacyAnnouncementRefinement]
 }
+// 표시 아이콘은 ComplexStatusBadge와 같은 이름을 써서 수집 화면 두 곳이 같은 상태를 같은 모양으로 보인다.
 const states = {
-  waiting: ['○', '대기'], running: ['●', '진행'], success: ['✓', '성공'],
-  partial: ['!', '부분 실패'], failed: ['×', '실패'], skipped: ['−', '생략'],
-  stopped: ['■', '중지'], unexecuted: ['○', '미실행'],
-} as const
+  waiting: ['clock', '대기'], running: ['progress', '진행'], success: ['check', '성공'],
+  partial: ['alert', '부분 실패'], failed: ['close', '실패'], skipped: ['dash', '생략'],
+  stopped: ['square', '중지'], unexecuted: ['dash', '미실행'],
+} as const satisfies Record<string, readonly [AdminIconName, string]>
 
 function stepState(execution: DataPipelineExecution, step: Step): keyof typeof states {
   const name = definitions[step]

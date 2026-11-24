@@ -18,8 +18,8 @@
 .panelTop>a{font-size:var(--admin-text-label);display:flex;align-items:center;gap:4px;color:var(--ds-color-muted);min-height:var(--admin-control-height-sm);white-space:nowrap}
 .panelTop>a svg{width:13px;height:13px}
 .panelTop>a:hover{color:var(--ds-color-action)}
-.info{display:grid;place-items:center;width:24px;height:24px;color:var(--ds-color-muted);border-radius:50%}
-.info svg{width:14px;height:14px}
+/* 집계 기준을 여는 버튼은 동그라미 아이콘 대신 낮은 글자 버튼으로 둔다. */
+.info{display:inline-flex;align-items:center;min-height:var(--admin-control-height-sm);padding:0 6px;color:var(--ds-color-muted);font-size:var(--admin-text-label);border-radius:var(--admin-radius-badge);white-space:nowrap}
 .info:hover{background:var(--ds-color-surface-subtle)}
 .panelBody{padding:20px 24px 24px;flex:1;display:flex;flex-direction:column}
 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -64,7 +64,7 @@
 .reviewHead>a>svg{width:14px;height:14px}
 .reviewHead strong{margin-left:auto;font-size:var(--admin-text-body);font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
 .reviewHead>a>svg:last-child{width:12px;height:12px}
-.review .info{height:20px;width:20px;color:var(--ds-color-status-upcoming)}
+.review .info{color:var(--ds-color-status-upcoming)}
 .reviewReasons{display:flex;flex-wrap:wrap;gap:4px 12px;padding-top:6px;font-size:var(--admin-text-label);color:var(--ds-color-status-upcoming)}
 .reviewReasons a{min-height:24px;display:flex;align-items:center;gap:6px}
 .reviewReasons strong{font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
@@ -108,7 +108,7 @@
 
 .feedbackRow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:16px;margin-top:auto;border-top:1px solid var(--ds-color-divider);font-size:var(--admin-text-label);min-height:48px}
 .feedbackRow>span{display:flex;align-items:center;gap:8px}
-.feedbackRow svg{width:15px;height:15px;color:var(--ds-color-muted)}
+.feedbackRow svg{width:13px;height:13px;color:var(--ds-color-muted)}
 .feedbackRow strong{margin-left:auto;font-size:var(--admin-text-body);font-weight:var(--admin-weight-strong)}
 
 .feedbackRow:hover{color:var(--ds-color-action)}
@@ -127,7 +127,6 @@
 
 .deliveryRow svg{width:13px;height:13px}
 .messageLink{width:100%;text-align:left;display:flex;align-items:center;gap:8px;font-size:var(--admin-text-label);padding-top:12px;min-height:var(--admin-control-height)}
-.messageLink>svg:first-child{color:var(--ds-color-label);width:15px;height:15px}
 .messageLink>svg:last-child{width:13px;height:13px;margin-left:auto;color:var(--ds-color-label)}
 
 .messageLink:hover{color:var(--ds-color-action)}
@@ -135,7 +134,8 @@
 
 .page {color:var(--ds-color-text);font:var(--ds-text-body)/1.5 var(--ds-font-family-ui);letter-spacing:-.015em}
 
-.page svg{display:block;width:19px;height:19px;flex-shrink:0}
+/* 기본 크기만 정하고 우선순위를 낮춰, 아래 자리별 크기 규칙(.panelTop>a svg 등)이 이기게 한다. */
+:where(.page) .admin-icon{display:block;width:14px;height:14px;flex-shrink:0}
 .page h1,.page h2,.page h3,.page p{margin:0}
 
 .page a{text-decoration:none;color:inherit}
@@ -149,7 +149,6 @@
 .period button{border:0;background:transparent}
 
 .page .headingActions{gap:4px}
-.headingActions>.info{width:var(--admin-control-height-sm);height:var(--admin-control-height-sm)}
 
 .number[data-unavailable=true]{font-size:var(--admin-text-body)!important;color:var(--ds-color-muted)!important;min-height:42px;display:flex;align-items:center}
 
@@ -216,7 +215,8 @@
 .helpDialog::backdrop{background:#15202040;backdrop-filter:blur(3px)}
 
 .helpDialog header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px}
-.helpDialog header button{width:var(--admin-control-height-sm);height:var(--admin-control-height-sm);font-size:var(--admin-text-title);background:transparent;border:0;color:var(--ds-color-muted)}
+.helpDialog header button{width:var(--admin-control-height-sm);height:var(--admin-control-height-sm);display:grid;place-items:center;background:transparent;border:0;color:var(--ds-color-muted)}
+.page .helpDialog header .admin-icon{width:18px;height:18px}
 .helpDialog p{font-size:var(--admin-text-meta);line-height:1.8;color:var(--ds-color-label)}
 
 .page button:focus-visible,.page a:focus-visible{outline:3px solid var(--ds-color-action);outline-offset:4px}
@@ -283,12 +283,14 @@
 .page .sourceTable .sourceResult[data-status=COMPLETED_WARNINGS],.page .sourceTable .sourceResult[data-status=COMPLETED_WITH_SKIPS]{color:var(--ds-color-status-upcoming)}
 .page .reviewHead>a,.page .reviewReasons>a{color:var(--ds-color-status-upcoming)}
 .page .deliveryRow>a:first-child{color:var(--ds-color-deadline)}
-.page .info{display:grid;place-items:center;min-height:0;padding:0;border:0;background:transparent;color:var(--ds-color-muted);border-radius:50%}
+.page .info{display:inline-flex;align-items:center;min-height:var(--admin-control-height-sm);padding:0 6px;border:0;background:transparent;color:var(--ds-color-muted);font-size:var(--admin-text-label);font-weight:var(--admin-weight-regular);border-radius:var(--admin-radius-badge)}
+.page .info:hover{background:var(--ds-color-surface-subtle);color:var(--ds-color-text)}
+.page .review .info{color:var(--ds-color-status-upcoming)}
 .page .period button{padding:6px 12px;min-height:var(--admin-control-height-sm);border:0;border-radius:var(--admin-radius-badge);background:transparent;color:var(--ds-color-text);font-size:var(--admin-text-label);font-weight:var(--admin-weight-medium)}
 .page .period button[aria-pressed=true]{background:var(--ds-color-text);color:var(--ds-color-surface)}
 .page .messageLink{display:flex;justify-content:flex-start;min-height:var(--admin-control-height);padding:12px 0 0;border:0;border-radius:0;background:transparent;color:var(--ds-color-label);font-size:var(--admin-text-label);font-weight:400;white-space:normal}
 .page .footer button,.page .pdfReviews>button{min-height:var(--admin-control-height-sm);border:0;background:transparent;color:var(--ds-color-muted);font-size:var(--admin-text-label);font-weight:400}
 .page .pdfReviews>button{padding:0;margin-right:12px}
 .page .error button{min-height:24px;border:0;padding:0;background:transparent;color:inherit;font-size:var(--admin-text-label)}
-.page .helpDialog header button{border:0;min-height:var(--admin-control-height-sm);padding:0;background:transparent;color:var(--ds-color-muted);font-size:var(--admin-text-title)}
+.page .helpDialog header button{display:grid;place-items:center;border:0;min-height:var(--admin-control-height-sm);padding:0;background:transparent;color:var(--ds-color-muted)}
 @media(max-width:760px){.page .period button{padding:4px 8px;font-size:var(--admin-text-label);min-height:var(--admin-control-height-sm)}}

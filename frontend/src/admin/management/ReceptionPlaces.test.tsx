@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementDetail } from './ManagementDetail'
 import { ManagementError } from './api'
 import { type ManagementDetailData, type ManagementValues } from './managementContract'
+import { newWindowName } from '../../test/newWindowName'
 
 const mocks = vi.hoisted(() => ({ getManagementDetail: vi.fn(), requestManagementApi: vi.fn(), getManagementHistory: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
@@ -26,7 +27,7 @@ it('공고 상세는 접수처를 공고문 순서대로 접수처마다 방식�
   renderDetail()
   const first = (await screen.findByRole('heading', { name: '접수처 1 · 온라인' })).parentElement!
   expect(within(first).getByText('LH 청약플러스')).toBeVisible()
-  expect(within(first).getByRole('link', { name: 'https://apply.lh.or.kr/' })).toHaveAttribute('href', 'https://apply.lh.or.kr/')
+  expect(within(first).getByRole('link', { name: newWindowName('https://apply.lh.or.kr/') })).toHaveAttribute('href', 'https://apply.lh.or.kr/')
   const second = screen.getByRole('heading', { name: '접수처 2 · 방문' }).parentElement!
   expect(within(second).getByText('1600-1004')).toBeVisible()
   expect(within(second).getByText('인터넷 취약계층만 현장 접수')).toBeVisible()

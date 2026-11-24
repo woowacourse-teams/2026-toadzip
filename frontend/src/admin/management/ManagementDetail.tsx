@@ -20,6 +20,7 @@ import { EligibilityDraftPanel } from '../announcement-pdf/EligibilityDraftPanel
 import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
 import { AnnouncementDetailNavigation } from './AnnouncementDetailNavigation'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const {id: routeId = ''} = useParams()
@@ -94,7 +95,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     } catch(cause) { setError(cause instanceof Error ? cause.message : '처리하지 못했습니다.') }
     finally {setBusy(false)}
   }
-  return <section className="management-page management-detail" data-resource={resource}>{!embedded ? <Link to={back}>← 목록으로</Link> : null}
+  return <section className="management-page management-detail" data-resource={resource}>{!embedded ? <Link to={back}><AdminIcon name="arrowLeft" className="admin-icon-lead" />목록으로</Link> : null}
     {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('입력한 내용을 버리고 새로 조회할까요?')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
     {!value && !error ? <p role="status">상세 정보를 불러오는 중…</p> : null}
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}

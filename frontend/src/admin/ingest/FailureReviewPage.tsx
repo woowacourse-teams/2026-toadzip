@@ -6,6 +6,7 @@ import { pipelineStatusLabels } from './pipelineLabels'
 import type { FailureDomain } from './failureReviewApi'
 import styles from './IngestFailurePanel.module.css'
 import { FailureRetryButton } from './FailureRetryButton'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function FailureReviewPage() {
   const [params, setParams] = useSearchParams()
@@ -21,6 +22,8 @@ export function FailureReviewPage() {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
   const [runNotice, setRunNotice] = useState('')
+  // 이 화면에서 직접 시작한 정제인지. 지난 실행 결과는 알리지 않고, 방금 누른 실행이 실패로 끝났을 때만 알린다.
+  const [startedHere, setStartedHere] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const statusGeneration = useRef(0)
   const busy = starting || execution?.data.status === 'RUNNING'
@@ -69,7 +72,7 @@ export function FailureReviewPage() {
   async function retry() {
     if (busy || retired) return
     statusGeneration.current += 1
-    setStarting(true); setError(''); setRunNotice('')
+    setStarting(true); setError(''); setRunNotice(''); setStartedHere(true)
     try {
       const data = await startDataPipeline(type)
       setExecution({type, data})
@@ -78,6 +81,7 @@ export function FailureReviewPage() {
     finally { setStarting(false) }
   }
   function selectDomain(next: FailureDomain) {
+    setStartedHere(false)
     setParams(currentParams => {
       currentParams.set('domain', next)
       currentParams.delete('category'); currentParams.delete('page'); currentParams.delete('executionId')
@@ -85,12 +89,15 @@ export function FailureReviewPage() {
       return currentParams
     })
   }
+  // 정제가 진행 중일 때만 알린다. 끝난 실행의 결과는 목록이 바로 보여 주므로 문구로 다시 말하지 않는다.
   const runMessage = starting ? '재처리를 시작하는 중입니다.'
-    : current && current.status !== 'IDLE' ? `${label} 정제: ${pipelineStatusLabels[current.status]} · 처리 결과에 따라 오류 목록을 갱신합니다.` : ''
+    : current?.status === 'RUNNING' ? `${label} 정제 ${pipelineStatusLabels[current.status]} · 끝나면 목록을 갱신합니다.` : ''
+  const runFailure = startedHere && current && (current.status === 'FAILED' || current.status === 'COMPLETED_WARNINGS')
+    ? `${label} 정제가 '${pipelineStatusLabels[current.status]}'로 끝났습니다. 아래 목록에서 실패 항목을 확인해 주세요.` : ''
 
   return <section className={`management-page ${styles.page}`}>
-    <header className={styles.heading}><div><h1>실패·검토 항목</h1></div><Link to="/admin/ingest">수집·정제 진행 상황</Link></header>
-    <div className={styles.tabs} role="tablist" aria-label="문제 대상">
+    <header className={styles.heading}><h1>실패·검토 항목</h1><Link to="/admin/ingest">수집·정제 진행 상황<AdminIcon name="chevronRight" /></Link></header>
+    <div className={styles.tabBar}><div className={styles.tabs} role="tablist" aria-label="문제 대상">
       {(['complex','announcement'] as const).map((value,index,values) => <button key={value} data-design-system="list-tab" type="button" role="tab"
         id={`failure-tab-${value}`} aria-selected={domain === value} aria-controls="failure-review-panel" tabIndex={domain === value ? 0 : -1}
         onClick={() => selectDomain(value)} onKeyDown={event => {
@@ -103,14 +110,16 @@ export function FailureReviewPage() {
           event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
         }}>{value === 'complex' ? '단지 문제' : '공고 문제'}</button>)}
     </div>
+      {/* 다시 실행은 고른 탭(공고 문제)에만 걸리는 동작이라 탭 줄 오른쪽에 둔다. */}
+      {!retired && <FailureRetryButton key={domain} label={label} disabled={busy} onRetry={() => void retry()}/>}
+    </div>
     <div id="failure-review-panel" role="tabpanel" aria-labelledby={`failure-tab-${domain}`}>
-      <div className={styles.workflow}>
-        {!retired && <FailureRetryButton key={domain} label={label} disabled={busy} onRetry={() => void retry()}/>}
-      </div>
       {runMessage ? <p role="status" className={styles.runMessage}>{runMessage}</p> : null}
-      {runNotice ? <p role="status">{runNotice}</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
-      <IngestFailurePanel domain={domain} executionId={params.get('executionId')} refreshToken={refresh} retryDisabled={busy} runError={error} />
+      {runNotice ? <p role="status" className={styles.runMessage}>{runNotice}</p> : null}
+      {error || runFailure ? <div role="alert" className="admin-alert"><p>{error || runFailure}</p></div> : null}
+      <div className="admin-list-card">
+        <IngestFailurePanel domain={domain} executionId={params.get('executionId')} refreshToken={refresh} retryDisabled={busy} runError={error} />
+      </div>
     </div>
   </section>
 }

@@ -40,14 +40,15 @@
 .recentValue { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1) var(--ds-space-2); min-height: 28px; }
 .recentValue time { color: var(--ds-color-label); }
 .recentEmpty { display: flex; align-items: center; min-height: 28px; color: var(--ds-color-muted); }
-/* 결과 보기는 이동이라 흰 테두리 버튼으로 두고, 실행 이력의 상세 보기와 같은 크기·글자색을 쓴다. */
-.resultLink { min-height: var(--admin-control-height-sm); padding: 4px 12px; color: var(--ds-color-action); font-size: var(--admin-text-meta); }
-.resultLink:hover { background: var(--ds-color-action-soft); }
 .notice { padding: var(--ds-space-4); background: var(--ds-color-surface-subtle); line-height: var(--ds-line-height-body); }
 .back { margin-bottom: var(--ds-space-3); }
 /* 드물게 쓰는 LH 품질·보류 확인은 화면 맨 아래에 접힌 카드로 둔다. */
 .quality { min-width: 0; padding: 0 24px; background: var(--ds-color-surface); border-radius: var(--admin-radius-card, 16px); box-shadow: var(--admin-shadow-card); }
-.quality > summary { padding: 16px 0; color: var(--ds-color-label); font-weight: var(--admin-weight-strong); cursor: pointer; }
+.quality > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; list-style: none; color: var(--ds-color-label); font-weight: var(--admin-weight-strong); cursor: pointer; }
+.quality > summary::-webkit-details-marker { display: none; }
+/* 펼침 표시는 메뉴 묶음과 같은 꺾쇠로 두고, 열리면 위를 향한다. */
+.qualityChevron { color: var(--ds-color-muted); transition: transform .15s; }
+.quality[open] .qualityChevron { transform: rotate(180deg); }
 .quality[open] { padding-bottom: 24px; }
 .quality[open] > summary { margin-bottom: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); }
 @media (max-width: 900px) {

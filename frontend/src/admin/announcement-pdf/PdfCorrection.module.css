@@ -6,6 +6,8 @@
 .page h3 { font-size:var(--admin-text-body); }
 .page h4 { font-size:var(--ds-text-body); }
 .page p { margin:var(--ds-space-2) 0 var(--ds-space-4); }
+/* 위 문단 여백이 공용 오류 상자(admin-system.css .admin-alert)의 세로 가운데 정렬을 깨지 않게 한다. */
+.page :global(.admin-alert) > p { margin:0; }
 .page a { color:var(--ds-color-action); text-underline-offset:3px; }
 .page label { display:flex; flex-direction:column; gap:var(--ds-space-2); font-size:var(--ds-text-caption); line-height:1.6; }
 /* 입력 모양(테두리·바탕·여백·선택 상자 화살표)은 admin-system.css 기준을 쓰고 여기서는 폭만 정한다. */
@@ -307,7 +309,6 @@
 /* 남은 확인으로 옮기는 상태 배지. 배지 모양을 유지하되 누를 수 있음을 손가락 커서와 밑줄로 알린다. */
 button.statusBadge { font:inherit; font-size:var(--admin-text-label); font-weight:400; line-height:1.7; cursor:pointer; text-align:left; }
 button.statusBadge:hover { text-decoration:underline; text-underline-offset:2px; }
-button.statusBadge::after { content:' ›'; }
 .supplyNav button.statusBadge { white-space:normal; max-width:220px; }
 .statusBadge[data-tone=error] { color:var(--pdf-alert-text); }
 .statusBadge[data-tone=pending] { color:var(--pdf-alert-text); background:var(--ds-color-surface-subtle); }

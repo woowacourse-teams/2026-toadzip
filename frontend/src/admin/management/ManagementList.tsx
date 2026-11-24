@@ -144,7 +144,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
           <option value="">전체 공고</option>{Object.entries(attentionReasons).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select></label>}
       </>} />
-    {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
+    {error ? <div role="alert" className="admin-alert"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
     <div className={styles.results} aria-busy={pending}>
       {pending ? <p role="status" className={page ? styles.loading : undefined}>목록을 불러오는 중…</p> : null}
       {page ? <><p className={`ingest-meta ${styles.resultCount}`}>등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p>{!compact && checked.size > 0 && <div className={styles.bulkBar} data-active={checked.size > 0 || undefined}>

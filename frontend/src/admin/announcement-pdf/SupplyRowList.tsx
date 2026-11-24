@@ -1,6 +1,7 @@
 import { complexGroups, pendingJumpTarget, pendingSummary, rowPendingItems, rowStatus, type PendingItem, type Review } from './review'
 import styles from './PdfCorrection.module.css'
 import { groupCount, rowCountText, rowFacts, rowKind } from './supplyView'
+import { AdminIcon } from '../shared/AdminIcon'
 
 /**
  * 주택형 상태. 남은 확인이 있으면 무엇이 남았는지(단지 정하기·값·공급대상·함께 쓰는 수·주택형 가격) 함께 알리고,
@@ -12,7 +13,7 @@ export function RowStatusBadge({ review, index, pending, onJump, detailed = fals
   if (!items.length || !onJump) return <span className={styles.statusBadge} data-tone={status.tone}>{status.label}</span>
   const target = pendingJumpTarget(items[0].id)
   return <button type="button" data-design-system className={styles.statusBadge} data-tone={status.tone} title={summary} aria-label={`주택형 ${index + 1} ${status.label}: ${summary} 확인하러 가기`}
-    onClick={() => onJump(target)}>{detailed ? `${status.label} · ${summary}` : status.label}</button>
+    onClick={() => onJump(target)}>{detailed ? `${status.label} · ${summary}` : status.label}<AdminIcon name="chevronRight" /></button>
 }
 
 /** PDF 주택형을 단지별로 한 줄씩 요약한다. 줄을 고르면 아래 편집 영역이 그 주택형을 보인다. */

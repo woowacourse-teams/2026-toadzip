@@ -16,6 +16,7 @@ import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 import type { ManagementSummary } from './managementContract'
 import { useUnsavedChanges } from './useUnsavedChanges'
 import styles from './ComplexVerification.module.css'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 type Props = {
   reviewOnly?: boolean
@@ -104,8 +105,8 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
       </header>
       {value.status === 'STALE' ? <p className={styles.warning}>지난 검토 이후 확인한 값이 바뀌었습니다. 변경된 항목을 다시 확인해 주세요.</p> : null}
       <div className={styles.tools}>
-        <a href="https://m.myhome.go.kr/hws/mbl/sch/selectCurrentSearchView.do" target="_blank" rel="noreferrer">마이홈 공식 검색 ↗</a>
-        <a href={mapUrl(value.currentValues.LOCATION.join(','))} target="_blank" rel="noreferrer">저장 좌표 보기 ↗</a>
+        <a href="https://m.myhome.go.kr/hws/mbl/sch/selectCurrentSearchView.do" target="_blank" rel="noreferrer">마이홈 공식 검색<NewWindowMark /></a>
+        <a href={mapUrl(value.currentValues.LOCATION.join(','))} target="_blank" rel="noreferrer">저장 좌표 보기<NewWindowMark /></a>
         {!reviewOnly && sourceIds.length > 1 ? <label className={styles.sourceFilter}>비교 원천<select value={source} onChange={event => setSource(event.target.value)}>
             <option value="">전체 원천 · {sourceIds.length}개</option>
             {sourceIds.map((identifier, index) => <option key={identifier} value={identifier}>원천 {index + 1} · 마이홈 단지 {identifier.split(':')[0]}</option>)}
@@ -145,7 +146,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
               </div>
               <div className={styles.current}><span className={styles.mobileLabel}>현재 등록값</span>
                 <strong>{currentText(field, value.currentValues)}</strong>
-                {field === 'LOCATION' ? <a className={styles.inlineLink} href={mapUrl(value.currentValues.ADDRESS.roadAddress)} target="_blank" rel="noreferrer">주소로 비교 ↗</a> : null}
+                {field === 'LOCATION' ? <a className={styles.inlineLink} href={mapUrl(value.currentValues.ADDRESS.roadAddress)} target="_blank" rel="noreferrer">주소로 비교<NewWindowMark /></a> : null}
                 {field === 'ADDRESS' && comparable && sources.some(row => row.pnu !== null && row.pnu !== value.currentValues.ADDRESS.pnu) ? <small>주소 식별정보 다름 · 참고 자료 확인</small> : null}
                 {changed ? <small className={styles.changed}>지난 확인: {currentText(field, latest?.checkedValues ?? {})}
                   {field === 'ADDRESS' ? ` · PNU ${latest?.checkedValues.ADDRESS?.pnu}` : ''}</small> : null}
@@ -176,13 +177,13 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
           {announcements.length ? <ul>{announcements.map(announcement => {
             const url = safeEvidenceUrl(announcement.announcement?.originalUrl)
             return <li key={announcement.id}><Link to={`/admin/announcements/${announcement.id}`}>{announcement.name}</Link>
-              {url ? <a href={url} target="_blank" rel="noreferrer">공식 원문 ↗</a> : <span>원문 URL 미등록</span>}</li>
+              {url ? <a href={url} target="_blank" rel="noreferrer">공식 원문<NewWindowMark /></a> : <span>원문 URL 미등록</span>}</li>
           })}</ul> : null}
         </details> : <div className={styles.references}><p className={styles.hint}>비교 원천은 위의 원천 검색·연결 영역에서 확인하세요. 연결 공고의 공식 원문도 함께 확인한 뒤 기록하세요.</p>
           {announcements.length ? <ul>{announcements.map(announcement => {
             const url = safeEvidenceUrl(announcement.announcement?.originalUrl)
             return <li key={announcement.id}><Link to={`/admin/announcements/${announcement.id}`}>{announcement.name}</Link>
-              {url ? <a href={url} target="_blank" rel="noreferrer">공식 원문 ↗</a> : <span>원문 URL 미등록</span>}</li>
+              {url ? <a href={url} target="_blank" rel="noreferrer">공식 원문<NewWindowMark /></a> : <span>원문 URL 미등록</span>}</li>
           })}</ul> : null}</div>}
         <section className={styles.record} aria-labelledby="complex-review-heading">
           <h3 id="complex-review-heading">검토 기록</h3>

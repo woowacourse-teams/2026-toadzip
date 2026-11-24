@@ -8,6 +8,7 @@ import { ComplexStageHelp } from './ComplexStageHelp'
 import { RegistrationInformationEditor } from './RegistrationInformationEditor'
 import { RegistrationFailureHistory } from './RegistrationFailureHistory'
 import recoveryStyles from './RegistrationRecovery.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 const labels: Record<InitialRegistrationStatus, string> = {
   EXISTING: '기존 단지', LOCATION_REQUIRED: '좌표 준비 필요', INFORMATION_REQUIRED: '정보 보완 필요',
@@ -206,9 +207,7 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
           onClick={onRegister}>준비된 신규 단지 등록</Button>
         <Button data-design-system variant="secondary" className={styles.refreshButton} data-refreshing={refreshing}
           disabled={disabled || busy} onClick={() => void refresh()}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-            <path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.5-1L20 9M4 15l2.4 3A7 7 0 0 0 17.9 17" />
-          </svg><span role="status">{refreshing ? '대상 상태 확인 중…' : '대상 상태 확인'}</span>
+          <AdminIcon name="refresh" /><span role="status">{refreshing ? '대상 상태 확인 중…' : '대상 상태 확인'}</span>
         </Button>
       </div>
     </header>
@@ -273,7 +272,7 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
             const selected = initialRegistrationStatuses.find(value => value === event.target.value) ?? ''
             setStatus(selected); setPage(0)
           }}><option value="">전체</option>{initialRegistrationStatuses.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+            <AdminIcon name="chevronDown" />
           </span>
         </label>
         <label className={styles.filter}><span>표시 건수</span>
@@ -281,7 +280,7 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
             disabled={busy} onChange={event => changePageSize(event.target.value)}>
             {pageSizes.map(size => <option key={size} value={size}>{size}건씩</option>)}
           </select>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+            <AdminIcon name="chevronDown" />
           </span>
         </label>
       </div>
@@ -302,7 +301,7 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
                 <span className={styles.identity}><strong>{target.name || '단지명 미제공'}</strong><span className={styles.address}>{target.roadAddress || '주소 미제공'}</span></span>
                 <span id={`registration-state-${target.sourceComplexIdentifier}`} className={styles.badge} data-status={target.status}>{labels[target.status]}</span>
                 <span id={`registration-reason-${target.sourceComplexIdentifier}`} className={styles.rowReason} title={needsReview(target.status) ? target.detail : undefined}>{needsReview(target.status) ? target.detail : ''}</span>
-                <svg className={styles.chevron} viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+                <AdminIcon name="chevronDown" className={styles.chevron} />
               </summary>
               <div className={styles.targetDetails}>
                 <div className={recoveryStyles.actions}>
@@ -339,12 +338,12 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
       <nav className={styles.pagination} aria-label="등록 대상 페이지">
         <Button data-design-system variant="secondary" className={styles.pageButton} aria-label="이전 대상" title="이전 대상"
           disabled={page === 0} onClick={() => setPage(value => value - 1)}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m10 4-4 4 4 4" /></svg>
+          <AdminIcon name="chevronLeft" />
         </Button>
         <span>{result.totalPages === 0 ? 0 : page + 1} / {result.totalPages}</span>
         <Button data-design-system variant="secondary" className={styles.pageButton} aria-label="다음 대상" title="다음 대상"
           disabled={page + 1 >= result.totalPages} onClick={() => setPage(value => value + 1)}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>
+          <AdminIcon name="chevronRight" />
         </Button>
       </nav>
     </>}

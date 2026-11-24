@@ -8,6 +8,7 @@ import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
 import { failureReturnUrl } from './failureNavigation'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 type Props = {
   domain?: FailureDomain; initialCategory?: FailureCategory; executionId: string | null; refreshToken?: number
@@ -153,13 +154,13 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
       ]}
       onRemove={key => filter(key, '')} onReset={() => setParams({ domain })} />
     {executionId && <details className={styles.executionFilter}><summary>실행 정보</summary>{executionId}</details>}
-    {!validQuery ? <p role="alert">조회 조건이 올바르지 않습니다. <button type="button" onClick={() => setParams({domain})}>조회 조건 초기화</button></p> : null}
-    {error ? <p role="alert">{error} <button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></p> : null}
+    {!validQuery ? <div role="alert" className="admin-alert"><p>조회 조건이 올바르지 않습니다.</p><button type="button" onClick={() => setParams({domain})}>조회 조건 초기화</button></div> : null}
+    {error ? <div role="alert" className="admin-alert"><p>{error}</p><button type="button" onClick={() => setRevision(value => value + 1)}>다시 조회</button></div> : null}
     <div className={styles.results} aria-busy={pending}>
       <div className={styles.summary}>
-        <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건` : pending ? '조회 중' : ''}
+        <span>{matching ? `총 ${matching.totalElements.toLocaleString()}건 · 최근 발생순` : pending ? '조회 중' : ''}
           {matching && executionId ? ' · 실행 필터 적용' : ''}</span>
-        <span>최근 발생순</span><button type="button" disabled={pending} onClick={() => setRevision(value => value + 1)}>목록 새로고침</button>
+        <button type="button" disabled={pending} onClick={() => setRevision(value => value + 1)}>새로고침</button>
       </div>
       {pending ? <p role="status" className={styles.loading}>오류 목록을 불러오는 중입니다.</p> : null}
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="실패 목록 가로 스크롤">
@@ -177,12 +178,12 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
               <th scope="row" title={target.title}>{row.product ? <Link to={follow(`/admin/${row.product.resourceType}/${row.product.id}`, row)}>{target.title}</Link> : <span>{target.title}</span>}
                 <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small></th>
               <td title={row.detail}>{reasonLabel(row)}</td>
-              <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span>{resolvedByLabel(row) && <small className={styles.resolvedBy}>{resolvedByLabel(row)}</small>}</td>
+              <td><span className={`admin-status ${styles.status}`} data-status={row.status}>{statusLabel(row.status)}</span>{resolvedByLabel(row) && <small className={styles.resolvedBy}>{resolvedByLabel(row)}</small>}</td>
               <td>{canCorrectPdf(row) && pdfGroups.get(row.product!.id)?.[0] === row && (pdfGroups.get(row.product!.id)?.length ?? 0) > 1 &&
                 <Link className={styles.pdfLink} to={follow(`/admin/announcements/${row.product!.id}/pdf-correction?${pdfFailureParams(pdfGroups.get(row.product!.id)!)}`, row)}>
                   PDF로 보정 · {pdfGroups.get(row.product!.id)!.length}건
                 </Link>}
-                <button type="button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
+                <button type="button" className="admin-text-button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
             </tr>
           })}</tbody>
         </table> : null}
@@ -197,7 +198,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
       {selected ? <div className={styles.dialogBody}>
         {/* 원인 한 줄과 실제로 고칠 수 있는 버튼만 먼저 보인다. 고치기 전의 정제 재실행은 같은 실패를 반복하므로 여기서 권하지 않는다. */}
         <div className={styles.dialogSummary}><h3>{reviewTarget(selected).title}</h3>
-          <p><span className={styles.status} data-status={selected.status}>{statusLabel(selected.status)}</span> {failureCategories[selected.category].label} · <strong>{reasonLabel(selected)}</strong></p>
+          <p><span className={`admin-status ${styles.status}`} data-status={selected.status}>{statusLabel(selected.status)}</span> {failureCategories[selected.category].label} · <strong>{reasonLabel(selected)}</strong></p>
           <p className={styles.hint}>{selected.detail} {nextAction(selected)}</p></div>
         <div className={styles.workflow} aria-label="처리 방법">
           {canCorrectPdf(selected) && !actionDisabled && <Link className="admin-tonal" to={follow(`/admin/announcements/${selected.product!.id}/pdf-correction`)}>PDF로 보정</Link>}
@@ -212,7 +213,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           <h4 id="failure-result-title" ref={resultHeading} tabIndex={-1}>오류 기록 <strong>{statusLabel(selected.status)}</strong>{selected.lastResolvedAt ? ` · ${formatTime(selected.lastResolvedAt)}` : ''}{resolvedByLabel(selected) ? ` · ${resolvedByLabel(selected)}` : ''}
             {!detailPending && !detailError && detail?.checkedAt ? <small> · 조회 {formatTime(detail.checkedAt)}</small> : null}</h4>
           <button type="button" disabled={detailPending} onClick={processed}>다시 확인</button>
-          {selected.product?.publicDetailAvailable && <Link to={`/?${selected.product.resourceType === 'complexes' ? 'complexId' : 'announcementId'}=${selected.product.id}`} target="_blank" rel="noreferrer">사용자 상세</Link>}
+          {selected.product?.publicDetailAvailable && <Link to={`/?${selected.product.resourceType === 'complexes' ? 'complexId' : 'announcementId'}=${selected.product.id}`} target="_blank" rel="noreferrer">사용자 상세<NewWindowMark /></Link>}
         </div>
         <details className={styles.raw}><summary>서비스 데이터·실패 기록 원문</summary><ProductSummary row={selected}/><ProductDetails row={selected}/><StoredDataTable data={selected.raw} label="실패 기록 원문"/></details>
       </div> : null}

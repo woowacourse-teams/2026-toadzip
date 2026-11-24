@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router'
+import { AdminIcon } from '../shared/AdminIcon'
 import { loadPdfReviews } from './api'
 import { useOperationsQuery } from './useOperationsQuery'
 import { OperationsStatus } from './OperationsStatus'
@@ -19,7 +20,7 @@ export function PdfPublicationReviews() {
     <OperationsStatus query={query} />
     {query.data?.items.length === 0 && <p className={styles.message}>검토할 자동 보정 결과가 없습니다.</p>}
     {Boolean(query.data?.items.length) && <ul className={styles.pdfReviewList}>{query.data?.items.map(item => <li key={item.jobId}>
-      <Link to={`/admin/announcements/${item.announcementId}/pdf-correction`}>{item.name} <span aria-hidden="true">→</span></Link>
+      <Link to={`/admin/announcements/${item.announcementId}/pdf-correction`}>{item.name}<AdminIcon name="chevronRight" /></Link>
       {item.eligibilityOnly && <span>신청자격</span>}
       <ul>{reasonLines(item.reason).map((line, index) => <li key={index}>{line}</li>)}</ul>
     </li>)}</ul>}

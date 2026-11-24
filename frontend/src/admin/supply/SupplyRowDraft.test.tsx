@@ -7,6 +7,7 @@ import { cellsOf, housingTypeCount, leaseOf, ownCount, type SupplySheet } from '
 import { getManagementDetail, getManagementPage } from '../management/api'
 import type { ManagementDetailData } from '../management/managementContract'
 import { getMatchingHousingTypes } from '../ingest/supplyMatchingApi'
+import { newWindowName } from '../../test/newWindowName'
 vi.mock('../ingest/supplyMatchingApi', () => ({ getMatchingHousingTypes: vi.fn() }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), getManagementDetail: vi.fn(), getManagementPage: vi.fn() }))
 const summary = { id: 7, name: '새 단지', subtitle: '서울', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
@@ -129,5 +130,5 @@ it('저장된 주택형은 수집 원문 단지명을 수정 칸 없이 보여 �
   render(<Editor />)
   expect(screen.queryByLabelText('공고의 단지명')).not.toBeInTheDocument()
   expect(screen.getByText('수집 원문 단지명: 두꺼비')).toBeVisible()
-  expect(screen.getByRole('link', { name: '단지 주택형 이름 고치기 →' })).toHaveAttribute('href', '/admin/complexes/11?section=relations')
+  expect(screen.getByRole('link', { name: newWindowName('단지 주택형 이름 고치기') })).toHaveAttribute('href', '/admin/complexes/11?section=relations')
 })

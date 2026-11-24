@@ -9,6 +9,7 @@ import styles from './PipelineExecutionSteps.module.css'
 import { isRecord } from '../management/managementContract'
 import { PipelineNextActions } from './PipelineNextActions'
 import { PipelineFailureGuidance } from './PipelineFailureGuidance'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled, focused = false, pending = false, children }: {
   execution: DataPipelineExecution; onStop?: () => void; stopping?: boolean
@@ -48,7 +49,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
         return <li key={step} className={styles[state]}>
           <button type="button" aria-pressed={selected === step} aria-label={`${name} ${notApplicable ? '해당 없음' : states[state][1]}`}
             aria-current={state === 'running' ? 'step' : undefined} onClick={() => setSelected(step)}>
-            <span className={styles.marker} aria-hidden="true">{focused ? index + 1 : states[state][0]}</span>
+            <span className={styles.marker} aria-hidden="true">{focused ? index + 1 : <AdminIcon name={states[state][0]} size={18} />}</span>
             <span>{name}</span><small>{notApplicable ? '해당 없음' : states[state][1]}</small>
           </button>
         </li>

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, expect, it, vi } from 'vitest'
 import { IngestFailurePanel } from './IngestFailurePanel'
 import { getFailureReview, getFailureReviews, type FailureReview, type FailureReviewPageData } from './failureReviewApi'
+import { newWindowName } from '../../test/newWindowName'
 
 vi.mock('./failureReviewApi', () => ({getFailureReviews:vi.fn(), getFailureReview:vi.fn()}))
 const fetchFailures = vi.mocked(getFailureReviews)
@@ -30,7 +31,7 @@ it('목록은 대상·원인·상태만 보여주고 상세 설명은 확인·�
   expect(await screen.findByText(row.target)).toBeVisible()
   expect(screen.getByText('연결할 단지를 찾지 못함')).toBeVisible()
   expect(screen.queryByText(row.detail)).not.toBeInTheDocument()
-  expect(screen.getByText('총 41건 · 실행 필터 적용')).toBeVisible()
+  expect(screen.getByText('총 41건 · 최근 발생순 · 실행 필터 적용')).toBeVisible()
   fireEvent.click(screen.getByRole('button',{name:`확인·처리: ${row.target}`}))
   expect(within(screen.getByRole('dialog')).getByText(text => text.includes(row.detail))).toBeVisible()
   expect(fetchFailures).toHaveBeenCalledWith('announcement','announcement','PENDING',0,expect.any(AbortSignal), {keyword:'',executionId:'run-1'})
@@ -54,7 +55,7 @@ it('확인·처리 안에서 원문을 중첩 경로와 값의 표로 표시한�
   const table=within(dialog).getByRole('table',{name:'실패 기록 원문'})
   expect(table).toHaveTextContent('request.page0')
   expect(table).toHaveTextContent('request.completedfalse')
-  expect(within(dialog).getByRole('link',{name:'https://example.com/notice'})).toBeVisible()
+  expect(within(dialog).getByRole('link',{name:newWindowName('https://example.com/notice')})).toBeVisible()
   expect(container.querySelector('pre')).toBeNull()
   fireEvent.click(within(dialog).getByRole('button',{name:'닫기'}))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -81,7 +82,7 @@ it('수집 요청은 지역과 조치로 표시하고 원문은 상세에 보존
   expect(await screen.findByText('경상북도 경주시')).toBeVisible()
   expect(screen.getByText(/요청 1페이지 · 페이지당 500건/)).toBeVisible()
   expect(screen.getByText('요청 속도 제한')).toBeVisible()
-  expect(screen.getByText('총 41건 · 실행 필터 적용')).toBeVisible()
+  expect(screen.getByText('총 41건 · 최근 발생순 · 실행 필터 적용')).toBeVisible()
   fireEvent.click(screen.getByRole('button',{name:'확인·처리: 경상북도 경주시'}))
   expectReturnLink(within(screen.getByRole('dialog')).getByRole('link',{name:'API 키 입력·원천 수집'}), '/admin/ingest#complex-pipelines', 'collection:1')
 })
@@ -133,7 +134,7 @@ it.each([['complex','단지'],['announcement','공고']] as const)('%s 오류 �
   expect(within(screen.getByRole('dialog')).queryByRole('button',{name:`${label} 정제 다시 실행`})).not.toBeInTheDocument()
 })
 
-it.each(['다음','목록 새로고침'])('%s 응답 중 표와 가로·세로 스크롤 위치를 유지한다', async action => {
+it.each(['다음','새로고침'])('%s 응답 중 표와 가로·세로 스크롤 위치를 유지한다', async action => {
   let complete:(result:FailureReviewPageData)=>void=()=>{}
   const pending=new Promise<FailureReviewPageData>(resolve=>{complete=resolve})
   fetchFailures.mockResolvedValueOnce(page()).mockReturnValueOnce(pending)

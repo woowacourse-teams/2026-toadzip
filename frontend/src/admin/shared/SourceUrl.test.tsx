@@ -1,11 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { SourceUrl } from './SourceUrl'
+import { newWindowName } from '../../test/newWindowName'
 
 it('전체 공식 URL을 새 탭 링크로 표시한다', () => {
   const url = 'https://apply.example.com/notices/7?category=housing'
   render(<SourceUrl url={url} />)
-  const link = screen.getByRole('link', { name: url })
+  const link = screen.getByRole('link', { name: newWindowName(url) })
   expect(link).toHaveAttribute('href', url)
   expect(link).toHaveAttribute('target', '_blank')
   expect(link).toHaveAttribute('rel', 'noreferrer')

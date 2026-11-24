@@ -33,6 +33,11 @@
   color: var(--admin-danger);
 }
 
+/* 관리자 본문 안에서는 앞 내용(목록·단계)과 문단 기본 간격만큼 띄운다. */
+.admin-content .form-error {
+  margin-top: 12px;
+}
+
 .admin-layout {
   min-height: 100vh;
   min-height: 100dvh;
@@ -74,15 +79,6 @@
   text-align: left;
 }
 
-.admin-content h1,
-.admin-content p {
-  margin: 0;
-}
-
-.admin-content p {
-  margin-top: 12px;
-  color: var(--ds-color-label);
-}
 
 .admin-layout-error {
   padding: 12px 24px;
@@ -365,7 +361,7 @@
   font-weight: var(--admin-weight-medium);
 }
 
-.registration-message {
+.registration-success.registration-message {
   padding: 12px 14px;
   border-radius: var(--admin-radius-control);
 }
@@ -374,20 +370,6 @@
   margin: 0;
   color: var(--ds-color-action);
   background: var(--ds-color-action-soft);
-}
-
-.registration-error {
-  color: var(--admin-danger);
-  background: var(--admin-danger-soft);
-}
-
-.registration-error p {
-  color: inherit;
-}
-
-.registration-error ul {
-  margin: 8px 0 0;
-  padding-left: 20px;
 }
 
 .registration-submit {

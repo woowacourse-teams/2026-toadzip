@@ -1,38 +1,48 @@
 .page, .panel { min-width: 0; }
 :global(.admin-content):has(.page) { max-width: none; }
-.tabs { display: flex; gap: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); margin-bottom: var(--ds-space-4); }
+/* 탭과 그 탭에만 걸리는 동작(정제 다시 실행)을 한 줄에 두고, 밑줄은 줄 전체에 긋는다. */
+.tabBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px; margin-bottom: 16px; border-bottom: 1px solid var(--ds-color-divider); }
+.tabBar > .executionScope { margin-bottom: 12px; }
+.tabs { display: flex; gap: var(--ds-space-2); }
 .workflow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-4); }
 .workflow a { text-underline-offset: 3px; }
 .hint { font-size: var(--ds-text-caption); color: var(--ds-color-label); line-height: var(--ds-line-height-body); margin: var(--ds-space-3) 0; }
-.runMessage { color: var(--ds-color-action); font-size: var(--ds-text-caption); }
+.page .runMessage { margin: 0 0 12px; color: var(--ds-color-label); font-size: var(--admin-text-meta); }
 .executionFilter { margin-block: 12px; font-size: var(--ds-text-caption); color: var(--ds-color-muted); overflow-wrap: anywhere; }
 .executionScope { flex-basis: 100%; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--admin-radius-inner); }
 .executionScope p { margin: var(--ds-space-2) 0 var(--ds-space-3); }
 .detailNotice { margin: var(--ds-space-4); }
 .results { position: relative; }
-.summary { display: flex; justify-content: space-between; gap: var(--ds-space-3); color: var(--ds-color-label); font-size: var(--ds-text-caption); margin-bottom: var(--ds-space-2); }
+.summary { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); color: var(--ds-color-muted); font-size: var(--admin-text-meta); margin: 16px 0 12px; }
+.summary button { min-height: var(--admin-control-height-sm); }
 .loading { position: absolute; right: 0; top: 34px; z-index: 5; margin: 0; padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
-.scroll { --target-width: 280px; --action-width: 120px; max-height: 65vh; overflow: auto; border-block: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); }
+/* 표는 카드 폭 끝까지 붙이고 위아래 선만 둔다(회원·발송 기록·실행 이력과 같은 모양). */
+.panel { --inset: 24px; } /* admin-list-card의 좌우 안쪽 여백. 실행 이력(PipelineHistory)과 같은 방식이다. */
+.scroll { --target-width: 280px; --action-width: 136px; max-height: 65vh; overflow: auto; margin-inline: calc(var(--inset) * -1); border-block: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); }
 .empty { padding: var(--ds-space-6); color: var(--ds-color-label); }
 .empty h3 { color: var(--ds-color-text); font-size: var(--ds-text-body); }
-.table { width: calc(var(--target-width) + var(--action-width) + 400px); min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
+.table { width: 100%; min-width: calc(var(--target-width) + var(--action-width) + 280px); border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
 .targetColumn { width: var(--target-width); }
 .actionColumn { width: var(--action-width); }
 .table th, .table td { box-sizing: border-box; padding: var(--ds-space-3); border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; overflow-wrap: anywhere; }
 .table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface); color: var(--ds-color-muted); font-weight: var(--admin-weight-medium); }
 .table th:first-child { position: sticky; left: 0; z-index: 1; border-right-color: var(--ds-color-border-base); }
 .table thead th:first-child { z-index: 3; }
-.table th:last-child, .table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--ds-color-surface); border-left: 1px solid var(--ds-color-border-base); border-right: 0; }
-.table thead th:last-child { z-index: 3; background: var(--ds-color-surface-subtle); }
+.table th:last-child, .table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--ds-color-surface); }
+.table thead th:last-child { z-index: 3; padding-left: 20px; } /* 아래 글자 버튼(안쪽 8px)과 글자 시작선을 맞춘다. */
+.table tr > :first-child { padding-left: var(--inset); }
+.table tr > :last-child { padding-right: var(--inset); }
+.table tbody tr:last-child > * { border-bottom: 0; }
 .table tbody th { background: var(--ds-color-surface); font-weight: var(--admin-weight-strong); }
 .table tbody th > :first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table small, .table time, .dialogBody small { display: block; font-size: var(--admin-text-label); margin-top: var(--ds-space-2); color: var(--ds-color-label); font-weight: var(--admin-weight-regular); }
 .table time { font-size: var(--admin-text-label); }
 .table p { margin: var(--ds-space-2) 0; }
 .table tbody tr:hover > * { background: var(--ds-color-action-soft); }
-.table a { color: var(--ds-color-action); text-underline-offset: 3px; }
-.status { display: inline-block; padding: var(--ds-space-1) var(--ds-space-2); border-radius: var(--admin-radius-badge); background: var(--ds-color-surface-subtle); color: var(--ds-color-label); white-space: nowrap; }
-.status[data-status="PENDING"] { background: var(--ds-color-status-neutral-surface); color: var(--ds-color-status-neutral); }
+.table tbody th a { color: var(--ds-color-text); text-decoration: none; }
+.table tbody th a:hover { color: var(--ds-color-action); text-decoration: underline; text-underline-offset: 3px; }
+.table a { text-underline-offset: 3px; }
+/* 배지 모양은 admin-system.css의 .admin-status를 쓰고, 해결됨만 초록으로 바꾼다. */
 .status[data-status="RESOLVED"] { background: var(--ds-color-action-soft); color: var(--ds-color-action); }
 .dialog { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-card); background: var(--ds-color-surface); color: var(--ds-color-text); }
 .dialog::backdrop { background: rgb(33 59 53 / 25%); }
@@ -65,10 +75,11 @@
 .dialog .dialogResult h4 { margin: 0; font-size: var(--admin-text-body, 15px); font-weight: var(--admin-weight-medium); line-height: 1.4; }
 .resolvedBy { display: block; margin-top: var(--ds-space-1); color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 
-.pdfLink { display: block; margin-bottom: 8px; }
+.pdfLink { display: block; margin-bottom: 4px; padding-inline: 8px; font-size: var(--admin-text-meta); font-weight: var(--admin-weight-medium); white-space: nowrap; }
 .tabs { border: 0; background: transparent; padding: 0; }
 .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; display: inline-flex; align-items: center; min-height: var(--admin-tab-height); padding: 0; margin-right: 24px; }
 .tabs button[aria-selected=true] { border-bottom-color: var(--ds-color-action); background: transparent; color: var(--ds-color-action); }
 
-.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.heading a { font-size: var(--ds-text-caption); white-space: nowrap; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.heading a { display: inline-flex; align-items: center; color: var(--ds-color-muted); font-size: var(--admin-text-meta); text-decoration: none; white-space: nowrap; }
+.heading a:hover { color: var(--ds-color-action); }

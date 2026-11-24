@@ -6,6 +6,7 @@ import { ListPagination } from '../management/ListPagination'
 import { listFeedback, feedbackStates, type FeedbackPage } from './api'
 import { FeedbackProcessingPanel } from './FeedbackProcessingPanel'
 import styles from './FeedbackListPage.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 const receivedAt = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -72,7 +73,7 @@ export function FeedbackListPage() {
       else setParams(next)
     }}>
       <label className={styles.searchField}>의견 내용 검색<span className={styles.inputWrap}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
+        <AdminIcon name="search" />
         <input name="keyword" maxLength={200} defaultValue={keyword} placeholder="검색할 내용을 입력하세요" />
       </span></label>
       <label>상태<select aria-label="의견 상태 필터" name="status" defaultValue={state}><option value="">전체</option>{Object.entries(feedbackStates).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -82,7 +83,7 @@ export function FeedbackListPage() {
         else setParams({})
       }}>초기화</button></div>
     </form>
-    {error && <div className={styles.error} role="alert"><p>{error}</p>{valid &&
+    {error && <div className="admin-alert" role="alert"><p>{error}</p>{valid &&
       <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button>}</div>}
     <div className={styles.results} aria-busy={pending}>
       {pending && <p className={styles.loading} role="status">의견 목록을 불러오는 중…</p>}
@@ -96,7 +97,7 @@ export function FeedbackListPage() {
             <header className={styles.cardHeading}><h2>의견 #{entry.id}</h2><time dateTime={entry.createdAt}>{receivedAt.format(new Date(entry.createdAt))}</time></header>
             <p className={styles.meta}>제품을 더 이상 쓸 수 없다면: {entry.surveyAnswer ? surveyAnswers[entry.surveyAnswer] : '미응답'}</p>
             <p className={styles.preview}>{entry.content ? entry.content.slice(0, 120) : '추가 의견 없음'}{entry.content.length > 120 ? '…' : ''}</p>
-            <details><summary>전체 내용 보기<svg className={styles.chevron} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg></summary><div role="region" aria-label={`의견 ${entry.id} 전체 내용`}>
+            <details><summary>전체 내용 보기<AdminIcon name="chevronDown" className={styles.chevron} /></summary><div role="region" aria-label={`의견 ${entry.id} 전체 내용`}>
               <p className={styles.content}>{entry.content || '추가 의견 없음'}</p>
             </div></details>
             <p>{feedbackStates[entry.status ?? 'OPEN']}{entry.note ? ` · ${entry.note}` : ''}</p>

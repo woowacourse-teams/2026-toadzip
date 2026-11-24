@@ -6,6 +6,7 @@ import { Link, useSearchParams } from 'react-router'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
 import type { HousingComplexCreateResponse } from './api'
 import { HousingComplexRegistrationForm } from './HousingComplexRegistrationForm'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { embedded?: boolean; onCreated?: (id: number) => void }) {
   const [params, setParams] = useSearchParams()
@@ -19,7 +20,7 @@ export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { 
   }
 
   return <section className="admin-registration-page">
-    {!embedded ? <header className="admin-registration-heading"><Link to="/admin/announcements">← 공고 목록</Link><h1>공고 등록</h1></header> : null}
+    {!embedded ? <header className="admin-registration-heading"><Link to="/admin/announcements"><AdminIcon name="arrowLeft" className="admin-icon-lead" />공고 목록</Link><h1>공고 등록</h1></header> : null}
     <div className="admin-mode-switch" aria-label="공고 입력 방식">
       <button data-admin-navigation={!direct || undefined} type="button" aria-pressed={direct} disabled={submitting} onClick={() => { if (!direct) selectMode('direct') }}>직접 입력</button>
       <button data-admin-navigation={!myhome || undefined} type="button" aria-pressed={myhome} disabled={submitting} onClick={() => { if (!myhome) selectMode('myhome') }}>마이홈에서 가져오기</button>
@@ -89,7 +90,7 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
       <ComplexPicker disabled={submitting} onSelect={item => onSelect(String(item.id))} />
       <button data-admin-navigation={addingComplex || undefined} type="button" disabled={submitting} onClick={() => setAddingComplex(current => !current)}>{addingComplex ? '단지 등록 취소' : '새 단지 등록'}</button>
       {loading ? <p role="status">선택 단지를 불러오는 중…</p> : null}
-      {error ? <div><p className="form-error" role="alert">{error}</p>
+      {error ? <div role="alert" className="admin-alert"><p>{error}</p>
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button></div> : null}
     </section>
     {addingComplex ? <HousingComplexRegistrationForm onSubmittingChange={changeSubmitting} onCreated={item => {

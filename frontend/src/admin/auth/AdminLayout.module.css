@@ -44,8 +44,8 @@
 .navTools { padding:0; }
 .navTools>summary { display:flex; align-items:center; justify-content:space-between; list-style:none; cursor:pointer; user-select:none; }
 .navTools>summary::-webkit-details-marker { display:none; }
-.navTools>summary::after { content:""; width:6px; height:6px; margin-right:2px; border:solid currentColor; border-width:0 1.5px 1.5px 0; transform:rotate(45deg) translateY(-2px); transition:transform .15s; }
-.navTools[open]>summary::after { transform:rotate(-135deg) translateY(-1px); }
+.navChevron { transition: transform .15s; }
+.navTools[open]>summary .navChevron { transform: rotate(180deg); }
 .navTools :global(.admin-nav-group) { margin-top:6px; }
 /* 모든 관리자 화면이 같은 폭·같은 시작선을 쓴다. 화면별로 최대 폭을 따로 두지 않는다. */
 .layout :global(.admin-content) { box-sizing:border-box; width:100%; max-width:var(--admin-content-max); margin:0; padding:8px 32px 48px; min-width:0; }

@@ -8,7 +8,7 @@
 .filters select { width: 160px; }
 .actions { display: flex; gap: var(--ds-space-2); }
 .actions > button { min-height: var(--ds-control-height-md); }
-.actions > button:not(:first-child), .error button { border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding-inline: var(--ds-space-4); color: var(--ds-color-text); background: var(--ds-color-surface); font: inherit; cursor: pointer; }
+.actions > button:not(:first-child) { border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding-inline: var(--ds-space-4); color: var(--ds-color-text); background: var(--ds-color-surface); font: inherit; cursor: pointer; }
 .filters input:focus-visible, .filters select:focus-visible, .page a:focus-visible, .page button:focus-visible, .scroll:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .page a { color: var(--ds-color-action); }
 .results { position: relative; min-width: 0; margin-top: var(--ds-space-3); }
@@ -31,9 +31,6 @@
 .empty { padding: 56px 24px; text-align: center; }
 .empty h2 { margin-block: 0 var(--ds-space-2); font-size: var(--admin-text-body); }
 .empty p { margin: 0; color: var(--ds-color-muted); }
-.error { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-3); color: var(--ds-color-deadline); }
-.error p { margin: 0; }
-.error button { min-height: var(--ds-control-height-md); }
 .back { display: inline-block; margin-bottom: var(--ds-space-4); }
 .detail { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
 .detail th, .detail td { padding: var(--ds-space-4); border-block: 1px solid var(--ds-color-table-line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }

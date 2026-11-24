@@ -5,6 +5,7 @@ import styles from './ComplexIngest.module.css'
 import { ComplexIconButton } from './ComplexIconButton'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { IconButton } from '../../design-system/components/IconButton'
+import { AdminIcon } from '../shared/AdminIcon'
 
 type Mode = 'collection' | 'complex' | 'coordinates'
 const labels: Record<Mode, string> = { collection: '수집 오류', complex: '단지 정제 오류', coordinates: '좌표 문제' }
@@ -64,7 +65,7 @@ export function ComplexRunErrors({ executionId, phase }: { executionId: string; 
         <label htmlFor={searchId}>대상 검색</label><div className={styles.searchField}>
           <input id={searchId} className={styles.searchInput} type="search" name="keyword" maxLength={200} placeholder="이름 또는 원천 식별자 검색" />
           <IconButton data-design-system type="submit" label="검색" title="검색" className={styles.searchButton}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+            <AdminIcon name="search" />
           </IconButton>
         </div>
       </form>

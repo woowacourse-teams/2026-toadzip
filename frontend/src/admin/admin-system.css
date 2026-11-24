@@ -79,7 +79,9 @@
   .admin-content :is(h2, h3, h4, h5) { font-weight: var(--admin-weight-strong); }
   .admin-content h2 { font-size: var(--admin-text-heading); }
   .admin-content :is(h3, h4, h5) { font-size: var(--admin-text-body); }
-  .admin-content p { line-height: 1.6; }
+  /* 문단 기본값: 위에만 12px 띄운다. 공용 부품(오류 상자 등)과 화면 CSS가 이 값을 덮을 수 있게 기본 layer에 둔다. */
+  .admin-content h1 { margin: 0; }
+  .admin-content p { margin: 12px 0 0; color: var(--ds-color-label); line-height: 1.6; }
   .admin-content :is(th, strong, b) { font-weight: var(--admin-weight-strong); }
   .admin-content a { color: var(--ds-color-action); }
   .admin-content label { display: flex; flex-direction: column; gap: 8px; font-size: var(--admin-text-dense); font-weight: var(--admin-weight-medium); }
@@ -95,9 +97,10 @@
   }
   .admin-content textarea { padding-block: 8px; line-height: 1.6; }
   .admin-content input:read-only { background-color: var(--ds-color-surface-subtle); }
+  /* 화살표 경로는 shared/AdminIcon.tsx의 chevronDown과 같다. 세트를 바꾸면 함께 바꾼다. */
   .admin-content select:not([multiple]):not([size]) {
     appearance: none; padding-right: 36px;
-    background: var(--ds-color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7079' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+    background: var(--ds-color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none' stroke='%236b7079' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 8 10 12.5 14.5 8'/%3E%3C/svg%3E") no-repeat right 12px center;
   }
   .admin-content select:not([multiple]):disabled { background-color: var(--ds-color-surface-subtle); }
   .admin-content input[type=number] { appearance: textfield; -moz-appearance: textfield; }
@@ -153,4 +156,34 @@
   .admin-content .admin-status[data-tone=deleted] { color: var(--ds-color-muted-base); }
   .admin-content :is(.pipeline-failed, .pipeline-completed_warnings) { background: var(--admin-danger-soft); color: var(--admin-danger); }
   .admin-content .pipeline-running { background: var(--ds-color-status-applying-surface); color: var(--ds-color-status-applying); }
+
+  /* 글자 버튼: 표의 행 동작(확인·처리, 상세 보기)처럼 한 화면에 여러 번 나오는 가벼운 동작. 테두리 없이 초록 글자로 둔다. */
+  /* 기본 버튼 규칙(:is(button:not(...)))과 같은 우선순위가 되도록 요소를 붙이고, 뒤에 두어 이긴다. */
+  .admin-content :is(button, a).admin-text-button {
+    min-height: var(--admin-control-height-sm); padding: 0 8px; border-color: transparent; background: transparent;
+    color: var(--ds-color-action); font-size: var(--admin-text-meta); font-weight: var(--admin-weight-medium); white-space: nowrap;
+  }
+  .admin-content :is(button, a).admin-text-button:hover:not(:disabled) { border-color: transparent; background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+
+  /* 오류 상자: 불러오기 실패·저장 오류는 모두 이 모양 하나로 그린다. registration-error는 같은 상자의 옛 이름이다.
+     문구와 버튼은 세로 가운데로 맞추고, 문단 기본 여백은 지워 상자 안에서 위아래가 같게 한다.
+     이 규칙은 layer 안에 있어 화면 CSS의 '.page p { margin }' 같은 넓은 문단 규칙에 진다. 그런 화면에는 예외를 둔다(PdfCorrection 참고).
+     버튼 없이 문장만 여러 개면 가로로 나누지 않고 위아래로 쌓는다. */
+  .admin-content :is(.admin-alert, .registration-error) {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px;
+    margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--admin-danger-line); border-radius: var(--admin-radius-inner);
+    background: var(--admin-danger-soft); color: var(--admin-danger); font-size: var(--admin-text-dense); line-height: 1.5;
+  }
+  .admin-content :is(.admin-alert, .registration-error) > p { flex: 1 1 240px; margin: 0; color: inherit; line-height: inherit; overflow-wrap: anywhere; }
+  .admin-content :is(.admin-alert, .registration-error) > button { flex: none; }
+  .admin-content .registration-error ul { margin: 8px 0 0; padding-left: 20px; }
+  .admin-content :is(.admin-alert, .registration-error):not(:has(> button)) { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 4px; }
+  .admin-content :is(.admin-alert, .registration-error):not(:has(> button)) > p { flex: none; }
+
+  /* 아이콘: shared/AdminIcon 세트 하나만 쓴다. 크기를 주지 않으면 글자 크기를 따르고,
+     글자 뒤 꺾쇠는 앞 글자와, 글자 앞 화살표(admin-icon-lead)는 뒤 글자와 조금 띄운다. */
+  .admin-layout .admin-icon { flex: none; vertical-align: -0.15em; }
+  /* 아이콘만 있는 버튼은 aria-label로 이름을 가지므로, 그런 버튼에서는 띄우지 않아 아이콘이 가운데에 온다. */
+  .admin-layout :is(a, button, small, summary):not([aria-label]) > .admin-icon:last-child:not(.admin-icon-lead) { margin-inline-start: .2em; }
+  .admin-layout .admin-icon-lead { margin-inline-end: .3em; }
 }

@@ -38,6 +38,32 @@ describe('관리자 화면 기준', () => {
     expect(findings(selectRulesWithBackgroundShorthand)).toEqual([])
   })
 
+  it('아이콘은 shared/AdminIcon 세트만 쓰고 화면 코드에서 svg를 따로 그리지 않는다', () => {
+    const components = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name)
+        if (statSync(path).isDirectory()) return components(path)
+        return name.endsWith('.tsx') && !name.endsWith('.test.tsx') ? [path] : []
+      })
+    const drawnSvg = components(adminRoot)
+      .filter((path) => relative(adminRoot, path) !== join('shared', 'AdminIcon.tsx') && /<svg\b/.test(read(path)))
+      .map((path) => relative(adminRoot, path))
+    expect(drawnSvg).toEqual([])
+  })
+
+  it('오류 상자 모양(.admin-alert, .registration-error)은 admin-system.css 한 곳에서만 정한다', () => {
+    // 화면 CSS가 상자를 덮는 규칙을 다시 만들지 않게, 이 클래스가 들어간 선택자는 아래 배치 예외만 허용한다.
+    const allowed = [
+      'announcement-pdf/PdfCorrection.module.css: .page :global(.admin-alert) > p {',
+      'management/ManagementWorkspace.module.css: .editor :global(.management-detail) > :is(:global(.admin-alert), :global(.registration-error), :global(.registration-success), :global(.admin-warning), :global(.admin-confirm)) {',
+    ]
+    expect(findings(/[^{}\n]*\.(?:admin-alert|registration-error)\b[^{}\n]*\{/g).map((found) => found.replace(/:\s+/, ': ')).filter((found) => !allowed.includes(found))).toEqual([])
+  })
+
+  it('CSS content로 글자 아이콘(›, ↗ 같은 기호)을 넣지 않는다', () => {
+    expect(findings(/content:\s*(['"])(?!\1)[^'"]+\1/g)).toEqual([])
+  })
+
   // 번들에서 layer 순서는 처음 나타나는 순서로 정해진다. index.css보다 앞에 오는 모듈 CSS가 layer를 쓰거나
   // 관리자 기준 파일을 다른 곳에서 먼저 불러오면 reset이 위로 올라가 기준 버튼의 굵기·크기를 덮는다.
   it('cascade layer는 index.css 맨 위 선언과 관리자 기준 파일에서만 쓰고, 기준 파일은 main.tsx에서만 불러온다', () => {

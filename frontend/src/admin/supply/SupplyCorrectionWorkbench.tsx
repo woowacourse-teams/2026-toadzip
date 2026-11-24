@@ -13,6 +13,7 @@ import { cellsOf, housingTypeCount, leaseOf, ownCount, sharedQuotas, toSheetInpu
 import { addHousingType, cellValues, emptySheet, moveHousingType, removeHousingType, wholeTypeQuota } from './sheetEdits'
 import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
 import styles from './SupplyCorrection.module.css'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 // 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
 function isStaleConflict(cause: unknown) { return cause instanceof ManagementError && cause.code === 'ADMIN_DATA_STALE' }
@@ -148,7 +149,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     } catch (cause) { setError(cause instanceof Error ? cause.message : '최신값을 불러오지 못했습니다.') }
     finally { setBusy(false) }
   }
-  if (!workspace) return <div>{error ? <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></p> : <p role="status">공급정보와 원천을 불러오는 중…</p>}</div>
+  if (!workspace) return <div>{error ? <div role="alert" className="admin-alert"><p>{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : <p role="status">공급정보와 원천을 불러오는 중…</p>}</div>
   if (pdfOpen) return <section aria-label="PDF로 공급표 채우기">
     <div className={styles.actions}><button type="button" onClick={() => setPdfOpen(false)}>PDF로 채우기 닫기</button></div>
     <PdfCorrectionWorkspace id={id} supplyDraft={(next: SupplySheet) => {
@@ -236,6 +237,6 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     {appliedWarnings.length > 0 && <details><summary>저장 후 확인할 항목 {appliedWarnings.length}개</summary><ul>{appliedWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
     <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={sheetDirty || busy || uncertain}
       onBusyChange={setBusy} onDirtyChange={setReviewDirty} evidence={applied?.evidence ?? null} pending={applied?.changed ?? []} />
-    <nav className={styles.actions} aria-label="공급정보 확인"><Link to={`/admin/announcements/${id}?section=history`}>출처·수정 이력</Link><Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">사용자 공고 화면 확인 ↗</Link></nav>
+    <nav className={styles.actions} aria-label="공급정보 확인"><Link to={`/admin/announcements/${id}?section=history`}>출처·수정 이력</Link><Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">사용자 공고 화면 확인<NewWindowMark /></Link></nav>
   </section>
 }

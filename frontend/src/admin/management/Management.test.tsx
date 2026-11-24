@@ -7,6 +7,7 @@ import { ComplexPicker } from './ComplexPicker'
 import { ManagementError } from './api'
 import { type ManagementDetailData } from './managementContract'
 import { FailureReturnLink } from '../ingest/FailureReturnLink'
+import { newWindowName } from '../../test/newWindowName'
 const mocks = vi.hoisted(() => ({getManagementPage:vi.fn(),getManagementDetail:vi.fn(),requestManagementApi:vi.fn(),getManagementHistory:vi.fn()}))
 vi.mock('./api',async original => ({...(await original<typeof import('./api')>()),...mocks}))
 const summary = {id:7,name:'두꺼비 단지',subtitle:'서울 중구 세종대로',provider:'LH',rental:'HAPPY_HOUSING',deleted:false,modified:false,reviewRequired:false,updatedAt:null}
@@ -19,7 +20,7 @@ it('검색 조건을 URL로 보존하고 상세에서 목록으로 돌아간다'
   render(<MemoryRouter initialEntries={['/admin/complexes?keyword=두꺼비&provider=LH']}><Routes><Route path="/admin/complexes" element={<ManagementList resource="complexes" />} /><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('link',{name:'두꺼비 단지'}))
   expect(await screen.findByRole('heading',{name:'두꺼비 단지'})).toBeVisible()
-  fireEvent.click(screen.getByRole('link',{name:'← 목록으로'}))
+  fireEvent.click(screen.getByRole('link',{name:'목록으로'}))
   expect(await screen.findByLabelText('단지명·주소')).toHaveValue('두꺼비')
   expect(screen.getByLabelText('기관')).toHaveValue('LH')
 })
@@ -51,9 +52,9 @@ it('공고 기본정보와 출처에 전체 공식 URL과 원천 식별자를 �
   const url = 'https://example.com/notices/7?category=housing'
   mocks.getManagementDetail.mockResolvedValue({ ...fixture(), data: { ...fixture().data, originalUrl: url } })
   render(<MemoryRouter initialEntries={['/admin/announcements/7']}><Routes><Route path="/admin/announcements/:id" element={<ManagementDetail resource="announcements" />} /></Routes></MemoryRouter>)
-  expect(await screen.findByRole('link', { name: url })).toHaveAttribute('href', url)
+  expect(await screen.findByRole('link', { name: newWindowName(url) })).toHaveAttribute('href', url)
   fireEvent.click(screen.getByRole('button', { name: '출처·수정 이력' }))
-  expect(screen.getByRole('link', { name: url })).toHaveAttribute('href', url)
+  expect(screen.getByRole('link', { name: newWindowName(url) })).toHaveAttribute('href', url)
   expect(screen.getByText('원천 식별자')).toBeVisible()
   expect(screen.getByText('TEST-7')).toBeVisible()
 })
@@ -123,12 +124,12 @@ it('저장하지 않은 수정은 메뉴 이동 전에 확인하고 취소하면
   render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /><Route path="/admin/complexes" element={<p>목록 도착</p>} /></Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button',{name:'수정'}))
   fireEvent.change(screen.getByLabelText('이름'),{target:{value:'저장 전 이름'}})
-  fireEvent.click(screen.getByRole('link',{name:'← 목록으로'}))
+  fireEvent.click(screen.getByRole('link',{name:'목록으로'}))
   expect(confirm).toHaveBeenCalledOnce()
   expect(screen.getByLabelText('이름')).toHaveValue('저장 전 이름')
   expect(screen.queryByText('목록 도착')).not.toBeInTheDocument()
   confirm.mockReturnValue(true)
-  fireEvent.click(screen.getByRole('link',{name:'← 목록으로'}))
+  fireEvent.click(screen.getByRole('link',{name:'목록으로'}))
   expect(screen.getByText('목록 도착')).toBeVisible()
   confirm.mockRestore()
 })

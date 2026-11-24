@@ -4,6 +4,7 @@ import { getUser, setUserAdmin, type AdminUser } from './api'
 import { joinedAt, providerLabels } from './presentation'
 import { NotificationSubscriptions } from '../notifications/NotificationSubscriptions'
 import styles from './Users.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function UserDetailPage() {
   const { id = '' } = useParams()
@@ -47,7 +48,7 @@ export function UserDetailPage() {
   return <section className={styles.page}>
     <Link to={back} className={styles.back}>목록으로</Link>
     <header className={styles.heading}><h1>{valid ? `회원 ${id}` : '회원 상세'}</h1></header>
-    {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid
+    {error ? <div className="admin-alert" role="alert"><p>{error}</p>{valid
       ? <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}
     {!data && !error ? <p role="status">회원 정보를 불러오는 중…</p> : null}
     {data ? <table className={styles.detail} aria-label="회원 기본 정보"><tbody>
@@ -61,7 +62,7 @@ export function UserDetailPage() {
           {data.admin ? '관리자 권한 빼기' : '관리자 권한 주기'}</button>
       </div>{roleState?.message ? <p className={styles.roleError} role="alert">{roleState.message}</p> : null}</td></tr>
     </tbody></table> : null}
-    {data ? <><p><Link to={`/admin/notification-deliveries?userId=${id}`}>이 회원의 알림 발송·열람 기록 확인 →</Link></p>
+    {data ? <><p><Link to={`/admin/notification-deliveries?userId=${id}`}>이 회원의 알림 발송·열람 기록 확인<AdminIcon name="chevronRight" /></Link></p>
     <NotificationSubscriptions key={id} userId={id} /></> : null}
   </section>
 }

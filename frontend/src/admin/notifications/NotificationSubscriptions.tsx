@@ -153,7 +153,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       <p>대상 확인 불가는 현재 대상 정보를 찾을 수 없는 신청입니다. 신청일 미확인은 신청 시각 기록이 없는 신청입니다. 이메일 미제공만으로는 확인 필요 항목에 포함하지 않습니다.</p>
     </details> : null}
     </div>
-    {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid ? <button type="button"
+    {error ? <div className="admin-alert" role="alert"><p>{error}</p>{valid ? <button type="button"
       onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}
     <div className={styles.results} aria-busy={pending}><div className={styles.resultHeading}>
       <div><SectionHeading aria-live="polite">{data ? `검색 결과 ${data.totalElements.toLocaleString('ko-KR')}건` : '신청 목록'}</SectionHeading>

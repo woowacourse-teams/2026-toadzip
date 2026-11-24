@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { ComplexVerificationPanel } from './ComplexVerificationPanel'
 import { ManagementError } from './api'
 import type { ComplexVerification, ComplexReview } from './complexVerificationContract'
+import { newWindowName } from '../../test/newWindowName'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }))
 vi.mock('./complexVerificationApi', () => ({ getComplexVerification: mocks.get, saveComplexReview: mocks.save }))
@@ -50,7 +51,7 @@ it('일치와 차이를 구분하고 실제 확인과 지도 대조 경로를 �
   expect(screen.getByLabelText('근거 URL')).not.toBeVisible()
   fireEvent.click(screen.getByText('참고 자료'))
   expect(screen.getByText(/현재 주소 식별정보/)).toBeVisible()
-  const coordinate = new URL(screen.getByRole('link', { name: '저장 좌표 보기 ↗' }).getAttribute('href')!)
+  const coordinate = new URL(screen.getByRole('link', { name: newWindowName('저장 좌표 보기') }).getAttribute('href')!)
   expect(coordinate.searchParams.get('query')).toBe('37.5665,126.978')
   expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
 })

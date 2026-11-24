@@ -67,7 +67,7 @@ it('모달 내부와 내부에서 시작한 드래그는 유지하고 바깥을 
   press(120, 120)
   fireEvent.click(dialog, { clientX: 120, clientY: 120 })
   expect(dialog).toBeVisible()
-  fireEvent.click(screen.getByText('최근 실행 20건씩 확인할 수 있습니다.'))
+  fireEvent.click(screen.getByText('실행 이력이 없습니다.'))
   expect(dialog).toBeVisible()
   press(120, 120)
   fireEvent.click(dialog, { clientX: 20, clientY: 20 })

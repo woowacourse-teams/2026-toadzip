@@ -9,6 +9,7 @@ import { GhSupplyTable } from './GhSupplyTable'
 import { isGhSupplyTablePath } from './ghSupplyColumns'
 import styles from './SourceDataPage.module.css'
 import { failureReturnUrl } from './failureNavigation'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 export function SourceDataPage() {
   const [params, setParams] = useSearchParams()
@@ -85,7 +86,7 @@ export function SourceDataPage() {
     </div>
     <div id="source-panel" role="tabpanel" aria-labelledby={category ? `source-tab-${category}` : undefined}>
     {metadata ? <div className={styles.sourceInfo}>
-      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{board ? '공식 게시판' : 'API 설명·키 발급'}</a>
+      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{board ? '공식 게시판' : 'API 설명·키 발급'}<NewWindowMark /></a>
         <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{board ? `키 없이 ${sourceCategories[board]} 수집` : 'API 키 입력하고 수집'}</Link></p>
       {result?.items[0] ? <p><span>{board ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
     </div> : null}
@@ -105,8 +106,8 @@ export function SourceDataPage() {
         current.set('category', category ?? 'MYHOME_COMPLEX'); current.delete('keyword'); current.delete('page'); return current
       })}>검색 초기화</button>
     </form>
-    {!validQuery ? <div role="alert" className="registration-error"><p>조회 주소의 분류, 검색어 또는 페이지 번호가 올바르지 않습니다. 검색 초기화 후 다시 조회해 주세요.</p></div> : null}
-    {validQuery && error ? <div role="alert" className="registration-error"><p>{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
+    {!validQuery ? <div role="alert" className="admin-alert"><p>조회 주소의 분류, 검색어 또는 페이지 번호가 올바르지 않습니다. 검색 초기화 후 다시 조회해 주세요.</p></div> : null}
+    {validQuery && error ? <div role="alert" className="admin-alert"><p>{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
     <div className={styles.results} aria-busy={pending}>
     {pending ? <p role="status" className={result ? styles.loading : undefined}>원천 데이터를 불러오는 중…</p> : null}
     {validQuery && result && category ? <>

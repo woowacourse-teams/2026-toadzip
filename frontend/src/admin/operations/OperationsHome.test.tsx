@@ -188,3 +188,21 @@ it('자동 추출을 바꾸지 못하면 이전 상태를 그대로 두고 실�
   expect(within(card).getByText('꺼짐')).toBeVisible()
   expect(within(card).getByRole('button', { name: '자동 추출 켜기' })).toBeEnabled()
 })
+it('새로고침은 현황 요약을 다시 불러온다', async () => {
+  show()
+  await waitFor(() => expect(screen.getByLabelText('전체 단지 건수')).toHaveTextContent('8,427'))
+  const calls = vi.mocked(loadComplexOverview).mock.calls.length
+  fireEvent.click(screen.getByRole('button', { name: '현황 새로고침' }))
+  await waitFor(() => expect(vi.mocked(loadComplexOverview).mock.calls.length).toBe(calls + 1))
+  expect(screen.getByRole('button', { name: '현황 새로고침' })).toHaveTextContent('새로고침')
+})
+it('기준 버튼은 그 집계의 설명을 대화상자로 열고 닫기로 닫는다', async () => {
+  show()
+  const button = screen.getByRole('button', { name: '단지 집계 기준' })
+  expect(button).toHaveTextContent('기준')
+  fireEvent.click(button)
+  const dialog = screen.getByRole('dialog', { name: '단지 집계' })
+  expect(dialog).toHaveAttribute('open')
+  fireEvent.click(within(dialog).getByRole('button', { name: '도움말 닫기' }))
+  expect(dialog).not.toHaveAttribute('open')
+})

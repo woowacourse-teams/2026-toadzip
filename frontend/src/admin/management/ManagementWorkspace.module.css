@@ -38,7 +38,9 @@
 .editorBody > :global(.management-detail) { display: flex; flex-direction: column; }
 .editorBody > :global(.admin-registration-page) { box-sizing: border-box; padding: 24px; }
 .editorBody h2 { font-size: var(--admin-text-body); }
-.editor :global(.management-detail) > :is(:global(.registration-error), :global(.registration-success), :global(.admin-warning), :global(.admin-confirm)) { flex: none; max-height: 180px; overflow-y: auto; margin: 8px 24px; }
+/* 상세를 불러오는 동안의 안내 문구도 카드 안쪽 여백(본문과 같은 20px)에 맞춘다. */
+.editor :global(.management-detail) > p[role=status]:not([class]) { margin: 0; padding: 16px 20px; }
+.editor :global(.management-detail) > :is(:global(.admin-alert), :global(.registration-error), :global(.registration-success), :global(.admin-warning), :global(.admin-confirm)) { flex: none; max-height: 180px; overflow-y: auto; margin: 8px 24px; }
 
 /* 작업공간 안의 입력·버튼 */
 .workspace :is(button, input, select, textarea) { font-size: var(--ds-text-body); }

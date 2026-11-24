@@ -4,6 +4,7 @@ import { sampleSheet } from '../supply/fixtures/sheet'
 import { setMembersCount, updateHousingType } from '../supply/sheetEdits'
 import { ChangeHistory } from './ChangeHistory'
 import { getManagementHistory } from './api'
+import { newWindowName } from '../../test/newWindowName'
 
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), getManagementHistory: vi.fn() }))
 beforeEach(() => vi.mocked(getManagementHistory).mockReset())
@@ -50,7 +51,7 @@ it('단지 이력은 전체 기록을 경로·값 표로 펼쳐 볼 수 있다',
   fireEvent.click(screen.getByText('전체 기록 보기'))
   const before = screen.getByRole('table', { name: '변경 전' })
   expect(within(before).getByRole('row', { name: 'supplyRows[0].amount 0' })).toBeVisible()
-  expect(within(screen.getByRole('table', { name: '변경 후' })).getByRole('link', { name: 'https://example.com/notice' })).toBeVisible()
+  expect(within(screen.getByRole('table', { name: '변경 후' })).getByRole('link', { name: newWindowName('https://example.com/notice') })).toBeVisible()
 })
 
 it('바뀐 값만 먼저 보여주고 PDF 근거를 읽기 쉬운 이름으로 표시한다', async () => {
@@ -97,7 +98,7 @@ it('공급정보 일괄 보정 이력은 원천 전체 대신 바뀐 값과 공�
   const record = screen.getByRole('region', { name: '저장한 공급정보 보정' })
   expect(within(record).getByRole('heading', { name: '저장한 변경 1개' })).toBeVisible()
   expect(record).toHaveTextContent('모집수 미확정')
-  expect(within(record).getByRole('link', { name: '공식 근거 ↗' })).toHaveAttribute('href', 'https://example.com/notice.pdf')
+  expect(within(record).getByRole('link', { name: newWindowName('공식 근거') })).toHaveAttribute('href', 'https://example.com/notice.pdf')
   expect(within(record).getByRole('table', { name: '보정 작업' })).not.toBeVisible()
 })
 

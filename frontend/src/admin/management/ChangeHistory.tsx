@@ -23,7 +23,7 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
     }).finally(() => { if(active) setBusy(false) })
     return () => { active = false }
   },[resource,id,page,version,attempt])
-  return <section><h2>수정 이력</h2>{error ? <div role="alert">{error}<button onClick={() => setAttempt(v => v+1)}>다시 불러오기</button></div> : null}
+  return <section><h2>수정 이력</h2>{error ? <div role="alert" className="admin-alert"><p>{error}</p><button type="button" onClick={() => setAttempt(v => v+1)}>다시 불러오기</button></div> : null}
     {busy ? <p role="status">이력을 불러오는 중…</p> : !error && !items.length ? <p>아직 관리자 변경 이력이 없습니다.</p> : null}
     {!busy && !error && items.length > 0 && <div className="admin-table-scroll"><table className="admin-table admin-change-table"><caption className="sr-only">수정 이력 목록</caption>
       <thead><tr><th scope="col">작업</th><th scope="col">처리자</th><th scope="col">처리 시각</th><th scope="col"><span className="sr-only">상세</span></th></tr></thead>

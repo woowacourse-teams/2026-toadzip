@@ -6,6 +6,7 @@ import { formValues, type Field } from './fields'
 import { parseManagementDetail, type ManagementDetailData, type ManagementHousingType } from './managementContract'
 import { useUnsavedChanges } from './useUnsavedChanges'
 import { loadHousingTypeImpact, type HousingTypeImpact } from './housingTypeImpactApi'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 const fields: Field[] = [
   { name: 'name', label: '주택형 이름', required: true },
@@ -50,7 +51,7 @@ export function HousingTypeEditor({ type, complexId, version, onSaved, onClose, 
     {preview && <section aria-label="공통 주택형 수정 영향"><h3>연결된 공급행 {preview.impact.rows.length}개</h3>
       <p>이름: {type.name} → {String(preview.body.name)} · 전용면적: {type.exclusiveArea} → {String(preview.body.exclusiveArea)}㎡ · 전체 세대수: {type.householdCount ?? '미확인'} → {preview.body.householdCount === null ? '미확인' : String(preview.body.householdCount)}</p>
       {preview.impact.rows.length === 0 ? <p>연결된 공고가 없습니다.</p> : <ul>{preview.impact.rows.map(row => <li key={row.supplyRowId}>
-        <Link to={`/admin/announcements/${row.announcementId}?section=relations`} target="_blank" rel="noreferrer">{row.announcementName} · 공급행 #{row.supplyRowId} ↗</Link>
+        <Link to={`/admin/announcements/${row.announcementId}?section=relations`} target="_blank" rel="noreferrer">{row.announcementName} · 공급행 #{row.supplyRowId}<NewWindowMark /></Link>
         {row.excluded ? ' · 공개 제외 중' : ''}
       </li>)}</ul>}
       {areaLocked

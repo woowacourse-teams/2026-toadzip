@@ -5,6 +5,7 @@ import { lookupAddresses, type AddressCandidate } from '../announcement-pdf/addr
 import { getLocationPreparation, refreshInitialRegistration, supplementInitialRegistrationLocation,
   locationFailureReasons, type InitialRegistrationTarget, type LocationFailureReason, type LocationPreparationResponse } from './api'
 import styles from './LocationPreparation.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 const labels: Record<LocationFailureReason, string> = {
   INVALID_ADDRESS: '주소 누락·형식 오류', ADDRESS_NOT_FOUND: '주소 불일치',
@@ -59,7 +60,7 @@ export function LocationPreparation({ disabled, revision, onBusyChange, onChange
       <Button data-design-system variant="secondary" disabled={disabled || busy || editing !== null} onClick={() => void refresh()}>주소·좌표 상태 확인</Button>
     </header>
     {notice && <div ref={noticeRef} className={styles.saveNotice} role="status" aria-label="주소·좌표 저장 완료" aria-atomic="true" tabIndex={-1}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
+      <AdminIcon name="check" />
       <div><strong>{notice}</strong><p>다른 필수 정보가 모두 준비되면 ‘등록 가능’으로 표시됩니다.</p></div>
     </div>}
     {result && hasCheckedTargets && <div className={styles.overview}><dl className={styles.counts} aria-label="주소·좌표 준비 집계">

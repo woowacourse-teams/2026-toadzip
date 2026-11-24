@@ -492,7 +492,7 @@ it('확인 필요 항목을 세고 하단 버튼으로 다음 항목에 이동�
   await open()
   expect(screen.getByRole('tab', { name: '일정 · 확인 1' })).toBeVisible()
   fireEvent.click(within(screen.getByRole('group', { name: '검토 항목 필터' })).getByRole('button', { name: '확인 필요 1' }))
-  fireEvent.click(screen.getByRole('button', { name: '미해결 1개 ↓' }))
+  fireEvent.click(screen.getByRole('button', { name: '미해결 1개' }))
   expect(screen.getByRole('heading', { name: '일정' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '일정 2 적용 안 함' }))
   expect(screen.getByText('확인 필요 없음')).toBeVisible()

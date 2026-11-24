@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { listFeedback } from '../feedback/api'
 import { pipelineStatusLabels } from '../ingest/pipelineLabels'
 import { loadAnnouncementOverview, loadCollectionOverview, loadComplexOverview, loadUserOverview } from './api'
-import { OperationsIcon } from './OperationsIcon'
+import { AdminIcon } from '../shared/AdminIcon'
 import { OperationsMetric } from './OperationsMetric'
 import { OperationsNotifications } from './OperationsNotifications'
 import { OperationsTasks } from './OperationsTasks'
@@ -40,33 +40,33 @@ export function OperationsHome() {
   const users = useOperationsQuery(useCallback((signal: AbortSignal) => loadUserOverview(days, signal), [days]), revision)
   const feedback = useOperationsQuery(loadFeedback, revision)
   function openHelp(key: OperationsHelp) { setHelp(key); dialog.current?.showModal() }
-  function info(key: OperationsHelp, label: string) { return <button type="button" className={styles.info} aria-label={label} onClick={() => openHelp(key)}><OperationsIcon name="info" /></button> }
+  function info(key: OperationsHelp, label: string) { return <button type="button" className={styles.info} aria-label={label} onClick={() => openHelp(key)}>기준</button> }
   return <section className={styles.page}>
     <header className={styles.heading}><div><h1>운영 홈</h1><p>현재 현황 · 한국 시각</p></div><div className={styles.headingActions}>
       <div className={styles.period} role="group" aria-label="변화 지표 기간">{[7, 30].map(value => <button key={value} type="button" aria-pressed={days === value} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set('days', String(value)); return next })}>{value}일</button>)}</div>
-      {info('period', '기간 적용 기준')}<button type="button" className={styles.info} aria-label="현황 새로고침" onClick={() => setRevision(value => value + 1)}><OperationsIcon name="refresh" /></button>
+      {info('period', '기간 적용 기준')}<button type="button" className={styles.info} aria-label="현황 새로고침" onClick={() => setRevision(value => value + 1)}>새로고침</button>
     </div></header>
     <div className={styles.grid}>
       <OperationsTasks revision={revision} onHelp={openHelp} />
       <section className={`${styles.panel} ${styles.complexes}`} aria-label="단지">
-        <div className={styles.panelTop}><div className={styles.panelTitle}><OperationsIcon name="building" /><h2>단지</h2>{info('complex', '단지 집계 기준')}</div><Link to="/admin/complexes">관리 ↗</Link></div>
+        <div className={styles.panelTop}><div className={styles.panelTitle}><h2>단지</h2>{info('complex', '단지 집계 기준')}</div><Link to="/admin/complexes">관리<AdminIcon name="chevronRight" /></Link></div>
         <div className={styles.panelBody}>
           <div className={styles.stats}><OperationsMetric title="전체 단지" value={complex.data?.total} query={complex} href="/admin/complexes" primary />
             <OperationsMetric title="모집중" value={complex.data?.recruiting} query={complex} href="/admin/complexes?recruiting=true" blue /></div>
           <OperationsStatus query={complex} />
           <div className={styles.compactStats}><Link to="/admin/complexes?missingCoordinates=true">좌표 미확인 <strong>{operationCount(complex.data?.missingCoordinates, complex)}</strong></Link>
-            <Link to="/admin/complexes?review=true"><OperationsIcon name="refresh" />재검토 <strong>{operationCount(complex.data?.reviewRequired, complex)}</strong></Link></div>
+            <Link to="/admin/complexes?review=true">재검토 <strong>{operationCount(complex.data?.reviewRequired, complex)}</strong></Link></div>
           <div className={styles.agencySection}><h3>기관별 단지</h3><div className={styles.agencyBar} aria-hidden="true">{(['LH', 'SH', 'GH'] as const).map(agency => <span key={agency} data-agency={agency} style={{ flex: complex.data?.agencies[agency] ?? 0 }} />)}</div>
             <div className={styles.agencyCounts}>{(['LH', 'SH', 'GH'] as const).map(agency => <Link key={agency} to={`/admin/complexes?provider=${agency}`}><span data-agency={agency}>{agency}</span>{' '}<strong>{operationCount(complex.data?.agencies[agency], complex)}</strong></Link>)}</div></div>
           <CheckedAt value={complex.data?.asOf ?? null} />
         </div>
       </section>
       <section className={styles.panel} aria-label="공고">
-        <div className={styles.panelTop}><div className={styles.panelTitle}><OperationsIcon name="document" /><h2>공고</h2>{info('announcement', '공고 집계 기준')}</div><Link to="/admin/announcements">관리 ↗</Link></div>
+        <div className={styles.panelTop}><div className={styles.panelTitle}><h2>공고</h2>{info('announcement', '공고 집계 기준')}</div><Link to="/admin/announcements">관리<AdminIcon name="chevronRight" /></Link></div>
         <div className={styles.panelBody}>
           <div className={`${styles.stats} ${styles.announcementStats}`}>{([['BEFORE_APPLICATION', '공고중'], ['APPLYING', '접수중'], ['CLOSED', '접수마감']] as const).map(([status, label]) => <OperationsMetric key={status} title={label} value={announcement.data?.statuses[status]} query={announcement} href={`/admin/announcements?applicationStatus=${status}`} blue={status === 'APPLYING'} />)}</div>
           <div className={styles.otherStatuses}>{[['CONDITIONAL', '조건부 접수'], ['CANCELLED', '공고취소'], ['UNKNOWN', '일정 미정']].map(([status, label]) => <Link key={status} to={`/admin/announcements?applicationStatus=${status}`}>{label} <strong>{operationCount(announcement.data?.statuses[status], announcement)}</strong></Link>)}</div>
-          <div className={styles.review}><div className={styles.reviewHead}><Link to="/admin/announcements?attention=ANY"><OperationsIcon name="alert" />확인 필요 <strong>{operationCount(announcement.data?.attention, announcement)}</strong> ↗</Link>{info('review', '확인 필요 집계 기준')}</div>
+          <div className={styles.review}><div className={styles.reviewHead}><Link to="/admin/announcements?attention=ANY"><AdminIcon name="alert" />확인 필요 <strong>{operationCount(announcement.data?.attention, announcement)}</strong><AdminIcon name="chevronRight" /></Link>{info('review', '확인 필요 집계 기준')}</div>
             <div className={styles.reviewReasons}>{[['SCHEDULE_MISSING', '일정 누락'], ['SUPPLY_MISSING', '공급정보 누락'], ['UNCONFIRMED', '미확정']].map(([reason, label]) => <Link key={reason} to={`/admin/announcements?attention=${reason}`}>{label} <strong>{operationCount(announcement.data?.reasons[reason], announcement)}</strong></Link>)}</div>
           </div><OperationsStatus query={announcement} />
           <table className={styles.sourceTable}><caption className={styles.srOnly}>기관별 공고 수집·정제 실행</caption><thead><tr><th>최근 수집</th><th>마지막 성공</th><th>최근 실행</th></tr></thead><tbody>{(['LH', 'SH', 'GH'] as const).map(agency => {
@@ -76,17 +76,17 @@ export function OperationsHome() {
         </div>
       </section>
       <section className={styles.panel} aria-label="유저">
-        <div className={styles.panelTop}><div className={styles.panelTitle}><OperationsIcon name="users" /><h2>유저</h2>{info('users', '유저 집계 기준')}</div><Link to="/admin/users">관리 ↗</Link></div>
+        <div className={styles.panelTop}><div className={styles.panelTitle}><h2>유저</h2>{info('users', '유저 집계 기준')}</div><Link to="/admin/users">관리<AdminIcon name="chevronRight" /></Link></div>
         <div className={styles.panelBody}><div className={styles.stats}><OperationsMetric title="전체 회원" value={users.data?.total} query={users} href="/admin/users" primary /><div><OperationsMetric title="신규 가입" value={users.data?.newUsers} query={users} href="/admin/users" pendingFilter />
           <p className={styles.change}>{users.data ? comparison(users.data.newUsers, users.data.previousNewUsers) : '—'} <span>이전 {days}일 대비</span></p></div></div>
-          <OperationsStatus query={users} /><div className={styles.trendHeading}><Link to="/admin/users" title="가입 기간 필터 추가 예정">신규 가입 추이 ↗</Link><span>최근 {days}일</span></div>
+          <OperationsStatus query={users} /><div className={styles.trendHeading}><Link to="/admin/users" title="가입 기간 필터 추가 예정">신규 가입 추이<AdminIcon name="chevronRight" /></Link><span>최근 {days}일</span></div>
           {users.data ? <OperationsTrend points={users.data.trend} label="가입" /> : <p className={styles.chartEmpty}>{users.pending ? '조회 중' : '조회 실패'}</p>}
-          <Link className={styles.feedbackRow} to="/admin/feedback?status=OPEN"><OperationsIcon name="message" />새 사용자 의견 <strong>{operationCount(feedback.data?.totalElements, feedback)}</strong><span aria-hidden="true">→</span></Link><OperationsStatus query={feedback} /><CheckedAt value={users.data?.asOf ?? null} />
+          <Link className={styles.feedbackRow} to="/admin/feedback?status=OPEN">새 사용자 의견 <strong>{operationCount(feedback.data?.totalElements, feedback)}</strong><AdminIcon name="chevronRight" /></Link><OperationsStatus query={feedback} /><CheckedAt value={users.data?.asOf ?? null} />
         </div>
       </section>
       <OperationsNotifications revision={revision} days={days} onHelp={openHelp} />
     </div>
-    <div className={styles.footer}><button type="button" onClick={() => openHelp('links')}>연결 기준 ⓘ</button></div>
-    <dialog ref={dialog} className={styles.helpDialog} aria-labelledby={helpId}><header><h2 id={helpId}>{helpText[help][0]}</h2><button type="button" aria-label="도움말 닫기" onClick={() => dialog.current?.close()}>×</button></header><p>{helpText[help][1]}</p></dialog>
+    <div className={styles.footer}><button type="button" onClick={() => openHelp('links')}>연결 기준</button></div>
+    <dialog ref={dialog} className={styles.helpDialog} aria-labelledby={helpId}><header><h2 id={helpId}>{helpText[help][0]}</h2><button type="button" aria-label="도움말 닫기" onClick={() => dialog.current?.close()}><AdminIcon name="close" size={18} /></button></header><p>{helpText[help][1]}</p></dialog>
   </section>
 }

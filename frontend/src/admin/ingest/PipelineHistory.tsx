@@ -8,6 +8,7 @@ import { ComplexIconButton } from './ComplexIconButton'
 import styles from './ComplexIngest.module.css'
 import listStyles from './PipelineHistory.module.css'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
+import { AdminIcon } from '../shared/AdminIcon'
 export function PipelineHistory({ domain, compact = false, readOnlyComplex = false, onShowRegistration }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean; onShowRegistration?: () => void } = {}) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
@@ -76,10 +77,7 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
     <>
     <section className={listCard ? `admin-list-card pipeline-history ${listStyles.listCard}` : 'admin-detail-section pipeline-history'} aria-labelledby="pipeline-history-title">
       <header className="pipeline-history-heading">
-        <div>
-          <h2 id="pipeline-history-title">실행 이력</h2>
-          <p>최근 실행 20건씩 확인할 수 있습니다.</p>
-        </div>
+        <h2 id="pipeline-history-title">실행 이력</h2>
         {readOnlyComplex ? <ComplexIconButton icon="refresh" label="새로고침" disabled={busy} onClick={() => setAttempt(value => value + 1)} /> : <button type="button" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>
           새로고침
         </button>}
@@ -102,7 +100,7 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
                 <td>{readOnlyComplex ? <ComplexStatusBadge status={item.status === 'RUNNING' && item.stopRequested ? 'stopping' : item.status} /> : <span className={`pipeline-badge pipeline-${item.status.toLowerCase()}`}>
                   {pipelineStatusLabels[item.status]}
                 </span>}</td>
-                <td><button type="button" className="pipeline-history-detail-button"
+                <td><button type="button" className="pipeline-history-detail-button admin-text-button"
                   aria-expanded={readOnlyComplex ? selected?.executionId === item.executionId : undefined}
                   aria-controls={readOnlyComplex ? detailId : undefined}
                   title={readOnlyComplex ? selected?.executionId === item.executionId ? '실행 상세 접기' : '목록 아래에 실행 상세 펼치기' : undefined}
@@ -111,7 +109,7 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
                     setSelected(previous => readOnlyComplex && previous?.executionId === item.executionId ? null : item)
                   }}>
                   {readOnlyComplex ? selected?.executionId === item.executionId ? '상세 접기' : '상세 펼치기' : '상세 보기'}
-                  {readOnlyComplex && <svg className={styles.historyChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>}
+                  {readOnlyComplex && <AdminIcon name="chevronDown" size={16} className={styles.historyChevron} />}
                   <span className="sr-only">: {labels[item.type]} {item.startedAt}</span>
                 </button></td>
               </tr>
