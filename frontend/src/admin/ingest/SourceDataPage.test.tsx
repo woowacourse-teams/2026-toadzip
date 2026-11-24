@@ -110,7 +110,8 @@ it('모든 저장 항목을 펼침 없이 한 행에 표시하고 항목 뜻과 
   renderPage()
   expect(await screen.findByText('두꺼비 단지')).toBeVisible()
   const table = screen.getByRole('table', { name: '마이홈 단지 원천 목록 · 1페이지' })
-  expect(screen.getByRole('link', { name: newWindowName(fixture.items[0].sourceUrl) })).toHaveAttribute('href', fixture.items[0].sourceUrl)
+  // 수집 API 주소는 메뉴 아래에 따로 보이지 않는다(원천 안내 링크가 같은 곳을 가리킨다).
+  expect(screen.queryByText('수집 API URL')).not.toBeInTheDocument()
   expect(within(table).getByRole('link', { name: newWindowName(fixture.items[0].originalUrl!) })).toHaveAttribute('href', fixture.items[0].originalUrl)
   expect(screen.getByText('21건')).toBeVisible()
   expect(within(table).getByRole('columnheader', { name: '기본 전환보증금 (bass_cnvrs_gtn_lmt)' })).toBeVisible()

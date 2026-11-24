@@ -79,6 +79,9 @@
   .admin-content :is(h2, h3, h4, h5) { font-weight: var(--admin-weight-strong); }
   .admin-content h2 { font-size: var(--admin-text-heading); }
   .admin-content :is(h3, h4, h5) { font-size: var(--admin-text-body); }
+  /* 표 스크롤 상자는 안쪽 숨김 글자(sr-only 등 position:absolute)의 기준 상자가 되어야 한다.
+     그렇지 않으면 숨김 글자가 상자 밖 기준으로 놓여 문서를 표 폭만큼 넓힌다. */
+  .admin-content .admin-table-scroll { position: relative; }
   /* 문단 기본값: 위에만 12px 띄운다. 공용 부품(오류 상자 등)과 화면 CSS가 이 값을 덮을 수 있게 기본 layer에 둔다. */
   .admin-content h1 { margin: 0; }
   .admin-content p { margin: 12px 0 0; color: var(--ds-color-label); line-height: 1.6; }
@@ -133,7 +136,8 @@
 
   /* 탭: 화면 안에서 보기를 바꾸는 탭은 모두 밑줄 탭 하나로 그린다. 채운 버튼 모양 탭은 쓰지 않는다. */
   .admin-content :is(.admin-folder-tabs, .admin-section-tabs) {
-    display: flex; gap: 24px; max-width: 100%; overflow-x: auto; margin: 0 0 16px; padding: 0;
+    /* 탭이 넘칠 때만 가로로 밀고, 선택 밑줄(-1px)이 세로 스크롤 막대를 만들지 않게 세로는 막는다. */
+    display: flex; gap: 24px; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; margin: 0 0 16px; padding: 0;
     border: 0; border-bottom: 1px solid var(--admin-line); background: transparent;
   }
   .admin-content :is(.admin-folder-tabs, .admin-section-tabs) button:not([data-design-system]) {

@@ -45,16 +45,19 @@ const icons = {
 export type AdminIconName = keyof typeof icons | 'stop'
 
 // size를 주지 않으면 글자 크기(1em)를 따른다. 버튼·메뉴처럼 자리가 정해진 곳은 size나 CSS로 정한다.
-export function AdminIcon({ name, size, className }: { name: AdminIconName; size?: number; className?: string }) {
+// label을 주면 장식이 아니라 뜻이 있는 그림(role=img)으로 읽힌다.
+export function AdminIcon({ name, size, className, label }: { name: AdminIconName; size?: number; className?: string; label?: string }) {
   const dimension = size ?? '1em'
   const classes = className ? `admin-icon ${className}` : 'admin-icon'
+  const a11y = label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true }
   if (name === 'stop') {
-    return <svg className={classes} width={dimension} height={dimension} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5" /></svg>
+    return <svg className={classes} width={dimension} height={dimension} viewBox="0 0 20 20" fill="currentColor" {...a11y} focusable="false"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5" /></svg>
   }
-  return <svg className={classes} width={dimension} height={dimension} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={icons[name]} /></svg>
+  return <svg className={classes} width={dimension} height={dimension} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...a11y} focusable="false"><path d={icons[name]} /></svg>
 }
 
-// 새 창으로 여는 링크 끝에 둔다. 아이콘은 눈으로만 보이므로 보조기기에는 '(새 창)'을 따로 읽힌다.
+// 새 창으로 여는 링크 끝에 둔다. 아이콘 이름으로 보조기기에 '(새 창)'을 읽힌다.
+// 숨김 글자(position:absolute)를 쓰지 않는다: 표 스크롤 상자 밖을 기준으로 놓여 문서를 표 폭만큼 넓혔다.
 export function NewWindowMark() {
-  return <><span className="visually-hidden"> (새 창)</span><AdminIcon name="external" /></>
+  return <AdminIcon name="external" label="(새 창)" />
 }

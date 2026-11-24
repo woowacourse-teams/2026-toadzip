@@ -18,7 +18,7 @@
 .loading { position: absolute; right: 0; top: 34px; z-index: 5; margin: 0; padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
 /* 표는 카드 폭 끝까지 붙이고 위아래 선만 둔다(회원·발송 기록·실행 이력과 같은 모양). */
 .panel { --inset: 24px; } /* admin-list-card의 좌우 안쪽 여백. 실행 이력(PipelineHistory)과 같은 방식이다. */
-.scroll { --target-width: 280px; --action-width: 136px; max-height: 65vh; overflow: auto; margin-inline: calc(var(--inset) * -1); border-block: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); }
+.scroll { position: relative; --target-width: 280px; --action-width: 136px; max-height: 65vh; overflow: auto; margin-inline: calc(var(--inset) * -1); border-block: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); }
 .empty { padding: var(--ds-space-6); color: var(--ds-color-label); }
 .empty h3 { color: var(--ds-color-text); font-size: var(--ds-text-body); }
 .table { width: 100%; min-width: calc(var(--target-width) + var(--action-width) + 280px); border-collapse: separate; border-spacing: 0; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
