@@ -2,6 +2,8 @@ package com.toadzip.backend.feedback.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,10 +50,11 @@ class FeedbackControllerIntegrationTest {
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" ", "\n\t", "\u2003", "\u00a0", "\u202f", "\ufeff"})
-    void 의견이_없어도_설문을_저장한다(String content) throws Exception {
+    void 빈_의견은_거절하고_저장하지_않는다(String content) throws Exception {
         mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body(content)))
-                .andExpect(status().isCreated());
-        assertThat(jdbc.sql("SELECT content FROM feedback").query(String.class).single()).isEmpty();
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("content"));
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM feedback").query(Long.class).single()).isZero();
     }
 
     @Test
@@ -84,34 +87,28 @@ class FeedbackControllerIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"VERY_DISAPPOINTED", "SOMEWHAT_DISAPPOINTED", "NOT_DISAPPOINTED", "NO_LONGER_USING"})
-    void 설문_답변을_저장하고_관리자가_조회한다(String answer) throws Exception {
-        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new Submission(null, answer))))
+    @Test
+    void 의견을_저장하고_관리자가_설문_없이_조회한다() throws Exception {
+        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body("지도 검색 개선")))
                 .andExpect(status().isCreated());
-        assertThat(jdbc.sql("SELECT survey_answer FROM feedback").query(String.class).single()).isEqualTo(answer);
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/admin/feedback")
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
-                                .user("admin").roles("ADMIN")))
+        mockMvc.perform(get("/api/admin/feedback").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].surveyAnswer").value(answer))
-                .andExpect(jsonPath("$.data.items[0].content").value(""));
+                .andExpect(jsonPath("$.data.items[0].content").value("지도 검색 개선"))
+                .andExpect(jsonPath("$.data.items[0].surveyAnswer").doesNotExist());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"{\"content\":\"의견\"}", "{\"surveyAnswer\":null}",
-            "{\"surveyAnswer\":\"UNKNOWN\"}", "{\"surveyAnswer\":1}"})
-    void 설문_답변이_없거나_유효하지_않으면_저장하지_않는다(String body) throws Exception {
-        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest());
-        assertThat(jdbc.sql("SELECT COUNT(*) FROM feedback").query(Long.class).single()).isZero();
+    @Test
+    void 이전_화면이_보낸_설문_답변은_무시하고_의견만_저장한다() throws Exception {
+        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"의견\",\"surveyAnswer\":\"UNKNOWN\"}"))
+                .andExpect(status().isCreated());
+        assertThat(jdbc.sql("SELECT content FROM feedback").query(String.class).single()).isEqualTo("의견");
     }
 
     private String body(String content) {
-        return objectMapper.writeValueAsString(new Submission(content, "VERY_DISAPPOINTED"));
+        return objectMapper.writeValueAsString(new Submission(content));
     }
 
-    private record Submission(String content, String surveyAnswer) {
+    private record Submission(String content) {
     }
 }
