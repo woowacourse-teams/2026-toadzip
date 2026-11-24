@@ -81,6 +81,11 @@ export function FeedbackPage() {
 
   return createPortal(<dialog ref={dialogRef} className={`${styles.dialog} ph-no-capture`}
     aria-labelledby="feedback-title" onCancel={event => { event.preventDefault(); close() }}
+    // 브라우저는 막힌 Escape가 반복되면 취소할 수 없는 닫기로 대화상자를 닫는다. 전송 중에는 다시 열어 결과를 보여준다.
+    onClose={event => {
+      const dialog = event.currentTarget
+      if (inFlight.current && dialog.isConnected && !dialog.open) dialog.showModal()
+    }}
     onKeyDown={event => event.stopPropagation()}
     onClick={event => {
       if (isMobileViewport() || event.target !== event.currentTarget) return

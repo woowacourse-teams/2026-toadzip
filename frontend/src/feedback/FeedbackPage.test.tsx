@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { FeedbackPage } from './FeedbackPage'
 import { submitFeedback } from './api'
@@ -73,6 +73,29 @@ it('전송 중에는 중복 제출과 닫기를 막는다', async () => {
   expect(submitFeedback).toHaveBeenCalledTimes(1)
   await act(async () => complete())
   expect(screen.getByRole('heading', { name: '의견이 접수되었어요.' })).toBeVisible()
+})
+
+it('전송 중 브라우저가 대화상자를 닫아도 다시 열어 접수 결과를 보여준다', async () => {
+  let complete: () => void = () => undefined
+  vi.mocked(submitFeedback).mockImplementation(() => new Promise<void>(resolve => { complete = resolve }))
+  const input = setup()
+  fireEvent.change(input, { target: { value: '개선 의견' } })
+  fireEvent.submit(screen.getByRole('form', { name: '의견 접수' }))
+  const dialog = screen.getByRole('dialog', { name: '의견 보내기' }) as HTMLDialogElement
+  dialog.close()
+  fireEvent(dialog, new Event('close'))
+  expect(dialog.open).toBe(true)
+  await act(async () => complete())
+  expect(screen.getByRole('heading', { name: '의견이 접수되었어요.' })).toBeVisible()
+})
+
+it('전송 중이 아닐 때 늦게 도착한 close 이벤트로 화면을 닫지 않는다', () => {
+  render(<MemoryRouter initialEntries={['/feedback']}><Routes>
+    <Route path="/feedback" element={<FeedbackPage />} />
+    <Route path="*" element={<p>탐색 화면</p>} />
+  </Routes></MemoryRouter>)
+  fireEvent(screen.getByRole('dialog', { name: '의견 보내기' }), new Event('close'))
+  expect(screen.queryByText('탐색 화면')).not.toBeInTheDocument()
 })
 
 it('최대 글자 수를 표시하고 초과 입력을 거절한다', async () => {

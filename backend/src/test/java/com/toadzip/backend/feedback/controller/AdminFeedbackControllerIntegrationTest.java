@@ -182,6 +182,22 @@ class AdminFeedbackControllerIntegrationTest {
                                 """)).andExpect(status().isForbidden());
     }
 
+    @Test
+    void 설문만_남긴_본문이_빈_기존_의견도_조회하고_처리할_수_있다() throws Exception {
+        long id = feedback("", "2026-11-04T10:00:00Z");
+        mockMvc.perform(get(ENDPOINT).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].content").value(""));
+        mockMvc.perform(get(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content").value(""));
+        mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content("""
+                                {"version":0,"status":"DONE","note":"설문 응답만 있어 확인 완료",
+                                 "relatedResource":"","relatedId":null}
+                                """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"))
+                .andExpect(jsonPath("$.data.content").value(""));
+    }
+
     private long feedback(String content, String createdAt) {
         return jdbc.sql("""
                 INSERT INTO feedback (content, created_at) VALUES (:content, :createdAt::timestamptz) RETURNING id
