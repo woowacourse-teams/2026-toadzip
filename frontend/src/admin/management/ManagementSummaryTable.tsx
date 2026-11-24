@@ -13,18 +13,19 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
   if (!items.length) return <div className={`admin-empty ${fixedHeight ? styles.fixedHeight : ''}`}>{trash ? <><h2>휴지통이 비어 있습니다.</h2><p>삭제한 {resource === 'complexes' ? '단지' : '공고'}는 여기에서 다시 복구할 수 있습니다.</p></> : <><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></>}</div>
   const columns: Column[] = [
     { key: 'agencyCode', label: '공급 기관', width: 80, read: item => item.provider },
-    { key: 'rentalType', label: '공급 유형', width: 128, read: item => item.rental },
+    { key: 'rentalType', label: '공급 유형', width: 104, read: item => item.rental },
     ...(resource === 'complexes' ? [...complexColumns, { key: 'verificationStatus', label: '검토 상태', width: 112, read: () => null, kind: 'verification' as const }]
       : announcementColumns(items.some(item => item.announcement?.processingStage != null))),
-    { key: 'deleted·modified·reviewRequired', label: '확인할 상태', width: 128, read: () => null, kind: 'status' },
+    { key: 'deleted·modified·reviewRequired', label: '확인할 상태', width: 104, read: () => null, kind: 'status' },
   ]
   const title = resource === 'complexes' ? '단지' : '공고'
   // 메일 목록처럼 현재 페이지의 행을 골라 한꺼번에 처리한다.
   const allSelected = Boolean(selection) && items.every(item => selection!.ids.has(item.id))
   const toggle = (id: number) => { if (!selection) return; const next = new Set(selection.ids); if (next.has(id)) next.delete(id); else next.add(id); selection.onChange(next) }
   return <div className={`${styles.scroll} ${fixedHeight ? styles.fixedHeight : ''} ${compact ? styles.compact : ''}`} role="region" tabIndex={0} aria-label={`정제 ${title} 목록 가로 스크롤`}>
-    <table className={styles.table} aria-label={`정제 ${title} 목록`}>
-      <colgroup>{selection && <col className={styles.checkColumn} />}<col className={styles.nameColumn} data-resource={resource} />{columns.map(column => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
+    {/* 이름 열은 고정 열을 뺀 남는 폭을 쓰고, 그보다 좁아지면 이름 열 최소 폭을 지키며 가로로 스크롤한다. */}
+    <table className={styles.table} aria-label={`정제 ${title} 목록`} style={compact ? undefined : { minWidth: `calc(${columns.reduce((sum, column) => sum + (column.width ?? 0), 0)}px + ${selection ? 'var(--admin-list-inset) + 32px + ' : ''}var(--name-width))` }}>
+      <colgroup>{selection && <col className={styles.checkColumn} />}<col data-resource={resource} />{columns.map(column => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
       <thead><tr>{selection && <th scope="col" className={styles.check}><input type="checkbox" aria-label="이 페이지 전체 선택" disabled={selection.disabled} checked={allSelected} onChange={() => selection.onChange(allSelected ? new Set() : new Set(items.map(item => item.id)))} /></th>}<th scope="col">{title}명</th>{columns.map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead>
       <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined} data-checked={selection?.ids.has(item.id) || undefined}>
         {selection && <td className={styles.check}><input type="checkbox" aria-label={`${item.name} 선택`} disabled={selection.disabled} checked={selection.ids.has(item.id)} onChange={() => toggle(item.id)} /></td>}
@@ -47,11 +48,11 @@ const complexColumns: Column[] = [
 ]
 /** 처리 단계는 공고 관리 목록만 채운다. 단지 상세의 연결 공고 표처럼 단계가 없는 표에는 열을 두지 않는다. */
 const announcementColumns = (withStage: boolean): Column[] => [
-  { key: 'applicationStatus', label: '접수 상태', width: 104, read: item => item.announcement?.applicationStatus ? applicationStatuses[item.announcement.applicationStatus] : null },
-  ...(withStage ? [{ key: 'processingStage', label: '처리 단계', width: 128, read: (item: ManagementSummary) => processingStages[item.announcement?.processingStage ?? ''] }] : []),
+  { key: 'applicationStatus', label: '접수 상태', width: 96, read: item => item.announcement?.applicationStatus ? applicationStatuses[item.announcement.applicationStatus] : null },
+  ...(withStage ? [{ key: 'processingStage', label: '처리 단계', width: 104, read: (item: ManagementSummary) => processingStages[item.announcement?.processingStage ?? ''] }] : []),
   { key: 'publicationType', label: '공고 구분', width: 80, read: () => null, kind: 'publication' },
-  { key: 'postedDate', label: '게시일', width: 112, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
-  { key: 'applicationPeriod', label: '접수 기간', width: 196, read: item => applicationPeriod(item) },
+  { key: 'postedDate', label: '게시일', width: 96, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
+  { key: 'applicationPeriod', label: '접수 기간', width: 120, read: item => applicationPeriod(item) },
 ]
 function TextValue({ value }: { value: string | number | boolean | null | undefined }) {
   const text = value === null || value === undefined || value === '' ? '미확인' : labels[String(value)] ?? String(value)

@@ -6,7 +6,7 @@
 .hint { font-size: var(--ds-text-caption); color: var(--ds-color-label); line-height: var(--ds-line-height-body); margin: var(--ds-space-3) 0; }
 .runMessage { color: var(--ds-color-action); font-size: var(--ds-text-caption); }
 .executionFilter { margin-block: 12px; font-size: var(--ds-text-caption); color: var(--ds-color-muted); overflow-wrap: anywhere; }
-.executionScope { flex-basis: 100%; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
+.executionScope { flex-basis: 100%; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--admin-radius-inner); }
 .executionScope p { margin: var(--ds-space-2) 0 var(--ds-space-3); }
 .detailNotice { margin: var(--ds-space-4); }
 .results { position: relative; }
@@ -19,25 +19,25 @@
 .targetColumn { width: var(--target-width); }
 .actionColumn { width: var(--action-width); }
 .table th, .table td { box-sizing: border-box; padding: var(--ds-space-3); border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); vertical-align: middle; overflow-wrap: anywhere; }
-.table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface); color: var(--ds-color-muted); font-weight: 500; }
+.table thead th { position: sticky; top: 0; z-index: 2; background: var(--ds-color-surface); color: var(--ds-color-muted); font-weight: var(--admin-weight-medium); }
 .table th:first-child { position: sticky; left: 0; z-index: 1; border-right-color: var(--ds-color-border-base); }
 .table thead th:first-child { z-index: 3; }
 .table th:last-child, .table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--ds-color-surface); border-left: 1px solid var(--ds-color-border-base); border-right: 0; }
 .table thead th:last-child { z-index: 3; background: var(--ds-color-surface-subtle); }
-.table tbody th { background: var(--ds-color-surface); font-weight: var(--ds-weight-strong); }
+.table tbody th { background: var(--ds-color-surface); font-weight: var(--admin-weight-strong); }
 .table tbody th > :first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.table small, .table time, .dialogBody small { display: block; margin-top: var(--ds-space-2); color: var(--ds-color-label); font-weight: 400; }
-.table time { font-size: 12px; }
+.table small, .table time, .dialogBody small { display: block; font-size: var(--admin-text-label); margin-top: var(--ds-space-2); color: var(--ds-color-label); font-weight: var(--admin-weight-regular); }
+.table time { font-size: var(--admin-text-label); }
 .table p { margin: var(--ds-space-2) 0; }
 .table tbody tr:hover > * { background: var(--ds-color-action-soft); }
 .table a { color: var(--ds-color-action); text-underline-offset: 3px; }
-.status { display: inline-block; padding: var(--ds-space-1) var(--ds-space-2); border-radius: var(--ds-radius-control); background: var(--ds-color-surface-subtle); color: var(--ds-color-label); white-space: nowrap; }
+.status { display: inline-block; padding: var(--ds-space-1) var(--ds-space-2); border-radius: var(--admin-radius-badge); background: var(--ds-color-surface-subtle); color: var(--ds-color-label); white-space: nowrap; }
 .status[data-status="PENDING"] { background: var(--ds-color-status-neutral-surface); color: var(--ds-color-status-neutral); }
 .status[data-status="RESOLVED"] { background: var(--ds-color-action-soft); color: var(--ds-color-action); }
-.dialog { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); }
+.dialog { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-card); background: var(--ds-color-surface); color: var(--ds-color-text); }
 .dialog::backdrop { background: rgb(33 59 53 / 25%); }
 .dialog header { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); position: sticky; top: 0; padding: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); z-index: 1; }
-.dialog h2 { margin: 0; font-size: var(--ds-text-title); }
+.dialog h2 { margin: 0; font-size: var(--admin-text-heading); }
 .dialogBody { padding: var(--ds-space-4); overflow-wrap: anywhere; line-height: var(--ds-line-height-body); }
 .dialogBody > h3 { margin-top: 0; }
 .detailSection { padding: var(--ds-space-4) 0; border-top: 1px solid var(--ds-color-divider); }
@@ -62,12 +62,12 @@
 .dialogResult { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--ds-color-divider); }
 .dialogResult p { margin: 0; }
 .dialogResult small { display: inline; margin: 0; }
-.dialog .dialogResult h4 { margin: 0; font-size: var(--admin-text-body, 15px); font-weight: 500; line-height: 1.4; }
+.dialog .dialogResult h4 { margin: 0; font-size: var(--admin-text-body, 15px); font-weight: var(--admin-weight-medium); line-height: 1.4; }
 .resolvedBy { display: block; margin-top: var(--ds-space-1); color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 
 .pdfLink { display: block; margin-bottom: 8px; }
 .tabs { border: 0; background: transparent; padding: 0; }
-.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 10px 0; margin-right: 20px; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; display: inline-flex; align-items: center; min-height: var(--admin-tab-height); padding: 0; margin-right: 24px; }
 .tabs button[aria-selected=true] { border-bottom-color: var(--ds-color-action); background: transparent; color: var(--ds-color-action); }
 
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

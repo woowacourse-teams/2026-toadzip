@@ -8,7 +8,7 @@
   padding: var(--ds-space-1); border: 0; background: transparent; color: inherit; }
 .execution .steps button:focus-visible, .execution .steps button[aria-pressed=true] { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
 .marker { display: grid; place-items: center; width: 36px; height: 36px; border: 2px solid currentColor;
-  border-radius: 50%; font-weight: var(--ds-weight-strong); background: var(--ds-color-surface); }
+  border-radius: 50%; font-weight: var(--admin-weight-strong); background: var(--ds-color-surface); }
 .steps .running { color: var(--ds-color-status-applying); }
 .steps .success { color: var(--ds-color-action); }
 .steps .partial { color: var(--ds-color-status-upcoming); }
@@ -25,12 +25,12 @@
 .focused .steps { display: flex; flex-direction: column; overflow: visible; padding: 0; gap: var(--ds-space-2); }
 .focused .steps li { min-width: 0; flex: none; text-align: left; }
 .focused .steps li::after { display: none; }
-.execution.focused .steps button[aria-pressed] { border: 0; background: transparent; color: inherit; flex-direction: row; text-align: left; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); }
+.focused .steps button { border: 0; background: transparent; color: inherit; flex-direction: row; text-align: left; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); }
 .focused .steps small { margin-left: auto; white-space: nowrap; }
 .focused .marker { width: 24px; height: 24px; flex-shrink: 0; font-size: var(--ds-text-caption); }
 .focused .running { background: var(--ds-color-action-soft); }
 .focused .content { border-left: 1px solid var(--ds-color-divider); padding-left: var(--ds-space-6); }
-.focused .content > h4 { margin: 0 0 var(--ds-space-4); font-size: var(--ds-text-section); }
+.focused .content > h4 { margin: 0 0 var(--ds-space-4); font-size: var(--admin-text-body); }
 @media (max-width: 900px) {
   .focused .body { grid-template-columns: minmax(0, 1fr); }
   .focused .content { grid-row: 1; border-left: 0; border-top: 0; padding: 0 0 var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }

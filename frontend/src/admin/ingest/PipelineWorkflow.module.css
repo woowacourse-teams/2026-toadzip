@@ -11,7 +11,7 @@
   min-width: 0;
   padding: var(--ds-space-4);
   border: 1px solid var(--ds-color-border-base);
-  border-radius: var(--ds-radius-control);
+  border-radius: var(--admin-radius-inner);
 }
 
 .preparation p { color: var(--ds-color-muted); }
@@ -34,20 +34,20 @@
 .source { display: grid; align-content: start; gap: var(--ds-space-4); min-width: 0; }
 .source + .source { border-left: 1px solid var(--ds-color-divider); padding-left: var(--ds-space-6); }
 .source header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ds-space-3); }
-.workspace .source header h2 { margin: 0; font-size: 20px; }
+.workspace .source header h2 { margin: 0; font-size: var(--admin-text-heading); }
 .recent { display: grid; gap: var(--ds-space-2); padding-top: var(--ds-space-3); border-top: 1px solid var(--ds-color-divider); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
-.recentHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); min-height: 32px; color: var(--ds-color-muted); font-size: 12px; }
+.recentHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); min-height: var(--admin-control-height-sm); color: var(--ds-color-muted); font-size: var(--admin-text-label); }
 .recentValue { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1) var(--ds-space-2); min-height: 28px; }
 .recentValue time { color: var(--ds-color-label); }
 .recentEmpty { display: flex; align-items: center; min-height: 28px; color: var(--ds-color-muted); }
 /* 결과 보기는 이동이라 흰 테두리 버튼으로 두고, 실행 이력의 상세 보기와 같은 크기·글자색을 쓴다. */
-:global(.admin-content) .recentHeading .resultLink { min-height: 32px; padding: 4px 10px; color: var(--ds-color-action); font-size: 13px; }
-:global(.admin-content) .recentHeading .resultLink:hover { background: var(--ds-color-action-soft); }
+.resultLink { min-height: var(--admin-control-height-sm); padding: 4px 12px; color: var(--ds-color-action); font-size: var(--admin-text-meta); }
+.resultLink:hover { background: var(--ds-color-action-soft); }
 .notice { padding: var(--ds-space-4); background: var(--ds-color-surface-subtle); line-height: var(--ds-line-height-body); }
 .back { margin-bottom: var(--ds-space-3); }
 /* 드물게 쓰는 LH 품질·보류 확인은 화면 맨 아래에 접힌 카드로 둔다. */
 .quality { min-width: 0; padding: 0 24px; background: var(--ds-color-surface); border-radius: var(--admin-radius-card, 16px); box-shadow: var(--admin-shadow-card); }
-.quality > summary { padding: 16px 0; color: var(--ds-color-label); font-weight: 600; cursor: pointer; }
+.quality > summary { padding: 16px 0; color: var(--ds-color-label); font-weight: var(--admin-weight-strong); cursor: pointer; }
 .quality[open] { padding-bottom: 24px; }
 .quality[open] > summary { margin-bottom: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); }
 @media (max-width: 900px) {

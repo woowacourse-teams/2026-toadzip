@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router'
 import App from './App.tsx'
 import { initializeCampaignStats } from './analytics/campaignStats'
 import './index.css'
+import './admin/admin-system.css'
+import './admin/admin-pages.css'
 import './admin/management/management.css'
 
 const rootElement = document.getElementById('root')

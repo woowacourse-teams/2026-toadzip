@@ -1,0 +1,491 @@
+/*
+  관리자 화면별 규칙 가운데 아직 모듈 CSS로 옮기지 않은 것(예전에 index.css에 있던 관리자 구역).
+  admin-pages layer라서 기준 부품(admin-system.css)보다는 이기고, management.css와 화면 모듈 CSS에는 항상 진다.
+  새 규칙은 여기에 더하지 않고 그 화면의 모듈 CSS에 쓴다.
+*/
+@layer admin-pages {
+.admin-auth-state {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+  place-content: center;
+}
+
+.admin-auth-state .brand-link {
+  justify-self: center;
+}
+
+.admin-auth-state p { margin: 0; }
+
+.admin-header button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--admin-radius-control);
+  color: var(--ds-color-on-brand);
+  background: var(--ds-color-action);
+}
+
+.form-error {
+  margin: 0;
+  color: var(--admin-danger);
+}
+
+.admin-layout {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.admin-header {
+  display: flex;
+  padding: 16px 24px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ds-color-divider);
+  color: var(--ds-color-text);
+  background: var(--ds-color-surface);
+}
+
+.admin-brand,
+.admin-header-account {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-brand-context {
+  padding-left: 12px;
+  border-left: 1px solid var(--ds-color-divider);
+  color: var(--ds-color-label);
+  font-size: var(--admin-text-dense);
+  font-weight: var(--admin-weight-strong);
+}
+
+.admin-header button {
+  background: var(--ds-color-action);
+}
+
+.admin-content {
+  display: block;
+  min-height: auto;
+  padding: 32px 24px;
+  text-align: left;
+}
+
+.admin-content h1,
+.admin-content p {
+  margin: 0;
+}
+
+.admin-content p {
+  margin-top: 12px;
+  color: var(--ds-color-label);
+}
+
+.admin-layout-error {
+  padding: 12px 24px;
+}
+
+.admin-registration-page {
+  display: grid;
+  width: 100%;
+  gap: 24px;
+}
+
+.admin-registration-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.registration-card {
+  padding: 24px;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--admin-radius-inner);
+  background: var(--ds-color-surface);
+  box-shadow: var(--admin-shadow-card);
+}
+
+.registration-card h2 {
+  margin: 0 0 20px;
+  font-size: var(--admin-text-title);
+}
+
+.registration-card textarea {
+  box-sizing: border-box;
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  margin: 0.5rem 0 1rem;
+  min-height: 16rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.data-pipeline-card {
+  display: grid;
+  gap: 20px;
+}
+
+.data-pipeline-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.data-pipeline-card .data-pipeline-heading h2 {
+  margin-bottom: 0;
+}
+
+.data-pipeline-groups,
+.data-pipeline-group {
+  display: grid;
+  gap: 16px;
+}
+
+.data-pipeline-group {
+  padding-top: 20px;
+  border-top: 1px solid var(--ds-color-border-base);
+}
+
+.lh-quality-content { display: grid; gap: 20px; min-width: 0; }
+.lh-quality-metric-group { display: grid; gap: 10px; min-width: 0; }
+.lh-quality-metric-group > h4 { margin: 0; color: var(--ds-color-muted); font-size: var(--admin-text-dense); }
+.lh-quality-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: var(--admin-radius-control);
+  background: var(--ds-color-divider);
+}
+.lh-quality-metrics > div { min-width: 0; padding: 15px 16px; background: var(--ds-color-surface); }
+.lh-quality-metrics h5 { margin: 0 0 7px; color: var(--ds-color-muted); font-size: var(--admin-text-label); font-weight: var(--admin-weight-strong); }
+.lh-quality-metrics p { margin: 0; color: var(--ds-color-text); font-size: var(--admin-text-heading); font-weight: var(--admin-weight-strong); line-height: 1.35; font-variant-numeric: tabular-nums; }
+.lh-quality-metrics small { display: block; margin-top: 6px; color: var(--ds-color-muted); font-size: var(--admin-text-label); line-height: 1.45; }
+.lh-quality-review-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding-top: 18px; border-top: 1px solid var(--ds-color-divider); }
+.lh-quality-summary { min-width: 0; }
+.lh-quality-summary + .lh-quality-summary { padding-left: 20px; border-left: 1px solid var(--ds-color-divider); }
+.lh-quality-summary h4, .lh-quality-held h4 { margin: 0 0 10px; font-size: var(--admin-text-dense); }
+.lh-quality-summary h4 strong { color: var(--ds-color-action); font-variant-numeric: tabular-nums; }
+.lh-quality-summary ul, .lh-quality-held ul { margin: 8px 0 0; padding: 0; list-style: none; }
+.lh-quality-summary li { padding: 6px 0; border-bottom: 1px solid var(--ds-color-divider); font-size: var(--admin-text-meta); line-height: 1.5; overflow-wrap: anywhere; }
+.lh-quality-summary p, .lh-quality-held p { font-size: var(--admin-text-meta); line-height: 1.55; }
+.lh-quality-candidates { border-top: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); }
+.lh-quality-candidates summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; color: var(--ds-color-text); font-weight: var(--admin-weight-strong); cursor: pointer; list-style: none; }
+.lh-quality-candidates summary::-webkit-details-marker { display: none; }
+.lh-quality-candidates summary span:last-child { flex: 0 0 auto; color: var(--ds-color-action); font-size: var(--admin-text-meta); }
+.lh-quality-candidates .ingest-meta { margin-bottom: 12px; }
+.lh-quality-candidate-scroll { max-height: 280px; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-control); }
+.lh-quality-candidate-scroll:focus-visible, .lh-quality-candidates summary:focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 3px; }
+.lh-quality-candidate-scroll ul { margin: 0; padding: 0; list-style: none; }
+.lh-quality-candidate-scroll li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--ds-color-divider); font-size: var(--admin-text-label); overflow-wrap: anywhere; }
+.lh-quality-candidate-scroll li:last-child { border-bottom: 0; }
+.lh-quality-candidate-scroll li:nth-child(even) { background: var(--ds-color-surface-subtle); }
+.lh-quality-candidate-scroll li span { color: var(--ds-color-muted); }
+.lh-quality-candidate-scroll time { color: var(--ds-color-muted); font-variant-numeric: tabular-nums; }
+.lh-quality-held li { padding: 12px 0; border-bottom: 1px solid var(--ds-color-divider); overflow-wrap: anywhere; }
+.lh-quality-held li p { margin: 4px 0 10px; }
+.lh-quality-held > a { display: inline-block; margin-top: 12px; }
+.lh-quality-review { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-control); background: var(--ds-color-surface-subtle); }
+.lh-quality-review h4 { margin: 0; }
+.lh-quality-review label { display: grid; gap: 5px; }
+.lh-quality-review label:has([type="checkbox"]) { display: flex; align-items: start; }
+.lh-quality-review input:not([type="checkbox"]), .lh-quality-review textarea {
+  width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--ds-color-border-base); border-radius: var(--admin-radius-control); font: inherit;
+}
+.lh-quality-review button { justify-self: start; }
+
+@media (max-width: 1100px) {
+  .lh-quality-review-grid { grid-template-columns: 1fr; gap: 16px; }
+  .lh-quality-summary + .lh-quality-summary { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--ds-color-divider); }
+}
+
+@media (max-width: 900px) {
+  .lh-quality-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 540px) {
+  .lh-quality-metrics { grid-template-columns: 1fr; }
+  .lh-quality-candidate-scroll li { grid-template-columns: 1fr; gap: 3px; }
+  .data-pipeline-group-heading { align-items: start; flex-direction: column; }
+}
+
+.data-pipeline-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.data-pipeline-group-heading h3,
+.data-pipeline-group-heading p {
+  margin: 0;
+}
+
+.data-pipeline-group-heading p {
+  margin-top: 6px;
+  color: var(--ds-color-muted);
+}
+
+.data-pipeline-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.data-pipeline-result {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--admin-radius-control);
+  background: var(--ds-color-surface-subtle);
+}
+
+.data-pipeline-result-combined {
+  grid-column: 1 / -1;
+}
+
+.data-pipeline-result h4 {
+  margin: 0;
+  font-size: var(--admin-text-heading);
+}
+
+.data-pipeline-steps {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding-left: 22px;
+  color: var(--ds-color-label);
+}
+
+.admin-content .data-pipeline-success {
+  color: var(--ds-color-action);
+  font-weight: var(--admin-weight-strong);
+}
+
+.admin-content .data-pipeline-warning {
+  color: var(--ds-color-status-upcoming);
+  font-weight: var(--admin-weight-strong);
+}
+
+.data-pipeline-error {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--admin-danger);
+}
+
+.data-pipeline-error pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: var(--admin-radius-control);
+  background: var(--ds-color-text);
+  color: var(--ds-color-surface-subtle);
+  font-size: var(--admin-text-label);
+  white-space: pre-wrap;
+}
+
+.location-summary-file {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  color: var(--ds-color-label);
+  font-weight: var(--admin-weight-strong);
+}
+
+.location-summary-file input {
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--ds-color-muted);
+  border-radius: var(--admin-radius-control);
+  background: var(--ds-color-surface);
+}
+
+.location-summary-file input:focus-visible {
+  border-color: var(--ds-color-action);
+  outline: 2px solid var(--ds-color-action);
+}
+
+.registration-form {
+  display: grid;
+  gap: 20px;
+}
+
+.registration-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--admin-radius-control);
+}
+
+.registration-form legend {
+  padding: 0 6px;
+  font-weight: var(--admin-weight-strong);
+}
+
+.registration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.registration-field {
+  display: grid;
+  gap: 7px;
+  color: var(--ds-color-label);
+  font-weight: var(--admin-weight-strong);
+}
+
+/* 입력 모양은 admin-system.css 기준을 쓰고 여기서는 폭만 정한다. */
+.registration-field input,
+.registration-field select {
+  width: 100%;
+}
+
+.registration-field input:focus,
+.registration-field select:focus {
+  border-color: var(--ds-color-action);
+  outline: 2px solid var(--ds-color-action);
+}
+
+.registration-field input[aria-invalid="true"],
+.registration-field select[aria-invalid="true"] {
+  border-color: var(--admin-danger);
+}
+
+.registration-field-error {
+  color: var(--admin-danger);
+  font-size: var(--admin-text-dense);
+  font-weight: var(--admin-weight-medium);
+}
+
+.registration-message {
+  padding: 12px 14px;
+  border-radius: var(--admin-radius-control);
+}
+
+.admin-content .registration-success {
+  margin: 0;
+  color: var(--ds-color-action);
+  background: var(--ds-color-action-soft);
+}
+
+.registration-error {
+  color: var(--admin-danger);
+  background: var(--admin-danger-soft);
+}
+
+.registration-error p {
+  color: inherit;
+}
+
+.registration-error ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.registration-submit {
+  width: fit-content;
+  min-width: 128px;
+  border-color: var(--ds-color-action);
+  color: var(--ds-color-on-brand);
+  background: var(--ds-color-action);
+}
+
+.registration-submit:hover:not(:disabled) {
+  background: var(--ds-color-brand-strong);
+  color: var(--ds-color-on-brand);
+}
+
+.registration-submit:focus-visible {
+  outline: 3px solid var(--ds-color-action);
+  outline-offset: 3px;
+}
+
+.registration-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.admin-content .selected-complex,
+.admin-content .selected-complex-guide {
+  margin: -8px 0 20px;
+  padding: 12px 14px;
+  border-radius: var(--admin-radius-control);
+}
+
+.admin-content .selected-complex {
+  color: var(--ds-color-action);
+  background: var(--ds-color-status-applying-surface);
+}
+
+.admin-content .selected-complex-guide {
+  background: var(--ds-color-surface-subtle);
+}
+
+@media (max-width: 720px) {
+  .admin-content {
+    padding: 24px 16px;
+  }
+
+  .registration-card {
+    padding: 18px;
+  }
+
+  .registration-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .data-pipeline-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-pipeline-group-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-pipeline-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pipeline-progress { margin: 16px 0; display: grid; gap: 8px; }
+.pipeline-progress-caption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: var(--admin-text-meta); font-weight: var(--admin-weight-strong); }
+.pipeline-progress progress { display: block; width: 100%; height: 10px; accent-color: var(--ds-color-action); border: 0; border-radius: var(--admin-radius-control); overflow: hidden; background: var(--ds-color-divider); }
+.pipeline-progress progress::-webkit-progress-bar { background: var(--ds-color-divider); }
+.pipeline-progress progress::-webkit-progress-value { background: var(--ds-color-action); border-radius: var(--admin-radius-control); }
+.pipeline-progress progress::-moz-progress-bar { background: var(--ds-color-action); }
+.pipeline-request { overflow-wrap: anywhere; font-size: var(--admin-text-meta); }
+.pipeline-request span { display: block; color: var(--ds-color-muted); }
+.pipeline-progress code { display: block; overflow-wrap: anywhere; font-size: var(--admin-text-label); margin-top: 8px; }
+.data-pipeline-card summary { cursor: pointer; font-size: var(--admin-text-meta); padding: 6px 0; }
+.data-pipeline-card button:focus-visible, .data-pipeline-card summary:focus-visible,
+.data-pipeline-card select:focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 3px; }
+/* 중지 버튼은 기준 버튼 모양에 빨간 글씨만 더한다. 실패 보기 링크는 글자 링크로 둔다. */
+.pipeline-stop { margin-top: 12px; color: var(--admin-danger); border-color: var(--admin-danger-line); }
+.data-pipeline-card button:disabled { opacity: .55; cursor: not-allowed; }
+.pipeline-report { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0; }
+.pipeline-report div { display: grid; gap: 4px; }
+.pipeline-report dt { color: var(--ds-color-muted); font-size: var(--admin-text-label); }
+.pipeline-report dd { margin: 0; font-size: var(--admin-text-body); color: var(--ds-color-text); font-weight: var(--admin-weight-strong); }
+.pipeline-completed-report { margin-top: 10px; }
+
+/* Task navigation and collection throughput */
+.pipeline-work-caption { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.pipeline-eta { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 12px 0; padding: 14px 16px; border-radius: var(--admin-radius-control); background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+.pipeline-eta strong { font-size: var(--admin-text-heading); font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .admin-header { flex-wrap: wrap; gap: 12px; }
+  .admin-brand { flex-basis: 100%; }
+  .admin-header-account { width: 100%; justify-content: space-between; }
+  .admin-header button { white-space: nowrap; flex-shrink: 0; }
+}
+}

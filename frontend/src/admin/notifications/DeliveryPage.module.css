@@ -4,14 +4,14 @@
 :global(.admin-layout[class]) :global(.admin-content) > .page > header { margin-bottom: 0; }
 .filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--ds-space-3); }
 .filters label { display: grid; gap: var(--ds-space-2); flex: 1 1 12rem; }
-.filters input, .filters select { width: 100%; min-height: 2.75rem; padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
+.filters input, .filters select { width: 100%; }
 .help { color: var(--ds-color-label); line-height: 1.7; }
 .list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--ds-space-4); }
 /* 기록은 카드 안에서 구분선으로만 나눈다. */
 .list { gap: 0; }
 .list article { border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; padding: var(--ds-space-5) 0; background: transparent; }
 .list header { display: flex; align-items: start; flex-wrap: wrap; gap: var(--ds-space-3); justify-content: space-between; }
-.list h2 { font-size: var(--ds-text-title); margin: 0; overflow-wrap: anywhere; }
+.list h2 { font-size: var(--admin-text-heading); margin: 0; overflow-wrap: anywhere; }
 .list dl { display: grid; grid-template-columns: repeat(auto-fit,minmax(10rem,1fr)); gap: var(--ds-space-4); }
 .list dt { color: var(--ds-color-label); font-size: var(--ds-text-caption); }
 .list dd { margin: var(--ds-space-1) 0 0; overflow-wrap: anywhere; }
