@@ -25,11 +25,11 @@ public class FeedbackContent {
 
     public static FeedbackContent of(String value) {
         if (value == null) {
-            return new FeedbackContent("");
+            throw new IllegalArgumentException("의견은 1자 이상 2,000자 이하로 입력해야 합니다.");
         }
         String normalized = SURROUNDING_WHITESPACE.matcher(value).replaceAll("");
-        if (normalized.length() > MAX_LENGTH) {
-            throw new IllegalArgumentException("의견은 2,000자 이하로 입력해야 합니다.");
+        if (normalized.isEmpty() || normalized.length() > MAX_LENGTH) {
+            throw new IllegalArgumentException("의견은 1자 이상 2,000자 이하로 입력해야 합니다.");
         }
         return new FeedbackContent(normalized);
     }

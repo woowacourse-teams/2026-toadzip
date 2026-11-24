@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { listFeedback } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
-const valid = { items: [{ surveyAnswer: null, version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null, id: 1, content: '개선 의견', createdAt: '2026-10-07T01:00:00Z' }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 }
+const valid = { items: [{ version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null, id: 1, content: '개선 의견', createdAt: '2026-10-07T01:00:00Z' }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 }
 
 it('인증된 관리자 목록을 요청하며 검색과 취소 신호를 전달한다', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: valid })))
@@ -19,4 +19,12 @@ it.each([{ ...valid, items: [{ id: 1, content: null, createdAt: '2026-10-07T01:0
 ('잘못된 외부 응답을 거절한다', async value => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: value }))))
   await expect(listFeedback(new URLSearchParams())).rejects.toThrow('올바르지 않습니다')
+})
+
+it('이전 서버가 보낸 설문 답변은 읽지 않고 의견 항목만 남긴다', async () => {
+  const legacy = { ...valid, items: [{ ...valid.items[0], surveyAnswer: 'NOT_DISAPPOINTED' }] }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: legacy }))))
+  const result = await listFeedback(new URLSearchParams())
+  expect(result.items[0]).toEqual(valid.items[0])
+  expect(result.items[0]).not.toHaveProperty('surveyAnswer')
 })
