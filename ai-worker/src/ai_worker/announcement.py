@@ -95,7 +95,7 @@ class AnnouncementPdfExtractor:
         warnings = [f"공급표·임대조건표 쪽을 찾지 못해 전체 {len(texts)}쪽을 보냈습니다."] if selection.whole_document else []
         warnings += supply.warnings
         # 공급 근거는 원문 행 ID에서 원본 쪽을 복원하므로 첨부 쪽 번호 변환을 하지 않는다.
-        warnings += _remap_stage_pages(notice_tree, selected.notice_pages)
+        warnings += _remap_stage_pages(notice_tree, selected.notice_pages, texts)
         # 신청자격 단계는 쪽 글을 읽는 순서로 다시 만들어 보냈다. 요건 근거와 마지막 근거 검사가 그 쪽은 같은 글에서 찾는다.
         read_texts = eligibility_source.source_texts(texts)
         extracted = _eligibility(eligibility_reply, eligibility_error, notice_tree, eligibility_source.pages, read_texts)
@@ -175,9 +175,9 @@ def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dic
     return eligibility.normalize(answer, posted_date, source_pages, page_texts)
 
 
-def _remap_stage_pages(tree: dict, source_pages: list[int]) -> list[str]:
+def _remap_stage_pages(tree: dict, source_pages: list[int], texts: list[str]) -> list[str]:
     warnings: list[str] = []
-    checks.remap_pages(checks.objects(tree.get("evidence")), source_pages, warnings)
+    checks.remap_pages(checks.objects(tree.get("evidence")), source_pages, warnings, texts)
     return warnings
 
 

@@ -69,6 +69,47 @@ def test_remaps_evidence_pages_to_original_pdf_and_keeps_supply_pages():
     assert case.sheet.shared[0].page == 3
 
 
+# 원본 2쪽을 빼고 보낸 공고(양산 국민임대 정정공고): 첨부 11쪽이 원본 12쪽(일정표)이다.
+SENT_PAGES = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+SCHEDULE_TEXTS = [""] * 11 + ["접수기간 2026.12.01.(화) 10:00 ~ 16:00 인터넷 모바일 (LH청약플러스)", "청약 유의사항 (LH청약플러스)", ""]
+
+
+def remap(evidence, texts=SCHEDULE_TEXTS):
+    warnings = []
+    remapped = checks.remap_pages(evidence, SENT_PAGES, warnings, texts)
+    return [item["page"] for item in remapped], warnings
+
+
+def test_uses_original_page_when_model_cites_original_number_instead_of_attached():
+    # 모델이 [첨부 11쪽 / 원본 12쪽]에서 12를 적었다. 첨부 번호로 바꾸면 원본 13쪽인데 인용이 없고 원본 12쪽에 있다.
+    assert remap([{"path": "announcement.applicationStartDate", "page": 12, "quote": "2026.12.01.(화) 10:00 ~ 16:00"},
+                  {"path": "receptionPlaces[0]", "page": 12, "quote": "인터넷 모바일 (LH청약플러스)"}]) == ([12, 12], [])
+
+
+def test_keeps_attached_page_when_its_quote_is_found_there():
+    # 첨부 번호로 바꾼 쪽(원본 13쪽)에 인용이 있으면 원본 12쪽에도 있어도 첨부 번호를 따른다.
+    assert remap([{"path": "receptionPlaces[1]", "page": 12, "quote": "(LH청약플러스)"}]) == ([13], [])
+
+
+def test_keeps_attached_page_when_quote_is_on_neither_page():
+    # 어느 쪽에도 없는 인용은 바로잡지 않아 뒤의 근거 검사가 경고한다.
+    assert remap([{"path": "schedules[0]", "page": 12, "quote": "2027.02.26.(금)"},
+                  {"path": "schedules[1]", "page": 12, "quote": ""}]) == ([13, 13], [])
+
+
+def test_does_not_use_original_page_that_was_not_sent():
+    # 원본 2쪽은 보내지 않았다. 모델이 2를 적었고 인용이 원본 2쪽 글에만 있어도 모델이 보지 않은 쪽은 근거로 붙이지 않는다.
+    texts = ["", "접수 2026.12.01", ""] + [""] * 11
+    assert remap([{"path": "schedules[0]", "page": 2, "quote": "2026.12.01"}], texts) == ([3], [])
+
+
+def test_uses_original_page_beyond_attached_range_only_when_quoted_there():
+    texts = [""] * 13 + ["계약 2027.03.02"]
+    assert remap([{"path": "schedules[0]", "page": 14, "quote": "2027.03.02"},
+                  {"path": "schedules[1]", "page": 14, "quote": "2027.04.01"}], texts) == (
+        [14], ["schedules[1]: 첨부한 쪽 범위를 벗어난 근거 쪽 번호(14)"])
+
+
 def test_out_of_range_page_is_left_as_is_with_warning():
     case = response(evidence=[{"path": "receptionPlaces[1]", "page": 7, "quote": "x"}], cites=[(0, 11, "x")],
                     shared=[([0], 20, 0, "20")])
@@ -116,6 +157,27 @@ def test_quote_differing_from_its_page_only_in_quotation_mark_shape_is_not_warne
     texts = ["접수 ’26.09.28.(월)", "", "주택형 26A 공용 13.50 모집호수 19"] + [""] * 7
 
     assert review(case, pages=[1, 3], texts=texts) == []
+
+
+def test_quote_shortened_with_ellipsis_is_matched_by_the_words_around_it():
+    case = response(evidence=[
+        {"path": "complexes[0]", "page": 1, "quote": "물금읍 청운로 41 ... 1105호"},
+        {"path": "complexes[1]", "page": 1, "quote": "동면 금산2길 12…1,300호"},
+        {"path": "complexes[2]", "page": 1, "quote": "번영로 435 ... 999호"},
+        {"path": "complexes[3]", "page": 1, "quote": "동면⋯1,300호 .. 937호"},
+        {"path": "complexes[4]", "page": 1, "quote": " … "},
+    ])
+    texts = ["양산시 물금읍 청운로 41 (가촌리) 공공임대 1105호 동면 금산2길 12 1,300호 번영로 435 937호"]
+
+    # 줄임표 자체는 원문에 없어도 되지만, 줄임표 앞뒤 낱말은 여전히 원문에 있어야 한다.
+    assert review(case, pages=[1], texts=texts) == ["complexes[2]: 근거 인용문의 999호이(가) 1쪽 원문에 없음",
+                                                    "complexes[4]: 근거 인용문의 …이(가) 1쪽 원문에 없음"]
+
+
+def test_quote_of_only_an_ellipsis_is_not_evidence_for_any_page():
+    item = {"path": "complexes[0]", "page": 1, "quote": "..."}
+
+    assert not checks._quoted_on(item, ["물금읍 청운로 41"], 1)
 
 
 def test_quote_of_table_row_matches_cells_extracted_in_other_order():

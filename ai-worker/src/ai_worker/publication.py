@@ -75,7 +75,10 @@ FIELDS = {"housingTypes[].complexName": "주택형의 단지명", "housingTypes[
           "cells[].monthlyRent": "월임대료", "leaseTerms[].rentalDeposit": "임대보증금",
           "leaseTerms[].monthlyRent": "월임대료", "leaseTerms[].convertedDeposit": "전환보증금"}
 # 공고에 적용되는 값의 미확인 표시. 신청자격의 미확인은 공고 공개를 막지 않는다.
-UNRESOLVED_HOLDS = ("announcement.", "schedules", "receptionPlaces", "supplySheet")
+UNRESOLVED_HOLDS = ("announcement.", "receptionPlaces", "supplySheet")
+# 일정은 공고를 보류하지 않는다. 미확인이거나 근거가 원문에 없는 일정은 그 일정만 적용하지 않는다(skippedSchedules).
+# 접수 기간과 당첨자 발표일은 일정 목록이 아니라 공고 날짜(announcement.)로 따로 확인한다.
+SCHEDULE = re.compile(r"(?:data\.)?schedules(?:\[(\d+|\*)])?(?![\w\[])")
 COMPLEX_NAME = re.compile(r"housingTypes\[\d+]\.complexName")
 
 
@@ -136,7 +139,7 @@ def assess(tree, source, warnings, judge, deadline, collected):
     # 예비자만 뽑는 공고로 수집됐으면 예비자 수가 곧 모집 수다. 유형을 모르면 Jev에 물은 뒤에 정한다.
     if collected.get("recruitmentType") not in (None, "NEW"):
         reasons += missing_reserve(data["supplySheet"])
-    review = held(*reasons) | {"evidence": cites}
+    review = held(*reasons) | {"evidence": cites, "skippedSchedules": skipped_schedules(data, warnings)}
     reasons = review["reasons"]
     if judge is None:
         reasons.append("원문 대조 모델(Jev)을 쓸 수 없습니다.")
@@ -175,13 +178,34 @@ def missing_reserve(sheet):
 def held(*reasons):
     """통과하지 못한 판정. 승인 값은 비어 있다."""
     return {"policy": 1, "reasons": list(reasons), "rentalType": None, "recruitmentType": None,
-            "eligibilityPublishable": False, "unconfirmedRequirements": [], "evidence": {}, "answers": {}}
+            "eligibilityPublishable": False, "unconfirmedRequirements": [], "skippedSchedules": [], "evidence": {},
+            "answers": {}}
+
+
+def schedule_indices(path, count):
+    """일정 경로가 가리키는 일정 번호들. 일정 경로가 아니면 None이다. `schedules[*]`(모든 일정)는 모든 번호이고,
+    번호 없는 `schedules`는 추출이 넣지 않은 일정이라 뺄 번호가 없다."""
+    match = SCHEDULE.match(path)
+    if match is None:
+        return None
+    if match[1] == "*":
+        return set(range(count))
+    return {int(match[1])} if match[1] else set()
+
+
+def skipped_schedules(data, warnings):
+    """적용하지 않을 일정 번호. 추출이 미확인으로 남겼거나 근거 인용문이 원문에 없다고 경고한 일정이다."""
+    paths = [f.get("path") or "" for f in data.get("unresolvedFields", [])]
+    paths += [warning.partition(":")[0] for warning in warnings]
+    count = len(data.get("schedules") or [])
+    return sorted(set().union(*(schedule_indices(path, count) or set() for path in paths)))
 
 
 def held_by_extraction(data, texts, warnings):
     """Jev에 묻기 전에 추출 단계가 이미 알린 보류 사유."""
     sheet = data["supplySheet"]
-    reasons = [w for w in warnings if not w.startswith("신청자격") and w not in PROCESS_NOTES]
+    reasons = [w for w in warnings if not w.startswith("신청자격") and w not in PROCESS_NOTES
+               and schedule_indices(w.partition(":")[0], 0) is None]
     fields = [f for f in sheet.get("unresolvedFields", []) if f.get("reason") != supply_assembly.RESERVE_MISSING]
     # 단지 열이 없는 공급표(단지 하나만 모집하는 공고)는 모든 주택형의 단지명이 빈다. 서버가 공고에 연결된 단지 하나로 채우고,
     # 연결된 단지가 하나가 아니면 서버가 보류한다. 추출이 단지명을 냈는데 원문에서 확인되지 않아 비운 것은 단지 구분이 있는 표라 남긴다.

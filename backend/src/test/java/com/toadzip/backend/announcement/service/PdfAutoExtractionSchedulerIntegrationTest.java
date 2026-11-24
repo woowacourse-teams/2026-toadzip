@@ -884,6 +884,27 @@ class PdfAutoExtractionSchedulerIntegrationTest {
     }
 
     @Test
+    void 워커가_확인하지_못한_일정은_공고를_보류하지_않고_그_일정만_더하지_않는다() {
+        Candidate candidate = fixture.candidate();
+        long id = candidate.notice().getId();
+        ObjectNode tree = fixture.passedExtraction(candidate);
+        ObjectNode data = tree.withObject("data");
+        pdfSchedule(data, "CONTRACT", "계약 체결", TODAY.plusDays(10), TODAY.plusDays(11));
+        // 워커가 빼는 일정은 대개 마감일을 읽지 못한 일정이다.
+        data.withArray("schedules").addObject().put("scheduleType", "DOCUMENT_SUBMISSION").put("name", "서류 접수")
+                .put("startAt", TODAY.plusDays(6).atTime(10, 0).toString()).putNull("endAt");
+        pdfSchedule(data, "MOVE_IN", "입주", TODAY.plusDays(30), TODAY.plusDays(40));
+        tree.withObject("publicationReview").putArray("skippedSchedules").add(1);
+        long job = fixture.succeededJob(candidate, tree);
+
+        publication.process();
+
+        assertThat(decisionsOf(job)).singleElement().satisfies(decision ->
+                assertThat(decision.get("outcome")).as("%s", decision.get("reason")).isEqualTo("PUBLISHED"));
+        assertThat(scheduleRows(id)).extracting(row -> row.get("name")).containsExactly("계약 체결", "입주");
+    }
+
+    @Test
     void 수집한_유형이_기타이면_PDF로_확인한_유형으로_바꿔_확정한다() {
         Candidate collected = fixture.candidate(collectedNotice(RentalType.ETC, RecruitmentType.ETC));
         long id = collected.notice().getId();

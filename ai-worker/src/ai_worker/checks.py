@@ -26,6 +26,8 @@ _WHITESPACE = re.compile(r"\s+")
 _MIDDLE_DOTS = re.compile(r"[ㆍ․‧•∙・]")
 # 공고문은 연도 앞 따옴표를 섞어 쓰고(‘26, ’26, '26) 모델은 인용하며 다른 모양으로 옮긴다.
 _QUOTE_MARKS = re.compile("[‘’`´]")
+# 모델은 긴 원문을 줄여 인용하며 가운데를 줄임표로 잇는다(물금읍 청운로 41 ... 1105호). 줄임표는 원문 글이 아니라 조각의 경계다.
+_ELLIPSIS = re.compile(r"\.{2,}|[…⋯]")
 _DATE_FIELDS = ("postedDate", "applicationStartDate", "applicationEndDate", "winnerAnnouncementDate")
 
 
@@ -110,24 +112,41 @@ def _check_lh_type_names(sheet: "SupplySheet", lh_types: set[str], warnings: lis
             warnings.append(f"{unit.label()} 주택형 이름: 근거 인용에 없는 LH 주택형 이름({housing_type})")
 
 
-def remap_pages(items: list[dict], pages: list[int], warnings: list[str]) -> list[dict]:
-    """원본 쪽 번호로 바꾼 항목을 돌려준다. 범위를 벗어난 항목은 그대로 두고 경고한다."""
+def remap_pages(items: list[dict], pages: list[int], warnings: list[str],
+                texts: list[str] | None = None) -> list[dict]:
+    """원본 쪽 번호로 바꾼 항목을 돌려준다. 범위를 벗어난 항목은 그대로 두고 경고한다.
+    texts(원본 쪽마다의 글)를 주면, 모델이 [첨부 N쪽 / 원본 M쪽] 표시에서 첨부 번호 대신 원본 번호 M을 적은 경우를 바로잡는다:
+    첨부 번호로 바꾼 쪽에 인용문이 없고, 적은 번호가 보낸 원본 쪽이며 그 쪽에 인용문이 있으면 그 쪽을 쓴다."""
     remapped = []
     for item in items:
         page = item.get("page")
-        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= len(pages):
+        whole = isinstance(page, int) and not isinstance(page, bool)
+        mapped = pages[page - 1] if whole and 1 <= page <= len(pages) else None
+        if texts is not None and whole and page in pages and page != mapped and _quoted_on(item, texts, page) \
+                and (mapped is None or not _quoted_on(item, texts, mapped)):
+            mapped = page
+        if mapped is None:
             warnings.append(f"{_label(item)}: 첨부한 쪽 범위를 벗어난 근거 쪽 번호({page})")
             continue
-        item["page"] = pages[page - 1]
+        item["page"] = mapped
         remapped.append(item)
     return remapped
 
 
+def _quoted_on(item: dict, texts: list[str], page: int) -> bool:
+    quote = _text(item.get("quote"))
+    return bool(quote.split()) and 1 <= page <= len(texts) and not missing_words(quote, texts[page - 1])
+
+
 def missing_words(quote: str, page_text: str) -> list[str]:
     """quote의 낱말 가운데 쪽 글에 없는 것. 모델은 표 한 줄을 칸 순서대로 이어 인용하는데 PDF 글은 칸을 다른 순서로 뽑기도 해서,
-    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈, 가운뎃점·따옴표의 모양 차이는 무시한다."""
+    인용문 전체가 아니라 낱말마다 찾는다. 쪽 글의 공백과 줄바꿈, 가운뎃점·따옴표의 모양 차이는 무시한다.
+    줄임표로 줄인 인용문은 줄임표를 빼고 앞뒤 조각의 낱말을 같은 방식으로 찾는다. 줄임표뿐인 인용문은 근거가 아니라 통째로 없는 것으로 본다."""
+    words = _ELLIPSIS.sub(" ", quote).split()
+    if not words and quote.strip():
+        return [quote.strip()]
     compact = compact_text(page_text)
-    return [word for word in quote.split() if _same_marks(word) not in compact]
+    return [word for word in words if _same_marks(word) not in compact]
 
 
 # 같은 쪽 글을 요건마다 다시 줄이지 않게 기억한다. 워커는 오래 떠 있으므로 한 공고의 쪽 수만큼만 기억한다.

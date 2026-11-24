@@ -31,7 +31,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
@@ -81,7 +83,10 @@ class PublicationCorrection {
                 .map(item -> json.treeToValue(item, ReceptionPlaceRequest.class)).toList();
         List<ScheduleRequest> schedules = array(data, "schedules").stream()
                 .map(item -> json.treeToValue(item, ScheduleRequest.class)).toList();
-        var selects = newSchedules(schedules, workspace.events());
+        // 이 필드가 생기기 전의 판정 결과에는 없다. 없으면 뺄 일정이 없는 것이다.
+        Set<Integer> skipped = review.path("skippedSchedules").valueStream().map(JsonNode::asInt)
+                .collect(Collectors.toSet());
+        var selects = newSchedules(schedules, skipped, workspace.events());
         var source = new SourceRequest(current.originalUrl(), "pdf-job-" + jobId, at);
         var document = new AdminAnnouncementImportRequest("admin-announcement-import/v1", source, metadata, places,
                 null, List.of(), schedules, List.of(), List.of());
@@ -100,13 +105,18 @@ class PublicationCorrection {
     /**
      * 수집한 일정은 이름이 고정이고 시각이 없어 공고문 일정과 글자 그대로 같을 수 없다. 그래서 기존 일정은 고치거나 지우지 않고,
      * 공고문 일정 가운데 기존 일정과 같은 일정이 아닌 것만 새 일정으로 더한다. 공고문에 똑같이 여러 번 적힌 일정은 한 번만 더한다.
-     * 접수 기간과 발표일은 워커가 따로 확인하므로 일정 목록이 달라도 보류하지 않는다.
+     * 접수 기간과 발표일은 워커가 따로 확인하므로 일정 목록이 달라도 보류하지 않는다. 워커가 미확인이거나 근거가 원문에 없다고 본
+     * 일정(skipped)은 공고를 보류하지 않고 그 일정만 더하지 않는다.
      */
-    private static List<Selection> newSchedules(List<ScheduleRequest> schedules, List<Event> existing) {
+    private static List<Selection> newSchedules(List<ScheduleRequest> schedules, Set<Integer> skipped,
+            List<Event> existing) {
         var selections = new ArrayList<Selection>();
         var added = new HashSet<ScheduleRequest>();
         for (int index = 0; index < schedules.size(); index++) {
             ScheduleRequest schedule = schedules.get(index);
+            if (skipped.contains(index)) {
+                continue;
+            }
             boolean known = existing.stream().anyMatch(event -> sameSchedule(event.data(), schedule));
             if (!known && added.add(schedule)) {
                 selections.add(new Selection(index, null));
