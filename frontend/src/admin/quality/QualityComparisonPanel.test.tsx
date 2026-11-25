@@ -104,5 +104,22 @@ it('동일한 비교값을 전체 검토 완료로 표현하지 않고 비교할
   expect(group).not.toHaveAttribute('open')
   fireEvent.click(screen.getByRole('button', { name: /다른 값만/ }))
   expect(screen.getByText(/비교 불가·직접 대조 항목은 별도로 확인/)).toBeVisible()
-  expect(screen.getByRole('button', { name: '현재 원천 확인 기록' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '주택형 원천 확인 기록' })).toBeDisabled()
+})
+
+it('작성 중 비교 대상을 바꾸면 확인을 받고, 취소하면 대상과 입력을 그대로 둔다', async () => {
+  const announcement: ManagementDetailData = { ...detail, housingTypes: [], supplySheet: sampleSheet() }
+  mocks.load.mockResolvedValue({ ...snapshot, target: 'basic', detail: announcement })
+  render(<MemoryRouter><QualityComparisonPanel resource="announcements" id="7" detail={announcement} onChanged={changed} onBusyChange={vi.fn()} /></MemoryRouter>)
+  fireEvent.change(await screen.findByLabelText('원천 확인 근거'), { target: { value: '작성 중인 근거' } })
+  fireEvent.change(screen.getByLabelText('비교 대상'), { target: { value: 'cell:3' } })
+  fireEvent.click(within(screen.getByRole('dialog', { name: '작성한 내용을 버리고 비교 대상을 바꿀까요?' })).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByLabelText('비교 대상')).toHaveValue('basic')
+  expect(screen.getByLabelText('원천 확인 근거')).toHaveValue('작성 중인 근거')
+  expect(mocks.load).toHaveBeenCalledOnce()
+  fireEvent.change(screen.getByLabelText('비교 대상'), { target: { value: 'cell:3' } })
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '버리고 바꾸기' }))
+  await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith('announcements', '7', 'cell:3', expect.any(AbortSignal)))
+  expect(screen.getByLabelText('비교 대상')).toHaveValue('cell:3')
 })

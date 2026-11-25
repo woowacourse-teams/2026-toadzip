@@ -1,0 +1,241 @@
+/*
+  관리자 화면 기준. 관리자 화면의 글자·높이·모서리·그림자·색과 기본 부품(버튼·입력·탭·배지) 모양은 이 파일 한 곳에서 정한다.
+  화면 CSS는 아래 기준값(var(--admin-*))을 쓰고, 기준에 없는 크기를 새로 만들지 않는다.
+
+  기본 부품은 cascade layer 안에 둔다. layer 안 규칙은 layer 밖에 있는 화면 CSS(모듈)에 우선순위와 상관없이 항상 진다.
+  그래서 화면 CSS는 `.tab { border:0 }`처럼 평범한 선택자만으로 부품 모양을 바꿀 수 있고, `[class]`를 덧붙여 우선순위를 올리지 않는다.
+  공용 디자인 시스템 컴포넌트(`data-design-system`)는 자기 모듈 CSS로 그리고, 여기서는 색·높이 기준값만 넘겨준다.
+*/
+@layer admin-base, admin-components, admin-pages;
+
+.admin-layout {
+  /* 글자 크기는 일곱 단계, 굵기는 400·500·600 셋만 쓴다. 위계는 굵기보다 크기와 색으로 만든다. */
+  /* 한 이름표(탭·버튼·한 줄의 '이름 + 숫자') 안에서는 글자 크기를 섞지 않는다. 숫자나 건수는 같은 크기로 쓰고 필요하면 굵기 600으로만 구별한다.
+     크기를 달리하는 것은 숫자 카드(작은 이름 위·아래 큰 숫자)와 두 줄짜리 칸(제목 줄 + 보조 줄)뿐이다. */
+  --admin-text-label: 12px; /* 표 머리글·배지·입력 이름처럼 작은 이름표 */
+  --admin-text-meta: 13px; /* 보조 설명·날짜·작은 버튼 */
+  --admin-text-dense: 14px; /* 표 칸·메뉴·입력 이름처럼 빽빽하게 읽는 글 */
+  --admin-text-body: 15px; /* 본문·버튼·입력 */
+  --admin-text-heading: 17px; /* 카드·구역 제목 */
+  --admin-text-title: 24px; /* 화면 제목 */
+  --admin-text-figure: 32px; /* 운영 홈 숫자 카드처럼 화면의 핵심 숫자 하나 */
+  --admin-weight-regular: 400;
+  --admin-weight-medium: 500;
+  --admin-weight-strong: 600;
+
+  /* 높이: 버튼·입력은 기본 36px, 표 안·페이지 이동처럼 빽빽한 곳은 32px, 밑줄 탭은 40px */
+  --admin-control-height: 36px;
+  --admin-control-height-sm: 32px;
+  --admin-tab-height: 40px;
+
+  /* 모서리: 바깥 카드 16, 카드 안 상자 12, 버튼·입력 8, 배지 6. 둥근 알약 모양은 쓰지 않는다. */
+  --admin-radius-card: 16px;
+  --admin-radius-inner: 12px;
+  --admin-radius-control: 8px;
+  --admin-radius-badge: 6px;
+
+  /* 간격: 4px 격자(4·8·12·16·20·24·32…)만 쓴다. 버튼·배지 안처럼 작은 부품 속에서는 2px·6px 반 단계를 쓸 수 있고, 1~3px은 줄 맞춤용 미세 조정이다.
+     화면 CSS는 px로 쓰거나 var(--ds-space-1..7)(4~28px)을 쓴다. 5·7·9·10·14·18px 같은 값은 쓰지 않는다(adminStyles.test.ts). */
+
+  /* 이름 규칙: 글자 크기·높이·모서리는 var(--admin-*)만 쓰고, 색과 간격은 var(--ds-*)를 쓴다.
+     같은 역할을 두 이름으로 부르지 않게, 아래에서 관리자 값으로 덮어쓴 --ds-text-body·--ds-text-caption·--ds-control-height-md·--ds-radius-control은
+     공용 컴포넌트에 넘겨주는 용도로만 두고 화면 CSS에서는 쓰지 않는다(adminStyles.test.ts). */
+
+  /* 그림자: 바닥에 놓인 카드와 위에 뜬 것(메뉴·말풍선·대화상자) 둘뿐이고 색 없는 회색만 쓴다. */
+  --admin-shadow-card: 0 1px 2px rgb(15 23 42 / 4%), 0 6px 24px rgb(15 23 42 / 5%);
+  --admin-shadow-overlay: 0 8px 32px rgb(15 23 42 / 14%);
+
+  /* 색: 흰 메뉴·흰 카드에 거의 흰 바탕, 강조색은 초록 하나다.
+     주 버튼은 흰 글자를 올리므로 대비 4.5:1 이상인 진한 초록을 쓴다(#17744a 5.78:1). */
+  --admin-canvas: #f8fafd;
+  --admin-line: var(--ds-color-divider);
+  --admin-danger: #b42318;
+  --admin-danger-soft: #fef3f2;
+  --admin-danger-line: #fecdca;
+  --admin-warn-line: #f5d9b5;
+  --ds-color-brand: #17744a;
+  --ds-color-brand-strong: #125f3c;
+  --ds-color-brand-hover: var(--ds-color-brand-strong);
+  --ds-color-brand-tint: #e3f5ea;
+  --ds-color-on-brand: #ffffff;
+  --ds-color-action: #17744a;
+  --ds-color-action-soft: #f1f8f4;
+  --ds-color-action-selected: #e3f5ea;
+  --ds-color-text: #191c21;
+  --ds-color-label: #4b515a;
+  --ds-color-muted: #6b7079;
+  --ds-color-divider: #edf0f4;
+  --ds-color-border-base: #d8dde3;
+  --ds-color-surface-subtle: #f6f8fb;
+  --brand: var(--ds-color-brand);
+  --brand-dark: var(--ds-color-action);
+  --focus: var(--ds-color-action);
+
+  /* 공용 디자인 시스템 컴포넌트도 관리자 기준 크기로 그려지게 넘겨준다. */
+  --ds-text-body: var(--admin-text-body);
+  --ds-text-caption: var(--admin-text-meta);
+  --ds-control-height-md: var(--admin-control-height);
+  --ds-radius-control: var(--admin-radius-control);
+  --ds-weight-strong: var(--admin-weight-medium); /* 공용 Button의 굵기. 관리자 버튼은 모두 500이다. */
+  --ds-status-badge-radius: var(--admin-radius-badge);
+}
+
+@layer admin-base {
+  /* 크기를 따로 주지 않은 글·버튼은 브라우저 기본 16px이 아니라 본문 크기로 그린다. */
+  .admin-content { font-size: var(--admin-text-body); }
+  .admin-content :is(button, input, select, textarea) { font: inherit; }
+  .admin-content h1 { font-size: var(--admin-text-title); line-height: 1.4; font-weight: var(--admin-weight-strong); }
+  .admin-content :is(h2, h3, h4, h5) { font-weight: var(--admin-weight-strong); }
+  .admin-content h2 { font-size: var(--admin-text-heading); }
+  .admin-content :is(h3, h4, h5) { font-size: var(--admin-text-body); }
+  /* 표 스크롤 상자는 안쪽 숨김 글자(sr-only 등 position:absolute)의 기준 상자가 되어야 한다.
+     그렇지 않으면 숨김 글자가 상자 밖 기준으로 놓여 문서를 표 폭만큼 넓힌다. */
+  .admin-content .admin-table-scroll { position: relative; }
+  /* 문단 기본값: 위에만 12px 띄운다. 공용 부품(오류 상자 등)과 화면 CSS가 이 값을 덮을 수 있게 기본 layer에 둔다. */
+  .admin-content h1 { margin: 0; }
+  .admin-content p { margin: 12px 0 0; color: var(--ds-color-label); line-height: 1.6; }
+  .admin-content :is(th, strong, b) { font-weight: var(--admin-weight-strong); }
+  .admin-content a { color: var(--ds-color-action); }
+  .admin-content label { display: flex; flex-direction: column; gap: 8px; font-size: var(--admin-text-dense); font-weight: var(--admin-weight-medium); }
+  .admin-content label:has(> input[type=checkbox]) { flex-direction: row; align-items: center; gap: 8px; }
+  .admin-content input[type=checkbox] { flex: none; width: 17px; height: 17px; margin: 0; accent-color: var(--ds-color-action); }
+
+  /* 입력: 버튼과 같은 높이·모서리. 선택 상자는 화살표를 직접 그려 오른쪽 끝에 붙지 않게 하고, 숫자 칸의 위아래 버튼은 숨긴다. */
+  /* :where()로 우선순위를 .admin-content 하나로 낮춰, 아래 선택 상자·읽기 전용 규칙이 항상 이 공통 모양 위에 얹히게 한다. */
+  .admin-content :where(input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea) {
+    box-sizing: border-box; width: 100%; min-height: var(--admin-control-height); padding: 0 12px;
+    border: 1px solid var(--ds-color-border-base); border-radius: var(--admin-radius-control);
+    background-color: var(--ds-color-surface); color: var(--ds-color-text); line-height: 1.4;
+  }
+  .admin-content textarea { padding-block: 8px; line-height: 1.6; }
+  .admin-content input:read-only { background-color: var(--ds-color-surface-subtle); }
+  /* 화살표 경로는 shared/AdminIcon.tsx의 chevronDown과 같다. 세트를 바꾸면 함께 바꾼다. */
+  .admin-content select:not([multiple]):not([size]) {
+    appearance: none; padding-right: 36px;
+    background: var(--ds-color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none' stroke='%236b7079' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 8 10 12.5 14.5 8'/%3E%3C/svg%3E") no-repeat right 12px center;
+  }
+  .admin-content select:not([multiple]):disabled { background-color: var(--ds-color-surface-subtle); }
+  .admin-content input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+  .admin-content input[type=number]::-webkit-inner-spin-button,
+  .admin-content input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+  /* 접힘(<details>): 브라우저 기본 ▶ 대신 꺾쇠 하나로 그리고, 펼치면 아래를 향한다. 꺾쇠 경로는 shared/AdminIcon.tsx의 chevronRight와 같다.
+     summary 안에 아이콘(AdminIcon)을 직접 둔 접힘은 그 아이콘이 표시를 맡으므로 여기서 그리지 않는다. */
+  .admin-content summary { cursor: pointer; list-style: none; }
+  .admin-content summary::-webkit-details-marker { display: none; }
+  .admin-content summary:not(:has(.admin-icon))::before {
+    content: ""; flex: none; display: inline-block; width: 16px; height: 16px; margin-inline-end: 4px; vertical-align: -3px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none' stroke='%236b7079' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 5.5 12.5 10 8 14.5'/%3E%3C/svg%3E") center / 16px no-repeat;
+    transition: transform .12s ease;
+  }
+  .admin-content details[open] > summary:not(:has(.admin-icon))::before { transform: rotate(90deg); }
+
+  .admin-layout :is(a, button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+}
+
+@layer admin-components {
+  /* 버튼 네 가지. 높이·모서리·굵기(500)는 모두 같고 색만 다르다. 공용 Button(data-design-system)도 같은 굵기를 받는다.
+     흰 버튼(기본): 보기 전환·이동. 초록(.admin-primary): 저장·적용처럼 결과를 만드는 행동.
+     연한 초록(.admin-tonal): 작업 화면으로 들어가는 주요 행동. 빨간 글씨(.admin-danger): 삭제. */
+  .admin-content :is(button:not([data-design-system]), .admin-primary, .admin-tonal, .admin-danger) {
+    box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: var(--admin-control-height); padding: 0 16px;
+    border: 1px solid var(--ds-color-border-base); border-radius: var(--admin-radius-control);
+    background: var(--ds-color-surface); color: var(--ds-color-label);
+    font-weight: var(--admin-weight-medium); text-decoration: none; white-space: nowrap; cursor: pointer;
+    transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .admin-content button:not([data-design-system]):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
+  .admin-content button:disabled { opacity: .5; cursor: not-allowed; }
+  .admin-content .admin-primary { border-color: var(--ds-color-action); background: var(--ds-color-action); color: var(--ds-color-on-brand); }
+  .admin-content .admin-primary:hover:not(:disabled) { border-color: var(--ds-color-brand-strong); background: var(--ds-color-brand-strong); color: var(--ds-color-on-brand); }
+  .admin-content .admin-tonal { border-color: transparent; background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+  .admin-content .admin-tonal:hover:not(:disabled) { background: var(--ds-color-action-selected); color: var(--ds-color-action); }
+  .admin-content .admin-danger { border-color: var(--admin-danger-line); background: var(--ds-color-surface); color: var(--admin-danger); }
+  .admin-content .admin-danger:hover:not(:disabled) { background: var(--admin-danger-soft); color: var(--admin-danger); }
+
+  /* 탭: 화면 안에서 보기를 바꾸는 탭은 모두 밑줄 탭 하나로 그린다. 채운 버튼 모양 탭은 쓰지 않는다. */
+  .admin-content :is(.admin-folder-tabs, .admin-section-tabs) {
+    /* 탭이 넘칠 때만 가로로 밀고, 선택 밑줄(-1px)이 세로 스크롤 막대를 만들지 않게 세로는 막는다. */
+    display: flex; gap: 24px; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; margin: 0 0 16px; padding: 0;
+    border: 0; border-bottom: 1px solid var(--admin-line); background: transparent;
+  }
+  .admin-content :is(.admin-folder-tabs, .admin-section-tabs) button:not([data-design-system]) {
+    flex: none; min-width: 0; min-height: var(--admin-tab-height); margin: 0 0 -1px; padding: 0 2px;
+    border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
+    color: var(--ds-color-muted); font-size: var(--admin-text-body); font-weight: var(--admin-weight-medium);
+  }
+  .admin-content :is(.admin-folder-tabs, .admin-section-tabs) button:not([data-design-system]):hover:not(:disabled) { background: transparent; color: var(--ds-color-text); }
+  .admin-content :is(.admin-folder-tabs, .admin-section-tabs) button:not([data-design-system]):is([aria-pressed=true], [aria-selected=true]) {
+    border-bottom-color: var(--ds-color-action); color: var(--ds-color-action); font-weight: var(--admin-weight-strong);
+  }
+
+  /* 목록 화면 머리의 탭(data-design-system="list-tab")도 같은 밑줄 탭 글씨를 쓴다: 고르지 않은 탭은 회색 500, 고른 탭은 초록 600. */
+  .admin-content button[data-design-system="list-tab"] {
+    min-height: var(--admin-tab-height); padding: 0 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
+    color: var(--ds-color-muted); font-size: var(--admin-text-body); font-weight: var(--admin-weight-medium); cursor: pointer;
+  }
+  .admin-content button[data-design-system="list-tab"]:hover { color: var(--ds-color-text); }
+  .admin-content button[data-design-system="list-tab"]:is([aria-pressed=true], [aria-selected=true]) {
+    border-bottom-color: var(--ds-color-action); color: var(--ds-color-action); font-weight: var(--admin-weight-strong);
+  }
+
+  /* 배지: 테두리 없는 연한 바탕 글자. 색은 상태의 뜻이 있을 때만 바꾼다. */
+  .admin-content :is(.admin-status, .pipeline-badge) {
+    display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--admin-radius-badge);
+    background: var(--ds-color-status-neutral-surface); color: var(--ds-color-status-neutral);
+    font-size: var(--admin-text-label); font-weight: var(--admin-weight-medium); line-height: 1.5; white-space: nowrap;
+  }
+  .admin-content .admin-status[data-tone=review] { background: var(--ds-color-status-upcoming-surface); color: var(--ds-color-status-upcoming); }
+  .admin-content .admin-status[data-tone=deleted] { color: var(--ds-color-muted-base); }
+  .admin-content :is(.pipeline-failed, .pipeline-completed_warnings) { background: var(--admin-danger-soft); color: var(--admin-danger); }
+  .admin-content .pipeline-running { background: var(--ds-color-status-applying-surface); color: var(--ds-color-status-applying); }
+
+  /* 글자 버튼: 표의 행 동작(확인·처리, 상세 보기)처럼 한 화면에 여러 번 나오는 가벼운 동작. 테두리 없이 초록 글자로 둔다. */
+  /* 기본 버튼 규칙(:is(button:not(...)))과 같은 우선순위가 되도록 요소를 붙이고, 뒤에 두어 이긴다. */
+  .admin-content :is(button, a).admin-text-button {
+    min-height: var(--admin-control-height-sm); padding: 0 8px; border-color: transparent; background: transparent;
+    color: var(--ds-color-action); font-size: var(--admin-text-meta); font-weight: var(--admin-weight-medium); white-space: nowrap;
+  }
+  .admin-content :is(button, a).admin-text-button:hover:not(:disabled) { border-color: transparent; background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+
+  /* 오류 상자: 불러오기 실패·저장 오류는 모두 이 모양 하나로 그린다. registration-error는 같은 상자의 옛 이름이다.
+     문구와 버튼은 세로 가운데로 맞추고, 문단 기본 여백은 지워 상자 안에서 위아래가 같게 한다.
+     이 규칙은 layer 안에 있어 화면 CSS의 '.page p { margin }' 같은 넓은 문단 규칙에 진다. 그런 화면에는 예외를 둔다(PdfCorrection 참고).
+     버튼 없이 문장만 여러 개면 가로로 나누지 않고 위아래로 쌓는다. */
+  .admin-content :is(.admin-alert, .registration-error) {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px;
+    margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--admin-danger-line); border-radius: var(--admin-radius-inner);
+    background: var(--admin-danger-soft); color: var(--admin-danger); font-size: var(--admin-text-dense); line-height: 1.5;
+  }
+  .admin-content :is(.admin-alert, .registration-error) > p { flex: 1 1 240px; margin: 0; color: inherit; line-height: inherit; overflow-wrap: anywhere; }
+  .admin-content :is(.admin-alert, .registration-error) > button { flex: none; }
+  .admin-content .registration-error ul { margin: 8px 0 0; padding-left: 20px; }
+  .admin-content :is(.admin-alert, .registration-error):not(:has(> button)) { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 4px; }
+  .admin-content :is(.admin-alert, .registration-error):not(:has(> button)) > p { flex: none; }
+
+  /* 확인 창: 되돌리기 어렵거나 범위가 큰 실행 앞에서 묻는다(shared/ConfirmDialog). 취소가 왼쪽, 실행이 오른쪽이다. */
+  .admin-layout .admin-dialog {
+    width: min(440px, calc(100vw - 32px)); padding: 20px; border: 0; border-radius: var(--admin-radius-inner);
+    background: var(--ds-color-surface); color: var(--ds-color-text); box-shadow: var(--admin-shadow-overlay);
+  }
+  .admin-layout .admin-dialog::backdrop { background: rgb(33 59 53 / 25%); }
+  .admin-layout .admin-dialog h2 { margin: 0; font-size: var(--admin-text-heading); line-height: 1.4; }
+  .admin-layout .admin-dialog-body { margin-top: 8px; color: var(--ds-color-label); font-size: var(--admin-text-dense); line-height: 1.6; overflow-wrap: anywhere; }
+  .admin-layout .admin-dialog-body :is(p, ul) { margin: 0; }
+  .admin-layout .admin-dialog-body :is(p, ul) + :is(p, ul) { margin-top: 8px; }
+  .admin-layout .admin-dialog-body ul { padding-left: 20px; }
+  .admin-layout .admin-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  /* 기본 버튼 규칙(button:not(...))이 .admin-primary 한 클래스보다 우선순위가 높아, 확인 창의 실행 버튼 색은 여기서 다시 정한다. */
+  .admin-layout .admin-dialog-actions button.admin-primary { border-color: var(--ds-color-action); background: var(--ds-color-action); color: var(--ds-color-on-brand); }
+  .admin-layout .admin-dialog-actions button.admin-primary:hover { border-color: var(--ds-color-brand-strong); background: var(--ds-color-brand-strong); color: var(--ds-color-on-brand); }
+  .admin-layout .admin-dialog-actions button.admin-danger { border-color: var(--admin-danger-line); color: var(--admin-danger); }
+  .admin-layout .admin-dialog-actions button.admin-danger:hover { background: var(--admin-danger-soft); color: var(--admin-danger); }
+
+  /* 아이콘: shared/AdminIcon 세트 하나만 쓴다. 크기를 주지 않으면 글자 크기를 따르고,
+     글자 뒤 꺾쇠는 앞 글자와, 글자 앞 화살표(admin-icon-lead)는 뒤 글자와 조금 띄운다. */
+  .admin-layout .admin-icon { flex: none; vertical-align: -0.15em; }
+  /* 아이콘만 있는 버튼은 aria-label로 이름을 가지므로, 그런 버튼에서는 띄우지 않아 아이콘이 가운데에 온다. */
+  .admin-layout :is(a, button, small, summary):not([aria-label]) > .admin-icon:last-child:not(.admin-icon-lead) { margin-inline-start: .2em; }
+  .admin-layout .admin-icon-lead { margin-inline-end: .3em; }
+}

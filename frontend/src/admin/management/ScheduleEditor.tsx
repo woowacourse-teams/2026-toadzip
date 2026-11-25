@@ -7,6 +7,7 @@ import styles from './ScheduleEditor.module.css'
 import { confirmedSchedulesFromEvents, parseRange } from './scheduleText'
 import { loadJsonWorkspace, type JsonWorkspace } from '../announcement-json/api'
 import { choices } from '../announcement-pdf/review'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 const rowFields: Field[] = [{name:'supplyRank',label:'공급 순위'}, {name:'state',label:'일정 상태',options:['CONFIRMED','CONDITIONAL'],required:true},
   {name:'condition',label:'접수 조건'}, {name:'startDate',label:'시작일',type:'date',required:true},{name:'endDate',label:'종료일',type:'date',required:true},
@@ -35,6 +36,7 @@ export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:Mana
   const [prefilled,setPrefilled] = useState(0)
   useEffect(() => { onBusyChange?.(busy) }, [busy, onBusyChange])
   useUnsavedChanges(editing)
+  const [confirm, confirmDialog] = useConfirm()
   useEffect(() => {
     const controller = new AbortController()
     setEventsError('')
@@ -47,7 +49,9 @@ export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:Mana
   const drafts = events ? confirmedSchedulesFromEvents(events, supplyComplexes) : []
   const originalUrl = typeof value.data.originalUrl === 'string' && /^https?:\/\/\S+$/.test(value.data.originalUrl) ? value.data.originalUrl : ''
   // 확정한 일정이 없으면 수집·PDF 접수 일정을 공고문 URL을 근거로 바로 저장한다. 고칠 일이 있으면 저장 뒤 직접 입력에서 고친다.
-  function confirmDrafts() {
+  async function confirmDrafts() {
+    if (!(await confirm({ title: `접수 일정 ${drafts.length}개를 확정할까요?`,
+      body: '수집·PDF 일정을 공개 화면의 접수 상태와 접수 알림에 쓰는 확정 일정으로 저장합니다. 확정한 뒤에도 직접 입력에서 고칠 수 있습니다.', confirmLabel: '확정' }))) return
     setBusy(true); setError('')
     void requestManagementApi(`/api/admin/announcements/${id}/application-schedules?version=${value.data.version}`, 'PUT',
       { schedules: drafts.map(row => ({ ...row, sourceUrl: originalUrl, sourcePage: null })) })
@@ -98,7 +102,7 @@ export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:Mana
       <section className={styles.collected} aria-labelledby="collected-schedules-title"><header className="admin-inline"><h3 id="collected-schedules-title">수집·PDF 일정 {events?.length ?? 0}개</h3>
         {drafts.length > 0 && !value.summary.deleted && (value.schedules.length || !originalUrl
           ? <button onClick={() => startEditing(drafts)}>수집 일정으로 다시 채우기</button>
-          : <button className="admin-primary" disabled={busy} onClick={confirmDrafts}>{busy ? '확정하는 중…' : `접수 일정 ${drafts.length}개 확정`}</button>)}</header>
+          : <button className="admin-primary" disabled={busy} onClick={() => void confirmDrafts()}>{busy ? '확정하는 중…' : `접수 일정 ${drafts.length}개 확정`}</button>)}</header>
         {error && !editing ? <p role="alert" className="registration-error">{error}</p> : null}
         {eventsError ? <p role="alert">{eventsError}</p> : events === null ? <p role="status">불러오는 중…</p> : !events.length ? <p>수집되거나 PDF로 저장된 일정이 없습니다.</p>
           : <ul>{groups.map(group => <li key={group.key}><strong>{label(group.first)}</strong> {String(group.first.data.name ?? '')} · {when(group.first.data.startAt)}{group.first.data.endAt && group.first.data.endAt !== group.first.data.startAt ? ` ~ ${when(group.first.data.endAt)}` : ''}
@@ -156,5 +160,6 @@ export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:Mana
           </details></fieldset>)}
         {error ? <p role="alert">{error}</p> : null}<div className="admin-inline"><button disabled={busy || rows.length >= 100} type="button" onClick={() => setRows(current => [...current,{...current[0],housingComplexId:null,supplyRank:null,condition:null}])}>일정 추가</button>
           <button disabled={busy} className="admin-primary">{busy ? '저장 중…' : '접수 일정 저장'}</button><button disabled={busy} type="button" onClick={() => setEditing(false)}>취소</button></div></form>}
+    {confirmDialog}
   </section>
 }

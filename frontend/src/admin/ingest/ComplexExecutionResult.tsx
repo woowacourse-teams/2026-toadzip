@@ -7,6 +7,7 @@ import { ComplexStatusBadge, type ComplexStatus } from './ComplexStatusBadge'
 import { ComplexRunErrors } from './ComplexRunErrors'
 import { InitialRegistrationResultNotice } from './InitialRegistrationReport'
 import styles from './ComplexIngest.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 const stepStatuses = { waiting: 'waiting', running: 'running', success: 'completed', partial: 'partial', failed: 'failed', skipped: 'skipped', stopped: 'stopped', unexecuted: 'unexecuted' } as const satisfies Record<string, ComplexStatus>
 
@@ -49,10 +50,10 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     {execution.failure && <p className="form-error" role="alert">{execution.failure.message}</p>}
     {showErrors && execution.type === 'COMPLEX_REGISTRATION' && <InitialRegistrationResultNotice onShowRegistration={onShowRegistration} />}
     {showErrors && execution.type !== 'COMPLEX_REGISTRATION' && <>
-      <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
+      <Button data-design-system variant="secondary" className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
         결과 오류 조회
-        <svg className={styles.disclosureChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        <AdminIcon name="chevronDown" size={18} className={styles.disclosureChevron} />
       </Button>
       <div id={errorsId} role="region" aria-label="결과 오류" hidden={!errorsOpen} className={styles.errorPanel}>
         {errorsOpen && errorNotice && <p role={!pending && settled && !execution.executionId ? 'alert' : 'status'}>{errorNotice}</p>}
@@ -84,7 +85,7 @@ export function ComplexExecutionStop({ execution, stopping = false, label, onSto
   return <>
     <Button data-design-system className={styles.stopButton} title={`${label} · 현재 처리 후 종료`}
       disabled={stopping || execution.stopRequested || !execution.executionId} onClick={onStop}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+      <AdminIcon name="stop" size={16} />
       {stopping || execution.stopRequested ? '중지 요청 중…' : label}
     </Button>
     {execution.stopRequested && <p className={styles.stopNotice} role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}

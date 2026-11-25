@@ -26,8 +26,8 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
       <h1>{domain === 'complex' ? '단지 수집' : '공고 수집'}</h1>
       {domain === 'complex' ? <button type="button" className={complexStyles.historyButton} onClick={openHistory}>실행 이력</button> : null}
     </header>
-    <DataPipelineControl key={`control-${domain}`} domain={domain} compact onShowHistory={domain === 'complex' ? openHistory : undefined}
-      history={domain === 'announcement' ? <PipelineHistory domain="announcement" compact /> : undefined} />
+    <DataPipelineControl key={`control-${domain}`} domain={domain} onShowHistory={domain === 'complex' ? openHistory : undefined}
+      history={domain === 'announcement' ? <PipelineHistory domain="announcement" /> : undefined} />
     {domain === 'complex' ? <dialog ref={dialog} className={complexStyles.historyDialog} aria-labelledby="complex-history-title"
       onClose={() => { setHistoryOpen(false); backdropPressed.current = false }}
       onPointerDown={event => { backdropPressed.current = event.target === event.currentTarget && outsideDialog(event.currentTarget, event.clientX, event.clientY) }}
@@ -37,7 +37,7 @@ export function IngestPage({ domain }: { domain: 'complex' | 'announcement' }) {
         backdropPressed.current = false
       }}>
       <header><h2 id="complex-history-title">실행 이력</h2><ComplexIconButton icon="close" label="이력 닫기" onClick={closeHistory} /></header>
-      {historyOpen && <PipelineHistory domain="complex" compact readOnlyComplex onShowRegistration={closeHistory} />}
+      {historyOpen && <PipelineHistory domain="complex" readOnlyComplex onShowRegistration={closeHistory} />}
     </dialog> : null}
   </section>
 }

@@ -4,17 +4,17 @@
 .panel article { font-variant-numeric: tabular-nums; }
 .panel article small { color: var(--ds-color-muted-base); }
 .panel article p { margin-block: var(--ds-space-2); overflow-wrap: anywhere; }
-.status { display: block; width: fit-content; margin-top: var(--ds-space-2); color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); }
-.status[data-status='different'] { color: var(--ds-color-deadline); font-weight: var(--ds-weight-strong); }
-.status[data-status='manual'] { color: var(--ds-color-text); font-weight: var(--ds-weight-strong); }
-.panel .noValue { color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); }
-.panel .unavailable { margin-top: var(--ds-space-3); font-size: var(--ds-text-caption); color: var(--ds-color-muted-base); }
+.status { display: block; width: fit-content; margin-top: var(--ds-space-2); color: var(--ds-color-muted-base); font-size: var(--admin-text-meta); }
+.status[data-status='different'] { color: var(--ds-color-deadline); font-weight: var(--admin-weight-strong); }
+.status[data-status='manual'] { color: var(--ds-color-text); font-weight: var(--admin-weight-strong); }
+.panel .noValue { color: var(--ds-color-muted-base); font-size: var(--admin-text-meta); }
+.panel .unavailable { margin-top: var(--ds-space-3); font-size: var(--admin-text-meta); color: var(--ds-color-muted-base); }
 .panel .unavailable summary { font-weight: 400; }
 .empty { margin: 0; padding: var(--ds-space-5); color: var(--ds-color-muted-base); line-height: var(--ds-line-height-body); }
 .panel .sourceValue { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; }
 .panel .sourceValue p { margin-block: 2px; }
 .panel .unavailableGroup { border-top: 1px solid var(--ds-color-divider); }
-.panel .unavailableGroup > summary { padding: 10px 12px; color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); font-weight: 600; cursor: pointer; }
+.panel .unavailableGroup > summary { padding: 8px 12px; color: var(--ds-color-muted-base); font-size: var(--admin-text-meta); font-weight: var(--admin-weight-strong); cursor: pointer; }
 .panel .unavailableGroup > summary span { margin-left: 8px; font-weight: 400; }
 .panel .unavailableGroup .noValue { margin: 0; }
 @container (max-width: 500px) {

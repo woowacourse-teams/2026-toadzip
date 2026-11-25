@@ -36,6 +36,8 @@ async function setup(edit = true) {
   if (edit) fireEvent.click(screen.getByRole('button', { name: '두꺼비 단지 46A 편집' }))
   return onChanged
 }
+/** 확인 창에서 이름이 name인 버튼을 누른다. */
+function answer(name: string) { fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name })) }
 function save(reason = '공식 공고의 신혼 표기 확인') {
   fireEvent.change(screen.getByLabelText('보정 이유'), { target: { value: reason } })
   fireEvent.click(screen.getByRole('button', { name: '공급정보 저장' }))
@@ -73,13 +75,15 @@ it('고친 공급표를 서버가 확인한 뒤 같은 입력과 확인 토큰�
 })
 
 it('저장된 주택형을 지우면 확인을 받고, 그 칸이 든 수량·임대조건을 정리한 공급표를 보낸다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
   await setup(false)
   fireEvent.click(screen.getByRole('button', { name: '두꺼비 단지 59B 지우기' }))
+  answer('취소')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('59B')
   fireEvent.click(screen.getByRole('button', { name: '두꺼비 단지 59B 지우기' }))
-  expect(confirm.mock.calls[1][0]).toContain('저장하면 되돌릴 수 없고')
-  expect(screen.getByRole('table', { name: '공급정보 표' })).not.toHaveTextContent('59B')
+  expect(screen.getByRole('dialog', { name: "'59B'을(를) 공급표에서 지울까요?" })).toHaveTextContent('저장하면 되돌릴 수 없고')
+  answer('지우기')
+  await waitFor(() => expect(screen.getByRole('table', { name: '공급정보 표' })).not.toHaveTextContent('59B'))
   save('중복 주택형 정리')
   await waitFor(() => expect(previewSupply).toHaveBeenCalled())
   const sheet = vi.mocked(previewSupply).mock.calls[0][1].sheet
@@ -226,14 +230,16 @@ it('공급표가 확정된 공고에는 확인 전 안내를 보이지 않고, �
 it('확인 전 공고는 확인을 받은 뒤 작업실 두 토큰으로 기관 공급정보에서 공급표를 시작하고, 돌려받은 공급표를 보인다', async () => {
   vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(agencyOnly))
   vi.mocked(startSupplyFromAgency).mockResolvedValue(structuredClone(started))
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
   const changed = await setup(false)
   expect(screen.getByRole('region', { name: '공고문 확인 전 공급정보' })).toHaveTextContent('기관(LH·GH)이 보낸 공급정보를 ‘공고문 확인 전 정보’로 보여 줍니다')
   fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  expect(screen.getByRole('dialog', { name: '기관이 보낸 공급정보로 공급표를 만들고 확정할까요?' })).toHaveTextContent('‘공고문 확인 전 정보’ 표시가 사라집니다')
+  answer('취소')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(startSupplyFromAgency).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  answer('확정')
   await screen.findByText('기관 제공 정보로 공급표를 만들었습니다. 공고문과 다른 값이 있으면 아래 표에서 고치세요.')
-  expect(confirm).toHaveBeenCalledTimes(2)
   expect(startSupplyFromAgency).toHaveBeenCalledExactlyOnceWith('21', { snapshotToken: 'agency', stagingToken: 'staging' })
   expect(changed).toHaveBeenCalledOnce()
   expect(within(screen.getByRole('table', { name: '공급정보 표' })).getAllByRole('rowheader')).toHaveLength(2)
@@ -241,13 +247,12 @@ it('확인 전 공고는 확인을 받은 뒤 작업실 두 토큰으로 기관 
 })
 
 it('시작이 거절되면 운영자 문구로 알리고, 충돌(409)이면 최신 작업실을 다시 불러온다', async () => {
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
   vi.mocked(loadSupplyWorkspace).mockResolvedValue(structuredClone(agencyOnly))
   vi.mocked(startSupplyFromAgency).mockRejectedValueOnce(new ManagementError('공급정보가 바뀌었습니다. 최신 값을 다시 불러온 뒤 시작하세요.', 409, {}, 'ADMIN_DATA_STALE'))
     .mockRejectedValueOnce(new ManagementError('이미 공고 공급표가 있습니다. 공급정보 보정으로 고치세요.', 409, {}, 'ADMIN_DATA_CONFLICT'))
     .mockRejectedValueOnce(new ManagementError('준비 데이터가 없는 공고입니다. 공급정보를 직접 입력하세요.', 400))
   await setup(false)
-  const start = () => fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' }))
+  const start = () => { fireEvent.click(screen.getByRole('button', { name: '기관 제공 정보로 공급표 시작' })); answer('확정') }
 
   vi.mocked(loadSupplyWorkspace).mockResolvedValue({ ...structuredClone(agencyOnly), snapshotToken: 'agency-2', stagingToken: 'staging-2' })
   start()

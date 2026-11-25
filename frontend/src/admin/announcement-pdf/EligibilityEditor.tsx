@@ -7,6 +7,7 @@ import {
   removeGuidanceItem, removeManualCheck, renamePath, renameQualification, scopeChecks, scopeGuidances, updateRule,
 } from './eligibilityEdit'
 import styles from './EligibilityEditor.module.css'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 /**
  * 신청자격 직접 수정. 신청 유형(탭) 이름, 조건 숫자·값, 조건 더하기·판정에서 빼기, 공고문에서 확인할 자격 문구를 고쳐
@@ -22,6 +23,7 @@ export function EligibilityEditor({ announcementId, ruleSet, onSaved, onCancel }
   const [error, setError] = useState('')
   const dirty = content !== base.content
   useUnsavedChanges(dirty)
+  const [confirm, confirmDialog] = useConfirm()
   const problems = editProblems(content)
 
   async function save() {
@@ -36,23 +38,23 @@ export function EligibilityEditor({ announcementId, ruleSet, onSaved, onCancel }
       setBase(applied.ruleSet)
       setError(applied.reason)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '신청자격을 저장하지 못했어요. 다시 시도해 주세요.')
+      setError(cause instanceof Error ? cause.message : '신청자격을 저장하지 못했습니다. 다시 시도해 주세요.')
     } finally {
       setBusy(false)
     }
   }
 
-  function cancel() {
-    if (dirty && !window.confirm('고친 내용을 버릴까요?')) return
+  async function cancel() {
+    if (dirty && !(await confirm({ title: '고친 내용을 버릴까요?', body: '저장하지 않은 신청자격 수정이 사라집니다.', confirmLabel: '버리기' }))) return
     // 저장이 거절돼 복사한 초안이 생겼으면 화면이 그 초안으로 이어 가게 넘긴다.
     onCancel(base)
   }
 
   return <section className={styles.editor} aria-label="신청자격 직접 수정">
     <header className={styles.header}>
-      <div><h3>신청자격 직접 수정</h3><p className={styles.hint}>저장하면 사용자 화면에 곧바로 반영돼요. PDF 추출로 다시 반영하면 직접 고친 내용은 새 추출 결과로 덮여요.</p></div>
+      <div><h3>신청자격 직접 수정</h3><p className={styles.hint}>저장하면 사용자 화면에 곧바로 반영됩니다. PDF 추출로 다시 반영하면 직접 고친 내용은 새 추출 결과로 덮입니다.</p></div>
       <div className={styles.buttons}>
-        <Button variant="secondary" disabled={busy} onClick={cancel}>취소</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => void cancel()}>취소</Button>
         <Button disabled={busy || !dirty || problems.length > 0} onClick={() => void save()}>{busy ? '저장하는 중…' : '저장하고 반영'}</Button>
       </div>
     </header>
@@ -60,6 +62,7 @@ export function EligibilityEditor({ announcementId, ruleSet, onSaved, onCancel }
     {error && <p role="alert" className={styles.error}>{error}</p>}
     <Scope title="모든 신청자에게 적용" scopeId="common" content={content} onChange={setContent} disabled={busy} />
     {content.paths.map(path => <Scope key={path.id} title={path.label} scopeId={path.id} content={content} onChange={setContent} disabled={busy} />)}
+    {confirmDialog}
   </section>
 }
 
@@ -84,7 +87,7 @@ function Scope({ title, scopeId, content, onChange, disabled }: { title: string;
     {path && units.length > 0 && <p className={styles.hint}>신청 단위: {units.join(', ')}</p>}
 
     <h4>판정 조건</h4>
-    {checks.length === 0 && <p className={styles.hint}>판정 조건이 없어요.</p>}
+    {checks.length === 0 && <p className={styles.hint}>판정 조건이 없습니다.</p>}
     {checks.length > 0 && <ul className={styles.checks}>{checks.map(check => <li key={check.id} className={styles.check}>
       <div className={styles.checkHead}>
         <strong>{ruleText(check.rule)}</strong>
@@ -112,7 +115,7 @@ function Scope({ title, scopeId, content, onChange, disabled }: { title: string;
       </label>)}
     </>}
 
-    <h4>공고문에서 확인할 자격 <span className={styles.hint}>(이 항목이 있으면 &lsquo;지원 가능&rsquo;으로 확정하지 않아요)</span></h4>
+    <h4>공고문에서 확인할 자격 <span className={styles.hint}>(이 항목이 있으면 &lsquo;지원 가능&rsquo;으로 확정하지 않습니다)</span></h4>
     <Items guidances={direct} content={content} onChange={onChange} label="공고문에서 확인할 자격" />
     <div className={styles.addRow}>
       <label className={styles.field} htmlFor={`${inputId}-new`}>더할 자격 문구
@@ -130,7 +133,7 @@ function Scope({ title, scopeId, content, onChange, disabled }: { title: string;
 
 function Items({ guidances, content, onChange, label }: { guidances: Content['guidances']; content: Content; onChange: (next: Content) => void; label: string }) {
   const rows = guidances.flatMap(guidance => guidance.items.map((text, index) => ({ guidance, text, index })))
-  if (rows.length === 0) return <p className={styles.hint}>없어요.</p>
+  if (rows.length === 0) return <p className={styles.hint}>없습니다.</p>
   return <ul className={styles.items}>{rows.map(({ guidance, text, index }) => <li key={`${guidance.id}-${index}`}>
     <input aria-label={`${label} ${index + 1}`} value={text} maxLength={2000} onChange={event => onChange(editGuidanceItem(content, guidance.id, index, event.target.value))} />
     <Button variant="secondary" size="sm" onClick={() => onChange(removeGuidanceItem(content, guidance.id, index))}>지우기</Button>

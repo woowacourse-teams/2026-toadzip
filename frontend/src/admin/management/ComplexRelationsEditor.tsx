@@ -6,6 +6,7 @@ import { HousingTypeEditor } from './HousingTypeEditor'
 import { ManagementDetail } from './ManagementDetail'
 import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { parseManagementDetail, type ManagementDetailData, type ManagementHousingType } from './managementContract'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 export function ComplexRelationsEditor({ value, id, onSaved, onBusyChange }: {
   value: ManagementDetailData; id: string; onSaved: (value: ManagementDetailData) => void;
@@ -17,6 +18,7 @@ export function ComplexRelationsEditor({ value, id, onSaved, onBusyChange }: {
   const [adding, setAdding] = useState(false)
   const [refreshError, setRefreshError] = useState('')
   const [typeError, setTypeError] = useState('')
+  const [confirm, confirmDialog] = useConfirm()
   const type = value.housingTypes.find(item => item.id === typeId)
   const pending = useCallback((next: boolean) => { setBusy(next); onBusyChange(next) }, [onBusyChange])
   async function refresh() {
@@ -24,8 +26,10 @@ export function ComplexRelationsEditor({ value, id, onSaved, onBusyChange }: {
     try { onSaved(await getManagementDetail('complexes', id)) }
     catch (cause) { setRefreshError(cause instanceof Error ? cause.message : '연결 공고 목록을 갱신하지 못했습니다.') }
   }
-  // 휴지통은 복구할 수 있어 확인 창 없이 바로 옮기고, 같은 줄의 복구 버튼으로 되돌린다.
+  // 삭제는 휴지통으로 옮기는 것이라 같은 줄의 복구 버튼으로 되돌릴 수 있다. 잘못 누르는 일을 막으려고 삭제만 먼저 묻는다.
   async function toggleTrash(item: ManagementHousingType) {
+    if (!item.deleted && !(await confirm({ title: `주택형 '${item.name}'을(를) 휴지통으로 옮길까요?`,
+      body: `전용면적 ${item.exclusiveArea}㎡ 주택형이 서비스 화면에서 빠집니다. 같은 줄의 복구로 되돌릴 수 있습니다.`, confirmLabel: '삭제' }))) return
     pending(true); setTypeError('')
     try {
       const path = `${managementResourcePath('complexes')}/${id}/housing-types/${item.id}${item.deleted ? '/restore' : ''}?version=${value.data.version}`
@@ -55,14 +59,15 @@ export function ComplexRelationsEditor({ value, id, onSaved, onBusyChange }: {
     <section className="admin-relations-section" aria-label="연결 공고 관리">
       <header className="admin-inline"><h2>연결된 공고</h2>{!value.summary.deleted ? <Link to={`/admin/announcements/new?mode=direct&complexId=${id}`}>이 단지에 공고 등록</Link> : null}</header>
       {refreshError ? <div role="alert" className="registration-error"><p>{refreshError}</p><button type="button" onClick={() => void refresh()}>연결 공고 다시 조회</button></div> : null}
-      <ManagementSummaryTable items={value.announcements} resource="announcements" editDisabled={busy} onEdit={!value.summary.deleted ? item => {
+      {value.announcements.length ? <ManagementSummaryTable items={value.announcements} resource="announcements" editDisabled={busy} onEdit={!value.summary.deleted ? item => {
         setAnnouncementId(item.id); setTypeId(null)
-      } : undefined} />
+      } : undefined} /> : <p>연결된 공고가 없습니다.</p>}
       {announcementId !== null ? <section className="admin-linked-announcement" role="region" aria-label="연결 공고 편집">
         <header className="admin-inline"><h3>연결 공고 편집</h3><button type="button" data-admin-navigation disabled={busy}
           onClick={() => setAnnouncementId(null)}>공고 편집 닫기</button></header>
         <ManagementDetail key={announcementId} detailId={String(announcementId)} resource="announcements" embedded onChanged={() => void refresh()} onBusyChange={pending} />
       </section> : null}
     </section>
+    {confirmDialog}
   </>
 }

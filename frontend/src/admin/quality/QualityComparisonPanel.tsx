@@ -12,6 +12,7 @@ import { loadQualityComparison, parseQualityComparison, qualityComparisonPath, t
 import { qualitySourceValue, qualityComparisonStatus } from './qualityComparisonValues'
 import styles from '../management/ComplexComparison.module.css'
 import layout from './QualityComparisonPanel.module.css'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 type Props = { resource: ManagementResource; id: string; detail: ManagementDetailData; onChanged: () => void; onBusyChange: (busy: boolean) => void; onDirtyChange?: (dirty: boolean) => void }
 export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusyChange, onDirtyChange }: Props) {
@@ -38,6 +39,8 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
   const changed = target?.fields.filter(field => JSON.stringify(valueAt(target.current, field.name)) !== JSON.stringify(valueAt(draft, field.name))) ?? []
   const dirty = changed.length > 0 || Boolean(note.trim() || linkNote.trim())
   useUnsavedChanges(dirty)
+  const [confirm, confirmDialog] = useConfirm()
+  const discard = (title: string, confirmLabel: string) => confirm({ title, body: '입력한 값과 근거·메모가 지워집니다.', confirmLabel })
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
   useEffect(() => { onBusyChange(busy || loading); return () => onBusyChange(false) }, [busy, loading, onBusyChange])
   useEffect(() => {
@@ -93,14 +96,19 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
   }
   if (!choices.length) return <p>비교할 주택형이 없습니다. 주택형을 등록하거나 수집·정제 결과를 확인하세요.</p>
   return <section className={`${styles.panel} ${layout.panel}`} aria-label={resource === 'complexes' ? '주택형 원천 비교' : '공고·공급정보 원천 비교'}>
-    {/* 공고는 바깥 접힘 제목이 같은 이름이라 제목을 다시 두지 않고, 대상 선택·필터·다시 조회를 한 줄에 둔다. */}
-    <header className={styles.toolbar}>{resource === 'complexes' && <h2>주택형 원천 비교·수정</h2>}
-    <label>비교 대상<select value={selection} disabled={busy || loading} onChange={event => { if (!dirty || window.confirm('작성한 내용을 버리고 대상을 바꿀까요?')) { setSelection(event.target.value); setResults(null) } }}>{choices.map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
-    <button disabled={busy || loading} onClick={() => { if (!dirty || window.confirm('미저장 입력을 버리고 다시 조회할까요?')) setAttempt(value => value + 1) }}>비교 다시 조회</button></header>
+    {/* 바깥 접힘 제목이 같은 이름이라 제목을 다시 두지 않고, 대상 선택·필터·다시 조회를 한 줄에 둔다. */}
+    <header className={styles.toolbar}>
+    <label>비교 대상<select value={selection} disabled={busy || loading} onChange={async event => {
+      // 묻는 동안 선택 칸은 원래 대상으로 남고, 버리기로 했을 때만 바뀐다.
+      const next = event.target.value
+      if (dirty && !(await discard('작성한 내용을 버리고 비교 대상을 바꿀까요?', '버리고 바꾸기'))) return
+      setSelection(next); setResults(null)
+    }}>{choices.map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}</select></label>
+    <button disabled={busy || loading} onClick={async () => { if (!dirty || await discard('작성한 내용을 버리고 다시 조회할까요?', '버리고 조회')) setAttempt(value => value + 1) }}>비교 다시 조회</button></header>
     {readOnly ? <p className={styles.hint}>값 수정은 <Link to={`?${editSearch}`}>{/^cell:/.test(selection) ? '공급정보·단지 연결' : '기본정보 수정'}</Link> 또는 PDF로 보정에서 합니다.</p> : null}
     {loading ? <p role="status">DB 원천을 불러오는 중…</p> : null}{error ? <p role="alert" className="registration-error">{error}</p> : null}{notice ? <p role="status" className="registration-success">{notice}</p> : null}
     {snapshot && target ? <fieldset disabled={busy || conflict || detail.summary.deleted} className="admin-verification-group">
-      <details className={styles.connections}><summary>원천 검색·연결 · {snapshot.sources.length}개</summary>
+      <details className={styles.connections}><summary>{resource === 'complexes' ? '주택형 원천 검색·연결' : '원천 검색·연결'} · {snapshot.sources.length}개</summary>
         <p className={styles.hint}>공고 식별자 또는 단지에 연결된 원천입니다. 이름이 비슷해도 같은 주택형·공급대상인지 확인해야 합니다.</p>
         <label>연결·해제 이유<input value={linkNote} maxLength={2000} onChange={event => setLinkNote(event.target.value)} /></label>
         <ul className={styles.sourceList}>{snapshot.sources.map((source, index) => <li key={`${source.category}:${source.sourceKey}:${index}`}><div><strong>원천 {index + 1} · {sourceCategories[source.category]}</strong><p>{source.rows[0]?.name ?? '현재 원천 없음'}</p><small>{source.evidenceNote}</small><details><summary>원천 전체 확인</summary><pre>{JSON.stringify(source.rows, null, 2)}</pre></details></div>{!source.automatic ? <button disabled={changed.length > 0 || !linkNote.trim()} onClick={() => void mutate('unlink', source)}>연결 해제</button> : null}</li>)}</ul>
@@ -122,8 +130,9 @@ export function QualityComparisonPanel({ resource, id, detail, onChanged, onBusy
       {changed.length ? <section className={styles.preview}><h3>저장할 변경 {changed.length}개</h3><ul>{changed.map(field => <li key={field.name}>{field.label}: {display(valueAt(target.current, field.name))} → {display(valueAt(draft, field.name))}</li>)}</ul></section> : null}
       <label>{readOnly ? '원천 확인 근거' : '수정·원천 확인 근거'}<textarea value={note} rows={2} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
       {!readOnly && <p className={styles.hint}>금액은 원천의 단위·공급대상을 확인한 뒤 원 단위로 입력하세요.</p>}
-      <div className={styles.saveActions}>{!readOnly && <Button disabled={!changed.length || !note.trim()} onClick={() => void mutate('save')}>선택 수정 저장 · {changed.length}개</Button>}<button disabled={changed.length > 0 || !note.trim() || !snapshot.sources.length} title="다음 수집에서 바뀐 값을 찾는 기준으로 남깁니다. 공고 전체 검토 완료는 아닙니다." onClick={() => void mutate('check')}>현재 원천 확인 기록</button><button disabled={!dirty} onClick={() => { if (window.confirm('작성한 변경과 메모를 취소할까요?')) { setDraft(structuredClone(target.current)); setNote(''); setLinkNote('') } }}>{readOnly ? '입력 취소' : '수정 취소'}</button></div>
+      <div className={styles.saveActions}>{!readOnly && <Button disabled={!changed.length || !note.trim()} onClick={() => void mutate('save')}>선택 수정 저장 · {changed.length}개</Button>}<button disabled={changed.length > 0 || !note.trim() || !snapshot.sources.length} title="다음 수집에서 바뀐 값을 찾는 기준으로 남깁니다. 공고 전체 검토 완료는 아닙니다." onClick={() => void mutate('check')}>{resource === 'complexes' ? '주택형 원천 확인 기록' : '현재 원천 확인 기록'}</button><button disabled={!dirty} onClick={async () => { if (await discard('작성한 변경과 메모를 버릴까요?', '버리기')) { setDraft(structuredClone(target.current)); setNote(''); setLinkNote('') } }}>{readOnly ? '입력 취소' : '수정 취소'}</button></div>
     </fieldset> : null}
+    {confirmDialog}
   </section>
 }
 

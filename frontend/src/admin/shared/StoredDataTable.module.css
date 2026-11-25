@@ -16,7 +16,7 @@
   table-layout: fixed;
   border-collapse: collapse;
   font-family: var(--ds-font-family-ui);
-  font-size: var(--ds-text-body);
+  font-size: var(--admin-text-body);
   line-height: var(--ds-line-height-body);
   color: var(--ds-color-text);
   background: var(--ds-color-surface);
@@ -25,7 +25,7 @@
 .table caption {
   text-align: left;
   padding-bottom: var(--ds-space-2);
-  font-weight: var(--ds-weight-strong);
+  font-weight: var(--admin-weight-strong);
   color: var(--ds-color-label);
 }
 
@@ -59,7 +59,7 @@
 .fieldLabel {
   display: block;
   color: var(--ds-color-text);
-  font-weight: var(--ds-weight-strong);
+  font-weight: var(--admin-weight-strong);
 }
 
 .sourceUrl {

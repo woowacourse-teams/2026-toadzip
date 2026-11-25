@@ -13,6 +13,6 @@ export function OperationsTrend({ points, label, secondaryLabel }: { points: { d
       </span>)}
     </div>
     <div className={styles.chartAxis}><time>{date(points[0].day)}</time><time>{date(points[Math.floor(points.length / 2)].day)}</time><time>{date(points[points.length - 1].day)}</time></div>
-    <table className={styles.srOnly}><caption>{label} 일별 집계</caption><thead><tr><th>날짜</th><th>{label}</th>{secondaryLabel ? <th>{secondaryLabel}</th> : null}</tr></thead><tbody>{points.map(point => <tr key={point.day}><th>{point.day}</th><td>{point.count ?? '미집계'}</td>{secondaryLabel ? <td>{point.secondary ?? '미집계'}</td> : null}</tr>)}</tbody></table>
+    <div className={styles.srOnly}><table><caption>{label} 일별 집계</caption><thead><tr><th>날짜</th><th>{label}</th>{secondaryLabel ? <th>{secondaryLabel}</th> : null}</tr></thead><tbody>{points.map(point => <tr key={point.day}><th>{point.day}</th><td>{point.count ?? '미집계'}</td>{secondaryLabel ? <td>{point.secondary ?? '미집계'}</td> : null}</tr>)}</tbody></table></div>
   </div>
 }

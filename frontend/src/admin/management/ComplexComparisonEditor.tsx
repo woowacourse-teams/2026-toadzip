@@ -11,6 +11,7 @@ import { getComparison, linkComparisonSource, saveComparison, unlinkComparisonSo
 import { categoryLabels, changedComparisonFields, comparisonFields, comparisonText, sourceValue, writeComparisonValue } from './complexComparisonValues'
 import { useUnsavedChanges } from './useUnsavedChanges'
 import styles from './ComplexComparison.module.css'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 type Props = { id: string; version: number; deleted: boolean; onChanged: () => void; onBusyChange: (busy: boolean) => void; onDirtyChange?: (dirty: boolean) => void }
 export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBusyChange, onDirtyChange }: Props) {
@@ -37,6 +38,7 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
   const addressChanged = changed.some(field => field.name.startsWith('address.'))
   const dirty = changed.length > 0 || Boolean(note.trim() || linkNote.trim())
   useUnsavedChanges(dirty)
+  const [confirm, confirmDialog] = useConfirm()
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
   useEffect(() => {
     const controller = new AbortController(); session.current = controller
@@ -48,8 +50,8 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
   }, [id, version, attempt])
   useEffect(() => { onBusyChange(busy); return () => onBusyChange(false) }, [busy, onBusyChange])
 
-  function reload() {
-    if (dirty && !window.confirm('작성한 수정값과 근거를 버리고 다시 조회할까요?')) return
+  async function reload() {
+    if (dirty && !(await confirm({ title: '작성한 수정값과 근거를 버리고 다시 조회할까요?', body: '입력한 수정값과 근거·메모가 지워집니다.', confirmLabel: '버리고 조회' }))) return
     setNotice(''); setAttempt(value => value + 1)
   }
   function write(field: Field, text: string) {
@@ -151,12 +153,12 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
   }
   return <section className={styles.panel} aria-label="DB 원천 비교·수정" aria-busy={busy}>
     <header className={styles.heading}><div><h2>원천과 비교하고 바로 수정</h2><p>DB에 저장된 자료를 불러옵니다. 원천값의 적용 범위를 확인한 뒤 필요한 항목만 수정하세요.</p></div>
-      <button type="button" disabled={busy} onClick={reload}>비교 데이터 다시 조회</button></header>
+      <button type="button" disabled={busy} onClick={() => void reload()}>비교 데이터 다시 조회</button></header>
     {error ? <div className={styles.error} role="alert">{error}{conflict ? <p>입력한 수정값은 유지됩니다. 메모해 둔 뒤 다시 조회해 주세요.</p> : null}</div> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
     {!snapshot && !error ? <p role="status">DB 원천과 현재 등록값을 불러오는 중…</p> : null}
     {snapshot ? <>
-      <details className={styles.connections}><summary>원천 검색·연결 <span>{snapshot.sources.length}개 연결</span></summary>
+      <details className={styles.connections}><summary>단지 원천 검색·연결 <span>{snapshot.sources.length}개 연결</span></summary>
         <p className={styles.hint}>비교 근거만 연결합니다. 자동 정제의 단지 연결·통합 관계는 바뀌지 않습니다. 이름·주소·공급 범위를 직접 확인하세요.</p>
         <ul className={styles.sourceList}>{snapshot.sources.map((source, index) => <li key={`${source.category}:${source.sourceKey}:${index}`}>
           <div><strong>원천 {index + 1} · {categoryLabels[source.category]} · {source.data?.name ?? '현재 DB에 없는 원천'}</strong>
@@ -210,11 +212,12 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
         {changed.length ? <div className={styles.preview}><h3>저장할 수정사항 {changed.length}개</h3><ul>{changed.map(field => <li key={field.name}><strong>{field.label}</strong> {comparisonText(valueAt(snapshot.current, field.name))} → {comparisonText(valueAt(draft, field.name))}</li>)}</ul></div> : null}
         <div className={styles.save}><label>수정 근거·메모<textarea rows={2} maxLength={2000} value={note} disabled={busy || deleted || conflict} onChange={event => setNote(event.target.value)} placeholder="확인한 자료와 값의 적용 범위, 수정 이유를 적어 주세요." /></label>
           <p className={styles.hint}>원천에 없는 값은 임의로 0으로 채우지 않습니다. 단지·주택형·모집 세대수는 범위가 다를 수 있습니다.</p>
-          <div className={styles.saveActions}><button type="button" disabled={busy || deleted || conflict || changed.length > 0 || !note.trim() || !snapshot.sources.length || snapshot.sources.some(source => !source.data)} onClick={() => void recordSourceCheck()}>현재 원천 확인 기록</button><button type="button" disabled={busy || !dirty} onClick={() => {
-            if (window.confirm('작성한 수정값과 근거를 취소할까요?')) { setDraft(structuredClone(snapshot.current)); setEditing([]); setNote(''); setLinkNote(''); setAddressConfirmed(false) }
+          <div className={styles.saveActions}><button type="button" disabled={busy || deleted || conflict || changed.length > 0 || !note.trim() || !snapshot.sources.length || snapshot.sources.some(source => !source.data)} onClick={() => void recordSourceCheck()}>단지 원천 확인 기록</button><button type="button" disabled={busy || !dirty} onClick={async () => {
+            if (await confirm({ title: '작성한 수정값과 근거를 버릴까요?', body: '입력한 수정값과 근거·메모가 지워집니다.', confirmLabel: '버리기' })) { setDraft(structuredClone(snapshot.current)); setEditing([]); setNote(''); setLinkNote(''); setAddressConfirmed(false) }
           }}>수정 취소</button><Button data-design-system type="submit" disabled={busy || deleted || conflict || !changed.length || !note.trim() || addressChanged && !addressConfirmed}>{busy ? '저장 중…' : `수정사항 저장 · ${changed.length}개`}</Button></div>
         </div>
       </form>
     </> : null}
+    {confirmDialog}
   </section>
 }

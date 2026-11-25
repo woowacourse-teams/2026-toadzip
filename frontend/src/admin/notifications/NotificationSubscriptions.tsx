@@ -138,13 +138,13 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       <label>신청 상태<select name="status" defaultValue={status}>{Object.entries(statusLabels).map(([value, label]) =>
         <option key={value} value={value}>{label}</option>)}</select></label>
       {reviewView ? <label>확인 항목<select name="review" defaultValue={review}>{Object.entries(reviewLabels).map(([value, label]) =>
-        <option key={value} value={value}>{label}</option>)}</select></label> : null}
+        <option key={value} value={value}>{label}</option>)}</select></label>
+        // 확인 항목은 '확인 필요' 보기에서만 고른다. 주소로 들어온 조건은 다시 검색해도 유지하고 초기화로 푼다.
+        : !userId ? <input type="hidden" name="review" value={review} /> : null}
       <div className={styles.actions}><Button data-design-system type="submit">검색</Button><button type="button" onClick={resetFilters}>초기화</button></div>
-      {!userId ? <details className={styles.advanced} open={Boolean(targetId || !reviewView && review !== 'ALL') || undefined}>
+      {!userId ? <details className={styles.advanced} open={Boolean(targetId) || undefined}>
         <summary>상세 검색</summary>
-        <div>{!reviewView ? <label>확인 항목<select name="review" defaultValue={review}>{Object.entries(reviewLabels).map(([value, label]) =>
-          <option key={value} value={value}>{label}</option>)}</select></label> : null}
-          <label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19}
+        <div><label>대상 ID<input name="targetId" defaultValue={targetId} inputMode="numeric" maxLength={19}
           pattern="[0-9]{1,19}" aria-describedby={`${helpId}-target`} placeholder="예: 11" /></label>
           <p id={`${helpId}-target`}>지역 코드 또는 단지·공고 ID{groupTarget ? ' · 같은 대상의 이전 코드·선행 0 신청도 포함' : ''}</p></div>
       </details> : null}
@@ -153,7 +153,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
       <p>대상 확인 불가는 현재 대상 정보를 찾을 수 없는 신청입니다. 신청일 미확인은 신청 시각 기록이 없는 신청입니다. 이메일 미제공만으로는 확인 필요 항목에 포함하지 않습니다.</p>
     </details> : null}
     </div>
-    {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid ? <button type="button"
+    {error ? <div className="admin-alert" role="alert"><p>{error}</p>{valid ? <button type="button"
       onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}
     <div className={styles.results} aria-busy={pending}><div className={styles.resultHeading}>
       <div><SectionHeading aria-live="polite">{data ? `검색 결과 ${data.totalElements.toLocaleString('ko-KR')}건` : '신청 목록'}</SectionHeading>

@@ -4,6 +4,7 @@ import { loadSupplyReviews, reviewFieldLabels, saveSupplyReview, type SupplyRevi
 import type { SupplyWorkspace } from './supplyCorrectionApi'
 import { cellName } from './sheetEdits'
 import styles from './SupplyCorrection.module.css'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 const statusLabels: Record<string, string> = { VERIFIED: '선택 범위 검토 완료', ON_HOLD: '판단 보류', STALE: '재검토 필요' }
 export type ReviewEvidence = { note: string; sourceUrl: string; sourcePage: string | null }
@@ -67,7 +68,7 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
     <p className={styles.hint}>저장 결과와 공식 자료를 확인한 항목만 기록하세요. 같은 주택형·공급대상의 새 기록은 선택한 범위의 최신 판단이 되고, 이전 기록은 아래 이력에 남습니다.</p>
     {evidence && baseline.note === evidence.note && <p className={styles.hint}>방금 적용한 보정의 근거를 채웠습니다. 실제로 확인한 주택형·공급대상과 항목만 골라 기록하세요.</p>}
     {disabled && <p>먼저 작성한 보정을 적용하고 저장 결과를 확인하세요.</p>}
-    {error && <p role="alert">{error} <button type="button" onClick={() => setAttempt(value => value + 1)}>기록 다시 조회</button></p>}
+    {error && <div role="alert" className="admin-alert"><p>{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>기록 다시 조회</button></div>}
     {notice && <p role="status">{notice}</p>}
     {overview && <form onSubmit={event => { event.preventDefault(); void submit() }}><fieldset disabled={disabled || busy} className={styles.editor}>
       <legend>확인 범위와 근거</legend>
@@ -88,7 +89,7 @@ export function SupplyReviewPanel({ id, workspace, sourceUrl, disabled, onBusyCh
     {overview && <section aria-label="공급정보 검토 이력"><h3>최근 검토 기록</h3>{!overview.records.length && <p>검토 기록이 없습니다.</p>}
       {overview.records.map(record => <details key={record.id} open={record.latest && record.status !== 'VERIFIED'}><summary>{targetName(record.target)} · {record.latest ? statusLabels[record.status] : '이전 기록'} · {new Date(record.reviewedAt).toLocaleString('ko-KR')}</summary>
         <p>{record.note} · 기록자 {record.actor}</p><p>확인 범위: {Object.keys(record.checkedValues).map(field => reviewFieldLabels[field] ?? field).join(', ')}</p>
-        <a href={/^https?:\/\//.test(record.sourceUrl) ? record.sourceUrl : undefined} target="_blank" rel="noreferrer">공식 근거 ↗ {record.sourcePage}</a>
+        <a href={/^https?:\/\//.test(record.sourceUrl) ? record.sourceUrl : undefined} target="_blank" rel="noreferrer">공식 근거 {record.sourcePage}<NewWindowMark /></a>
         <StoredDataTable data={Object.fromEntries(Object.entries(record.checkedValues).map(([field, value]) => [reviewFieldLabels[field] ?? field, value]))} label="검토 당시 값" />
         {record.status === 'STALE' && <><StoredDataTable data={record.currentValues && Object.fromEntries(Object.keys(record.checkedValues).map(field => [reviewFieldLabels[field] ?? field, record.currentValues?.[field]]))} label="현재 선택 범위 값" />
           </>}

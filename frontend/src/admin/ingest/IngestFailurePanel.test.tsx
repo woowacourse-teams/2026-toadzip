@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, expect, it, vi } from 'vitest'
 import { IngestFailurePanel } from './IngestFailurePanel'
 import { getFailureReview, getFailureReviews, type FailureReview, type FailureReviewPageData } from './failureReviewApi'
+import { newWindowName } from '../../test/newWindowName'
 
 vi.mock('./failureReviewApi', () => ({getFailureReviews:vi.fn(), getFailureReview:vi.fn()}))
 const fetchFailures = vi.mocked(getFailureReviews)
@@ -10,7 +11,7 @@ const row: FailureReview = {
   id:1,category:'announcement',target:'공고 A · 공급행 3',sourceKey:'A:3',source:'MYHOME_ANNOUNCEMENT',
   reason:'COMPLEX_NOT_FOUND',detail:'주소와 단지명에 일치하는 단지가 없습니다.',status:'PENDING',
   occurredAt:'2026-09-26T03:00:00Z',occurrenceCount:2,recurrenceCount:0,lastResolvedAt:null,lastResolvedBy:null,
-  executionId:'run-1',raw:{},productLinkStatus:'UNKNOWN',product:null,
+  executionId:'run-1',raw:{},productLinkStatus:'UNKNOWN',product:null,name:'공고 A',identifier:'A',supplyRow:3,
 }
 const page = (items:FailureReview[] = [row], number = 0):FailureReviewPageData =>
   ({items,page:number,totalElements:41,totalPages:3,hasNext:number<2})
@@ -24,13 +25,15 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.removeAttribute('open');this.dispatchEvent(new Event('close'))}})
 })
 
-it('목록은 대상·원인·상태만 보여주고 상세 설명은 확인·처리 창에 둔다', async () => {
+it('목록에서 대상·원인과 행을 가르는 세부 원인·발생 시각을 보여 주고 확인·처리 창에서 같은 기록을 연다', async () => {
   fetchFailures.mockResolvedValue(page())
   render(<IngestFailurePanel initialCategory="announcement" executionId="run-1" />, {wrapper:MemoryRouter})
-  expect(await screen.findByText(row.target)).toBeVisible()
-  expect(screen.getByText('연결할 단지를 찾지 못함')).toBeVisible()
-  expect(screen.queryByText(row.detail)).not.toBeInTheDocument()
-  expect(screen.getByText('총 41건 · 실행 필터 적용')).toBeVisible()
+  expect(await screen.findByText('공고 A')).toBeVisible()
+  expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['대상','원인','세부 원인','발생 시각','상태','확인·처리'])
+  const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell').map(cell => cell.textContent)
+  expect(cells.slice(0,3)).toEqual(['연결할 단지를 찾지 못함', row.detail, '2026. 09. 26. 12:00'])
+  expect(screen.getByRole('rowheader')).toHaveTextContent('공고 A공고 정제 · 공급행 3')
+  expect(screen.getByText('총 41건 · 최근 발생순 · 실행 필터 적용')).toBeVisible()
   fireEvent.click(screen.getByRole('button',{name:`확인·처리: ${row.target}`}))
   expect(within(screen.getByRole('dialog')).getByText(text => text.includes(row.detail))).toBeVisible()
   expect(fetchFailures).toHaveBeenCalledWith('announcement','announcement','PENDING',0,expect.any(AbortSignal), {keyword:'',executionId:'run-1'})
@@ -42,7 +45,7 @@ it('조회 실패를 빈 목록으로 표시하지 않고 재시도한다', asyn
   expect(await screen.findByRole('alert')).toHaveTextContent('접속 실패')
   expect(screen.queryByText('해당 상태의 오류가 없습니다.')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button',{name:'다시 조회'}))
-  expect(await screen.findByText(row.target)).toBeVisible()
+  expect(await screen.findByText('공고 A')).toBeVisible()
 })
 
 it('확인·처리 안에서 원문을 중첩 경로와 값의 표로 표시한다', async () => {
@@ -54,7 +57,7 @@ it('확인·처리 안에서 원문을 중첩 경로와 값의 표로 표시한�
   const table=within(dialog).getByRole('table',{name:'실패 기록 원문'})
   expect(table).toHaveTextContent('request.page0')
   expect(table).toHaveTextContent('request.completedfalse')
-  expect(within(dialog).getByRole('link',{name:'https://example.com/notice'})).toBeVisible()
+  expect(within(dialog).getByRole('link',{name:newWindowName('https://example.com/notice')})).toBeVisible()
   expect(container.querySelector('pre')).toBeNull()
   fireEvent.click(within(dialog).getByRole('button',{name:'닫기'}))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -63,7 +66,7 @@ it('확인·처리 안에서 원문을 중첩 경로와 값의 표로 표시한�
 it('페이지와 해결 이력을 조회하고 단계·상태를 바꾸면 첫 페이지로 돌아간다', async () => {
   fetchFailures.mockImplementation(async (_domain,_category,_status,number) => page([row],number))
   render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
-  await screen.findByText(row.target)
+  await screen.findByText('공고 A')
   fireEvent.click(screen.getByRole('button',{name:'다음'}))
   await waitFor(() => expect(fetchFailures.mock.lastCall?.slice(0,4)).toEqual(['announcement','announcement','PENDING',1]))
   fireEvent.change(screen.getByLabelText('문제 단계'),{target:{value:'collection'}})
@@ -81,9 +84,9 @@ it('수집 요청은 지역과 조치로 표시하고 원문은 상세에 보존
   expect(await screen.findByText('경상북도 경주시')).toBeVisible()
   expect(screen.getByText(/요청 1페이지 · 페이지당 500건/)).toBeVisible()
   expect(screen.getByText('요청 속도 제한')).toBeVisible()
-  expect(screen.getByText('총 41건 · 실행 필터 적용')).toBeVisible()
+  expect(screen.getByText('총 41건 · 최근 발생순 · 실행 필터 적용')).toBeVisible()
   fireEvent.click(screen.getByRole('button',{name:'확인·처리: 경상북도 경주시'}))
-  expectReturnLink(within(screen.getByRole('dialog')).getByRole('link',{name:'API 키 입력·원천 수집'}), '/admin/ingest#complex-pipelines', 'collection:1')
+  expectReturnLink(within(screen.getByRole('dialog')).getByRole('link',{name:'API 키 입력·원천 수집'}), '/admin/ingest/complexes#complex-pipelines', 'collection:1')
 })
 
 it('좌표 오류에서 ZIP 업로드로 이동하고 좌표가 없는 원천의 한계를 안내한다', async () => {
@@ -133,7 +136,7 @@ it.each([['complex','단지'],['announcement','공고']] as const)('%s 오류 �
   expect(within(screen.getByRole('dialog')).queryByRole('button',{name:`${label} 정제 다시 실행`})).not.toBeInTheDocument()
 })
 
-it.each(['다음','목록 새로고침'])('%s 응답 중 표와 가로·세로 스크롤 위치를 유지한다', async action => {
+it.each(['다음','새로고침'])('%s 응답 중 표와 가로·세로 스크롤 위치를 유지한다', async action => {
   let complete:(result:FailureReviewPageData)=>void=()=>{}
   const pending=new Promise<FailureReviewPageData>(resolve=>{complete=resolve})
   fetchFailures.mockResolvedValueOnce(page()).mockReturnValueOnce(pending)
@@ -148,7 +151,7 @@ it.each(['다음','목록 새로고침'])('%s 응답 중 표와 가로·세로 �
   expect(screen.getByRole('status')).toHaveTextContent('오류 목록을 불러오는 중')
   expect(screen.getByRole('button',{name:'다음'})).toBeDisabled()
   const number=action==='다음'?1:0
-  await act(async()=>complete(page([{...row,target:'새 공고'}],number)))
+  await act(async()=>complete(page([{...row,name:'새 공고'}],number)))
   expect(screen.getByRole('table',{name:`공고 오류 목록 · ${number+1}페이지`})).toBe(table)
   expect(table).toHaveTextContent('새 공고')
   expect(region.scrollLeft).toBe(280);expect(region.scrollTop).toBe(200)
@@ -158,7 +161,7 @@ it.each(['다음','목록 새로고침'])('%s 응답 중 표와 가로·세로 �
 it('빈 페이지에서도 표 영역과 이전 페이지 이동을 유지한다', async () => {
   fetchFailures.mockResolvedValueOnce(page()).mockResolvedValueOnce(page([],1))
   render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
-  await screen.findByText(row.target)
+  await screen.findByText('공고 A')
   const region=screen.getByRole('region',{name:'실패 목록 가로 스크롤'})
   fireEvent.click(screen.getByRole('button',{name:'다음'}))
   expect(await screen.findByText('이 페이지에 오류가 없습니다.')).toBeVisible()
@@ -270,7 +273,7 @@ it('다른 도메인의 오류 주소에서는 잘못된 정제 조치를 제공
 it('단계가 바뀌면 이전 행을 숨기고 취소한 응답을 버린다', async () => {
   let complete:(result:FailureReviewPageData)=>void=()=>{}
   const pending=new Promise<FailureReviewPageData>(resolve=>{complete=resolve})
-  fetchFailures.mockResolvedValueOnce(page()).mockReturnValueOnce(pending).mockResolvedValueOnce(page([{...row,target:'최종 공고'}]))
+  fetchFailures.mockResolvedValueOnce(page()).mockReturnValueOnce(pending).mockResolvedValueOnce(page([{...row,name:'최종 공고'}]))
   render(<IngestFailurePanel initialCategory="announcement" executionId={null} />, {wrapper:MemoryRouter})
   await screen.findByRole('table')
   fireEvent.change(screen.getByLabelText('문제 단계'),{target:{value:'enrichment'}})
@@ -279,7 +282,7 @@ it('단계가 바뀌면 이전 행을 숨기고 취소한 응답을 버린다', 
   await waitFor(()=>expect(fetchFailures).toHaveBeenCalledTimes(2))
   fireEvent.change(screen.getByLabelText('문제 단계'),{target:{value:'collection'}})
   expect(await screen.findByText('최종 공고')).toBeVisible()
-  await act(async()=>complete(page([{...row,target:'취소된 보강 응답'}])))
+  await act(async()=>complete(page([{...row,name:'취소된 보강 응답'}])))
   expect(screen.queryByText('취소된 보강 응답')).not.toBeInTheDocument()
 })
 
@@ -322,4 +325,73 @@ it('마이홈 원천의 단지 미발견은 상세 안의 복구 폼 대신 단�
   expect(dialog.queryByRole('button',{name:/정제/})).not.toBeInTheDocument()
   expect(dialog.queryByRole('link',{name:'LH 행 연결'})).not.toBeInTheDocument()
   expect(dialog.getAllByRole('button').map(button => button.textContent)).toEqual(['닫기','다시 확인'])
+})
+
+it('같은 대상이 이어지면 이름을 첫 줄에만 쓰고 세부 원인으로 행을 가른다', async () => {
+  const complex = {...row,category:'complex' as const,name:'두꺼비 단지',target:'두꺼비 단지',supplyRow:null,reason:'MISSING_REQUIRED_VALUE'}
+  fetchFailures.mockResolvedValue(page([
+    {...complex,id:1,detail:'주택형명 값이 없습니다.'}, {...complex,id:2,detail:'전용면적 값이 없습니다.'},
+    {...complex,id:3,name:'맹꽁이 단지',target:'맹꽁이 단지',detail:'주택형명 값이 없습니다.'}]))
+  render(<IngestFailurePanel domain="complex" executionId={null}/>, {wrapper:MemoryRouter})
+  await screen.findByText('맹꽁이 단지')
+  const headers = screen.getAllByRole('rowheader')
+  // 이어지는 행은 화면에서 이름과 단계를 되풀이하지 않고, 보조 기술용 이름만 남긴다.
+  expect(headers.map(header => header.querySelector(':scope > :not(.sr-only)')?.textContent ?? ''))
+    .toEqual(['두꺼비 단지','','맹꽁이 단지'])
+  expect(headers[1]).toHaveTextContent(/^두꺼비 단지$/)
+  expect(headers.map(header => header.closest('tr')!.hasAttribute('data-continues'))).toEqual([true,false,false])
+  expect(screen.getByText('전용면적 값이 없습니다.')).toBeVisible()
+  expect(screen.getAllByRole('button',{name:'확인·처리: 두꺼비 단지'})).toHaveLength(2)
+})
+
+it('같은 공고의 공급행이 이어지면 공급행 번호는 줄마다 남긴다', async () => {
+  fetchFailures.mockResolvedValue(page([row, {...row,id:2,target:'공고 A · 공급행 4',supplyRow:4}]))
+  render(<IngestFailurePanel domain="announcement" executionId={null}/>, {wrapper:MemoryRouter})
+  await screen.findByRole('table')
+  expect(screen.getAllByRole('rowheader').map(header => header.querySelector('small')?.textContent))
+    .toEqual(['공고 정제 · 공급행 3','공고 정제 · 공급행 4'])
+  expect(screen.getAllByText('공고 A').filter(element => !element.classList.contains('sr-only'))).toHaveLength(1)
+})
+
+it('서비스 데이터에 연결되지 않은 기록은 이름이 같아도 원천이 다르면 합치거나 묶지 않는다', async () => {
+  const unlinked = {...row, product:null, name:'같은 제목 공고', identifier:'source-1', target:'같은 제목 공고', supplyRow:null}
+  fetchFailures.mockResolvedValue(page([unlinked, {...unlinked,id:2,identifier:'source-2'}]))
+  render(<IngestFailurePanel domain="announcement" executionId={null}/>, {wrapper:MemoryRouter})
+  await screen.findByRole('table')
+  expect(screen.getAllByRole('row')).toHaveLength(3)
+  expect(screen.queryByText(/같은 내용 외/)).not.toBeInTheDocument()
+  expect(screen.getAllByText('같은 제목 공고').filter(element => !element.classList.contains('sr-only'))).toHaveLength(2)
+})
+
+it('대상·원인·세부 원인이 모두 같은 기록은 한 줄로 합쳐 남은 건수를 알리고 다른 기록은 합치지 않는다', async () => {
+  fetchFailures.mockResolvedValue(page([row, {...row,id:2}, {...row,id:3,detail:'다른 세부 원인입니다.'}, {...row,id:4}]))
+  render(<IngestFailurePanel domain="announcement" executionId={null}/>, {wrapper:MemoryRouter})
+  await screen.findByRole('table')
+  expect(screen.getAllByRole('row')).toHaveLength(3)
+  expect(within(screen.getAllByRole('row')[1]).getByText('같은 내용 외 2건')).toBeVisible()
+  expect(within(screen.getAllByRole('row')[2]).queryByText(/같은 내용 외/)).not.toBeInTheDocument()
+  expect(screen.getByText('총 41건 · 최근 발생순')).toBeVisible()
+  fireEvent.click(screen.getAllByRole('button',{name:`확인·처리: ${row.target}`})[0])
+  await waitFor(() => expect(getFailureReview).toHaveBeenLastCalledWith('announcement',1,expect.any(AbortSignal)))
+})
+
+it('이름이 없는 대상은 원천 식별자를 이름 자리에 쓰지 않고 보조 글자로 내린다', async () => {
+  const identifier = '03:06:07:2015122300021066'
+  fetchFailures.mockResolvedValue(page([{...row,category:'refinement',name:null,identifier,target:identifier,supplyRow:null}]))
+  render(<IngestFailurePanel domain="announcement" executionId={null}/>, {wrapper:MemoryRouter})
+  const header = await screen.findByRole('rowheader')
+  expect(header.firstElementChild).toHaveTextContent(/^이름 없음$/)
+  expect(header.querySelector('small')).toHaveTextContent(`기관 공고 정제 · ${identifier}`)
+  expect(screen.getByRole('button',{name:`확인·처리: ${identifier}`})).toBeVisible()
+})
+
+it('조건을 걸지 않은 미해결 목록일 때만 전체 건수를 알린다', async () => {
+  fetchFailures.mockResolvedValue(page())
+  const onPendingCount = vi.fn()
+  render(<IngestFailurePanel domain="announcement" executionId={null} onPendingCount={onPendingCount}/>, {wrapper:MemoryRouter})
+  await waitFor(() => expect(onPendingCount).toHaveBeenLastCalledWith(41))
+  fireEvent.change(screen.getByLabelText('처리 상태'),{target:{value:'RESOLVED'}})
+  await waitFor(() => expect(fetchFailures.mock.lastCall?.[2]).toBe('RESOLVED'))
+  await screen.findByText('공고 A')
+  expect(onPendingCount).toHaveBeenLastCalledWith(null)
 })

@@ -60,7 +60,7 @@ export function UserListPage() {
       </select></label>
       <div className={styles.actions}><button type="submit" className="admin-primary">검색</button><button type="button" onClick={() => setParams({})}>초기화</button></div>
     </form>
-    {error ? <div className={styles.error} role="alert"><p>{error}</p>{valid
+    {error ? <div className="admin-alert" role="alert"><p>{error}</p>{valid
       ? <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button> : null}</div> : null}
     <div className={styles.results} aria-busy={pending}>
       <p className={styles.meta}>{data ? `가입일 최신순 · 총 ${data.totalElements.toLocaleString('ko-KR')}명` : '\u00a0'}</p>

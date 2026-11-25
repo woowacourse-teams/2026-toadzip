@@ -200,11 +200,21 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('수집·원천 도구', { selector: 'summary' }))
-    fireEvent.click(screen.getByRole('link', { name: '주소 데이터' }))
-    expect(screen.getByRole('heading', { name: '주소 데이터', level: 1 })).toBeVisible()
+    expect(screen.queryByRole('link', { name: '주소 데이터' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: '원천 데이터' }))
+    expect(screen.getByRole('heading', { name: '원천 데이터', level: 1 })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '공고 수집' }))
     expect(screen.getByRole('heading', { name: '공고 수집', level: 1 })).toBeVisible()
+  })
+
+  it('예전 주소 데이터 주소는 쿼리를 지킨 채 단지 수집의 주소·좌표 준비 단계로 연결한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/locations?failureReturnTo=%2Fadmin%2Ffailures']}><App /><LocationProbe /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '단지 수집', level: 1 })).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent('/admin/ingest/complexes?failureReturnTo=%2Fadmin%2Ffailures')
+    expect(screen.getByRole('tab', { name: '2 주소·좌표 준비' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: '주소·좌표 준비' })).toBeVisible()
   })
 
   it('기존 수집 v2 주소의 단지 탭을 통합 수집 화면으로 연결한다', async () => {
@@ -216,12 +226,12 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: '공고 수집·검토' })).not.toBeInTheDocument()
   })
 
-  it('공고 관리의 마이홈 가져오기는 입력 폼 없이 단건 등록 지원 종료만 안내한다', async () => {
+  it('공고 등록에는 지원을 종료한 마이홈 가져오기 입구와 입력 폼이 없다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' }))
     vi.stubGlobal('fetch', fetchMock)
-    render(<MemoryRouter initialEntries={['/admin/announcements/new']}><App /></MemoryRouter>)
-    fireEvent.click(await screen.findByRole('button', { name: '마이홈에서 가져오기' }))
-    expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다. 공고는 LH 공고 정제와 PDF 보정으로만 바뀝니다.')
+    render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=myhome']}><App /></MemoryRouter>)
+    expect(await screen.findByLabelText('공고명')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '마이홈에서 가져오기' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('마이홈 공고 URL')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '등록 실행' })).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.map(([url]) => String(url)).filter(url => url.includes('announcement-registration'))).toEqual([])

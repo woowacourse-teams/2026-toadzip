@@ -13,15 +13,18 @@ function mount(path = '/admin/notification-subscriptions') {
   return render(<MemoryRouter initialEntries={[path]}><Location /><NotificationManagementPage /></MemoryRouter>)
 }
 
-it('일반 신청 검색은 점검 조건을 상세 검색에 두고 적용된 점검 조건은 펼쳐 보여 준다', async () => {
+it('확인 항목은 확인 필요 보기에서만 고르고, 신청 목록은 주소로 들어온 확인 조건을 다시 검색해도 유지한다', async () => {
   const view = mount()
   await screen.findByText('표시할 알림 신청이 없습니다.')
-  expect(screen.getByLabelText('확인 항목').closest('details')).not.toHaveAttribute('open')
+  expect(screen.queryByLabelText('확인 항목')).not.toBeInTheDocument()
   view.unmount()
   mount('/admin/notification-subscriptions?review=TARGET_UNAVAILABLE')
   await screen.findByText('표시할 알림 신청이 없습니다.')
-  expect(screen.getByLabelText('확인 항목').closest('details')).toHaveAttribute('open')
+  expect(screen.queryByLabelText('확인 항목')).not.toBeInTheDocument()
   expect(screen.getByRole('list', { name: '적용된 검색 조건' })).toHaveTextContent('확인: 대상 확인 불가')
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(screen.getByLabelText('현재 경로')).toHaveTextContent('status=ACTIVE'))
+  expect(vi.mocked(loadNotificationSubscriptions).mock.lastCall?.[0].get('review')).toBe('TARGET_UNAVAILABLE')
 })
 
 it('빈 신청은 0건으로 표시하고 실패는 빈 목록으로 위장하지 않는다', async () => {

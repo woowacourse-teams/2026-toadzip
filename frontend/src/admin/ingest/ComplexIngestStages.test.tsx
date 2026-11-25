@@ -25,7 +25,7 @@ function execution(type: DataPipelineType, extra: Partial<DataPipelineExecution>
     totalStepCount: 2, completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null, ...extra }
 }
 async function show() {
-  const view = render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  const view = render(<MemoryRouter><DataPipelineControl domain="complex" /></MemoryRouter>)
   await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행' })).toBeEnabled())
   return view
 }
@@ -159,7 +159,7 @@ it('탭을 바꿔도 선택한 ZIP과 업로드 결과를 유지한다', async (
   expect(screen.getByRole('region', { name: '좌표 적재 결과' })).toBeVisible()
 })
 it.each(['complex-registration', 'complex-refinement'])('직접 연결된 %s는 단지 등록을 열고 쓰기 작업을 자동 실행하지 않는다', async hash => {
-  render(<MemoryRouter initialEntries={[`/admin/ingest/complexes#${hash}`]}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={[`/admin/ingest/complexes#${hash}`]}><DataPipelineControl domain="complex" /></MemoryRouter>)
   await waitFor(() => expect(screen.getByRole('button', { name: '단지 원천 수집 실행', hidden: true })).toBeEnabled())
   expect(screen.getByRole('tab', { name: '3 신규 단지 등록' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('heading', { name: '신규 단지 등록' })).toBeVisible()
@@ -172,7 +172,7 @@ it('재진입 시 진행 중 수집을 복구하고 과거 정제 결과를 등�
     ? { executionId: 'collect-1', status: 'RUNNING', currentStepName: '마이홈 단지 수집', workProgress: {
       label: '마이홈 지역', unit: '개 지역', completedCount: 20, totalCount: 250, startedAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:01:00Z',
     } } : type === 'COMPLEX_REFINEMENT' ? { executionId: 'refine-1', status: 'COMPLETED' } : {}))
-  render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  render(<MemoryRouter><DataPipelineControl domain="complex" /></MemoryRouter>)
   await screen.findByRole('button', { name: '수집 중지' })
   assertStages()
   expect(screen.getByText(/20 \/ 250 개 지역/)).toBeVisible()
@@ -203,6 +203,7 @@ it('시작 응답 유실은 서버 상태로 복구하며 중지 요청도 해�
   vi.mocked(stopDataPipeline).mockResolvedValue(execution('COMPLEX_COLLECTION', { executionId: 'collect-1', status: 'STOPPED' }))
   fireEvent.click(screen.getByRole('button', { name: '단지 원천 수집 실행' }))
   fireEvent.click(await screen.findByRole('button', { name: '수집 중지' }))
+  fireEvent.click(screen.getByRole('button', { name: '실행 중지' }))
   await screen.findByText('중지됨')
   expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('collect-1')
   view.unmount()
@@ -211,7 +212,7 @@ it('진행 중인 이전 통합 정제는 별도 안내에서 복구하고 모�
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => execution(type, type === 'COMPLEX_SYNC'
     ? { executionId: 'legacy-sync', status: 'RUNNING', currentStepName: '마이홈 단지 정제', totalStepCount: 4,
       completedSteps: ['마이홈 단지 수집', 'LH 임대 카탈로그 수집'] } : {}))
-  render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  render(<MemoryRouter><DataPipelineControl domain="complex" /></MemoryRouter>)
   const legacy = await screen.findByRole('region', { name: '이전 정제 실행' })
   expect(within(legacy).getByRole('group', { name: '실행 상태' })).toHaveTextContent('진행 중')
   expect(within(screen.getByRole('tab', { name: '3 신규 단지 등록' })).queryByText('진행 중')).not.toBeInTheDocument()
@@ -243,18 +244,26 @@ it('새 실행을 접수할 때 과거 통합 실행의 결과를 이번 결과�
 it('단계 탭을 오가도 등록 상태 필터·표시 건수·페이지를 유지한다', async () => {
   await show()
   select('3 신규 단지 등록')
-  fireEvent.change(screen.getByLabelText('진행 상태'), { target: { value: 'READY' } })
+  fireEvent.click(await screen.findByRole('button', { name: '등록 가능 38곳 보기' }))
   fireEvent.change(screen.getByLabelText('표시 건수'), { target: { value: '10' } })
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 0, 10))
-  fireEvent.click(screen.getByRole('button', { name: '다음 대상' }))
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 1, 10))
   select('2 주소·좌표 준비')
   expect(screen.queryByRole('heading', { name: '신규 단지 등록' })).not.toBeInTheDocument()
   select('3 신규 단지 등록')
-  expect(screen.getByLabelText('진행 상태')).toHaveValue('READY')
+  expect(screen.getByRole('button', { name: '등록 가능 38곳 보기' })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByLabelText('표시 건수')).toHaveValue('10')
   expect(screen.getByRole('navigation', { name: '등록 대상 페이지' })).toHaveTextContent('2 / 2')
   expect(getInitialRegistration).toHaveBeenLastCalledWith('READY', 1, 10)
+})
+
+it('주소·좌표 준비 끝에서 다음 단계인 신규 단지 등록으로 바로 넘어간다', async () => {
+  await show()
+  select('2 주소·좌표 준비')
+  fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: '다음 단계: 신규 단지 등록' }))
+  expect(screen.getByRole('tab', { name: '3 신규 단지 등록' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('heading', { name: '신규 단지 등록' })).toBeVisible()
 })
 
 it.each([
@@ -266,7 +275,7 @@ it.each([
   vi.mocked(getDataPipelineStatus).mockImplementation(async value => value === type ? running : execution(value))
   let finishStop: (value: DataPipelineExecution) => void = () => {}
   vi.mocked(stopDataPipeline).mockReturnValue(new Promise(resolve => { finishStop = resolve }))
-  const view = render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  const view = render(<MemoryRouter><DataPipelineControl domain="complex" /></MemoryRouter>)
   await screen.findByRole('button', { name: label })
   select(tab)
   const actions = restartable ? screen.getByRole('group', { name: `${stage} 실행 제어` })
@@ -278,8 +287,16 @@ it.each([
     expect(start?.nextElementSibling).toBe(stop)
   } else expect(start).not.toBeInTheDocument()
   expect(screen.getAllByRole('button', { name: label })).toHaveLength(1)
+  // 중지는 묻고 나서 보낸다. 취소하면 요청이 나가지 않고 실행은 그대로 이어진다.
   fireEvent.click(stop)
-  expect(within(actions).getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
+  expect(screen.getByRole('dialog')).toHaveTextContent('이미 저장한 데이터는 유지되고')
+  fireEvent.click(screen.getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(stopDataPipeline).not.toHaveBeenCalled()
+  expect(stop).toBeEnabled()
+  fireEvent.click(stop)
+  fireEvent.click(screen.getByRole('button', { name: '실행 중지' }))
+  expect(await within(actions).findByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
   fireEvent.click(stop)
   expect(stopDataPipeline).toHaveBeenCalledExactlyOnceWith('active-run')
   await act(async () => finishStop({ ...running, status: 'STOPPED', stopRequested: true }))
@@ -297,18 +314,25 @@ it('등록을 즉시 접수하고 중복 실행을 막으며 재방문해도 진
   vi.mocked(startDataPipeline).mockResolvedValue(running)
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => type === 'COMPLEX_REGISTRATION' ? running : execution(type))
   const register = await screen.findByRole('button', { name: '준비된 신규 단지 등록' })
-  fireEvent.click(register); fireEvent.click(register)
+  fireEvent.click(register)
+  expect(screen.getByRole('dialog', { name: '준비된 신규 단지 38곳을 등록할까요?' })).toBeVisible()
+  expect(startDataPipeline).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '38곳 등록' }))
   await waitFor(() => expect(startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_REGISTRATION'))
   expect(register).toBeDisabled()
+  fireEvent.click(register)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(startDataPipeline).toHaveBeenCalledTimes(1)
   expect(screen.getByText('등록 준비 중…')).toBeVisible()
   vi.mocked(stopDataPipeline).mockResolvedValue({ ...running, stopRequested: true })
   fireEvent.click(screen.getByRole('button', { name: '등록 중지' }))
+  fireEvent.click(screen.getByRole('button', { name: '실행 중지' }))
   await waitFor(() => expect(stopDataPipeline).toHaveBeenCalledWith('registration-1'))
   expect(await screen.findByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
   view.unmount()
   vi.mocked(getDataPipelineStatus).mockImplementation(async type => type === 'COMPLEX_REGISTRATION'
     ? { ...running, stopRequested: true } : execution(type))
-  render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" /></MemoryRouter>)
   expect(await screen.findByText(/이미 저장한 데이터는 유지됩니다/)).toBeVisible()
   expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
 })
@@ -319,7 +343,7 @@ it('등록 완료 뒤 다시 열면 간결한 완료 안내를 복원한다', as
       stepName: '준비된 신규 단지 등록', report: { targetCount: 2, uniqueAddressCount: 1,
         counts: { EXISTING: 0, LOCATION_REQUIRED: 0, INFORMATION_REQUIRED: 0, READY: 0, FAILED: 0, COMPLETED: 2 } } }],
   } : {}))
-  render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/#complex-registration']}><DataPipelineControl domain="complex" /></MemoryRouter>)
   expect(await screen.findByLabelText('등록 현황')).toBeVisible()
   expect(screen.queryByRole('status', { name: '등록 실행 상태' })).not.toBeInTheDocument()
   expect(screen.queryByText(/고유 원천 주소/)).not.toBeInTheDocument()

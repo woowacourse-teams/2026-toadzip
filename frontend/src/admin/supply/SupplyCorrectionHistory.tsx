@@ -2,6 +2,7 @@ import { isRecord } from '../management/managementContract'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { parseSupplyPreview } from './supplyCorrectionApi'
 import { SupplyCorrectionPreview } from './SupplyCorrectionPreview'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 /**
  * 공급정보 보정 한 건의 이력. 변경 전후의 공급표(sheet)를 공급정보 편집과 같은 표로 비교한다.
@@ -11,7 +12,7 @@ export function SupplyCorrectionHistory({ before, after }: { before: unknown; af
   if (!isRecord(before) || !isRecord(after)) return <p>이 기록의 형식을 읽지 못했습니다.</p>
   const evidence = <>
     <p>이유: {typeof after.reason === 'string' ? after.reason : '기록 없음'}</p>
-    {typeof after.sourceUrl === 'string' && /^https?:\/\//.test(after.sourceUrl) && <p><a href={after.sourceUrl} target="_blank" rel="noreferrer">공식 근거 ↗</a>{typeof after.sourcePage === 'string' ? ` · ${after.sourcePage}` : ''}</p>}
+    {typeof after.sourceUrl === 'string' && /^https?:\/\//.test(after.sourceUrl) && <p><a href={after.sourceUrl} target="_blank" rel="noreferrer">공식 근거<NewWindowMark /></a>{typeof after.sourcePage === 'string' ? ` · ${after.sourcePage}` : ''}</p>}
   </>
   if (Array.isArray(before.rows) || Array.isArray(after.rows)) return <section aria-label="저장한 공급정보 보정">
     {evidence}

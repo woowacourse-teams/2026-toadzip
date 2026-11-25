@@ -26,6 +26,8 @@ import { supplyView } from './supplyView'
 import { SupplyNavigator } from './SupplyNavigator'
 import { PdfSource, PreparationFooter, RequestPreparation } from './RequestPreparation'
 import styles from './PdfCorrection.module.css'
+import { AdminIcon, NewWindowMark } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 const outdatedDraftNotice = '이전 방식의 임시저장이라 복원하지 않고 다시 시작합니다. 응답을 다시 검토하면 새로 임시저장합니다.'
 const PdfDocumentPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
@@ -130,6 +132,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
   // lastInput은 응답이 불분명했던 적용 요청이다.
   const lastInput = useRef<JsonUpdateInput | null>(null)
   const reviewPane = useRef<HTMLDivElement>(null)
+  const [confirm, confirmDialog] = useConfirm()
   const reasonProblem = !reason.trim() ? '보정 이유를 입력하세요.' : !validEvidenceUrl(sourceUrl.trim()) ? '공식 근거 URL에 올바른 http 또는 https 주소를 입력하세요.' : ''
   // 긴 응답을 입력마다 다시 읽지 않도록 검토 버튼을 누를 때만 읽는다.
   // 응답은 추출이 끝날 때만 바뀌므로 바로 읽어 추출 요약과 공고 일치 확인에 쓴다.
@@ -387,7 +390,8 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     setPhase('review'); setSection('supply'); setFilter('all'); setError(''); setNotice('')
   }
   /**
-   * 보정안을 만들어 서버 미리보기로 검증하고, 통과하면 그 확인 토큰으로 바로 저장한다. 검증에서 막히면 저장하지 않고 문제 칸으로 옮긴다.
+   * 보정안을 만들어 서버 미리보기로 검증하고, 통과하면 무엇이 달라지는지 확인 창으로 물은 뒤 그 확인 토큰으로 저장한다.
+   * 검증에서 막히면 저장하지 않고 문제 칸으로 옮기고, 확인 창에서 취소하면 저장하지 않는다.
    * 공급정보 편집표 채우기는 바로 돌려준다.
    */
   async function apply() {
@@ -400,6 +404,11 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       preview = await previewJsonUpdate(id, input)
     } catch (cause) { fail(cause, false, input); setBusy(false); return }
     // PDF와 지금 값이 같아도 거절하지 않는다. 적용하면 서버가 값은 그대로 두고 공고문으로 확인한 것(공고문 소유·재확인 해제·실패 해결·이력)만 남긴다.
+    const publishes = Boolean(preview.publishes)
+    const confirmed = await confirm({ title: publishes ? '보정 내용을 적용하고 공고를 공개할까요?' : '보정 내용을 적용할까요?',
+      body: <ApplyConfirmBody preview={preview} pendingCount={pending.length} checkCount={checkCount} removedCount={removedCount} />,
+      confirmLabel: publishes ? '적용하고 공개' : '적용', tone: removedCount > 0 ? 'danger' : 'primary' })
+    if (!confirmed) { setBusy(false); return }
     await save(input, preview)
   }
   /** 미리보기가 돌려준 확인 토큰으로 저장한다. 서버는 미리보기 뒤 값이 바뀌었으면 저장하지 않는다. */
@@ -461,7 +470,7 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
     } catch (cause) { setError(cause instanceof Error ? cause.message : '최신값을 불러오지 못했습니다.') }
     finally { setBusy(false) }
   }
-  if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
+  if (!workspace) return <section className={styles.page}><h1>PDF로 공고 보정</h1>{error ? <div role="alert" className="admin-alert"><p>{error}</p><Button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</Button></div> : <p role="status">공고와 연결 주택형을 불러오는 중…</p>}</section>
   if (workspace.detail.summary.deleted) return <section className={styles.page}><h1>휴지통의 공고입니다.</h1><p>공고를 복구한 뒤 보정하세요.</p><Link to={back}>공고 상세로 돌아가기</Link></section>
   const pending = review ? pendingItems(review, !supplyDraft, workspace ?? undefined, release) : []
   const changes = review ? pendingChanges(review, workspace) : []
@@ -518,16 +527,17 @@ export function PdfCorrectionWorkspace({ id, supplyDraft }: { id: string; supply
       {/* 화면에서 하단 버튼 위에 놓이므로 문서 순서도 버튼 앞에 둬 Tab 이동이 보이는 순서를 따른다. */}
       {/* 근거는 추출할 때 자동으로 채운다. 원문 URL이 없을 때처럼 저장을 막는 값만 직접 입력하게 한다. */}
       {phase === 'review' && !supplyDraft && (reasonInput || reasonProblem) && <section className={styles.reason} aria-label="적용 근거 입력"><p role="status" className={styles.error}>{reasonProblem}</p><label>보정 이유<textarea value={reason} maxLength={2000} disabled={busy || blocked} onChange={event => { setReason(event.target.value) }} /></label><label>공식 근거 URL<input value={sourceUrl} maxLength={2048} disabled={busy || blocked} onChange={event => { setSourceUrl(event.target.value) }} /></label><label>근거 쪽<input value={sourcePage} maxLength={100} disabled={busy || blocked} onChange={event => { setSourcePage(event.target.value) }} /></label></section>}
-      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span>{removedCount > 0 && <span className={styles.removalNote}>{`저장하면 주택형 ${removedCount}개를 지웁니다.`}</span>}</div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개 ↓`}</Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}{checkCount > 0 && <Button data-design-system className={styles.pendingButton} onClick={() => goTo('notices')}>{`검산 경고 ${checkCount}건`}</Button>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
+      <footer className={styles.footer}><div><strong>{changes.length}개 값 반영</strong><span>{changeSummary(changes)} · 선택하지 않은 값은 유지합니다.</span>{removedCount > 0 && <span className={styles.removalNote}>{`저장하면 주택형 ${removedCount}개를 지웁니다.`}</span>}</div><div className={styles.actions}>{!supplyDraft && <><Button data-design-system className={styles.secondaryButton} disabled={!draftChecked || drafts.status.state === 'saving' || drafts.status.state === 'conflict'} onClick={() => void drafts.saveNow()}>임시저장</Button></>}{pending.length > 0 ? <Button data-design-system className={styles.pendingButton} onClick={nextPending}>{`미해결 ${pending.length}개`}<AdminIcon name="chevronDown" /></Button> : <span className={styles.pendingDone}>확인 필요 없음</span>}{checkCount > 0 && <Button data-design-system className={styles.pendingButton} onClick={() => goTo('notices')}>{`검산 경고 ${checkCount}건`}</Button>}<Button data-design-system className={styles.secondaryButton} disabled={busy} onClick={() => { setPhase('prepare'); setError('') }}>응답 준비로 돌아가기</Button><Button data-design-system disabled={busy || blocked || !supplyDraft && Boolean(reasonProblem)} onClick={() => void apply()}>{busy ? '적용 중…' : supplyDraft ? '공급정보 편집표에 채우기' : '보정 내용 적용'}</Button></div></footer>
     </>}
     {phase === 'result' && unchanged && <section className={styles.result}><h2>저장할 변경이 없습니다.</h2><p>PDF와 지금 값이 같아 값은 그대로 두고, 공고문으로 확인한 것으로 남겼습니다.{failureReturn ? ' 이 공고의 미해결 오류를 해결로 바꿨습니다.' : ''}</p><div className={styles.actions}><Link to={back}>공고 상세로 돌아가기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div></section>}
-    {phase === 'result' && !unchanged && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 보정을 다시 적용하면 공개됩니다.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/?announcementId=${id}`} target="_blank" rel="noreferrer">공개 공고 확인</Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
+    {phase === 'result' && !unchanged && <section className={styles.result}><h2>{published ? '공고를 공개했습니다.' : '공고 보정을 적용했습니다.'}</h2><p>{unconfirmed(workspace) ? '선택한 변경을 저장했습니다. 이 공고는 아직 미확정이라 사용자에게 보이지 않습니다. 보정을 다시 적용하면 공개됩니다.' : published ? '사용자에게 공개했고 신규 공고 알림을 보냅니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.' : '선택한 변경을 저장했습니다. 공개 화면에서 공고와 단지의 현재 공급정보를 확인하세요.'}</p><p>보정 저장은 공고 전체 검토 완료와 다릅니다.{failureReturn ? ` ${Number.isSafeInteger(failureCount) && failureCount > 0 ? `이 공고의 오류 ${failureCount}건을 포함해 이 공고의 미해결 오류를` : '이 공고의 미해결 오류를'} 해결로 바꿨습니다.` : ''}</p><div className={styles.actions}><Link to={`/announcements/${id}`} target="_blank" rel="noreferrer">공개 공고 확인<NewWindowMark /></Link><Link to={`/admin/announcements/${id}?${supplyParams}`}>저장된 공급정보 확인</Link><Link to={`/admin/announcements/${id}?${historyParams}`}>출처·수정 이력 보기</Link>{failureReturn && <Link to={failureReturn}>실패 검토로 돌아가기</Link>}</div>
       {(typeResult.housingTypes.length > 0 || typeResult.housingTypeWarnings.length > 0) && <section className={styles.renames} aria-labelledby="housing-type-result-title"><h3 id="housing-type-result-title">공고로 갱신한 주택타입</h3><p className={styles.hint}>주택형에 연결한 주택타입의 이름·공급면적·세대수(건설호수)를 이번 공고 값으로 맞췄습니다. 관리자가 직접 고친 값과 더 최근 공고의 값은 유지합니다.</p>
         {typeResult.housingTypes.length > 0 && <ul>{typeResult.housingTypes.map(item => <li key={`${item.rowKey}:${item.housingTypeId ?? item.after.name}`}>{item.housingTypeId === null ? `새 주택타입 「${item.after.name}」` : `#${item.housingTypeId} 「${item.typeName}」`} → {typeValuesLabel(item.after)}</li>)}</ul>}
         {typeResult.housingTypeWarnings.length > 0 && <ul aria-label="유지한 주택타입 값">{typeResult.housingTypeWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}</section>}
     </section>}
     {/* 공급정보를 적용한 바로 뒤가 신청자격 초안을 만들 때라, 적용 결과 아래에 신청자격 패널을 둔다. */}
     {phase === 'result' && !supplyDraft && <section className={styles.result}><EligibilityDraftPanel announcementId={id} pdfSha256={pdfHash} autoCreate /></section>}
+    {confirmDialog}
   </section>
 }
 
@@ -535,6 +545,30 @@ function typeValuesLabel(values: JsonPreview['housingTypes'][number]['after']) {
   const won = (value: number | null | undefined) => typeof value === 'number' ? `${value.toLocaleString('ko-KR')}원` : '미확인'
   return [`이름 ${values.name}`, `공급면적 ${values.supplyArea ?? '미확인'}㎡`, `세대수 ${values.householdCount ?? '미확인'}`,
     ...(values.basicDeposit != null || values.basicMonthlyRent != null ? [`기본 보증금 ${won(values.basicDeposit)} · 월 ${won(values.basicMonthlyRent)}`] : [])].join(' · ')
+}
+
+/**
+ * 적용 확인 창의 본문. 서버 미리보기가 돌려준 값(바뀌는 기본정보·공급정보·일정·주택타입, 단지 이름 변경, 공개 여부)과
+ * 화면에 남은 미해결·검산 경고·지울 주택형 수만 적는다.
+ */
+function ApplyConfirmBody({ preview, pendingCount, checkCount, removedCount }: { preview: JsonPreview; pendingCount: number; checkCount: number; removedCount: number }) {
+  // 단지 이름 변경은 서버가 주의 문장으로만 알린다.
+  const renames = preview.warnings.filter(warning => warning.startsWith('단지 이름 '))
+  const changes = [
+    ...(preview.fields.length ? [`기본정보 ${preview.fields.length}개 값을 바꿉니다.`] : []),
+    ...(preview.supply ? [`공급정보를 바꿉니다(주택형 ${preview.supply.before.housingTypes.length}개 → ${preview.supply.after.housingTypes.length}개).`] : []),
+    ...(preview.schedules.length ? [`일정 ${preview.schedules.length}개를 저장합니다.`] : []),
+    ...(preview.housingTypes.length ? [`단지의 주택타입 ${preview.housingTypes.length}개를 이 공고 값으로 맞춥니다.`] : []),
+    ...renames,
+  ]
+  return <>
+    {preview.unchanged ? <p>PDF와 지금 값이 같아 값은 바뀌지 않습니다. 공고문으로 확인한 기록만 남깁니다.</p>
+      : changes.length > 0 && <ul>{changes.map(change => <li key={change}>{change}</li>)}</ul>}
+    {removedCount > 0 && <p>{`주택형 ${removedCount}개를 지웁니다.`}</p>}
+    {(pendingCount > 0 || checkCount > 0) && <p>{`남은 확인: ${[pendingCount > 0 ? `미해결 ${pendingCount}개` : '', checkCount > 0 ? `검산 경고 ${checkCount}건` : ''].filter(Boolean).join(', ')}. 이대로 적용합니다.`}</p>}
+    {preview.publishes && <p>이 공고는 미확정이라 적용하면 곧바로 사용자 화면에 공개되고 신규 공고 알림이 나갑니다.</p>}
+    <p>적용한 뒤에는 되돌리기 기능이 없습니다.</p>
+  </>
 }
 
 const changeSections: PendingChange['section'][] = ['기본정보', '접수처', '공급정보', '일정']

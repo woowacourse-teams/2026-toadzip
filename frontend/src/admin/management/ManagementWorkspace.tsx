@@ -8,6 +8,7 @@ import { ManagementList } from './ManagementList'
 import { managementListParams, managementUrl } from './managementNavigation'
 import { workReturnTo } from '../shared/workNavigation'
 import styles from './ManagementWorkspace.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function ManagementWorkspace({ resource }: { resource: ManagementResource }) {
   const { id } = useParams()
@@ -58,14 +59,14 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
       <div className={styles.headingTitle}>
         <h1>{title} 관리</h1>
         {id && <Link className={styles.back} to={back}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+          <AdminIcon name="chevronLeft" size={16} />
           목록으로 돌아가기
         </Link>}
       </div>
       <div className="admin-inline">
         {id && <button type="button" aria-expanded={showList} onClick={() => setShowList(current => !current)}>{showList ? '목록과 검색 접기' : '목록과 검색 펼치기'}</button>}
         <Link ref={addRef} className={id ? 'admin-tonal' : 'admin-primary'} to={managementUrl(resource, listParams, 'new')} onClick={() => setRegistrationSession(value => value + 1)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          <AdminIcon name="plus" size={16} />
           {title} 추가
         </Link>
       </div>

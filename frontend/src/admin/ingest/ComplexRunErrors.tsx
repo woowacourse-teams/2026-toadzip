@@ -5,6 +5,7 @@ import styles from './ComplexIngest.module.css'
 import { ComplexIconButton } from './ComplexIconButton'
 import { ComplexStageHelp } from './ComplexStageHelp'
 import { IconButton } from '../../design-system/components/IconButton'
+import { AdminIcon } from '../shared/AdminIcon'
 
 type Mode = 'collection' | 'complex' | 'coordinates'
 const labels: Record<Mode, string> = { collection: '수집 오류', complex: '단지 정제 오류', coordinates: '좌표 문제' }
@@ -64,7 +65,7 @@ export function ComplexRunErrors({ executionId, phase }: { executionId: string; 
         <label htmlFor={searchId}>대상 검색</label><div className={styles.searchField}>
           <input id={searchId} className={styles.searchInput} type="search" name="keyword" maxLength={200} placeholder="이름 또는 원천 식별자 검색" />
           <IconButton data-design-system type="submit" label="검색" title="검색" className={styles.searchButton}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+            <AdminIcon name="search" />
           </IconButton>
         </div>
       </form>
@@ -88,7 +89,7 @@ function ErrorItem({ row }: { row: FailureReview }) {
   const target = row.category === 'collection' ? failureTarget(row) : { title: row.target, context: row.sourceKey, source: null }
   const cause = row.category === 'collection' ? collectionCause(row) : {
     title: reasonLabels[row.reason] ?? '원천 데이터 확인 필요',
-    action: /GEOCODING/.test(row.reason) ? '원천의 도로명주소와 업로드한 좌표 파일을 확인한 뒤, 필요한 경우 2단계 적재와 3단계 정제를 다시 실행하세요.'
+    action: /GEOCODING/.test(row.reason) ? '원천의 도로명주소와 업로드한 좌표 파일을 확인한 뒤, 필요하면 2단계 주소·좌표 준비에서 좌표를 보완하고 3단계 신규 단지 등록을 다시 실행하세요.'
       : '오류에 기록된 원천 값과 공식 자료를 확인한 뒤, 필요한 수집 또는 정제 단계를 다시 실행하세요.',
   }
   return <li><div className={styles.resultHeading}><strong>{target.title}</strong>

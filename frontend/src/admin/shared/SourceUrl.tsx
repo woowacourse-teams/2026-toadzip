@@ -1,4 +1,5 @@
 import styles from './StoredDataTable.module.css'
+import { NewWindowMark } from './AdminIcon'
 
 export function SourceUrl({ url }: { url: unknown }) {
   if (url === null || url === undefined || url === '') {
@@ -22,5 +23,5 @@ export function SourceUrl({ url }: { url: unknown }) {
     if (key.toLowerCase() === 'servicekey') parsed.searchParams.delete(key)
   }
   const safeUrl = parsed.href
-  return <a className={styles.sourceUrl} href={safeUrl} title={safeUrl} target="_blank" rel="noreferrer">{safeUrl}</a>
+  return <a className={styles.sourceUrl} href={safeUrl} title={safeUrl} target="_blank" rel="noreferrer">{safeUrl}<NewWindowMark /></a>
 }

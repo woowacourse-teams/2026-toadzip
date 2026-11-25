@@ -22,7 +22,7 @@ describe('데이터 실행 이력', () => {
       completedStepResults: status === 'COMPLETED' ? [result] : [],
       partiallyFailedSteps: status === 'FAILED' ? [result] : [],
     })])
-    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    render(<MemoryRouter><PipelineHistory domain="complex" readOnlyComplex /></MemoryRouter>)
     fireEvent.click(await screen.findByRole('button', { name: /상세 (펼치기|접기)/ }))
     const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
     for (const [label, count] of [['등록 대상 단지', '3'], ['고유 원천 주소', '2'], ['등록 완료', '2'],
@@ -31,12 +31,12 @@ describe('데이터 실행 이력', () => {
     }
     expect(within(detail).queryByText('대상 공고')).not.toBeInTheDocument()
   })
-  it.each([true, false])('등록 실패 이력(단지 전용=%s)은 기존 오류 조회 대신 현재 등록 현황으로 안내한다', async readOnlyComplex => {
+  it('등록 실패 이력은 기존 오류 조회 대신 현재 등록 현황으로 안내한다', async () => {
     getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REGISTRATION', status: 'FAILED',
       failure: { stepName: '준비된 신규 단지 등록', message: '단지 저장 실패', serverResponse: null },
     })])
-    render(<MemoryRouter><PipelineHistory domain="complex" readOnlyComplex={readOnlyComplex} /></MemoryRouter>)
-    fireEvent.click(await screen.findByRole('button', { name: /상세 (펼치기|접기|보기)/ }))
+    render(<MemoryRouter><PipelineHistory domain="complex" readOnlyComplex /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /상세 펼치기/ }))
     const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
     expect(within(detail).getByRole('alert')).toHaveTextContent('단지 저장 실패')
     expect(within(detail).queryByRole('button', { name: '결과 오류 조회' })).not.toBeInTheDocument()
@@ -52,7 +52,7 @@ describe('데이터 실행 이력', () => {
       execution({ executionId: 'auto-sh', type: 'SH_ANNOUNCEMENT_COLLECTION', trigger: 'SCHEDULED', collectionScope: null }),
       execution({ executionId: 'manual-lh', type: 'ANNOUNCEMENT_SYNC', trigger: 'MANUAL' }),
     ])
-    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    render(<MemoryRouter><PipelineHistory domain="announcement" /></MemoryRouter>)
     const rows = (await screen.findAllByRole('row')).slice(1)
     expect(rows[0]).toHaveTextContent('자동 · 최근분')
     expect(rows[1]).toHaveTextContent('자동')
@@ -62,7 +62,7 @@ describe('데이터 실행 이력', () => {
   it('단지 이력은 아이콘으로 페이지 이동·새로고침·상세 닫기를 제공한다', async () => {
     const first = Array.from({ length: 20 }, (_, index) => execution({ executionId: `run-${index}` }))
     getHistory.mockResolvedValueOnce(first).mockResolvedValueOnce([execution()]).mockResolvedValueOnce(first).mockResolvedValueOnce(first)
-    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    render(<MemoryRouter><PipelineHistory domain="complex" readOnlyComplex /></MemoryRouter>)
     const trigger = (await screen.findAllByRole('button', { name: /상세 (펼치기|접기)/ }))[0]
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(trigger)
@@ -98,7 +98,7 @@ describe('데이터 실행 이력', () => {
     getHistory.mockResolvedValue([execution({ type: 'COMPLEX_REFINEMENT', completedStepResults: [
       { step: 'MAP_MYHOME_COMPLEXES', stepName: '마이홈 단지 정제', report: { createdComplexCount: 4, updatedComplexCount: 7, failedSourceCount: 2 } },
     ] })])
-    render(<MemoryRouter><PipelineHistory domain="complex" compact readOnlyComplex /></MemoryRouter>)
+    render(<MemoryRouter><PipelineHistory domain="complex" readOnlyComplex /></MemoryRouter>)
     fireEvent.click(await screen.findByRole('button', { name: /상세 (펼치기|접기)/ }))
     const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
     expect(within(detail).getByText('신규 단지').nextSibling).toHaveTextContent('4')
@@ -120,7 +120,7 @@ describe('데이터 실행 이력', () => {
       execution({ executionId: 'sync-0', type: 'ANNOUNCEMENT_SYNC', status: 'RUNNING', totalStepCount: 2,
         currentStepName: 'LH 공고 목록 수집' }),
     ])
-    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    render(<MemoryRouter><PipelineHistory domain="announcement" /></MemoryRouter>)
     const [syncTrigger, runningTrigger] = await screen.findAllByRole('button', { name: /상세 보기/ })
     const history = screen.getByRole('region', { name: '실행 이력' })
 
@@ -147,7 +147,7 @@ describe('데이터 실행 이력', () => {
   it('공고 이력에 함께 오는 GH 수집도 단계 결과와 공개 전 확인 안내를 보인다', async () => {
     getHistory.mockResolvedValue([execution({ executionId: 'gh-1', type: 'GH_ANNOUNCEMENT_COLLECTION', totalStepCount: 2,
       completedSteps: ['GH 공고 원천 수집', 'GH 공고 정제'] })])
-    render(<MemoryRouter><PipelineHistory domain="announcement" compact /></MemoryRouter>)
+    render(<MemoryRouter><PipelineHistory domain="announcement" /></MemoryRouter>)
     const row = (await screen.findByText('GH 공고 수집')).closest('tr')!
     fireEvent.click(within(row).getByRole('button', { name: /상세 보기/ }))
     const detail = screen.getByRole('region', { name: '실행 상세' })
@@ -185,27 +185,7 @@ describe('데이터 실행 이력', () => {
     fireEvent.click(screen.getByRole('button', { name: '새로고침' }))
     expect(await screen.findByRole('table')).toHaveTextContent('단지 수집·정제')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(getHistory.mock.calls).toEqual([[0], [0]])
-  })
-
-  it('선택한 실행 결과와 실패 화면 링크를 보여 주고 상세를 닫는다', async () => {
-    getHistory.mockResolvedValue([execution()])
-    renderHistory()
-    fireEvent.click(await screen.findByRole('button', { name: /상세 보기/ }))
-    const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
-    expect(within(detail).getByRole('status')).toHaveTextContent('단지 수집·정제 작업을 완료했습니다.')
-    expect(within(detail).getByRole('link', { name: '단지 수집·정제 수집 실패 요청 보기' }))
-      .toHaveAttribute('href', '/admin/failures?domain=complex&category=collection&executionId=run-1')
-    fireEvent.click(within(detail).getByRole('button', { name: '닫기' }))
-    expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
-  })
-
-  it('실행 중인 과거 기록은 중지 요청을 보내지 못한다', async () => {
-    getHistory.mockResolvedValue([execution({ status: 'RUNNING' })])
-    renderHistory()
-    fireEvent.click(await screen.findByRole('button', { name: /상세 보기/ }))
-    expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
-    expect(getHistory).toHaveBeenCalledOnce()
+    expect(getHistory.mock.calls).toEqual([[0, 'announcement'], [0, 'announcement']])
   })
 
   it('20건이면 다음 페이지로 이동하고 선택 상세를 초기화하며 이전 페이지로 돌아온다', async () => {
@@ -217,12 +197,12 @@ describe('데이터 실행 이력', () => {
     expect(screen.getByRole('button', { name: '이전' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: '다음' }))
     await screen.findByRole('button', { name: /상세 보기/ })
-    expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '실행 상세' })).not.toBeInTheDocument()
     expect(screen.getByText('2 페이지')).toBeVisible()
     expect(screen.getByRole('button', { name: '다음' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: '이전' }))
     await screen.findByText('실행 이력이 없습니다.')
-    expect(getHistory.mock.calls).toEqual([[0], [1], [0]])
+    expect(getHistory.mock.calls).toEqual([[0, 'announcement'], [1, 'announcement'], [0, 'announcement']])
   })
 
   it('언마운트된 화면의 늦은 응답은 다음 화면에 섞이지 않는다', async () => {
@@ -239,7 +219,7 @@ describe('데이터 실행 이력', () => {
 })
 
 function renderHistory() {
-  return render(<MemoryRouter><PipelineHistory /></MemoryRouter>)
+  return render(<MemoryRouter><PipelineHistory domain="announcement" /></MemoryRouter>)
 }
 
 function execution(overrides: Partial<DataPipelineExecution> = {}): DataPipelineExecution {

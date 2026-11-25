@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { ComplexVerificationPanel } from './ComplexVerificationPanel'
 import { ManagementError } from './api'
 import type { ComplexVerification, ComplexReview } from './complexVerificationContract'
+import { newWindowName } from '../../test/newWindowName'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }))
 vi.mock('./complexVerificationApi', () => ({ getComplexVerification: mocks.get, saveComplexReview: mocks.save }))
@@ -50,7 +51,7 @@ it('일치와 차이를 구분하고 실제 확인과 지도 대조 경로를 �
   expect(screen.getByLabelText('근거 URL')).not.toBeVisible()
   fireEvent.click(screen.getByText('참고 자료'))
   expect(screen.getByText(/현재 주소 식별정보/)).toBeVisible()
-  const coordinate = new URL(screen.getByRole('link', { name: '저장 좌표 보기 ↗' }).getAttribute('href')!)
+  const coordinate = new URL(screen.getByRole('link', { name: newWindowName('저장 좌표 보기') }).getAttribute('href')!)
   expect(coordinate.searchParams.get('query')).toBe('37.5665,126.978')
   expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
 })
@@ -85,10 +86,14 @@ it('저장 충돌은 입력을 유지하고 새로 조회하기 전 재저장을
   expect(await screen.findByRole('alert')).toHaveTextContent('단지 정보가 변경되었습니다.')
   expect(screen.getByLabelText('확인 근거·메모')).toHaveValue('입력한 근거')
   expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   fireEvent.click(screen.getByRole('button', { name: '새로 조회' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: '작성한 검토 내용을 버리고 새로 조회할까요?' })).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(mocks.get).toHaveBeenCalledTimes(1)
+  expect(screen.getByLabelText('확인 근거·메모')).toHaveValue('입력한 근거')
+  fireEvent.click(screen.getByRole('button', { name: '새로 조회' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '버리고 조회' }))
   await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2))
-  confirm.mockRestore()
 })
 it('보류 기록도 확인 범위와 사유를 요구한다', async () => {
   mocks.save.mockResolvedValue({ ...fixture(), status: 'ON_HOLD', latestReview: { ...review(), outcome: 'ON_HOLD' }, history: [] })

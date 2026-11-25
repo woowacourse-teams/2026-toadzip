@@ -31,7 +31,7 @@ it('파일 없이 DB 원천과 현재값을 보여주고 선택한 원천값만 
 it('DB 원천을 검색해 직접 확인한 연결만 저장한다', async () => {
   mocks.get.mockResolvedValue({ ...snapshot, sources: [] }); mocks.search.mockResolvedValue({ items: [source], page: 0, totalElements: 1, totalPages: 1, hasNext: false }); mocks.link.mockResolvedValue(snapshot)
   show()
-  fireEvent.click(await screen.findByText('원천 검색·연결'))
+  fireEvent.click(await screen.findByText('단지 원천 검색·연결'))
   fireEvent.click(screen.getByRole('button', { name: '원천 검색' }))
   await screen.findByRole('button', { name: '이 원천 연결' })
   expect(screen.getByRole('button', { name: '이 원천 연결' })).toBeDisabled()
@@ -94,4 +94,15 @@ it('마이홈의 3자리 시·군·구 번호는 시·도 코드를 붙여 저�
   const district = screen.getByRole('group', { name: '시·군·구 코드 비교' })
   expect(within(district).getAllByText('11140')).toHaveLength(2)
   expect(within(district).queryByText('값 다름')).not.toBeInTheDocument()
+})
+
+it('작성한 수정값을 버리는 확인 창에서 취소하면 입력을 유지하고 요청하지 않는다', async () => {
+  show()
+  const row = await screen.findByRole('group', { name: '전체 세대수 비교' })
+  fireEvent.click(within(row).getByRole('button', { name: '이 원천값 사용' }))
+  fireEvent.click(screen.getByRole('button', { name: '수정 취소' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: '작성한 수정값과 근거를 버릴까요?' })).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('spinbutton', { name: '전체 세대수 수정값' })).toHaveValue(120)
+  expect(mocks.save).not.toHaveBeenCalled()
 })

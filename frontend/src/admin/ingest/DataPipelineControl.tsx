@@ -1,8 +1,7 @@
-import { pipelineLabels, pipelineStatusLabels, retiredComplexRefinementNotice, retiredPipelineTypes } from './pipelineLabels'
+import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
 import { Link } from 'react-router'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  DataPipelineApiError,
   getDataPipelineReadiness,
   getDataPipelineStatus,
   startDataPipeline,
@@ -12,13 +11,14 @@ import {
   type DataPipelineType as SharedDataPipelineType,
 } from './api'
 
-import { PipelineResult, type PipelineViewState } from './PipelineResult'
 import { LhAnnouncementQualityPanel } from './LhAnnouncementQualityPanel'
 import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { Button } from '../../design-system/components/Button'
 import workflow from './PipelineWorkflow.module.css'
 import { ComplexIngestStages } from './ComplexIngestStages'
-import { pipelineStepSequences } from './pipelineSteps'
+import { pipelineStepSequences, type PipelineViewState } from './pipelineSteps'
+import { useConfirm } from '../shared/ConfirmDialog'
+import { AdminIcon } from '../shared/AdminIcon'
 
 type DataPipelineType = SharedDataPipelineType
 
@@ -38,49 +38,21 @@ const pipelineTypes: readonly DataPipelineType[] = [
   'GH_ANNOUNCEMENT_COLLECTION',
   'ANNOUNCEMENT_REGISTRATION',
 ]
-// 공식 게시판을 API 키 없이 읽어 원천 저장 뒤 미확정 공고로 정제한다.
-const boardSources = [
-  {
-    type: 'SH_ANNOUNCEMENT_COLLECTION', id: 'sh', title: 'SH',
-    groupDescription: 'SH 주택임대(건설임대) 분류의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. 매입임대·전세임대 글은 받지 않습니다. 수집 성공 뒤 미확정 공고로 정제하며 API 키 없이 실행합니다.',
-  },
-  {
-    type: 'GH_ANNOUNCEMENT_COLLECTION', id: 'gh', title: 'GH',
-    groupDescription: 'GH주택청약센터 임대주택(건설임대) 공고에서 지구·주택형·공급일정·접수처·공고문 정보를 나눠 저장합니다. 수집 성공 뒤 미확정 공고로 정제하며 API 키 없이 실행합니다.',
-  },
-] as const satisfies readonly {
-  type: DataPipelineType; id: string; title: string; groupDescription: string
-}[]
-const pipelineGroups = [
-  {
-    id: 'complex-pipelines',
-    title: '단지 데이터',
-    description: '처음 준비하거나 새 단지가 추가되었을 때 아래 순서로 진행해 주세요.',
-    types: ['COMPLEX_SYNC', 'COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT', 'COMPLEX_REGISTRATION'],
-  },
-  {
-    id: 'announcement-pipelines',
-    title: '공고 데이터',
-    description: 'LH 공고 갱신은 LH 공고 수집 후 정제까지 이어서 실행합니다. 단지가 준비되어 있다면 여기서 시작하세요.',
-    types: ['ANNOUNCEMENT_SYNC', 'ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_REFINEMENT'],
-  },
-] as const satisfies readonly {
-  id: string
-  title: string
-  description: string
-  types: readonly DataPipelineType[]
-}[]
+const complexTypes: readonly DataPipelineType[] = ['COMPLEX_SYNC', 'COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT', 'COMPLEX_REGISTRATION']
+const lhAnnouncementTypes: readonly DataPipelineType[] = ['ANNOUNCEMENT_SYNC', 'ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_REFINEMENT']
 
 // 공고 수집 첫 화면은 기관마다 실행 버튼 하나와 마지막 결과만 보인다. LH 마지막 결과는 따로 실행했던 수집·정제 이력도 포함한다.
 const agencySources: readonly { id: string; title: string; runType: DataPipelineType; resultTypes: readonly DataPipelineType[] }[] = [
-  { id: 'lh', title: 'LH', runType: 'ANNOUNCEMENT_SYNC', resultTypes: pipelineGroups[1].types },
-  ...boardSources.map(source => ({ id: source.id, title: source.title, runType: source.type, resultTypes: [source.type] })),
+  { id: 'lh', title: 'LH', runType: 'ANNOUNCEMENT_SYNC', resultTypes: lhAnnouncementTypes },
+  // SH·GH는 공식 게시판을 API 키 없이 읽어 원천 저장 뒤 미확정 공고로 정제한다.
+  { id: 'sh', title: 'SH', runType: 'SH_ANNOUNCEMENT_COLLECTION', resultTypes: ['SH_ANNOUNCEMENT_COLLECTION'] },
+  { id: 'gh', title: 'GH', runType: 'GH_ANNOUNCEMENT_COLLECTION', resultTypes: ['GH_ANNOUNCEMENT_COLLECTION'] },
 ]
 
-export function DataPipelineControl({ domain, compact = false, history, onShowHistory }: {
+export function DataPipelineControl({ domain, history, onShowHistory }: {
   // 공고 수집 화면에서 실행 이력을 실행 카드와 접어 둔 LH 품질 확인 사이에 둔다.
-  domain?: 'complex' | 'announcement'; compact?: boolean; history?: ReactNode; onShowHistory?: () => void
-} = {}) {
+  domain: 'complex' | 'announcement'; history?: ReactNode; onShowHistory?: () => void
+}) {
   const [selectedType, setSelectedType] = useState<DataPipelineType | null>(null)
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const [stopping, setStopping] = useState<Partial<Record<DataPipelineType, boolean>>>({})
@@ -90,6 +62,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
   const [checking, setChecking] = useState(true)
   const [qualityOpen, setQualityOpen] = useState(false)
   const [uploadBusy, setUploadBusy] = useState(false)
+  const [confirm, confirmDialog] = useConfirm()
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
     COMPLEX_REGISTRATION: 0,
@@ -104,16 +77,9 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     ANNOUNCEMENT_REGISTRATION: 0,
   })
   const mounted = useRef(true)
-  const orderedGroups = pipelineGroups.filter(group => !domain || group.id === `${domain}-pipelines`).sort((left, right) =>
-    Number(right.types.some((type) => pipelineStates[type].execution.status === 'RUNNING'))
-      - Number(left.types.some((type) => pipelineStates[type].execution.status === 'RUNNING'))
-      || Math.max(...right.types.map((type) => Date.parse(pipelineStates[type].execution.startedAt ?? '') || 0))
-        - Math.max(...left.types.map((type) => Date.parse(pipelineStates[type].execution.startedAt ?? '') || 0))
-      || Number(right.id === 'announcement-pipelines') - Number(left.id === 'announcement-pipelines'),
-  )
   const internalRunning = Object.values(pipelineStates)
     .some((state) => state.execution.status === 'RUNNING')
-  const isAnyPipelineRunning = internalRunning || startingType !== null || uploadBusy || (compact && checking)
+  const isAnyPipelineRunning = internalRunning || startingType !== null || uploadBusy || checking
 
   useEffect(() => {
     mounted.current = true
@@ -141,9 +107,28 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     void execute(type)
   }
 
+  // 저장된 공고 원천 전체를 다시 정제하므로 범위를 알리고 묻는다.
+  async function refineAll() {
+    if (isAnyPipelineRunning) return
+    if (!(await confirm({
+      title: '저장된 원천 전체로 공고 정제를 실행할까요?',
+      body: <>
+        <p>이번에 수집한 분량만이 아니라 저장된 공고 원천 전체를 다시 정제합니다. 이전 수집의 원천도 포함됩니다.</p>
+        <p>실행 중에는 다른 수집·정제를 시작할 수 없습니다. 도중에 중지할 수 있지만 이미 정제한 내용은 되돌아가지 않습니다.</p>
+      </>,
+      confirmLabel: '공고 정제 실행',
+    }))) return
+    handleRun('ANNOUNCEMENT_REFINEMENT')
+  }
+
   async function stop(type: DataPipelineType) {
     const executionId = pipelineStates[type].execution.executionId
     if (!executionId || stopping[type]) return
+    if (!(await confirm({
+      title: `${pipelineLabels[type]} 실행을 중지할까요?`,
+      body: '현재 처리 중인 항목이 끝나면 멈춥니다. 이미 저장한 데이터는 유지되고, 남은 대상은 다시 실행해야 처리됩니다.',
+      confirmLabel: '실행 중지',
+    }))) return
     clearPoll(type)
     const generation = nextGeneration(type)
     setStopping((previous) => ({ ...previous, [type]: true }))
@@ -170,7 +155,6 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     updateState(type, {
       execution: idleExecution(type),
       requestError: null,
-      errorResponse: null,
     })
     try {
       const execution = identifiers ? await retryInitialRegistration(identifiers) : await startDataPipeline(type)
@@ -231,7 +215,6 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     updateState(type, {
       execution,
       requestError: null,
-      errorResponse: null,
     })
     clearPoll(type)
     if (execution.status === 'RUNNING') {
@@ -243,13 +226,9 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     const message = error instanceof Error
       ? error.message
       : '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-    const errorResponse = error instanceof DataPipelineApiError
-      ? error.serverResponse
-      : null
     updateState(type, (previous) => ({
       ...previous,
       requestError: message,
-      errorResponse,
     }))
   }
 
@@ -290,8 +269,8 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     }))
   }
 
-  const visibleTypes: readonly DataPipelineType[] = domain === 'complex' ? pipelineGroups[0].types
-    : [...pipelineGroups[1].types, ...boardSources.map(source => source.type)]
+  const visibleTypes: readonly DataPipelineType[] = domain === 'complex' ? complexTypes
+    : agencySources.flatMap(source => source.resultTypes)
   const activeType = selectedType && visibleTypes.includes(selectedType) ? selectedType : null
   const runningElsewhere = pipelineTypes.find(type => !visibleTypes.includes(type)
     && pipelineStates[type].execution.status === 'RUNNING')
@@ -317,6 +296,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
       onStart={type => handleRun(type)} onRetry={identifiers => void execute('COMPLEX_REGISTRATION', identifiers)}
       onStop={type => void stop(type)}
       onRefresh={type => void refresh(type, true)} onUploadBusy={setUploadBusy} onShowHistory={onShowHistory} />
+    {confirmDialog}
   </section>
   function recent(source: typeof agencySources[number]) {
     const latest = source.resultTypes.map(type => pipelineStates[type].execution)
@@ -324,7 +304,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
     return <div className={workflow.recent}>
       <div className={workflow.recentHeading}>
         <span>마지막 결과</span>
-        {latest && <button type="button" className={workflow.resultLink} onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button>}
+        {latest && <button type="button" className="admin-text-button" onClick={() => setSelectedType(latest.type)}>실행 결과 보기</button>}
       </div>
       {latest ? <div className={workflow.recentValue}>
         <strong className={`pipeline-badge pipeline-${latest.status.toLowerCase()}`}>{pipelineStatusLabels[latest.status]}</strong>
@@ -335,7 +315,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
         ? '최근 실행을 확인하지 못했습니다.' : '아직 실행 이력이 없습니다.'}</span>}
     </div>
   }
-  if (compact && domain) return <>
+  return <>
   <section className={`registration-card ${workflow.workspace}`} aria-label="데이터 실행">
     {lockNotice}
     {serviceKeyNotice}
@@ -345,7 +325,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
       </button>
       <PipelineExecutionSteps focused pending={startingType === activeType} key={activeType} execution={pipelineStates[activeType].execution}
         stopping={stopping[activeType]} onStop={() => void stop(activeType)} recoveryDisabled={isAnyPipelineRunning}
-        onRefine={() => handleRun('ANNOUNCEMENT_REFINEMENT')}>
+        onRefine={() => void refineAll()}>
         {startingType === activeType ? <div role="status"><h4>실행 접수를 확인하고 있습니다</h4>
             <p>서버에서 실행을 받아들였는지 확인 중입니다. 확인 전에는 다시 실행할 수 없습니다.</p></div> : null}
       </PipelineExecutionSteps>
@@ -360,7 +340,7 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
         {agencySources.map(source => <section key={source.id} aria-labelledby={`${source.id}-source`} className={workflow.source}>
           <header>
             <h2 id={`${source.id}-source`}>{source.title}</h2>
-            <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey(source.runType)}
+            <Button data-design-system variant="secondary" disabled={isAnyPipelineRunning || blockedByServiceKey(source.runType)}
               onClick={() => handleRun(source.runType)}>{pipelineLabels[source.runType]}</Button>
           </header>
           {recent(source)}
@@ -373,114 +353,12 @@ export function DataPipelineControl({ domain, compact = false, history, onShowHi
   {history}
   {/* LH 공급 감소 보류 승인은 이 메뉴에서만 할 수 있어 지우지 않고 맨 아래에 접어 둔다. */}
   {!activeType && <details className={workflow.quality} open={qualityOpen} onToggle={event => setQualityOpen(event.currentTarget.open)}>
-    <summary>LH 데이터 품질·공급 감소 보류 확인</summary>
+    <summary>LH 데이터 품질·공급 감소 보류 확인<AdminIcon name="chevronDown" size={16} className={workflow.qualityChevron} /></summary>
     {qualityOpen && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
       pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution)} />}
   </details>}
+  {confirmDialog}
   </>
-
-  return (
-    <section className="registration-card data-pipeline-card" aria-label={compact ? '데이터 실행' : '데이터 수집·정제'}>
-      {serviceKeyNotice}
-      {!compact && <div className="data-pipeline-heading">
-        <div>
-          <h2 id="data-pipeline-title">데이터 수집·정제</h2>
-          <p>
-            평소에는 공고를 갱신하고, 단지는 처음 준비하거나 누락된 단지를 보완할 때 처리합니다.
-            수집 실패·호출 제한이 있으면 자동 정제를 멈춥니다. 결과를 확인한 뒤 다음 작업을 선택해 주세요.
-          </p>
-        </div>
-      </div>}
-      <div className="data-pipeline-groups">
-        {orderedGroups.map((group) => (
-          <section
-            aria-labelledby={group.id}
-            className="data-pipeline-group"
-            key={group.id}
-          >
-            <div className="data-pipeline-group-heading">
-              <div>
-                <h3 id={group.id}>{group.title}</h3>
-                <p>{group.description}</p>
-              </div>
-              <div className={workflow.actions}>
-                {group.id === 'announcement-pipelines' && <Button data-design-system
-                  disabled={isAnyPipelineRunning || blockedByServiceKey('ANNOUNCEMENT_SYNC')}
-                  onClick={() => handleRun('ANNOUNCEMENT_SYNC')}>
-                  {buttonLabel('ANNOUNCEMENT_SYNC', pipelineStates.ANNOUNCEMENT_SYNC.execution.status)}
-                </Button>}
-              </div>
-            </div>
-            {group.id === 'complex-pipelines' && <ol className={workflow.preparation} aria-label="단지 준비 순서">
-              <li><strong>1. 단지 원천 수집</strong><p>마이홈 단지와 LH 임대 카탈로그를 가져옵니다.</p>
-                <Button data-design-system disabled={isAnyPipelineRunning || blockedByServiceKey('COMPLEX_COLLECTION')}
-                  onClick={() => handleRun('COMPLEX_COLLECTION')}>
-                  {buttonLabel('COMPLEX_COLLECTION', pipelineStates.COMPLEX_COLLECTION.execution.status)}</Button></li>
-              <li><strong>2. 주소·좌표 준비</strong><p>ZIP으로 주소·좌표를 확인하고, 실패한 단지는 검색하거나 직접 입력해 보완합니다.</p>
-                <Link to="/admin/locations">위치정보 ZIP 업로드</Link></li>
-              <li><strong>3. 단지 정제·저장</strong><p>{retiredComplexRefinementNotice}</p>
-                <button type="button" disabled>
-                  {buttonLabel('COMPLEX_REFINEMENT', pipelineStates.COMPLEX_REFINEMENT.execution.status)}</button></li>
-            </ol>}
-            <details className={workflow.additional}>
-              <summary>{group.id === 'complex-pipelines' ? '단지 추가 작업' : '공고 추가 작업'}</summary>
-              <p className="ingest-meta">{group.id === 'complex-pipelines'
-                ? retiredComplexRefinementNotice
-                : '수집만 다시 하거나, 외부 호출 없이 저장된 공고 원천 전체를 정제할 수 있습니다. 이전 수집의 원천도 포함됩니다.'}</p>
-              <div className={workflow.actions}>
-                {(group.id === 'complex-pipelines' ? [group.types[0]] : [group.types[1], group.types[2]]).map(type =>
-                  <button type="button" key={type}
-                    disabled={isAnyPipelineRunning || retiredPipelineTypes.includes(type) || blockedByServiceKey(type)}
-                    onClick={() => handleRun(type)}>
-                    {buttonLabel(type, pipelineStates[type].execution.status)}</button>)}
-              </div>
-            </details>
-            <div className={compact ? undefined : 'data-pipeline-results'}>
-              {group.types.map((type) => (
-                <PipelineResult key={type} type={type} state={pipelineStates[type]}
-                  collectionExecution={latestCollectionExecution(
-                    pipelineStates[group.types[0]].execution, pipelineStates[group.types[1]].execution,
-                  )}
-                  stopping={stopping[type] ?? false} onStop={() => void stop(type)}
-                  recoveryDisabled={isAnyPipelineRunning}
-                  onRefine={() => handleRun(group.types[2])}
-                  />
-              ))}
-            </div>
-          </section>
-        ))}
-        {boardSources.map(source => <section key={source.type} aria-labelledby={`${source.id}-pipelines`}
-          className="data-pipeline-group">
-          <div className="data-pipeline-group-heading">
-            <div>
-              <h3 id={`${source.id}-pipelines`}>{source.title} 공고 원천</h3>
-              <p>{source.groupDescription}</p>
-            </div>
-            <button type="button" disabled={isAnyPipelineRunning}
-              onClick={() => handleRun(source.type)}>
-              {buttonLabel(source.type, pipelineStates[source.type].execution.status)}
-            </button>
-          </div>
-          <div className={compact ? undefined : 'data-pipeline-results'}>
-            {compact ? <>
-              {selectedType === source.type
-                && pipelineStates[source.type].execution.status !== 'IDLE'
-                && <PipelineExecutionSteps execution={pipelineStates[source.type].execution}
-                  stopping={stopping[source.type]}
-                  onStop={() => void stop(source.type)} />}
-              {pipelineStates[source.type].requestError
-                && <p role="alert" className="form-error">{pipelineStates[source.type].requestError}</p>}
-            </> : <PipelineResult type={source.type} state={pipelineStates[source.type]}
-              stopping={stopping[source.type] ?? false}
-              onStop={() => void stop(source.type)} />}
-          </div>
-        </section>)}
-      </div>
-      {!compact && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
-        pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
-      )} />}
-    </section>
-  )
 }
 
 function latestCollectionExecution(combined: DataPipelineExecution, collection: DataPipelineExecution): DataPipelineExecution {
@@ -504,7 +382,7 @@ function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
 }
 
 function viewState(execution: DataPipelineExecution): PipelineViewState {
-  return { execution, requestError: null, errorResponse: null }
+  return { execution, requestError: null }
 }
 
 function idleExecution(type: DataPipelineType): DataPipelineExecution {
@@ -520,12 +398,4 @@ function idleExecution(type: DataPipelineType): DataPipelineExecution {
     partiallyFailedSteps: [],
     failure: null,
   }
-}
-
-function buttonLabel(type: DataPipelineType, status: DataPipelineExecution['status']): string {
-  const label = pipelineLabels[type]
-  if (status === 'RUNNING') {
-    return `${label} 실행 중…`
-  }
-  return label
 }

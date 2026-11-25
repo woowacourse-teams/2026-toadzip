@@ -5,34 +5,19 @@ import { useAdminAuth } from './useAdminAuth'
 import styles from './AdminLayout.module.css'
 import { FailureReturnLink } from '../ingest/FailureReturnLink'
 import { UnsavedChangesDialog } from '../management/UnsavedChangesDialog'
+import { AdminIcon, type AdminIconName } from '../shared/AdminIcon'
 
 const workLinks = [['/admin/operations', '운영 홈', 'home'], ['/admin/complexes', '단지 관리', 'building'],
   ['/admin/announcements', '공고 관리', 'document'], ['/admin/failures', '실패·검토 항목', 'alert']] as const
 const sourceLinks = [['/admin/ingest/announcements', '공고 수집'], ['/admin/ingest/complexes', '단지 수집'],
-  ['/admin/sources', '원천 데이터'], ['/admin/locations', '주소 데이터']] as const
+  ['/admin/sources', '원천 데이터']] as const
 const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/notification-deliveries', '알림 발송 기록'], ['/admin/feedback', '사용자 의견']] as const
-const extraIcons: Record<string, string> = {
-  '공고 수집': 'download', '단지 수집': 'layers', '원천 데이터': 'database', '실패·검토 항목': 'warning',
-  '주소 데이터': 'pin', '회원 관리': 'users', '알림 신청 관리': 'bell', '알림 발송 기록': 'send', '사용자 의견': 'message',
+const extraIcons: Record<string, AdminIconName> = {
+  '공고 수집': 'download', '단지 수집': 'layers', '원천 데이터': 'database',
+  '회원 관리': 'user', '알림 신청 관리': 'bell', '알림 발송 기록': 'send', '사용자 의견': 'message',
 }
-function MenuIcon({ kind }: { kind: string }) {
-  const paths: Record<string, string> = {
-    download: 'M12 3v11m0 0-4-4m4 4 4-4M4 17v3h16v-3',
-    layers: 'm12 3 9 5-9 5-9-5 9-5zM3 13l9 5 9-5',
-    database: 'M4 6c0-4 16-4 16 0s-16 4-16 0v12c0 4 16 4 16 0V6M4 12c0 4 16 4 16 0',
-    warning: 'M12 3 2 21h20L12 3zM12 9v5M12 17v1',
-    pin: 'M12 22s8-8 8-14A8 8 0 0 0 4 8c0 6 8 14 8 14zM9 9a3 3 0 1 0 6 0 3 3 0 1 0-6 0',
-    users: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5a7.5 7.5 0 0 1 15 0',
-    bell: 'M4 17h16l-2-4V9a6 6 0 0 0-12 0v4l-2 4M9 21h6',
-    send: 'm2 11 20-9-9 20-3-9-8-2zM10 13 22 2',
-    message: 'M3 3h18v14H9l-6 5V3zM7 8h10M7 12h6',
-  }
-  const path = paths[kind] ?? (kind === 'building' ? 'M4 21V3h12v18M16 9h4v12M8 7h4M8 11h4M8 15h4M8 21v-3h4v3'
-    : kind === 'document' ? 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7'
-    : kind === 'home' ? 'M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5'
-    : kind === 'alert' ? 'M12 3 2 20h20L12 3zM12 10v4M12 17h.01'
-    : 'M9 3h6v4H9zM6 5H4v16h16V5h-2M8 13l2 2 5-5M8 18h8')
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path} /></svg>
+function MenuIcon({ kind }: { kind: AdminIconName }) {
+  return <AdminIcon name={kind} size={20} />
 }
 
 export function AdminLayout() {
@@ -81,15 +66,12 @@ export function AdminLayout() {
           {/* 메뉴 접기는 메뉴 폭과 같은 로고 줄 오른쪽 끝에 둔다. 메뉴 안에 따로 줄을 차지하지 않는다. */}
           <button type="button" className={styles.collapseButton} aria-label={collapsed ? '메뉴 펼치기' : '메뉴 접기'}
             title={collapsed ? '메뉴 펼치기' : '메뉴 접기'} aria-expanded={!collapsed} aria-controls={menuId} onClick={() => setCollapsed(value => !value)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
-              <path d={collapsed ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3'} />
-            </svg>
+            <AdminIcon name={collapsed ? 'sidebarOpen' : 'sidebarClose'} size={20} />
           </button>
         </div>
         <button className={styles.menuButton} ref={menuButton} type="button" aria-expanded={menuOpen}
           aria-controls={menuId} onClick={() => setMenuOpen(value => !value)}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d={menuOpen ? 'M6 6l12 12M18 6 6 18' : 'M4 6h16M4 12h16M4 18h16'} /></svg>
+          <AdminIcon name={menuOpen ? 'close' : 'menu'} size={18} />
           메뉴
         </button>
         <div className="admin-header-account">
@@ -103,8 +85,8 @@ export function AdminLayout() {
         <div className="admin-nav-group"><span>매일 하는 작업</span>
           {workLinks.map(([path, label, icon]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={icon} /><span className={styles.menuLabel}>{label}</span></NavLink>)}
         </div>
-        <details className={styles.navTools} {...groupProps('source')}><summary>수집·원천 도구</summary><div className="admin-nav-group">{sourceLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
-        <details className={styles.navTools} {...groupProps('member')}><summary>회원·알림</summary><div className="admin-nav-group">{memberLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
+        <details className={styles.navTools} {...groupProps('source')}><summary>수집·원천 도구<AdminIcon name="chevronDown" size={16} className={styles.navChevron} /></summary><div className="admin-nav-group">{sourceLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
+        <details className={styles.navTools} {...groupProps('member')}><summary>회원·알림<AdminIcon name="chevronDown" size={16} className={styles.navChevron} /></summary><div className="admin-nav-group">{memberLinks.map(([path, label]) => <NavLink key={path} to={path} aria-label={label}><MenuIcon kind={extraIcons[label]} /><span className={styles.menuLabel}>{label}</span></NavLink>)}</div></details>
       </nav>
       {/* 모바일 서랍 메뉴 뒤 배경. 누르면 메뉴를 닫는다(키보드는 Escape로 닫는다). */}
       {menuOpen ? <div className={styles.backdrop} aria-hidden="true" onClick={() => { setMenuOpen(false); menuButton.current?.focus() }} /> : null}

@@ -27,7 +27,7 @@ function useInsight<T>(key: string, loader: (signal: AbortSignal) => Promise<T>,
   return { data, error, retry: () => setAttempt(value => value + 1), pending: valid && !data && !error }
 }
 function InsightError({ error, retry }: { error: string; retry: () => void }) {
-  return <div className={styles.error} role="alert"><p>{error}</p><button type="button" onClick={retry}>다시 불러오기</button></div>
+  return <div className="admin-alert" role="alert"><p>{error}</p><button type="button" onClick={retry}>다시 불러오기</button></div>
 }
 export function NotificationTargetOverview() {
   const [params, setParams] = useSearchParams()

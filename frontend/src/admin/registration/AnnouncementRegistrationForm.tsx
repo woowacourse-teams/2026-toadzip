@@ -20,6 +20,7 @@ import {
   RegistrationSelectField,
   RegistrationTextField,
 } from './RegistrationFields'
+import { AdminIcon } from '../shared/AdminIcon'
 
 const recruitmentTypes = toRegistrationOptions(['NEW', 'WAITLIST', 'ETC'])
 const receptionMethods = toRegistrationOptions(['ONLINE', 'VISIT', 'MAIL', 'ETC'])
@@ -296,7 +297,7 @@ export function AnnouncementRegistrationForm({
           {isSubmitting ? '공고 저장 중…' : '공고 저장'}
         </button>
       </form>
-      {createdId ? <Link className="admin-primary" to={`/admin/announcements/${createdId}`}>등록한 공고 상세 보기 →</Link> : null}
+      {createdId ? <Link className="admin-primary" to={`/admin/announcements/${createdId}`}>등록한 공고 상세 보기<AdminIcon name="chevronRight" /></Link> : null}
     </section>
   )
 }

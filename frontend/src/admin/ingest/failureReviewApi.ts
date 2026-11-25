@@ -15,6 +15,12 @@ export type FailureReview = IngestFailure & {
   /** 관리자가 공고를 보정해 해결로 바꾼 경우의 관리자. 정제가 해결했으면 null이다. */
   lastResolvedBy: string | null
   productLinkStatus: 'EXISTS' | 'NOT_FOUND' | 'UNKNOWN'; product: FailureProduct | null
+  /** 서비스 데이터나 원천에 적힌 대상 이름. 이름이 없어 원천 식별자만 아는 대상이면 null이다. */
+  name: string | null
+  /** 대상의 원천 식별자. 이름이 없는 대상을 가리킬 때 쓴다. */
+  identifier: string
+  /** 같은 공고 안에서 행을 가르는 공급행 번호. 공급행 단위 기록이 아니면 null이다. */
+  supplyRow: number | null
 }
 export type FailureReviewPageData = {
   items: FailureReview[]; page: number; totalElements: number; totalPages: number; hasNext: boolean
@@ -54,12 +60,13 @@ function parseReview(value: unknown): FailureReview {
   if ((value.productLinkStatus === 'EXISTS') !== (product !== null)) throw invalid()
   const { product: _product, metadata, ...failure } = value
   const raw = { ...failure, ...metadata, requestDescription: value.sourceKey }
-  const serial = typeof value.metadata.sourceHouseSerialNumber === 'number'
-    ? ` · 공급행 ${value.metadata.sourceHouseSerialNumber}` : ''
-  const name = product?.name || value.targetName || value.sourceComplexIdentifier
-    || value.sourceAnnouncementIdentifier || value.sourceKey
+  const supplyRow = typeof value.metadata.sourceHouseSerialNumber === 'number' ? value.metadata.sourceHouseSerialNumber : null
+  const serial = supplyRow === null ? '' : ` · 공급행 ${supplyRow}`
+  const name = product?.name || value.targetName || null
+  const identifier = value.sourceComplexIdentifier || value.sourceAnnouncementIdentifier || value.sourceKey
   return {
-    id: value.id, category: value.category as FailureCategory, target: name + serial, sourceKey: value.sourceKey,
+    id: value.id, category: value.category as FailureCategory, target: (name ?? identifier) + serial, sourceKey: value.sourceKey,
+    name, identifier, supplyRow,
     reason: value.reason, detail: value.detail, status: String(value.status), occurredAt: value.lastOccurredAt,
     occurrenceCount: value.occurrenceCount, recurrenceCount: value.recurrenceCount,
     lastResolvedAt: value.lastResolvedAt, lastResolvedBy: typeof value.lastResolvedBy === 'string' ? value.lastResolvedBy : null,

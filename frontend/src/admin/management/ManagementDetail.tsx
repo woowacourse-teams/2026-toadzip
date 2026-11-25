@@ -20,6 +20,8 @@ import { EligibilityDraftPanel } from '../announcement-pdf/EligibilityDraftPanel
 import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
 import { AnnouncementDetailNavigation } from './AnnouncementDetailNavigation'
+import { AdminIcon } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const {id: routeId = ''} = useParams()
@@ -73,6 +75,8 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     return () => controller.abort()
   },[resource,id,attempt,embedded])
   useUnsavedChanges(dirty)
+  const [confirm, confirmDialog] = useConfirm()
+  const discard = (title: string, confirmLabel: string) => confirm({ title, body: '입력한 내용은 저장되지 않습니다.', confirmLabel })
   function saved(next:ManagementDetailData) { setValue(next);setEditing(false);setDirty(false);setErrors({});setNotice('변경사항을 저장했습니다.');onChanged?.() }
   function reloadDetail() { void getManagementDetail(resource, id).then(saved).catch(cause => setError(String(cause))) }
   async function trash() {
@@ -94,8 +98,8 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
     } catch(cause) { setError(cause instanceof Error ? cause.message : '처리하지 못했습니다.') }
     finally {setBusy(false)}
   }
-  return <section className="management-page management-detail" data-resource={resource}>{!embedded ? <Link to={back}>← 목록으로</Link> : null}
-    {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('입력한 내용을 버리고 새로 조회할까요?')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
+  return <section className="management-page management-detail" data-resource={resource}>{!embedded ? <Link to={back}><AdminIcon name="arrowLeft" className="admin-icon-lead" />목록으로</Link> : null}
+    {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={async () => {if(!dirty || await discard('입력한 내용을 버리고 새로 조회할까요?', '버리고 조회')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
     {!value && !error ? <p role="status">상세 정보를 불러오는 중…</p> : null}
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}
     {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p>{value.summary.announcement?.publicationType !== 'ORIGINAL' && <PublicationType summary={value.summary} />}<AnnouncementOwnership summary={value.summary} /><ManagementStatus summary={value.summary} />
@@ -131,9 +135,12 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           <QualityComparisonPanel key={`${resource}:${id}`} resource={resource} id={id} detail={value} onDirtyChange={setExtendedDirty} onBusyChange={setExtendedBusy}
             onChanged={() => { setAttempt(current => current + 1); onChanged?.() }} />
         </fieldset></details> : null}</> : null}
-      {section === 'info' && !editing ? <div className="admin-detail-sections">{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
-        <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name} data-field={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
-          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}
+      {section === 'info' && !editing ? <div className="admin-detail-sections">{sections.map(group => {
+        const grid = <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name} data-field={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
+          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl>
+        return group.collapsed ? <details className="admin-detail-section" key={group.title}><summary>{group.title}</summary>{grid}</details>
+          : <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>{grid}</section>
+      })}
         {resource === 'announcements' ? <ReceptionPlacesView data={value.data} /> : null}</div> : null}
       {editing && section === 'info' ? <form ref={formRef} key={String(value.data.version)} onChange={() => setDirty(true)} onSubmit={event => {
         event.preventDefault();setBusy(true);setError('');setErrors({})
@@ -144,7 +151,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
           setError(cause instanceof Error ? cause.message : '저장하지 못했습니다.');if(cause instanceof ManagementError) setErrors(reception ? receptionPlaceErrors(cause.fields, reception.positions) : cause.fields)
         }).finally(() => setBusy(false))
       }}>
-        {value.scheduleReviewed ? <p className="admin-warning">확인된 접수 기간입니다. 확정 접수 일정 관리에서 변경해 주세요.</p> : null}
+        {value.scheduleReviewed ? <p className="admin-warning">접수 시작일·종료일은 확정한 접수 일정에서 정해집니다. 접수 일정 탭에서 고칩니다. <button type="button" data-admin-navigation disabled={busy} onClick={() => { setEditing(false); openSection('schedules') }}>접수 일정 탭으로 이동</button></p> : null}
         {sections.map(group => <fieldset disabled={busy} key={group.title}><legend>{group.title}</legend>
           {group.title === '주소·위치' ? <AddressPicker onSelect={address => {
             for (const [key, fieldValue] of Object.entries(address)) {
@@ -153,9 +160,13 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
             }
             setDirty(true)
           }} /> : null}
-          <EditFields fields={group.fields} data={value.data} errors={errors} scheduleReviewed={value.scheduleReviewed} /></fieldset>)}
+          {group.collapsed
+            // 접어 둔 칸에 오류나 빈 필수값이 있으면 펼쳐서 보이게 한다.
+            ? <details open={group.fields.some(field => errors[field.name] || field.required && (valueAt(value.data, field.name) ?? '') === '') || undefined}><summary>{group.fields.map(field => field.label).join(' · ')}</summary>
+              <EditFields fields={group.fields} data={value.data} errors={errors} scheduleReviewed={value.scheduleReviewed} /></details>
+            : <EditFields fields={group.fields} data={value.data} errors={errors} scheduleReviewed={value.scheduleReviewed} />}</fieldset>)}
         {resource === 'announcements' ? <ReceptionPlacesEditor data={value.data} errors={errors} disabled={busy} onChange={() => setDirty(true)} /> : null}
-        <div className="admin-save-bar"><button className="admin-primary" disabled={busy}>{busy ? '저장 중…' : '변경사항 저장'}</button><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('변경사항을 버릴까요?')) {if (embedded) setAttempt(current => current + 1); else setEditing(false);setDirty(false);setError('')}}}>{embedded ? '변경 취소' : '취소'}</button></div></form> : null}
+        <div className="admin-save-bar"><button className="admin-primary" disabled={busy}>{busy ? '저장 중…' : '변경사항 저장'}</button><button type="button" disabled={busy} onClick={async () => {if(!dirty || await discard('변경사항을 버릴까요?', '버리기')) {if (embedded) setAttempt(current => current + 1); else setEditing(false);setDirty(false);setError('')}}}>{embedded ? '변경 취소' : '취소'}</button></div></form> : null}
       {section === 'schedules' && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : null}
       {section === 'relations' ? resource === 'complexes' ? <ComplexRelationsEditor value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : <><h2>공급정보·단지 연결</h2>
           {!value.summary.deleted && <SupplyCorrectionWorkbench key={id} id={id} sourceUrl={String(value.data.originalUrl ?? '')}
@@ -169,5 +180,6 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         <ChangeHistory resource={resource} id={id} version={Number(value.data.version)} /></> : null}
       </div>
     </> : null}
+    {confirmDialog}
   </section>
 }

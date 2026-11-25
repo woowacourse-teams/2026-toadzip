@@ -5,8 +5,8 @@ import styles from './ComplexIngest.module.css'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
 import { LocationPreparation } from './LocationPreparation'
 
-export function LocationSummaryUpload({ embedded = false, disabled = false, onBusyChange, revision = '', onChanged }: {
-  embedded?: boolean; disabled?: boolean; onBusyChange?: (busy: boolean) => void; revision?: string; onChanged?: () => void
+export function LocationSummaryUpload({ disabled = false, onBusyChange, revision = '', onChanged }: {
+  disabled?: boolean; onBusyChange?: (busy: boolean) => void; revision?: string; onChanged?: () => void
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [report, setReport] = useState<LocationSummaryImportReport | null>(null)
@@ -42,7 +42,6 @@ export function LocationSummaryUpload({ embedded = false, disabled = false, onBu
   }
 
   return <div className={styles.uploadWorkspace}>
-    {!embedded && <h2>주소·좌표 준비</h2>}
     <section aria-label="좌표 ZIP 업로드" className={styles.uploadCard}>
     <header className={styles.uploadHeading}><h3>좌표 자료 업로드</h3>
       <p>월 전체분 ZIP을 올리면 원천 주소와 일치하는 좌표를 준비합니다.</p></header>

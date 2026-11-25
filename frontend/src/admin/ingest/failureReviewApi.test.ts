@@ -18,6 +18,7 @@ it('서버의 전체 건수와 대상 불확실성을 보존하고 조회·취�
   const result=await getFailureReviews('announcement','announcement','PENDING',0,signal)
   expect(requestManagementApi).toHaveBeenCalledWith('/api/admin/ingest/failure-reviews?domain=announcement&category=announcement&status=PENDING&page=0&size=20','GET',undefined,signal)
   expect(result).toMatchObject({totalElements:1,totalPages:1,items:[{target:'공고 · 공급행 3',productLinkStatus:'UNKNOWN',product:null,recurrenceCount:1}]})
+  expect(result.items[0]).toMatchObject({name:'공고',identifier:'notice',supplyRow:3})
   expect(result.items[0].lastResolvedBy).toBeNull()
   vi.mocked(requestManagementApi).mockResolvedValue({...response,items:[{...response.items[0],lastResolvedBy:'root'}]})
   expect((await getFailureReviews('announcement','all','ALL',0)).items[0].lastResolvedBy).toBe('root')
@@ -31,6 +32,13 @@ it.each([
 ])('손상된 건수·종류·상태·제품 링크를 거절한다: %j',async change=>{
   vi.mocked(requestManagementApi).mockResolvedValue({...response,...change})
   await expect(getFailureReviews('announcement','all','ALL',0)).rejects.toThrow('오류 검토 응답 형식')
+})
+
+it('대상 이름이 없으면 이름을 지어내지 않고 원천 식별자를 따로 넘긴다',async()=>{
+  vi.mocked(requestManagementApi).mockResolvedValue({...response,items:[{...response.items[0],targetName:null,
+    sourceAnnouncementIdentifier:null,sourceKey:'03:06:07:2015122300021066',metadata:{}}]})
+  expect((await getFailureReviews('announcement','all','PENDING',0)).items[0]).toMatchObject({
+    name:null,identifier:'03:06:07:2015122300021066',supplyRow:null,target:'03:06:07:2015122300021066'})
 })
 
 it('조회 실패를 빈 데이터로 바꾸지 않는다',async()=>{

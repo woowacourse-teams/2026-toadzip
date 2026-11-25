@@ -9,6 +9,7 @@ import { countInput, updateHousingType, setMembersCount, wholeTypeQuota } from '
 import type { AnnouncementComplex } from './supplyCorrectionApi'
 import { SharedCountsDraft, SupplyTargetDraft } from './SupplyTargetDraft'
 import styles from './SupplyCorrection.module.css'
+import { NewWindowMark } from '../shared/AdminIcon'
 
 const number = (text: string) => text === '' ? null : Number(text)
 
@@ -109,7 +110,7 @@ export function SupplyRowDraft({ sheet, typeKey, complexes, onChange, onRemove, 
           <label>이 공고의 주택형 표기<input required maxLength={255} value={value.name} aria-describedby={`${value.key}-type-name`} onChange={event => field({ name: event.target.value })} /></label>
           <p id={`${value.key}-type-name`} className={styles.sourceName}>
             공개 화면에 이 표기로 보이며 이 공고에만 적용됩니다.
-            {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기 →</a></> : null}
+            {value.housingComplexId ? <> 단지 주택형 이름 자체가 틀렸다면 <a href={`/admin/complexes/${value.housingComplexId}?section=relations`} target="_blank" rel="noreferrer">단지 주택형 이름 고치기<NewWindowMark /></a></> : null}
           </p>
         </div>
         <label>공급 PNU<input maxLength={255} placeholder="지번을 모르면 비움" value={value.supplyPnu ?? ''} onChange={event => field({ supplyPnu: event.target.value || null })} /></label>

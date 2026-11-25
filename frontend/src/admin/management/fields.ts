@@ -29,7 +29,8 @@ export const provinces = [['11','서울'],['26','부산'],['27','대구'],['28',
   ['41','경기'],['51','강원'],['43','충북'],['44','충남'],['52','전북'],['46','전남'],['47','경북'],['48','경남'],['50','제주']]
 export type Field = { name: string; label: string; type?: 'text' | 'number' | 'date' | 'url' | 'month' | 'time'; required?: boolean;
   options?: string[]; min?: number; max?: number; step?: string; boolean?: boolean; maxLength?: number }
-export type Section = { title: string; fields: Field[] }
+/** collapsed는 늘 볼 값이 아니라 접어 두는 구역이다. */
+export type Section = { title: string; fields: Field[]; collapsed?: boolean }
 const common: Field[] = [{ name:'name', label:'이름', required:true }, { name:'rentalType', label:'공급 유형', options:rentals, required:true },
   {name:'agencyCode', label:'공급 기관', options:['LH','SH','GH','ETC'], required:true}]
 export const complexSections: Section[] = [
@@ -37,7 +38,7 @@ export const complexSections: Section[] = [
   {title:'주소·위치', fields:[{name:'address.roadAddress',label:'도로명주소',required:true},
     {name:'address.latitude',label:'위도',type:'number',required:true,min:-90,max:90,step:'0.000001'},
     {name:'address.longitude',label:'경도',type:'number',required:true,min:-180,max:180,step:'0.000001'}]},
-  {title:'주소 식별정보',fields:[{name:'address.pnu',label:'PNU'},{name:'address.legalDongCode',label:'법정동 코드',required:true},
+  {title:'행정 코드',collapsed:true,fields:[{name:'address.pnu',label:'PNU'},{name:'address.legalDongCode',label:'법정동 코드',required:true},
     {name:'address.provinceCode',label:'시·도 코드',required:true},{name:'address.cityCountyDistrictCode',label:'시·군·구 코드',required:true}]},
   {title:'시설정보', fields:[{name:'totalHouseholdCount',label:'전체 세대수',type:'number',min:0},
     {name:'totalParkingCount',label:'주차대수',type:'number',min:0},{name:'moveOutCountLastYear',label:'최근 1년 퇴거자 수',type:'number',min:0},

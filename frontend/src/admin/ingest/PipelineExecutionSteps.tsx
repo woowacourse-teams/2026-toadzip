@@ -9,6 +9,7 @@ import styles from './PipelineExecutionSteps.module.css'
 import { isRecord } from '../management/managementContract'
 import { PipelineNextActions } from './PipelineNextActions'
 import { PipelineFailureGuidance } from './PipelineFailureGuidance'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled, focused = false, pending = false, children }: {
   execution: DataPipelineExecution; onStop?: () => void; stopping?: boolean
@@ -48,7 +49,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
         return <li key={step} className={styles[state]}>
           <button type="button" aria-pressed={selected === step} aria-label={`${name} ${notApplicable ? '해당 없음' : states[state][1]}`}
             aria-current={state === 'running' ? 'step' : undefined} onClick={() => setSelected(step)}>
-            <span className={styles.marker} aria-hidden="true">{focused ? index + 1 : states[state][0]}</span>
+            <span className={styles.marker} aria-hidden="true">{focused ? index + 1 : <AdminIcon name={states[state][0]} size={18} />}</span>
             <span>{name}</span><small>{notApplicable ? '해당 없음' : states[state][1]}</small>
           </button>
         </li>
@@ -66,7 +67,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
     <PipelineNextActions execution={execution} onRefine={onRefine} disabled={recoveryDisabled} />
     {execution.status !== 'IDLE' && execution.status !== 'RUNNING' && execution.type !== 'ANNOUNCEMENT_REGISTRATION'
-      && !board && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+      && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
         실패 내역 확인</Link></p>}
     {selected && <section className={styles.detail} aria-label="단계 상세">
       <header className={styles.heading}><h4>{selectedName}</h4><button type="button" onClick={() => setSelected(null)}>접기</button></header>

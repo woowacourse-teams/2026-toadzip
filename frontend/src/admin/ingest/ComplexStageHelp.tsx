@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from 'react'
 import { IconButton } from '../../design-system/components/IconButton'
 import styles from './ComplexIngest.module.css'
+import { AdminIcon } from '../shared/AdminIcon'
 
 export function ComplexStageHelp({ stage, children }: { stage: string; children: string }) {
   const id = useId()
@@ -12,9 +13,7 @@ export function ComplexStageHelp({ stage, children }: { stage: string; children:
     <IconButton data-design-system label={`${stage} 안내`} className={styles.infoButton}
       aria-describedby={open ? id : undefined} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" />
-      </svg>
+      <AdminIcon name="info" size={16} />
     </IconButton>
     {open && <span id={id} role="tooltip" className={styles.stageHelpText}>{children}</span>}
   </span>

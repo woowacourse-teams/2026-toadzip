@@ -7,7 +7,7 @@ vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn() }))
 const getReviews = vi.mocked(getFailureReviews)
 beforeEach(() => vi.resetAllMocks())
 function row(extra: Partial<FailureReview> = {}): FailureReview {
-  return { id: 1, category: 'complex', target: '검증 단지', sourceKey: 'fixture-source', reason: 'GEOCODING_ERROR',
+  return { id: 1, category: 'complex', target: '검증 단지', name: '검증 단지', identifier: 'fixture-source', supplyRow: null, sourceKey: 'fixture-source', reason: 'GEOCODING_ERROR',
     detail: '도로명주소에 맞는 좌표가 없습니다.', status: 'PENDING', occurredAt: '2026-10-22T00:00:00Z', occurrenceCount: 1,
     recurrenceCount: 0, lastResolvedAt: null, lastResolvedBy: null, executionId: 'refine-1', source: null, raw: {}, productLinkStatus: 'NOT_FOUND', product: null, ...extra }
 }

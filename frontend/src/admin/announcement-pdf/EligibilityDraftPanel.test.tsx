@@ -143,7 +143,7 @@ describe('EligibilityDraftPanel', () => {
 
     expect(await screen.findByText('만 19~39세')).toBeInTheDocument()
     expect(api.create).toHaveBeenCalledWith('12', 'a'.repeat(64), null)
-    expect(screen.getByText('신청자격을 사용자 화면에 반영했어요.')).toBeInTheDocument()
+    expect(screen.getByText('신청자격을 사용자 화면에 반영했습니다.')).toBeInTheDocument()
     expect(screen.getByText('사용자 화면에 반영됨 · 기준일 2026-09-30')).toBeInTheDocument()
     expect(screen.getByText('신청 단위: 인천석남 21A (모집)')).toBeInTheDocument()
     expect(screen.getByText('신청자격 경로가 없는 공급대상: 고령자. 공고문을 확인해 주세요.')).toBeInTheDocument()
@@ -154,7 +154,7 @@ describe('EligibilityDraftPanel', () => {
     expect(screen.getByRole('button', { name: 'PDF 추출로 다시 반영' })).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: '판정에서 빼기' })[1])
-    expect(await screen.findByText('판정에서 뺐어요. 사용자 화면에 반영했어요.')).toBeInTheDocument()
+    expect(await screen.findByText('판정에서 뺐습니다. 사용자 화면에 반영했습니다.')).toBeInTheDocument()
     expect(api.apply).toHaveBeenCalledWith('12', expect.objectContaining({ status: 'PUBLISHED', revision: 1 }), expect.anything())
     const saved: Content = api.apply.mock.calls[0][2]
     expect(saved.paths[0].checks.map(check => check.label)).toEqual(['만 19세 이상 39세 이하'])
@@ -183,12 +183,12 @@ describe('EligibilityDraftPanel', () => {
     api.apply.mockImplementation(async (_id: string, _current: RuleSet, value: Content) => ({ ruleSet: draft(value, 2), published: false, saved: true, reason: '요청이 충돌했습니다.' }))
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
 
-    expect(await screen.findByText('신청자격을 저장했어요.')).toBeInTheDocument()
-    expect(screen.getByText(/아직 사용자 화면에 반영되지 않았어요/)).toBeInTheDocument()
+    expect(await screen.findByText('신청자격을 저장했습니다.')).toBeInTheDocument()
+    expect(screen.getByText(/아직 사용자 화면에 반영되지 않았습니다/)).toBeInTheDocument()
     expect(screen.getByText(/공고가 아직 공개 전이라 신청자격은 저장만 했습니다/)).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: '판정에서 빼기' })[0])
-    expect(await screen.findByText(/사용자 화면에는 아직 반영하지 못했어요\. 요청이 충돌했습니다\./)).toBeInTheDocument()
+    expect(await screen.findByText(/사용자 화면에는 아직 반영하지 못했습니다\. 요청이 충돌했습니다\./)).toBeInTheDocument()
   })
 
   it('공개본에서 판정에서 빼기를 서버가 저장하지 않으면 저장했다고 말하지 않고 조건을 그대로 보인다', async () => {
@@ -198,7 +198,7 @@ describe('EligibilityDraftPanel', () => {
 
     fireEvent.click((await screen.findAllByRole('button', { name: '판정에서 빼기' }))[0])
 
-    expect(await screen.findByText('판정에서 빼지 못했어요. 검증 실패')).toBeInTheDocument()
+    expect(await screen.findByText('판정에서 빼지 못했습니다. 검증 실패')).toBeInTheDocument()
     expect(screen.queryByText(/저장했지만/)).toBeNull()
     expect(screen.getByText('만 19~39세')).toBeInTheDocument()
   })
@@ -207,7 +207,7 @@ describe('EligibilityDraftPanel', () => {
     api.load.mockResolvedValueOnce(live())
     api.create.mockResolvedValue({ ruleSet: live(content('REVIEWED'), 2), published: true, notices: [] })
     const first = render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
-    expect(await screen.findByText('신청자격을 사용자 화면에 반영했어요.')).toBeInTheDocument()
+    expect(await screen.findByText('신청자격을 사용자 화면에 반영했습니다.')).toBeInTheDocument()
     expect(api.create).toHaveBeenLastCalledWith('12', 'a'.repeat(64), expect.objectContaining({ status: 'PUBLISHED' }))
     first.unmount()
 
@@ -215,6 +215,16 @@ describe('EligibilityDraftPanel', () => {
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} autoCreate />)
     await waitFor(() => expect(api.create).toHaveBeenCalledTimes(2))
     expect(api.create).toHaveBeenLastCalledWith('12', 'a'.repeat(64), expect.objectContaining({ status: 'DRAFT', revision: 4 }))
+  })
+
+  it('이미 있는 신청자격을 PDF로 다시 만들기 전에 확인을 받고, 취소하면 요청하지 않는다', async () => {
+    api.load.mockResolvedValue(live())
+    render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'PDF 추출로 다시 반영' }))
+    const dialog = screen.getByRole('dialog', { name: '최신 PDF 추출로 신청자격을 다시 만들까요?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '취소' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api.create).not.toHaveBeenCalled()
   })
 
   it('자동 반영이 실패하면 이유를 보이고 다시 반영할 수 있게 둔다', async () => {
@@ -231,7 +241,7 @@ describe('EligibilityDraftPanel', () => {
     api.load.mockResolvedValue(null)
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} autoCreate />)
 
-    expect(await screen.findByText('PDF를 열면 신청자격을 반영할 수 있어요.')).toBeInTheDocument()
+    expect(await screen.findByText('PDF를 열면 신청자격을 반영할 수 있습니다.')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: '신청자격 반영하기' })).toBeDisabled())
     expect(api.create).not.toHaveBeenCalled()
   })
@@ -341,7 +351,7 @@ describe('EligibilityDraftPanel', () => {
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={onEvidence} extracted={extracted} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('화면의 PDF와 최신 추출 결과가 다릅니다.')
-    expect(screen.getByText('보정 내용을 적용하면 아래 내용과 저장된 공급정보로 신청자격이 만들어져 사용자 화면에 곧바로 반영돼요.')).toBeInTheDocument()
+    expect(screen.getByText('보정 내용을 적용하면 아래 내용과 저장된 공급정보로 신청자격이 만들어져 사용자 화면에 곧바로 반영됩니다.')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: '모든 신청자에게 적용' })).getByText('무주택세대구성원')).toBeInTheDocument()
     const youth = within(screen.getByRole('region', { name: '청년' }))
     expect(youth.getByText('만 19세 이상 39세 이하')).toBeInTheDocument()
@@ -359,6 +369,6 @@ describe('EligibilityDraftPanel', () => {
     expect(readExtractedEligibility(JSON.stringify({ data: { eligibility: null }, evidence: [] }))).toBeNull()
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={'a'.repeat(64)} onEvidence={vi.fn()} extracted={null} />)
 
-    expect(await screen.findByText('이 PDF 추출 결과에는 신청자격이 없어요. PDF를 다시 추출해 주세요.')).toBeInTheDocument()
+    expect(await screen.findByText('이 PDF 추출 결과에는 신청자격이 없습니다. PDF를 다시 추출해 주세요.')).toBeInTheDocument()
   })
 })

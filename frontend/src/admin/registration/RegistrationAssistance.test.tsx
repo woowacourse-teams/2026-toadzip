@@ -39,7 +39,7 @@ it('단지 선택은 기관·유형·원문 단지명·PNU를 채우고 작성 �
   expect(screen.getByLabelText('공고명')).toHaveValue('작성 중인 모집공고')
 })
 
-it('새 단지를 같은 화면에서 저장해 연결하며 저장 중 방식·선택·공고 입력을 잠근다', async () => {
+it('새 단지를 같은 화면에서 저장해 연결하며 저장 중 단지 선택·공고 입력을 잠근다', async () => {
   let finish: (item: HousingComplexCreateResponse) => void = () => { throw new Error('not initialized') }
   api.createHousingComplex.mockReturnValue(new Promise<HousingComplexCreateResponse>(resolve => { finish = resolve }))
   render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><AnnouncementRegistrationPage /></MemoryRouter>)
@@ -47,7 +47,6 @@ it('새 단지를 같은 화면에서 저장해 연결하며 저장 중 방식·
   const housing = screen.getByRole('region', { name: '단지 등록' })
   fireEvent.change(within(housing).getByLabelText('단지명'), { target: { value: summary.name } })
   fireEvent.submit(within(housing).getByRole('button', { name: '단지 저장' }).closest('form')!)
-  expect(screen.getByRole('button', { name: '마이홈에서 가져오기' })).toBeDisabled()
   expect(within(screen.getByRole('region', { name: '공고를 연결할 단지' })).getByRole('button', { name: '단지 검색' })).toBeDisabled()
   expect(screen.getByLabelText('공고명')).toBeDisabled()
   await act(() => finish({ housingComplexId: 42, name: summary.name, roadAddress: summary.subtitle }))
@@ -57,21 +56,25 @@ it('새 단지를 같은 화면에서 저장해 연결하며 저장 중 방식·
   expect(screen.getByRole('button', { name: '공고 저장' })).toBeEnabled()
 })
 
-it('작성 중 입력 방식 전환을 취소하면 공고 내용을 유지한다', () => {
+it('작성 중 목록으로 이동을 취소하면 공고 내용을 유지한다', () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><AnnouncementRegistrationPage /></MemoryRouter>)
   fireEvent.change(screen.getByLabelText('공고명'), { target: { value: '저장 전 공고' } })
-  fireEvent.click(screen.getByRole('button', { name: '마이홈에서 가져오기' }))
+  fireEvent.click(screen.getByRole('link', { name: '공고 목록' }))
   expect(confirm).toHaveBeenCalledOnce()
   expect(screen.getByLabelText('공고명')).toHaveValue('저장 전 공고')
-  expect(screen.queryByLabelText('공고 JSON')).not.toBeInTheDocument()
 })
 
-it('현재 입력 방식과 새 단지 등록 열기는 공고 입력을 버리지 않고 확인도 띄우지 않는다', () => {
+it('지원을 종료한 마이홈 가져오기 입구를 두지 않는다', () => {
+  render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=myhome']}><AnnouncementRegistrationPage /></MemoryRouter>)
+  expect(screen.queryByRole('button', { name: '마이홈에서 가져오기' })).not.toBeInTheDocument()
+  expect(screen.getByLabelText('공고명')).toBeVisible()
+})
+
+it('새 단지 등록 열기는 공고 입력을 버리지 않고 확인도 띄우지 않는다', () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><AnnouncementRegistrationPage /></MemoryRouter>)
   fireEvent.change(screen.getByLabelText('공고명'), { target: { value: '작성 중인 공고' } })
-  fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
   fireEvent.click(screen.getByRole('button', { name: '새 단지 등록' }))
   expect(confirm).not.toHaveBeenCalled()
   expect(screen.getByRole('region', { name: '단지 등록' })).toBeVisible()
@@ -92,7 +95,6 @@ it('단지와 공고에 모두 미저장 입력이 있어도 이동 확인은 �
   fireEvent.click(screen.getByRole('button', { name: '새 단지 등록' }))
   fireEvent.change(screen.getByLabelText('단지명'), { target: { value: '미저장 단지' } })
   fireEvent.change(screen.getByLabelText('공고명'), { target: { value: '미저장 공고' } })
-  fireEvent.click(screen.getByRole('button', { name: '마이홈에서 가져오기' }))
+  fireEvent.click(screen.getByRole('link', { name: '공고 목록' }))
   expect(confirm).toHaveBeenCalledOnce()
-  expect(screen.getByRole('note')).toHaveTextContent('마이홈 공고 단건 등록은 지원을 종료했습니다.')
 })
