@@ -78,9 +78,8 @@
 
 .pdfLink { display: block; margin-bottom: 4px; padding-inline: 8px; font-size: var(--admin-text-meta); font-weight: var(--admin-weight-medium); white-space: nowrap; }
 .tabs { border: 0; background: transparent; padding: 0; }
-.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; display: inline-flex; align-items: center; min-height: var(--admin-tab-height); padding: 0; margin-right: 24px; }
-.tabCount { margin-inline-start: 4px; font-size: var(--admin-text-meta); font-weight: var(--admin-weight-regular); }
-.tabs button[aria-selected=true] { border-bottom-color: var(--ds-color-action); background: transparent; color: var(--ds-color-action); }
+.tabs button { display: inline-flex; align-items: center; margin-right: 24px; }
+.tabCount { margin-inline-start: 4px; }
 
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .heading a { display: inline-flex; align-items: center; color: var(--ds-color-muted); font-size: var(--admin-text-meta); text-decoration: none; white-space: nowrap; }

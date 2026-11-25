@@ -10,6 +10,8 @@
 
 .admin-layout {
   /* 글자 크기는 일곱 단계, 굵기는 400·500·600 셋만 쓴다. 위계는 굵기보다 크기와 색으로 만든다. */
+  /* 한 이름표(탭·버튼·한 줄의 '이름 + 숫자') 안에서는 글자 크기를 섞지 않는다. 숫자나 건수는 같은 크기로 쓰고 필요하면 굵기 600으로만 구별한다.
+     크기를 달리하는 것은 숫자 카드(작은 이름 위·아래 큰 숫자)와 두 줄짜리 칸(제목 줄 + 보조 줄)뿐이다. */
   --admin-text-label: 12px; /* 표 머리글·배지·입력 이름처럼 작은 이름표 */
   --admin-text-meta: 13px; /* 보조 설명·날짜·작은 버튼 */
   --admin-text-dense: 14px; /* 표 칸·메뉴·입력 이름처럼 빽빽하게 읽는 글 */
@@ -165,6 +167,16 @@
   }
   .admin-content :is(.admin-folder-tabs, .admin-section-tabs) button:not([data-design-system]):hover:not(:disabled) { background: transparent; color: var(--ds-color-text); }
   .admin-content :is(.admin-folder-tabs, .admin-section-tabs) button:not([data-design-system]):is([aria-pressed=true], [aria-selected=true]) {
+    border-bottom-color: var(--ds-color-action); color: var(--ds-color-action); font-weight: var(--admin-weight-strong);
+  }
+
+  /* 목록 화면 머리의 탭(data-design-system="list-tab")도 같은 밑줄 탭 글씨를 쓴다: 고르지 않은 탭은 회색 500, 고른 탭은 초록 600. */
+  .admin-content button[data-design-system="list-tab"] {
+    min-height: var(--admin-tab-height); padding: 0 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
+    color: var(--ds-color-muted); font-size: var(--admin-text-body); font-weight: var(--admin-weight-medium); cursor: pointer;
+  }
+  .admin-content button[data-design-system="list-tab"]:hover { color: var(--ds-color-text); }
+  .admin-content button[data-design-system="list-tab"]:is([aria-pressed=true], [aria-selected=true]) {
     border-bottom-color: var(--ds-color-action); color: var(--ds-color-action); font-weight: var(--admin-weight-strong);
   }
 

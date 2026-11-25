@@ -36,7 +36,8 @@
 
 .compactStats{display:flex;border-top:1px solid var(--ds-color-divider);margin:16px 0 0;padding-top:16px;gap:24px}
 .compactStats a{display:flex;align-items:center;gap:8px;font-size:var(--admin-text-meta);min-height:var(--admin-control-height-sm)}
-.compactStats strong{font-size:var(--admin-text-heading);font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
+/* 한 줄에 놓인 '이름 + 숫자'의 숫자는 이름과 같은 크기에 굵기 600으로만 구별한다. 큰 숫자는 숫자 카드(.number, .stageList)에만 쓴다. */
+.compactStats strong{font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
 .compactStats a svg{width:14px;height:14px;color:var(--ds-color-status-upcoming)}
 .compactStats a:hover{color:var(--ds-color-action)}
 .agencySection{padding-top:16px}
@@ -47,7 +48,7 @@
 .agencyBar span:nth-child(3){flex:1;background:var(--ds-color-agency-gh)}
 .agencyCounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .agencyCounts a{display:flex;align-items:center;gap:6px;font-size:var(--admin-text-meta);min-height:26px}
-.agencyCounts strong{font-size:var(--admin-text-dense);font-weight:var(--admin-weight-strong);margin-left:auto;font-variant-numeric:tabular-nums}
+.agencyCounts strong{font-weight:var(--admin-weight-strong);margin-left:auto;font-variant-numeric:tabular-nums}
 .agencyCounts a:hover strong{color:var(--ds-color-action)}
 
 
@@ -57,12 +58,12 @@
 .announcementStats{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .otherStatuses{display:flex;gap:12px;flex-wrap:wrap;font-size:var(--admin-text-meta);color:var(--ds-color-muted);padding:8px 0 16px}
 .otherStatuses a{min-height:24px;display:flex;align-items:center;gap:4px}
-.otherStatuses strong{font-weight:var(--admin-weight-medium);color:var(--ds-color-label);font-variant-numeric:tabular-nums}
+.otherStatuses strong{font-weight:var(--admin-weight-strong);color:var(--ds-color-label);font-variant-numeric:tabular-nums}
 .review{padding:12px;background:var(--ds-color-status-upcoming-surface);border-radius:var(--admin-radius-inner)}
 .reviewHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .reviewHead>a{display:flex;align-items:center;gap:8px;font-size:var(--admin-text-meta);font-weight:var(--admin-weight-strong);color:var(--ds-color-status-upcoming);flex:1}
 .reviewHead>a>svg{width:14px;height:14px}
-.reviewHead strong{margin-left:auto;font-size:var(--admin-text-body);font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
+.reviewHead strong{margin-left:auto;font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
 .reviewHead>a>svg:last-child{width:12px;height:12px}
 .reviewReasons{display:flex;flex-wrap:wrap;gap:4px 12px;padding-top:6px;font-size:var(--admin-text-meta);color:var(--ds-color-status-upcoming)}
 .reviewReasons a{min-height:24px;display:flex;align-items:center;gap:6px}
@@ -115,7 +116,7 @@
 
 .notificationChanges{display:flex;align-items:center;justify-content:space-between;margin-top:16px;border-top:1px solid var(--ds-color-divider);padding-top:16px;gap:8px}
 .notificationChanges>a{display:flex;align-items:baseline;gap:6px;font-size:var(--admin-text-meta);flex-wrap:wrap}
-.notificationChanges strong{font-size:var(--admin-text-heading);font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
+.notificationChanges strong{font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
 
 .change{font-size:var(--admin-text-meta)}
 
@@ -158,7 +159,6 @@
 .agencyBar [data-agency=SH]{background:var(--ds-color-agency-sh);width:auto}
 .agencyBar [data-agency=GH]{background:var(--ds-color-agency-gh)}
 
-.agencyCounts strong{font-size:var(--admin-text-dense)}
 .page .checked{margin:12px 0 0;color:var(--ds-color-muted);font-variant-numeric:tabular-nums;font-size:var(--admin-text-meta)}
 
 .page .sourceResult{display:inline-flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;color:var(--ds-color-action);font-size:var(--admin-text-meta)}
@@ -218,7 +218,7 @@
 .stageList a:hover strong{color:var(--ds-color-action)}
 .taskRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--ds-color-divider)}
 .taskRows>*{display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center;font-size:var(--admin-text-dense);min-width:0}
-.taskRows strong{font-size:var(--admin-text-heading);font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
+.taskRows strong{font-weight:var(--admin-weight-strong);font-variant-numeric:tabular-nums}
 .taskRows small{grid-column:1/-1;color:var(--ds-color-muted);font-size:var(--admin-text-meta)}
 .taskRows a:hover strong{color:var(--ds-color-action)}
 .taskRows>div>a:first-child{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -229,7 +229,7 @@
 .pdfReviewList a{display:flex;align-items:center;gap:8px;min-height:var(--admin-control-height)}
 .pdfReviewList a>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdfReviewList em{flex-shrink:0;font-style:normal;font-size:var(--admin-text-label);padding:2px 8px;border-radius:var(--admin-radius-badge);background:var(--ds-color-surface-subtle);color:var(--ds-color-muted)}
-.pdfReviewList small{flex-shrink:0;margin-left:auto;font-size:var(--admin-text-meta);color:var(--ds-color-muted);font-variant-numeric:tabular-nums}
+.pdfReviewList small{flex-shrink:0;margin-left:auto;font-size:inherit;color:var(--ds-color-muted);font-variant-numeric:tabular-nums}
 .pdfReviewList svg{color:var(--ds-color-muted)}
 /* 자동 추출은 매일 누르는 일이 아니라 설정이라 화면 맨 아래에 낮은 띠로 둔다. */
 .autoExtraction{grid-column:1/-1;padding:20px 24px}
@@ -263,7 +263,6 @@
 .otherStatuses{gap:8px}
 .metricLabel{font-size:var(--admin-text-label)}
 .notificationChanges{gap:4px}
-.notificationChanges strong{font-size:var(--admin-text-heading)}
 }
 /* 화면 안 기본 규칙(.page a, .page button)보다 뒤에서 이 화면 링크 색과 버튼 모양을 정한다. */
 .page .panel a{color:var(--ds-color-text)}
