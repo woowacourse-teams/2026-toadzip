@@ -5,14 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class FeedbackContentTest {
 
     @ParameterizedTest
+    @NullAndEmptySource
     @ValueSource(strings = {"\u00a0", "\u202f", "\ufeff", " \n\t"})
-    void 선택_의견의_공백을_빈_문자열로_저장한다(String content) {
-        assertThat(FeedbackContent.of(content).value()).isEmpty();
+    void 공백만_담긴_의견을_거절한다(String content) {
+        assertThatThrownBy(() -> FeedbackContent.of(content))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
