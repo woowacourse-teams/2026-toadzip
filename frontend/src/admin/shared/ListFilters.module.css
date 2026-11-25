@@ -3,17 +3,17 @@
 .row { margin: 0; padding: 0; border: 0; background: transparent; }
 .filters .search { position: relative; flex: 1 1 240px; max-width: 460px; min-width: 180px; }
 /* 작업공간의 입력 규칙(.workspace input, 같은 우선순위·뒤에 불러옴)보다 앞서야 아이콘 자리 여백과 작은 글씨가 남는다. 선택 상자·포커스 테두리도 같다. */
-.filters[class] .search input { width: 100%; height: var(--admin-control-height); padding: 0 44px 0 14px; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.filters[class] .search input { width: 100%; height: var(--admin-control-height); padding: 0 44px 0 16px; border: 1px solid var(--ds-color-border-base); border-radius: var(--admin-radius-control); background: var(--ds-color-surface); font-size: var(--admin-text-meta); }
 .filters .search button { position: absolute; right: 2px; top: 2px; width: var(--admin-control-height-sm); height: var(--admin-control-height-sm); min-height: 0; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--ds-color-muted); }
-.filters label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--ds-text-caption); color: var(--ds-color-muted); white-space: nowrap; font-weight: 400; }
-.filters[class] select { height: var(--admin-control-height); min-width: 100px; max-width: 220px; font-size: var(--ds-text-caption); padding-block: 0; background-color: var(--ds-color-surface); }
+.filters label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: var(--admin-text-meta); color: var(--ds-color-muted); white-space: nowrap; font-weight: 400; }
+.filters[class] select { height: var(--admin-control-height); min-width: 100px; max-width: 220px; font-size: var(--admin-text-meta); padding-block: 0; background-color: var(--ds-color-surface); }
 .filters input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--ds-color-action); }
 .filters .toggle { display: inline-flex; gap: 6px; align-items: center; min-height: var(--admin-control-height); padding: 0 8px; font-size: var(--admin-text-body); border: 0; background: transparent; color: var(--ds-color-label); font-weight: var(--admin-weight-medium); }
 .toggle[aria-expanded=true] { color: var(--ds-color-action); }
 .more { margin-top: var(--ds-space-3); }
 .more[hidden] { display: none; }
 .applied { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--ds-space-3); }
-.filters .applied button { display: inline-flex; gap: 8px; align-items: center; padding: 4px 8px; min-height: var(--admin-control-height-sm); background: var(--ds-color-action-soft); color: var(--ds-color-action); border: 0; font-size: var(--ds-text-caption); font-weight: 400; }
+.filters .applied button { display: inline-flex; gap: 8px; align-items: center; padding: 4px 8px; min-height: var(--admin-control-height-sm); background: var(--ds-color-action-soft); color: var(--ds-color-action); border: 0; font-size: var(--admin-text-meta); font-weight: 400; }
 .filters .applied .reset { background: transparent; color: var(--ds-color-muted); text-decoration: underline; }
 .filters[class] :is(button, input, select):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 @media (max-width: 767px) { .filters .search { flex-basis: 100%; max-width: none; } .row, .more { gap: 8px 12px; } .filters[class] select { max-width: 180px; } }

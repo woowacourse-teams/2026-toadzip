@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../../design-system/components/Button'
-import { getInitialRegistration, initialRegistrationStatuses, refreshInitialRegistration, type InitialRegistrationResponse, type InitialRegistrationStatus } from './api'
-import type { PipelineViewState } from './PipelineResult'
+import { getInitialRegistration, refreshInitialRegistration, type InitialRegistrationResponse, type InitialRegistrationStatus } from './api'
+import type { PipelineViewState } from './pipelineSteps'
 import styles from './InitialRegistrationProgress.module.css'
 import stageStyles from './ComplexIngest.module.css'
 import { ComplexStageHelp } from './ComplexStageHelp'
@@ -9,6 +9,8 @@ import { RegistrationInformationEditor } from './RegistrationInformationEditor'
 import { RegistrationFailureHistory } from './RegistrationFailureHistory'
 import recoveryStyles from './RegistrationRecovery.module.css'
 import { AdminIcon } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
+import { ListPagination } from '../management/ListPagination'
 
 const labels: Record<InitialRegistrationStatus, string> = {
   EXISTING: '기존 단지', LOCATION_REQUIRED: '좌표 준비 필요', INFORMATION_REQUIRED: '정보 보완 필요',
@@ -53,6 +55,7 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
   const backdropPressed = useRef(false)
   const selectionAnchor = useRef<string | null>(null)
   const [retryRequest, setRetryRequest] = useState<{ previousId: string | null; count: number } | null>(null)
+  const [confirm, confirmDialog] = useConfirm()
   const execution = registration.execution
   const registering = starting || execution.status === 'RUNNING'
   const [reload, setReload] = useState(0)
@@ -117,6 +120,32 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
   function outsideDialog(element: HTMLDialogElement, x: number, y: number) {
     const bounds = element.getBoundingClientRect()
     return x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom
+  }
+  // 전체 등록은 목록 필터와 상관없이 등록 가능한 단지 모두가 대상이라 대상 수를 알리고 묻는다.
+  async function registerAll() {
+    const count = (result?.counts.READY ?? 0).toLocaleString('ko-KR')
+    if (!(await confirm({
+      title: `준비된 신규 단지 ${count}곳을 등록할까요?`,
+      body: <>
+        <p>등록 가능 상태인 단지 {count}곳 전체를 등록합니다. 목록 필터와 선택은 대상을 줄이지 않습니다.</p>
+        <p>기존 단지와 관리자 보정값은 유지됩니다. 도중에 중지할 수 있지만 이미 등록한 단지는 그대로 남습니다.</p>
+      </>,
+      confirmLabel: `${count}곳 등록`,
+    }))) return
+    onRegister()
+  }
+  async function retrySelected() {
+    const identifiers = selectedIdentifiers
+    const count = identifiers.length.toLocaleString('ko-KR')
+    if (!(await confirm({
+      title: `선택한 ${count}곳을 다시 처리할까요?`,
+      body: <>
+        <p>선택한 단지 {count}곳만 다시 확인해 등록을 시도합니다. 선택하지 않은 단지는 건드리지 않습니다.</p>
+        <p>등록에 성공한 단지는 그대로 남고, 실패한 단지는 사유와 함께 목록에 남습니다.</p>
+      </>,
+      confirmLabel: `${count}곳 다시 처리`,
+    }))) return
+    retry(identifiers)
   }
   function retry(identifiers: string[]) {
     setRetryOutcome('')
@@ -204,7 +233,7 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
       </div>
       <div className={styles.headerActions}>
         <Button data-design-system disabled={disabled || busy || loading || !!error || !!registration.requestError || !result?.counts.READY}
-          onClick={onRegister}>준비된 신규 단지 등록</Button>
+          onClick={() => void registerAll()}>준비된 신규 단지 등록</Button>
         <Button data-design-system variant="secondary" className={styles.refreshButton} data-refreshing={refreshing}
           disabled={disabled || busy} onClick={() => void refresh()}>
           <AdminIcon name="refresh" /><span role="status">{refreshing ? '대상 상태 확인 중…' : '대상 상태 확인'}</span>
@@ -260,21 +289,13 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
       <Button data-design-system variant="secondary" disabled={disabled || busy} onClick={() => void selectAllTargets()}>{selectingAll ? '전체 대상 확인 중…' : '등록 대상 전체 선택'}</Button>
       {!!selected.length && <Button data-design-system variant="secondary" disabled={disabled || busy} onClick={() => { setSelected([]); setNotice(''); selectionAnchor.current = null }}>선택 모두 해제</Button>}
       <Button data-design-system disabled={disabled || busy || !selectedIdentifiers.length || selectedIdentifiers.length > maxRetryTargets || !onRetry || !!registration.requestError}
-        onClick={() => retry(selectedIdentifiers)}>선택한 {selectedIdentifiers.length.toLocaleString()}곳 다시 처리</Button>
+        onClick={() => void retrySelected()}>선택한 {selectedIdentifiers.length.toLocaleString()}곳 다시 처리</Button>
       {selectedIdentifiers.length > maxRetryTargets && <span role="alert">한 번에 최대 10,000곳까지 처리할 수 있습니다.</span>}
       <span className={recoveryStyles.help}><ComplexStageHelp stage="대상 선택">현재 필터의 재처리 대상을 최대 10,000곳까지 선택할 수 있습니다. 페이지를 이동해도 선택이 유지됩니다. Shift 클릭으로 현재 페이지에서 연속 선택할 수 있습니다.</ComplexStageHelp></span>
     </div>}
     <div className={styles.toolbar}>
       <h3>등록 대상{!loading && !error && result && <span>{result.totalElements}곳</span>}</h3>
       <div className={styles.filters}>
-        <label className={styles.filter}><span>진행 상태</span>
-          <span className={styles.selectWrap}><select value={status} disabled={busy} onChange={event => {
-            const selected = initialRegistrationStatuses.find(value => value === event.target.value) ?? ''
-            setStatus(selected); setPage(0)
-          }}><option value="">전체</option>{initialRegistrationStatuses.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select>
-            <AdminIcon name="chevronDown" />
-          </span>
-        </label>
         <label className={styles.filter}><span>표시 건수</span>
           <span className={styles.selectWrap}><select className={styles.pageSizeSelect} value={pageSize}
             disabled={busy} onChange={event => changePageSize(event.target.value)}>
@@ -335,18 +356,9 @@ export function InitialRegistrationProgress({ disabled, revision, onBusyChange, 
             </details>
           </li>)}</ul>
         </div>}
-      <nav className={styles.pagination} aria-label="등록 대상 페이지">
-        <Button data-design-system variant="secondary" className={styles.pageButton} aria-label="이전 대상" title="이전 대상"
-          disabled={page === 0} onClick={() => setPage(value => value - 1)}>
-          <AdminIcon name="chevronLeft" />
-        </Button>
-        <span>{result.totalPages === 0 ? 0 : page + 1} / {result.totalPages}</span>
-        <Button data-design-system variant="secondary" className={styles.pageButton} aria-label="다음 대상" title="다음 대상"
-          disabled={page + 1 >= result.totalPages} onClick={() => setPage(value => value + 1)}>
-          <AdminIcon name="chevronRight" />
-        </Button>
-      </nav>
+      {result.totalPages > 0 && <ListPagination page={page} totalPages={result.totalPages} onMove={setPage} label="등록 대상 페이지" />}
     </>}
+    {confirmDialog}
   </section>
 }
 

@@ -37,7 +37,8 @@ export function ChangeHistory({ resource, id, version }: {resource:ManagementRes
             {resource !== 'announcements' && <details className="admin-history-record"><summary>전체 기록 보기</summary><div className="admin-change-values"><div><StoredDataTable data={readValue(item.beforeValue)} label="변경 전" readable /></div><div><StoredDataTable data={readValue(item.afterValue)} label="변경 후" readable /></div></div></details>}
           </td></tr>}</Fragment>
       })}</tbody></table></div>}
-    <div className="admin-pagination"><button disabled={page === 0 || busy} onClick={() => setPage(v => v-1)}>이전 이력</button><span>{page+1} 페이지</span><button disabled={items.length < 20 || busy} onClick={() => setPage(v => v+1)}>다음 이력</button></div></section>
+    {/* 한 페이지에 20건씩 온다. 첫 페이지가 다 차지 않았으면 넘길 이력이 없어 페이지 이동을 두지 않는다. */}
+    {(page > 0 || items.length >= 20) && <div className="admin-pagination"><button disabled={page === 0 || busy} onClick={() => setPage(v => v-1)}>이전 이력</button><span>{page+1} 페이지</span><button disabled={items.length < 20 || busy} onClick={() => setPage(v => v+1)}>다음 이력</button></div>}</section>
 }
 function readValue(text:string): unknown { try { return JSON.parse(text) as unknown } catch { return text } }
 /** 이전 이력의 한 곳짜리 `receptionPlace` 객체를 새 `receptionPlaces` 목록의 접수처 1로 읽어, 이전·새 이력을 같은 칸으로 비교한다. */

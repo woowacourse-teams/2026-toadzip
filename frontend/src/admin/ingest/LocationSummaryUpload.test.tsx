@@ -14,8 +14,8 @@ const report: LocationSummaryImportReport = {
   preparedRoadAddressCount: 3300, storedLocationCount: 3600, replacedRowCount: 12, invalidatedMappingCandidateCount: 0, provinceCodes: ['11'],
 }
 
-function show(embedded = false, disabled = false, onBusyChange = vi.fn()) {
-  render(<MemoryRouter><LocationSummaryUpload embedded={embedded} disabled={disabled} onBusyChange={onBusyChange} /></MemoryRouter>)
+function show(disabled = false, onBusyChange = vi.fn()) {
+  render(<MemoryRouter><LocationSummaryUpload disabled={disabled} onBusyChange={onBusyChange} /></MemoryRouter>)
   return onBusyChange
 }
 function select() {
@@ -23,8 +23,8 @@ function select() {
   fireEvent.change(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP'), { target: { files: [file] } })
   return file
 }
-it.each([false, true])('ZIP 업로드와 단지별 준비 현황을 독립된 영역으로 구분한다 (embedded=%s)', embedded => {
-  show(embedded)
+it('ZIP 업로드와 단지별 준비 현황을 독립된 영역으로 구분한다', () => {
+  show()
   const uploadRegion = screen.getByRole('region', { name: '좌표 ZIP 업로드' })
   const preparationRegion = screen.getByRole('region', { name: '주소·좌표 준비 현황' })
   expect(within(uploadRegion).getByRole('heading', { name: '좌표 자료 업로드' })).toBeVisible()
@@ -47,7 +47,7 @@ it('ZIP 선택 후 업로드하고 처리 중 입력과 중복 요청을 막으�
 })
 it('주소 일치와 좌표 준비 완료를 구분하고 정제를 자동 실행하지 않는다', async () => {
   upload.mockResolvedValue(report)
-  show(true)
+  show()
   select()
   fireEvent.click(screen.getByRole('button', { name: '좌표 데이터 업로드' }))
   await screen.findByRole('region', { name: '좌표 적재 결과' })
@@ -80,14 +80,14 @@ it('업로드 실패는 빈 성공과 구별하고 같은 파일로 재시도할
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 it('공통 실행 잠금이 있으면 ZIP을 선택하거나 업로드할 수 없다', () => {
-  show(true, true)
+  show(true)
   expect(screen.getByLabelText('위치정보요약DB 월 전체분 ZIP')).toBeDisabled()
   expect(screen.getByRole('button', { name: '좌표 데이터 업로드' })).toBeDisabled()
 })
 
 it('새 파일을 선택하면 이전 결과·다음 작업을 비우고 모두 일치한 결과에는 다음 작업 안내를 표시하지 않는다', async () => {
   upload.mockResolvedValueOnce(report).mockResolvedValueOnce({ ...report, matchedRoadAddressCount: 3500, unmatchedRoadAddressCount: 0 })
-  show(true)
+  show()
   select()
   fireEvent.click(screen.getByRole('button', { name: '좌표 데이터 업로드' }))
   await screen.findByRole('complementary', { name: '다음 작업 안내' })

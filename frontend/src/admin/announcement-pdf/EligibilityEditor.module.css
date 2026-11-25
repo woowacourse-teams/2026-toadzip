@@ -2,14 +2,14 @@
 .header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-3); }
 .header h3 { margin: 0; }
 .buttons { display: flex; gap: var(--ds-space-2); }
-.hint { margin: 0; color: var(--ds-color-muted-base); font-size: var(--ds-text-caption); font-weight: 400; text-wrap: pretty; }
-.problems { padding: var(--ds-space-2) var(--ds-space-3); border-left: 3px solid var(--ds-color-status-upcoming); background: var(--ds-color-surface-subtle); font-size: var(--ds-text-caption); }
+.hint { margin: 0; color: var(--ds-color-muted-base); font-size: var(--admin-text-meta); font-weight: 400; text-wrap: pretty; }
+.problems { padding: var(--ds-space-2) var(--ds-space-3); border-left: 3px solid var(--ds-color-status-upcoming); background: var(--ds-color-surface-subtle); font-size: var(--admin-text-meta); }
 .problems strong { color: var(--ds-color-status-upcoming); }
 .problems ul { margin: var(--ds-space-1) 0 0; padding-left: 1.2em; }
 .error { margin: 0; color: var(--ds-color-error-text); }
 .scope { display: grid; gap: var(--ds-space-3); margin: 0; padding: var(--ds-space-3) var(--ds-space-4); border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-inner); min-width: 0; }
 .scope legend { padding: 0 var(--ds-space-1); font-weight: var(--admin-weight-strong); }
-.scope h4 { margin: var(--ds-space-2) 0 0; font-size: var(--ds-text-body); }
+.scope h4 { margin: var(--ds-space-2) 0 0; font-size: var(--admin-text-body); }
 .field { display: grid; gap: 2px; font-size: var(--admin-text-meta); font-weight: var(--admin-weight-strong); color: var(--ds-color-label); min-width: 0; }
 .checks, .items { display: grid; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
 .check { display: grid; gap: var(--ds-space-2); padding: var(--ds-space-2) var(--ds-space-3); border-radius: var(--admin-radius-control); background: var(--ds-color-surface-subtle); }

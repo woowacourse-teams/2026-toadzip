@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { UserListPage } from './UserListPage'
@@ -32,7 +32,7 @@ function mount(entry = '/admin/users') {
 }
 beforeEach(() => { vi.clearAllMocks(); mocks.listUsers.mockResolvedValue(page()); mocks.getUser.mockResolvedValue(user) })
 
-it('회원 목록에 핵심 네 항목과 누락 이메일을 표시하고 저장된 가입일 시각을 보존한다', async () => {
+it('회원 목록에 핵심 네 항목과 누락 이메일을 표시하고 가입일을 분 단위로 보인다', async () => {
   mocks.listUsers.mockResolvedValue({ ...page(), items: [user, { ...user, id: 8, email: null, provider: 'UNKNOWN' }] })
   mount()
   const table = await screen.findByRole('table', { name: '회원 목록' })
@@ -42,7 +42,7 @@ it('회원 목록에 핵심 네 항목과 누락 이메일을 표시하고 저�
   expect(screen.getByRole('cell', { name: 'Google' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미제공' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미확인' })).toBeVisible()
-  expect(screen.getAllByRole('cell', { name: '2026-10-04 09:12:34' })).toHaveLength(2)
+  expect(screen.getAllByRole('cell', { name: '2026-10-04 09:12' })).toHaveLength(2)
   expect(screen.getByText('가입일 최신순 · 총 41명')).toBeVisible()
   expect(mocks.listUsers.mock.lastCall?.[0].get('size')).toBe('20')
 })
@@ -150,7 +150,7 @@ it('직접 접근한 회원 상세는 기본 항목만 보여 주며 외부 복�
   expect(screen.getByRole('table', { name: '회원 기본 정보' })).toBeVisible()
   expect(screen.getByRole('link', { name: '목록으로' })).toHaveAttribute('href', '/admin/users')
   expect(mocks.getUser).toHaveBeenCalledWith('7', expect.any(AbortSignal))
-  expect(screen.getByRole('cell', { name: '2026-10-04 09:12:34' })).toBeVisible()
+  expect(screen.getByRole('cell', { name: '2026-10-04 09:12' })).toBeVisible()
 })
 
 it('회원 상세 조회 실패와 잘못된 ID를 명확하게 표시한다', async () => {
@@ -165,33 +165,32 @@ it('회원 상세 조회 실패와 잘못된 ID를 명확하게 표시한다', a
   expect(mocks.getUser).toHaveBeenCalledTimes(2)
 })
 
-it('회원 상세에서 브라우저 확인을 거쳐 관리자 권한을 주고 뺀다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+it('회원 상세에서 확인 창을 거쳐 관리자 권한을 주고 뺀다', async () => {
   mocks.setUserAdmin.mockResolvedValueOnce({ ...user, admin: true }).mockResolvedValueOnce(user)
   mount('/admin/users/7')
   fireEvent.click(await screen.findByRole('button', { name: '관리자 권한 주기' }))
-  expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('회원 7에게 관리자 권한을 줄까요?'))
-  expect(mocks.setUserAdmin).toHaveBeenLastCalledWith(7, true)
+  expect(mocks.setUserAdmin).not.toHaveBeenCalled()
+  fireEvent.click(within(screen.getByRole('dialog', { name: '회원 7에게 관리자 권한을 줄까요?' })).getByRole('button', { name: '권한 주기' }))
+  await waitFor(() => expect(mocks.setUserAdmin).toHaveBeenLastCalledWith(7, true))
   fireEvent.click(await screen.findByRole('button', { name: '관리자 권한 빼기' }))
-  expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('회원 7의 관리자 권한을 뺄까요?'))
-  expect(mocks.setUserAdmin).toHaveBeenLastCalledWith(7, false)
+  fireEvent.click(within(screen.getByRole('dialog', { name: '회원 7의 관리자 권한을 뺄까요?' })).getByRole('button', { name: '권한 빼기' }))
+  await waitFor(() => expect(mocks.setUserAdmin).toHaveBeenLastCalledWith(7, false))
   expect(await screen.findByRole('button', { name: '관리자 권한 주기' })).toBeVisible()
-  confirm.mockRestore()
 })
 
 it('확인을 취소하면 권한을 바꾸지 않고, 실패하면 서버 안내를 보인다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   mocks.getUser.mockResolvedValue({ ...user, admin: true })
   mount('/admin/users/7')
   fireEvent.click(await screen.findByRole('button', { name: '관리자 권한 빼기' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(mocks.setUserAdmin).not.toHaveBeenCalled()
 
-  confirm.mockReturnValue(true)
   mocks.setUserAdmin.mockRejectedValue(new Error('자기 자신의 관리자 권한은 뺄 수 없습니다.'))
   fireEvent.click(screen.getByRole('button', { name: '관리자 권한 빼기' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '권한 빼기' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('자기 자신의 관리자 권한은 뺄 수 없습니다.')
   expect(screen.getByRole('button', { name: '관리자 권한 빼기' })).toBeEnabled()
-  confirm.mockRestore()
 })
 
 it('관리자 회원은 목록 이메일 칸에 관리자 표시가 붙는다', async () => {

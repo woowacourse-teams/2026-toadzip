@@ -6,8 +6,8 @@ import { useOperationsQuery } from './useOperationsQuery'
 import { OperationsStatus } from './OperationsStatus'
 import styles from './OperationsHome.module.css'
 
-/** 서버는 여러 사유를 줄바꿈으로 이어 보낸다. */
-const reasonLines = (reason: string) => reason.split('\n').map(line => line.trim()).filter(Boolean)
+/** 서버는 여러 사유를 줄바꿈으로 이어 보낸다. 홈에는 건수만 보이고 사유 내용은 PDF 보정 화면에서 본다. */
+const reasonCount = (reason: string) => reason.split('\n').filter(line => line.trim()).length
 
 export function PdfPublicationReviews() {
   const [history, setHistory] = useState<(number | null)[]>([null])
@@ -20,9 +20,9 @@ export function PdfPublicationReviews() {
     <OperationsStatus query={query} />
     {query.data?.items.length === 0 && <p className={styles.message}>검토할 자동 보정 결과가 없습니다.</p>}
     {Boolean(query.data?.items.length) && <ul className={styles.pdfReviewList}>{query.data?.items.map(item => <li key={item.jobId}>
-      <Link to={`/admin/announcements/${item.announcementId}/pdf-correction`}>{item.name}<AdminIcon name="chevronRight" /></Link>
-      {item.eligibilityOnly && <span>신청자격</span>}
-      <ul>{reasonLines(item.reason).map((line, index) => <li key={index}>{line}</li>)}</ul>
+      <Link to={`/admin/announcements/${item.announcementId}/pdf-correction`}>
+        <span>{item.name}</span>{item.eligibilityOnly && <em>신청자격</em>}
+        <small>보류 사유 {reasonCount(item.reason)}건</small><AdminIcon name="chevronRight" /></Link>
     </li>)}</ul>}
     {history.length > 1 && <button type="button" onClick={() => setHistory(history.slice(0, -1))}>이전 결과</button>}
     {next != null && <button type="button" onClick={() => setHistory([...history, next])}>다음 결과</button>}

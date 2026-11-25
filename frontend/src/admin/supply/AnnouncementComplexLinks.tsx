@@ -3,6 +3,7 @@ import { ComplexPicker } from '../management/ComplexPicker'
 import { ManagementError } from '../management/api'
 import { linkAnnouncementComplex, type AnnouncementComplex, type SupplyWorkspace } from './supplyCorrectionApi'
 import styles from './SupplyCorrection.module.css'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 const methodLabels = { AUTO: '자동 연결 · 확인 전', ADMIN: '관리자 확인', MIGRATED: '기존 연결 이관 · 확인 전' } as const
 
@@ -15,11 +16,13 @@ export function AnnouncementComplexLinks({ id, workspace, disabled, onLinked, on
 }) {
   const [changing, setChanging] = useState<number | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [confirm, confirmDialog] = useConfirm()
   const complexes = workspace.announcementComplexes
   if (!complexes.length) return null
   async function link(target: AnnouncementComplex, housingComplexId: number, housingComplexName: string) {
     const moving = target.housingComplexId !== housingComplexId
-    if (moving && !window.confirm(`'${target.name}'을(를) '${housingComplexName}'에 연결합니다. 이 공고 단지의 주택형 ${target.rowCount}개도 새 단지의 같은 전용면적 주택형으로 옮깁니다.`)) return
+    if (moving && !(await confirm({ title: `'${target.name}'을(를) '${housingComplexName}'에 연결할까요?`,
+      body: `이 공고 단지의 주택형 ${target.rowCount}개도 새 단지의 같은 전용면적 주택형으로 옮깁니다.`, confirmLabel: '연결' }))) return
     setBusy(true); onBusyChange(true); setError('')
     try {
       const next = await linkAnnouncementComplex(id, target.id, { snapshotToken: workspace.snapshotToken, housingComplexId })
@@ -52,5 +55,6 @@ export function AnnouncementComplexLinks({ id, workspace, disabled, onLinked, on
       </div></td></tr>}</Fragment>)}
     </tbody></table></div>
     {error && <p role="alert" className="registration-error">{error}</p>}
+    {confirmDialog}
   </section>
 }

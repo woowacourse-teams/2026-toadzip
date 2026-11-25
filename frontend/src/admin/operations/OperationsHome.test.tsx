@@ -50,7 +50,7 @@ it('네 패널의 집계와 기존 관리 페이지의 지원 필터를 연결�
   expect(screen.getByRole('link', { name: /발송 실패 2/ })).toHaveAttribute('href', '/admin/notification-deliveries?status=FAILED')
   expect(screen.getByRole('link', { name: /재시도 대기 4/ })).toHaveAttribute('href', '/admin/notification-deliveries?status=RETRY')
   expect(screen.getByRole('link', { name: /모집중/ })).toHaveAttribute('href', '/admin/complexes?recruiting=true')
-  expect(screen.getByRole('button', { name: /카카오톡 메시지 발송/ })).toBeInTheDocument()
+  expect(screen.queryByText(/카카오톡/)).not.toBeInTheDocument()
 })
 it('처리할 일은 마감 전 공고 단계별 수를 같은 범위의 공고 목록 필터로 연결하고 AI 큐와 미해결 실패를 보인다', async () => {
   show()
@@ -62,7 +62,9 @@ it('처리할 일은 마감 전 공고 단계별 수를 같은 범위의 공고 
   expect(stages.getByRole('link', { name: '추출 전 46' })).not.toHaveAttribute('data-action')
   expect(stages.getAllByRole('link')).toHaveLength(7)
   expect(within(tasks).getByText('AI 추출 대기').parentElement).toHaveTextContent('처리 중 1 · 가장 오래 기다림 12분 · 최근 24시간 실패 5')
-  expect(within(tasks).getByRole('link', { name: /미해결 수집·정제 실패 7/ })).toHaveAttribute('href', '/admin/failures?domain=announcement&category=all')
+  expect(within(tasks).getByRole('link', { name: '미해결 공고 문제 7' })).toHaveAttribute('href', '/admin/failures?domain=announcement&category=all')
+  expect(within(tasks).getByRole('link', { name: '단지 문제 보기' })).toHaveAttribute('href', '/admin/failures?domain=complex&category=all')
+  expect(within(tasks).queryByRole('region', { name: '자동 추출' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: /확인 필요 21/ })).toHaveAttribute('href', '/admin/announcements?attention=ANY')
 })
 it('처리할 일 조회가 실패하면 0건 대신 조회 실패를 보이고 다른 패널은 그대로 둔다', async () => {
@@ -121,34 +123,30 @@ it('최근 실패와 마지막 성공, 성공 이력이 없는 기관을 구분�
   await waitFor(() => expect(within(table).getByRole('row', { name: /LH/ })).toHaveTextContent('실패'))
   expect(within(table).getByRole('row', { name: /LH/ })).toHaveTextContent('11. 06. 18:10')
   expect(within(table).getByRole('row', { name: /SH/ })).toHaveTextContent('성공 이력 없음')
-  expect(within(table).getAllByRole('link').every(link => link.getAttribute('href') === '/admin/ingest/announcements')).toBe(true)
+  expect(within(table).getAllByRole('link').map(link => [link.textContent, link.getAttribute('href')])).toEqual(['LH', 'SH', 'GH'].map(agency => [agency, '/admin/ingest/announcements']))
 })
 
-it('자동 보정 검수함에서 원문 보류 사유와 해당 공고의 PDF 보정을 연다', async () => {
-  vi.mocked(loadPdfReviews).mockResolvedValue({ items: [{ jobId: 55, announcementId: 41, name: '행복주택 예비모집',
-    reason: '7쪽 대상별 접수일 확인', eligibilityOnly: false }], nextBefore: null })
-  show()
-  const queue = screen.getByRole('region', { name: '자동 보정 검수함' })
-  expect(await within(queue).findByText('7쪽 대상별 접수일 확인')).toBeVisible()
-  expect(within(queue).getByRole('link', { name: '행복주택 예비모집' })).toHaveAttribute('href', '/admin/announcements/41/pdf-correction')
-})
-it('자동 보정 검수함은 줄바꿈으로 이어진 사유를 한 줄씩 나눠 보이고 빈 줄은 버린다', async () => {
+it('자동 보정 검수함은 공고마다 제목·보류 사유 건수 한 줄로 PDF 보정 화면에 연결하고 사유 내용과 내부 경로는 보이지 않는다', async () => {
   vi.mocked(loadPdfReviews).mockResolvedValue({ items: [
-    { jobId: 57, announcementId: 43, name: '국민임대 입주자모집', reason: '3쪽 공급호수 합계 불일치\n\n소득기준 근거 쪽수 없음\n', eligibilityOnly: true },
-    { jobId: 56, announcementId: 42, name: '영구임대 예비모집', reason: '5쪽 접수 기간 확인', eligibilityOnly: false },
+    { jobId: 57, announcementId: 43, name: '국민임대 입주자모집', reason: 'complexes[0] 3쪽 공급호수 합계 불일치\n\ncells[].convertedDeposit 근거 쪽수 없음\n', eligibilityOnly: true },
+    { jobId: 56, announcementId: 42, name: '영구임대 예비모집', reason: 'announcement.winnerAnnouncementDate 확인', eligibilityOnly: false },
   ], nextBefore: null })
   show()
   const queue = screen.getByRole('region', { name: '자동 보정 검수함' })
-  const eligibility = (await within(queue).findByRole('link', { name: '국민임대 입주자모집' })).closest('li')!
-  expect(within(eligibility).getAllByRole('listitem').map(reason => reason.textContent)).toEqual(['3쪽 공급호수 합계 불일치', '소득기준 근거 쪽수 없음'])
+  const eligibility = await within(queue).findByRole('link', { name: /국민임대 입주자모집/ })
+  expect(eligibility).toHaveAttribute('href', '/admin/announcements/43/pdf-correction')
+  expect(eligibility).toHaveTextContent('보류 사유 2건')
   expect(within(eligibility).getByText('신청자격')).toBeVisible()
-  const supply = within(queue).getByRole('link', { name: '영구임대 예비모집' }).closest('li')!
-  expect(within(supply).getAllByRole('listitem').map(reason => reason.textContent)).toEqual(['5쪽 접수 기간 확인'])
+  const supply = within(queue).getByRole('link', { name: /영구임대 예비모집/ })
+  expect(supply).toHaveAttribute('href', '/admin/announcements/42/pdf-correction')
+  expect(supply).toHaveTextContent('보류 사유 1건')
   expect(within(supply).queryByText('신청자격')).not.toBeInTheDocument()
+  expect(within(queue).getAllByRole('listitem')).toHaveLength(2)
+  expect(queue).not.toHaveTextContent(/complexes|cells|convertedDeposit|winnerAnnouncementDate|공급호수|근거 쪽수/)
 })
 
-it('자동 추출을 켤 때 유료로 추출될 추출 전 공고 수와 동시 처리 수를 확인받고, 취소하면 바꾸지 않는다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+it('자동 추출을 켤 때 유료로 추출될 추출 전 공고 수와 동시 처리 수를 확인 창으로 묻고, 취소하면 바꾸지 않는다', async () => {
+  const confirm = vi.spyOn(window, 'confirm')
   show()
   const card = screen.getByRole('region', { name: '자동 추출' })
   expect(await within(card).findByText('꺼짐')).toBeVisible()
@@ -156,34 +154,38 @@ it('자동 추출을 켤 때 유료로 추출될 추출 전 공고 수와 동시
   expect(card).toHaveTextContent('최대 85건')
   expect(card).toHaveTextContent('관리자가 바꾼 적 없음')
   fireEvent.click(within(card).getByRole('button', { name: '자동 추출 켜기' }))
-  expect(confirm).toHaveBeenCalledWith('마감 전 추출 전 공고 최대 85건이 차례로 유료 추출됩니다(동시 2건). 자동 추출을 켤까요?')
+  const dialog = screen.getByRole('dialog', { name: '자동 추출을 켤까요?' })
+  expect(dialog).toHaveTextContent('마감 전 추출 전 공고 최대 85건이 차례로 유료 추출됩니다(동시 2건).')
   expect(changePdfAutoExtraction).not.toHaveBeenCalled()
+  fireEvent.click(within(dialog).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '자동 추출을 켤까요?' })).not.toBeInTheDocument())
+  expect(changePdfAutoExtraction).not.toHaveBeenCalled()
+  expect(within(card).getByText('꺼짐')).toBeVisible()
+  expect(confirm).not.toHaveBeenCalled()
   confirm.mockRestore()
 })
-it('확인하면 자동 추출을 켜고 바꾼 사람을 보이며, 끌 때는 묻지 않는다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+it('켜기는 확인 창에서 실행을 눌러야 바뀌고 바꾼 사람을 보이며, 끌 때는 묻지 않는다', async () => {
   vi.mocked(changePdfAutoExtraction).mockResolvedValueOnce({ ...autoExtraction, enabled: true, updatedBy: 'admin-7', updatedAt: asOf, inFlight: 2, notExtracted: 83 })
     .mockResolvedValueOnce({ ...autoExtraction, updatedBy: 'admin-7', updatedAt: asOf })
   show()
   const card = screen.getByRole('region', { name: '자동 추출' })
   fireEvent.click(await within(card).findByRole('button', { name: '자동 추출 켜기' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: '자동 추출을 켤까요?' })).getByRole('button', { name: '자동 추출 켜기' }))
   expect(await within(card).findByText('켜짐')).toBeVisible()
   expect(changePdfAutoExtraction).toHaveBeenCalledWith(true)
   expect(card).toHaveTextContent('마지막 변경 admin-7')
   expect(card).toHaveTextContent('2 / 동시 2건')
-  confirm.mockClear()
   fireEvent.click(within(card).getByRole('button', { name: '자동 추출 끄기' }))
+  expect(screen.queryByRole('dialog', { name: /자동 추출/ })).not.toBeInTheDocument()
   expect(await within(card).findByText('꺼짐')).toBeVisible()
   expect(changePdfAutoExtraction).toHaveBeenLastCalledWith(false)
-  expect(confirm).not.toHaveBeenCalled()
-  confirm.mockRestore()
 })
 it('자동 추출을 바꾸지 못하면 이전 상태를 그대로 두고 실패를 알린다', async () => {
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
   vi.mocked(changePdfAutoExtraction).mockRejectedValueOnce(new Error('로그인 상태를 확인해 주세요.'))
   show()
   const card = screen.getByRole('region', { name: '자동 추출' })
   fireEvent.click(await within(card).findByRole('button', { name: '자동 추출 켜기' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: '자동 추출을 켤까요?' })).getByRole('button', { name: '자동 추출 켜기' }))
   expect(await within(card).findByRole('alert')).toHaveTextContent('변경 실패: 로그인 상태를 확인해 주세요.')
   expect(within(card).getByText('꺼짐')).toBeVisible()
   expect(within(card).getByRole('button', { name: '자동 추출 켜기' })).toBeEnabled()
@@ -196,13 +198,14 @@ it('새로고침은 현황 요약을 다시 불러온다', async () => {
   await waitFor(() => expect(vi.mocked(loadComplexOverview).mock.calls.length).toBe(calls + 1))
   expect(screen.getByRole('button', { name: '현황 새로고침' })).toHaveTextContent('새로고침')
 })
-it('기준 버튼은 그 집계의 설명을 대화상자로 열고 닫기로 닫는다', async () => {
+it('숫자 기준 버튼 하나가 항목별 집계 기준을 한 대화상자에 목록으로 열고 닫기로 닫는다', async () => {
   show()
-  const button = screen.getByRole('button', { name: '단지 집계 기준' })
-  expect(button).toHaveTextContent('기준')
-  fireEvent.click(button)
-  const dialog = screen.getByRole('dialog', { name: '단지 집계' })
+  expect(screen.getAllByRole('button', { name: /기준/ })).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: '숫자 기준' }))
+  const dialog = screen.getByRole('dialog', { name: '숫자 기준' })
   expect(dialog).toHaveAttribute('open')
+  expect(within(dialog).getAllByRole('term').map(term => term.textContent)).toEqual(['기간 적용', '처리할 일', '단지 집계', '공고 집계', '확인 필요', '유저 집계', '알림 집계', '연결 기준'])
+  expect(dialog).toHaveTextContent('좌표 미확인은 위도 또는 경도가 없는 단지')
   fireEvent.click(within(dialog).getByRole('button', { name: '도움말 닫기' }))
   expect(dialog).not.toHaveAttribute('open')
 })

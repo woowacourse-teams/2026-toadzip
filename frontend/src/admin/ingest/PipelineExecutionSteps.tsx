@@ -67,7 +67,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false, on
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다. 이미 저장한 데이터는 유지됩니다.</p>}
     <PipelineNextActions execution={execution} onRefine={onRefine} disabled={recoveryDisabled} />
     {execution.status !== 'IDLE' && execution.status !== 'RUNNING' && execution.type !== 'ANNOUNCEMENT_REGISTRATION'
-      && !board && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+      && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
         실패 내역 확인</Link></p>}
     {selected && <section className={styles.detail} aria-label="단계 상세">
       <header className={styles.heading}><h4>{selectedName}</h4><button type="button" onClick={() => setSelected(null)}>접기</button></header>

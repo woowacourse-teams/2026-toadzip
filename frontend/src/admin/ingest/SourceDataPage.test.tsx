@@ -29,7 +29,7 @@ it('SH 원천은 공식 게시판과 키 없는 수집으로 안내하고 HTML�
   const table = await screen.findByRole('table', { name: 'SH 공고 원천 목록 · 1페이지' })
   expect(screen.getByRole('link', { name: newWindowName('공식 게시판') })).toHaveAttribute('href',
     'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=2')
-  expect(screen.getByRole('link', { name: '키 없이 SH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
+  expect(screen.getByRole('link', { name: '공고 수집으로 이동' })).toHaveAttribute('href', '/admin/ingest/announcements')
   expect(screen.queryByRole('link', { name: newWindowName('API 설명·키 발급') })).not.toBeInTheDocument()
   expect(table).toHaveTextContent('<script>window.shUnsafe = true</script>')
   expect(table).toHaveTextContent('본문 텍스트')
@@ -53,7 +53,7 @@ it('GH 원천은 GH주택청약센터 게시판과 키 없는 수집으로 안�
   const table = await screen.findByRole('table', { name: 'GH 공고 원천 목록 · 1페이지' })
   expect(screen.getByRole('link', { name: newWindowName('공식 게시판') })).toHaveAttribute('href',
     'https://apply.gh.or.kr/sb/sr/sr7150/selectPbancRentHouseList.do')
-  expect(screen.getByRole('link', { name: '키 없이 GH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
+  expect(screen.getByRole('link', { name: '공고 수집으로 이동' })).toHaveAttribute('href', '/admin/ingest/announcements')
   expect(within(table).getByRole('columnheader', { name: '공급유형 (supply_type)' })).toBeVisible()
   expect(table.querySelector('[data-field="districts[0].housingTypes[0].supplyCount"]')).toBeNull()
   expect(table.querySelector('[data-field="districts[0].name"]')).toBeNull()
@@ -210,8 +210,23 @@ it('원천별 탭을 키보드로 이동하고 선택한 분류를 조회한다'
   const next = screen.getByRole('tab', { name: 'LH 임대 단지' })
   expect(next).toHaveAttribute('aria-selected', 'true')
   expect(next).toHaveFocus()
+  // 수집을 멈춘 마이홈 공고는 과거 원천 확인용이라 탭 맨 뒤에 있다.
+  expect(screen.getAllByRole('tab').at(-1)).toHaveAccessibleName('마이홈 공고(수집 중단)')
   fireEvent.keyDown(next, { key: 'End' })
-  await waitFor(() => expect(fetchSources).toHaveBeenLastCalledWith('GH_ANNOUNCEMENT', '', 0, expect.any(AbortSignal)))
+  await waitFor(() => expect(fetchSources).toHaveBeenLastCalledWith('MYHOME_ANNOUNCEMENT', '', 0, expect.any(AbortSignal)))
+})
+
+it('수집 링크는 분류에 맞는 수집 화면으로 보내고 수집을 멈춘 마이홈 공고에는 두지 않는다', async () => {
+  renderPage('/admin/sources?category=LH_LEASE_CATALOG&failureReturnTo=%2Fadmin%2Ffailures')
+  await screen.findByText('두꺼비 단지')
+  expect(screen.getByRole('link', { name: '단지 수집으로 이동' }))
+    .toHaveAttribute('href', '/admin/ingest/complexes?failureReturnTo=%2Fadmin%2Ffailures')
+  expect(screen.queryByText(/API 키 입력/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('tab', { name: 'LH 공고 목록' }))
+  expect(await screen.findByRole('link', { name: '공고 수집으로 이동' }))
+    .toHaveAttribute('href', '/admin/ingest/announcements?failureReturnTo=%2Fadmin%2Ffailures')
+  fireEvent.click(screen.getByRole('tab', { name: '마이홈 공고(수집 중단)' }))
+  await waitFor(() => expect(screen.queryByRole('link', { name: /수집으로 이동/ })).not.toBeInTheDocument())
 })
 
 it('마이홈 공고의 최소 월임대료를 단지의 기본 월임대료와 구분한다', async () => {

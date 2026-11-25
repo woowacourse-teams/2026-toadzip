@@ -1,4 +1,4 @@
-.dialog { width: min(420px, calc(100vw - 32px)); padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); }
+.dialog { width: min(420px, calc(100vw - 32px)); padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--admin-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); }
 .dialog::backdrop { background: rgb(33 59 53 / 25%); }
 .dialog h2 { margin: 0 0 var(--ds-space-2); font-size: var(--admin-text-heading); }
 .dialog p { margin: 0; color: var(--ds-color-label); line-height: var(--ds-line-height-body); }

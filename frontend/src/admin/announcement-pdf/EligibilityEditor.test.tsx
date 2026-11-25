@@ -75,7 +75,7 @@ describe('신청자격 직접 수정 화면', () => {
     render(<EligibilityDraftPanel announcementId="12" pdfSha256={null} pdfActions={false} />)
     await screen.findByRole('button', { name: '직접 수정' })
     expect(screen.queryByRole('button', { name: 'PDF 추출로 다시 반영' })).toBeNull()
-    expect(screen.queryByText('PDF를 열면 신청자격을 반영할 수 있어요.')).toBeNull()
+    expect(screen.queryByText('PDF를 열면 신청자격을 반영할 수 있습니다.')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '직접 수정' }))
     const editor = screen.getByRole('region', { name: '신청자격 직접 수정' })
@@ -88,7 +88,7 @@ describe('신청자격 직접 수정 화면', () => {
     fireEvent.change(within(editor).getByLabelText('자격 이름'), { target: { value: ' 북한이탈주민(보호대상자) ' } })
     fireEvent.click(save)
 
-    await screen.findByText('고친 신청자격을 사용자 화면에 반영했어요.')
+    await screen.findByText('고친 신청자격을 사용자 화면에 반영했습니다.')
     expect(api.apply).toHaveBeenCalledWith('12', expect.objectContaining({ revision: 1 }), expect.anything())
     const saved: Content = api.apply.mock.calls[0][2]
     expect(saved.paths.map(path => path.label)).toEqual(['청년', '북한이탈주민'])
@@ -99,6 +99,18 @@ describe('신청자격 직접 수정 화면', () => {
     // 저장 뒤에는 고친 내용으로 다시 보인다.
     expect(screen.queryByRole('region', { name: '신청자격 직접 수정' })).toBeNull()
     expect(screen.getByRole('region', { name: '북한이탈주민' })).toBeInTheDocument()
+  })
+
+  it('고친 내용이 있을 때 취소를 누르면 확인을 받고, 확인 창에서 취소하면 편집을 이어 가며 저장 요청도 없다', async () => {
+    const editor = await openEditor()
+    fireEvent.change(within(editor).getByLabelText('최대 만 나이'), { target: { value: '34' } })
+    fireEvent.click(within(editor).getByRole('button', { name: '취소' }))
+    const dialog = screen.getByRole('dialog', { name: '고친 내용을 버릴까요?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '취소' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('region', { name: '신청자격 직접 수정' })).toBeInTheDocument()
+    expect(within(editor).getByLabelText('최대 만 나이')).toHaveValue(34)
+    expect(api.apply).not.toHaveBeenCalled()
   })
 
   it('최대 나이를 비우면 상한 없음으로 저장하고, 조건을 더한 뒤 금액을 비워 두면 저장하지 않는다', async () => {
@@ -172,7 +184,7 @@ describe('신청자격 직접 수정 화면', () => {
     expect(screen.queryByText(/저장했지만/)).toBeNull()
     expect(within(scope).getByLabelText('공고문에서 확인할 자격 1')).toHaveValue('나이: 만 19세 이상 39세 이하')
     fireEvent.click(within(editor).getByRole('button', { name: '저장하고 반영' }))
-    await screen.findByText('고친 신청자격을 사용자 화면에 반영했어요.')
+    await screen.findByText('고친 신청자격을 사용자 화면에 반영했습니다.')
     expect(api.apply.mock.calls[1][1]).toEqual(expect.objectContaining({ id: 8, revision: 0, status: 'DRAFT' }))
     expect(api.apply.mock.calls[1][2].paths[0].checks).toEqual([])
   })
@@ -195,7 +207,7 @@ describe('신청자격 직접 수정 화면', () => {
     fireEvent.change(within(editor).getByLabelText('최소 만 나이'), { target: { value: '20' } })
     fireEvent.click(within(editor).getByRole('button', { name: '저장하고 반영' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('고친 내용을 저장했지만 사용자 화면에는 아직 반영하지 못했어요. 공고가 공개 전입니다.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('고친 내용을 저장했지만 사용자 화면에는 아직 반영하지 못했습니다. 공고가 공개 전입니다.')
     fireEvent.click(screen.getByRole('button', { name: '직접 수정' }))
     fireEvent.change(screen.getByLabelText('최소 만 나이'), { target: { value: '21' } })
     fireEvent.click(screen.getByRole('button', { name: '저장하고 반영' }))

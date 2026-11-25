@@ -5,6 +5,7 @@ import { joinedAt, providerLabels } from './presentation'
 import { NotificationSubscriptions } from '../notifications/NotificationSubscriptions'
 import styles from './Users.module.css'
 import { AdminIcon } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 export function UserDetailPage() {
   const { id = '' } = useParams()
@@ -20,11 +21,11 @@ export function UserDetailPage() {
   const error = valid ? failure?.query === query ? failure.message : '' : '올바른 회원 페이지 주소가 아닙니다.'
   const [roleChange, setRoleChange] = useState<{ query: string; saving: boolean; message: string } | null>(null)
   const roleState = roleChange?.query === query ? roleChange : null
+  const [confirm, confirmDialog] = useConfirm()
   async function changeAdmin(target: AdminUser) {
-    const question = target.admin
-      ? `회원 ${target.id}의 관리자 권한을 뺄까요?\n이 계정은 바로 관리자 화면을 쓸 수 없게 됩니다.`
-      : `회원 ${target.id}에게 관리자 권한을 줄까요?\n이 계정은 바로 관리자 화면의 모든 기능을 쓸 수 있습니다.`
-    if (!window.confirm(question)) return
+    if (!(await confirm(target.admin
+      ? { title: `회원 ${target.id}의 관리자 권한을 뺄까요?`, body: '이 계정은 바로 관리자 화면을 쓸 수 없게 됩니다. 필요하면 다시 줄 수 있습니다.', confirmLabel: '권한 빼기' }
+      : { title: `회원 ${target.id}에게 관리자 권한을 줄까요?`, body: '이 계정은 바로 관리자 화면의 모든 기능을 쓸 수 있습니다. 필요하면 다시 뺄 수 있습니다.', confirmLabel: '권한 주기' }))) return
     setRoleChange({ query, saving: true, message: '' })
     try {
       const result = await setUserAdmin(target.id, !target.admin)
@@ -64,5 +65,6 @@ export function UserDetailPage() {
     </tbody></table> : null}
     {data ? <><p><Link to={`/admin/notification-deliveries?userId=${id}`}>이 회원의 알림 발송·열람 기록 확인<AdminIcon name="chevronRight" /></Link></p>
     <NotificationSubscriptions key={id} userId={id} /></> : null}
+    {confirmDialog}
   </section>
 }

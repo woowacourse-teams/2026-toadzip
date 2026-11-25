@@ -11,9 +11,9 @@ import { AdminIcon } from '../shared/AdminIcon'
 export function FailureReviewPage() {
   const [params, setParams] = useSearchParams()
   const legacyCategory = params.get('category')
-  const domain: FailureDomain = params.get('domain') === 'announcement'
-    || (!params.has('domain') && (legacyCategory === 'announcement' || legacyCategory === 'enrichment'
-      || legacyCategory === 'refinement')) ? 'announcement' : 'complex'
+  // 주소에 대상이 없으면 공고 문제를 연다. 운영 홈의 '미해결' 숫자가 공고 문제이고, 단지는 주소로 지정할 때만 연다.
+  const domain: FailureDomain = params.get('domain') === 'complex'
+    || (!params.has('domain') && legacyCategory === 'complex') ? 'complex' : 'announcement'
   const type: DataPipelineType = domain === 'complex' ? 'COMPLEX_REFINEMENT' : 'ANNOUNCEMENT_REFINEMENT'
   const label = domain === 'complex' ? '단지' : '공고'
   const retired = domain === 'complex'
@@ -25,6 +25,8 @@ export function FailureReviewPage() {
   // 이 화면에서 직접 시작한 정제인지. 지난 실행 결과는 알리지 않고, 방금 누른 실행이 실패로 끝났을 때만 알린다.
   const [startedHere, setStartedHere] = useState(false)
   const [refresh, setRefresh] = useState(0)
+  // 조건을 걸지 않은 미해결 건수. 목록 응답에서 받으므로 지금 연 탭에만 붙는다.
+  const [pendingCount, setPendingCount] = useState<number | null>(null)
   const statusGeneration = useRef(0)
   const busy = starting || execution?.data.status === 'RUNNING'
 
@@ -96,7 +98,7 @@ export function FailureReviewPage() {
     ? `${label} 정제가 '${pipelineStatusLabels[current.status]}'로 끝났습니다. 아래 목록에서 실패 항목을 확인해 주세요.` : ''
 
   return <section className={`management-page ${styles.page}`}>
-    <header className={styles.heading}><h1>실패·검토 항목</h1><Link to="/admin/ingest">수집·정제 진행 상황<AdminIcon name="chevronRight" /></Link></header>
+    <header className={styles.heading}><h1>실패·검토 항목</h1><Link to={`/admin/ingest/${domain === 'complex' ? 'complexes' : 'announcements'}`}>{label} 수집·정제 진행 상황<AdminIcon name="chevronRight" /></Link></header>
     <div className={styles.tabBar}><div className={styles.tabs} role="tablist" aria-label="문제 대상">
       {(['complex','announcement'] as const).map((value,index,values) => <button key={value} data-design-system="list-tab" type="button" role="tab"
         id={`failure-tab-${value}`} aria-selected={domain === value} aria-controls="failure-review-panel" tabIndex={domain === value ? 0 : -1}
@@ -108,7 +110,8 @@ export function FailureReviewPage() {
           else return
           event.preventDefault(); selectDomain(values[next])
           event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
-        }}>{value === 'complex' ? '단지 문제' : '공고 문제'}</button>)}
+        }}>{value === 'complex' ? '단지 문제' : '공고 문제'}{domain === value && pendingCount !== null
+          ? <> <span className={styles.tabCount}>{pendingCount.toLocaleString()}건</span></> : null}</button>)}
     </div>
       {/* 다시 실행은 고른 탭(공고 문제)에만 걸리는 동작이라 탭 줄 오른쪽에 둔다. */}
       {!retired && <FailureRetryButton key={domain} label={label} disabled={busy} onRetry={() => void retry()}/>}
@@ -118,7 +121,7 @@ export function FailureReviewPage() {
       {runNotice ? <p role="status" className={styles.runMessage}>{runNotice}</p> : null}
       {error || runFailure ? <div role="alert" className="admin-alert"><p>{error || runFailure}</p></div> : null}
       <div className="admin-list-card">
-        <IngestFailurePanel domain={domain} executionId={params.get('executionId')} refreshToken={refresh} retryDisabled={busy} runError={error} />
+        <IngestFailurePanel domain={domain} executionId={params.get('executionId')} refreshToken={refresh} retryDisabled={busy} runError={error} onPendingCount={setPendingCount} />
       </div>
     </div>
   </section>

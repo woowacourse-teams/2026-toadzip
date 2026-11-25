@@ -7,6 +7,7 @@ import { parseManagementDetail, type ManagementDetailData, type ManagementHousin
 import { useUnsavedChanges } from './useUnsavedChanges'
 import { loadHousingTypeImpact, type HousingTypeImpact } from './housingTypeImpactApi'
 import { NewWindowMark } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 const fields: Field[] = [
   { name: 'name', label: '주택형 이름', required: true },
@@ -23,6 +24,7 @@ export function HousingTypeEditor({ type, complexId, version, onSaved, onClose, 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<{ impact: HousingTypeImpact; body: Record<string, unknown> } | null>(null)
   useUnsavedChanges(dirty)
+  const [confirm, confirmDialog] = useConfirm()
   const areaLocked = preview !== null && preview.impact.rows.length > 0 && Number(preview.body.exclusiveArea) !== type.exclusiveArea
   async function inspect(form: HTMLFormElement) {
     const body = { ...formValues(form, fields, {}), version }
@@ -59,8 +61,10 @@ export function HousingTypeEditor({ type, complexId, version, onSaved, onClose, 
         : <button type="button" className="admin-primary" disabled={busy} onClick={() => void save()}>영향을 확인한 주택형 저장</button>}
     </section>}
     <div className="admin-inline"><button className="admin-primary" disabled={busy}>{busy ? '확인 중…' : '수정 영향 확인'}</button>
-      <button type="button" disabled={busy} onClick={() => {
-        if (!dirty || window.confirm('주택형 변경사항을 버릴까요?')) { setDirty(false); onClose() }
+      <button type="button" disabled={busy} onClick={async () => {
+        if (dirty && !(await confirm({ title: '주택형 변경사항을 버릴까요?', body: `'${type.name}'에 입력한 내용은 저장되지 않습니다.`, confirmLabel: '버리기' }))) return
+        setDirty(false); onClose()
       }}>취소</button></div>
+    {confirmDialog}
   </form>
 }

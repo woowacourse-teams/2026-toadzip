@@ -14,6 +14,7 @@ import { addHousingType, cellValues, emptySheet, moveHousingType, removeHousingT
 import { AnnouncementComplexLinks } from './AnnouncementComplexLinks'
 import styles from './SupplyCorrection.module.css'
 import { NewWindowMark } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 // 다시 조회하면 풀리는 충돌만 '최신값 비교'로 안내한다. 일정 참조 같은 규칙 위반은 서버 문구를 그대로 보여 준다.
 function isStaleConflict(cause: unknown) { return cause instanceof ManagementError && cause.code === 'ADMIN_DATA_STALE' }
@@ -60,6 +61,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   const [applied, setApplied] = useState<{ changeId: number; evidence: ReviewEvidence; changed: string[] } | null>(null)
   const sheetDirty = workspace !== null && (JSON.stringify(sheet) !== JSON.stringify(workspace.sheet) || conflicts.length > 0)
   const blockerId = useId()
+  const [confirm, confirmDialog] = useConfirm()
   const previewBlocker = stale ? '저장하는 사이 등록값이나 원천이 바뀌어 저장하지 않았습니다. 내 입력은 그대로 있으니 ‘입력을 유지하고 최신값 비교’로 맞춘 뒤 다시 저장하세요.'
     : conflicts.length > 0 ? `겹치는 변경 ${conflicts.length}개에서 사용할 값을 먼저 고르세요.`
       : !sheetDirty ? '아직 변경한 공급정보가 없습니다.' : blocker(sheet)
@@ -122,7 +124,8 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
   /** 공고문 PDF가 없는 공고에서 기관이 보낸 공급정보를 그대로 공급표로 만들고 확정한다. 거절되면 최신 작업실을 다시 불러온다. */
   async function startFromAgency() {
     if (!workspace?.stagingToken || busy || uncertain || sheetDirty) return
-    if (!window.confirm('기관이 보낸 공급정보로 공급표를 만들고 확정할까요? 확정하면 사용자 화면의 ‘공고문 확인 전 정보’ 표시가 사라집니다.')) return
+    if (!(await confirm({ title: '기관이 보낸 공급정보로 공급표를 만들고 확정할까요?',
+      body: '확정하면 사용자 화면의 ‘공고문 확인 전 정보’ 표시가 사라집니다. 공고문과 다른 값은 확정한 뒤 공급표에서 고칠 수 있습니다.', confirmLabel: '확정' }))) return
     setBusy(true); setError(''); setNotice('')
     try {
       const next = await startSupplyFromAgency(id, { snapshotToken: workspace.snapshotToken, stagingToken: workspace.stagingToken })
@@ -166,8 +169,9 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
       housingComplexId: complex.housingComplexId, housingComplexName: complex.housingComplexName } : {})
     edit(added.sheet); setExpanded(added.key)
   }
-  function removeType(type: SheetHousingType) {
-    if (type.id !== null && !window.confirm(`'${type.name || '이름 없는 주택형'}'과 그 공급대상·수량·임대조건을 지울까요? 저장하면 되돌릴 수 없고 변경 이력에만 남습니다.`)) return
+  async function removeType(type: SheetHousingType) {
+    if (type.id !== null && !(await confirm({ title: `'${type.name || '이름 없는 주택형'}'을(를) 공급표에서 지울까요?`,
+      body: '이 주택형의 공급대상·수량·임대조건도 함께 지웁니다. 저장하면 되돌릴 수 없고 변경 이력에만 남습니다.', confirmLabel: '지우기', tone: 'danger' }))) return
     edit(removeHousingType(sheet, type.key)); if (expanded === type.key) setExpanded(null)
   }
   return <section className={styles.workspace} aria-label="공급정보 편집">
@@ -206,9 +210,9 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
               <td>{[count ?? (across.length ? null : '미확인'), ...across.map(item => `함께 ${item.quota.count}`)].filter(item => item !== null).join(' · ')}</td>
               <td>{cells.filter(cell => leaseOf(sheet, cell.key)).length ? `${cells.filter(cell => leaseOf(sheet, cell.key)).length}개` : '없음'}</td><td>{gaps(sheet, type).join(' · ') || '—'}</td>
               <td><div className={styles.rowActions}><button type="button" aria-label={`${name} 편집`} aria-expanded={expanded === type.key} onClick={() => setExpanded(expanded === type.key ? null : type.key)}>{expanded === type.key ? '닫기' : '편집'}</button>
-                <button type="button" aria-label={`${name} 지우기`} onClick={() => removeType(type)}>지우기</button></div></td>
+                <button type="button" aria-label={`${name} 지우기`} onClick={() => void removeType(type)}>지우기</button></div></td>
             </tr>{expanded === type.key && <tr><td colSpan={6} className={styles.expandedCell}><SupplyRowDraft sheet={sheet} typeKey={type.key} complexes={workspace.announcementComplexes}
-              first={index === 0} last={index === types.length - 1} onChange={edit} onRemove={() => removeType(type)}
+              first={index === 0} last={index === types.length - 1} onChange={edit} onRemove={() => void removeType(type)}
               onMove={delta => edit(moveHousingType(sheet, type.key, delta))} /></td></tr>}</Fragment>
           })}
         </tbody></table></div>
@@ -226,7 +230,7 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
         </div>)}</section>}
         </>}
         <div className={styles.actions}><button className="admin-primary" type="submit" disabled={!!previewBlocker} aria-describedby={previewBlocker ? blockerId : undefined}>{busy ? '저장 중…' : '공급정보 저장'}</button>
-          {sheetDirty && <button type="button" onClick={() => { if (window.confirm('저장하지 않은 공급정보 변경을 취소할까요?')) { setSheet(workspace.sheet); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
+          {sheetDirty && <button type="button" onClick={async () => { if (await confirm({ title: '저장하지 않은 공급정보 변경을 버릴까요?', body: '고친 공급표와 근거 입력이 저장된 값으로 돌아갑니다.', confirmLabel: '버리기' })) { setSheet(workspace.sheet); setReason(''); setPage(''); setUrl(sourceUrl); setConflicts([]); setPreview(null); setExpanded(null); setNotice('') } }}>변경 취소</button>}
           {stale && <button type="button" onClick={() => void refreshKeepingDraft()}>입력을 유지하고 최신값 비교</button>}</div>
         {previewBlocker && <p id={blockerId} role={stale ? 'alert' : undefined} className={stale ? styles.stale : styles.hint}>{previewBlocker}</p>}
       </fieldset>
@@ -238,5 +242,6 @@ export function SupplyCorrectionWorkbench({ id, sourceUrl, onChanged, onBusyChan
     <SupplyReviewPanel key={applied ? `applied:${applied.changeId}` : 'review'} id={id} workspace={workspace} sourceUrl={sourceUrl} disabled={sheetDirty || busy || uncertain}
       onBusyChange={setBusy} onDirtyChange={setReviewDirty} evidence={applied?.evidence ?? null} pending={applied?.changed ?? []} />
     <nav className={styles.actions} aria-label="공급정보 확인"><Link to={`/admin/announcements/${id}?section=history`}>출처·수정 이력</Link><Link to={`/explore?announcementId=${id}`} target="_blank" rel="noreferrer">사용자 공고 화면 확인<NewWindowMark /></Link></nav>
+    {confirmDialog}
   </section>
 }

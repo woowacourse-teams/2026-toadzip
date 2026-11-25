@@ -33,6 +33,19 @@ describe('관리자 화면 기준', () => {
     expect(findings(/font-size:\s*([\d.]+)(px|rem|em)\b/g, (match) => match[1] === '16' && match[2] === 'px')).toEqual([])
   })
 
+  it('크기·모양 기준값은 var(--admin-*) 이름 하나로만 쓴다', () => {
+    expect(findings(/var\(--ds-(?:text-body|text-caption|control-height-md|radius-control)\)/g)).toEqual([])
+  })
+
+  it('간격(gap·padding·margin)은 4px 격자와 작은 부품용 반 단계(1~3px, 6px)만 쓴다', () => {
+    const offGrid = adminStylesheets(adminRoot).concat(join(adminRoot, 'admin-system.css')).flatMap((path) =>
+      [...read(path).matchAll(/(?<![\w-])((?:row-|column-)?gap|(?:padding|margin)(?:-[a-z-]+)?)\s*:([^;{}]*)/g)].flatMap((rule) =>
+        [...rule[2].matchAll(/(?<![\w.-])(\d+)px/g)]
+          .filter((value) => { const px = Number(value[1]); return px % 4 !== 0 && px > 3 && px !== 6 })
+          .map((value) => `${relative(adminRoot, path)}: ${rule[1]} ${value[0]}`)))
+    expect(offGrid).toEqual([])
+  })
+
   it('선택 상자에 background 묶음 속성을 쓰지 않아 기준의 화살표를 지우지 않는다', () => {
     const selectRulesWithBackgroundShorthand = /[^{}]*\bselect\b[^{}]*\{[^}]*?(?<![\w-])background:[^}]*\}/g
     expect(findings(selectRulesWithBackgroundShorthand)).toEqual([])

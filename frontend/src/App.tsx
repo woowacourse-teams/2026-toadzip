@@ -5,7 +5,6 @@ import { IngestPage } from './admin/ingest/IngestPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, matchRoutes, useLocation, useNavigationType } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
-import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
@@ -112,6 +111,12 @@ function LegacyIngestRedirect() {
   return <Navigate to={{ pathname: `/admin/ingest/${domain}`, search: params.toString(), hash }} replace />
 }
 
+// 주소 데이터 화면은 단지 수집의 2단계와 같은 화면이라 그 단계로 보낸다.
+function LegacyLocationsRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={{ pathname: '/admin/ingest/complexes', search, hash: '#complex-location' }} replace />
+}
+
 function AdminRoutes() {
   return (
     <AdminAuthProvider>
@@ -135,7 +140,7 @@ function AdminRoutes() {
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
             <Route path="sources" element={<SourceDataPage />} />
-            <Route path="locations" element={<LocationDataPage />} />
+            <Route path="locations" element={<LegacyLocationsRedirect />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { AdminLayout } from './AdminLayout'
@@ -51,12 +51,14 @@ it('모든 메뉴 링크에 아이콘과 접근 가능한 이름, 선택 상태�
   expect(screen.queryByText('공식 근거로 신뢰할 수 있는 정보를 만듭니다.')).not.toBeInTheDocument()
   const menu = screen.getByRole('navigation', { name: '관리자 메뉴' })
   const links = menu.querySelectorAll('a')
-  expect(links).toHaveLength(12)
+  expect(links).toHaveLength(11)
   links.forEach(link => {
     expect(link.querySelector('svg')).not.toBeNull()
     expect(link).toHaveAccessibleName()
   })
   expect(screen.getByRole('link', { name: '알림 신청 관리' })).toHaveAttribute('aria-current', 'page')
+  // 주소 데이터는 단지 수집의 2단계와 같은 화면이라 메뉴에 따로 두지 않는다.
+  expect(within(menu).queryByRole('link', { name: '주소 데이터' })).not.toBeInTheDocument()
 })
 it('로고 줄의 버튼으로 메뉴를 접고 펼쳐도 모든 메뉴 링크와 선택 상태가 남는다', () => {
   setup()
@@ -65,7 +67,7 @@ it('로고 줄의 버튼으로 메뉴를 접고 펼쳐도 모든 메뉴 링크�
   expect(collapse).toHaveAttribute('aria-expanded', 'true')
   fireEvent.click(collapse)
   const links = screen.getByRole('navigation', { name: '관리자 메뉴' }).querySelectorAll('a')
-  expect(links).toHaveLength(12)
+  expect(links).toHaveLength(11)
   links.forEach(link => expect(link).toHaveAccessibleName())
   expect(screen.getByRole('link', { name: '알림 신청 관리' })).toHaveAttribute('aria-current', 'page')
   const expand = screen.getByRole('button', { name: '메뉴 펼치기' })

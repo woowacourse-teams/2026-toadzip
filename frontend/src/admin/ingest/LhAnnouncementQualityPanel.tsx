@@ -148,8 +148,8 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
             <div className="lh-quality-candidate-scroll" tabIndex={0} aria-label="미수집 LH 공고 후보 목록">
               <ul>{quality.unlinkedLhCandidates.map((candidate) => (
                 <li key={candidate.sourceKey}>
-                  <strong>{candidate.panId}</strong>
-                  <span>{candidate.sourceKey}</span>
+                  <strong>공고 번호 {candidate.panId}</strong>
+                  <span>원천 식별자 {candidate.sourceKey}</span>
                   <time dateTime={candidate.changedAt}>변경 {time(candidate.changedAt)}</time>
                 </li>
               ))}</ul>
@@ -173,7 +173,7 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
                     setReason('')
                     setConfirmed(false)
                     setResult(null)
-                  }}>확인한 정정 반영</button> : <p>새 수집에서 응답 지문을 확보한 뒤 승인할 수 있습니다.</p>}
+                  }}>확인한 정정 반영</button> : <p>새 수집에서 바뀐 응답을 다시 받은 뒤 승인할 수 있습니다.</p>}
                 </li>
               ))}</ul>
             )}
@@ -186,8 +186,8 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
             <form className="lh-quality-review" onSubmit={(event) => void apply(event)}>
               <h4>공식 근거 확인 후 공급 재조회</h4>
               <p>선택한 요청: {held.requestDescription}</p>
-              <p className="ingest-meta">승인할 응답 지문: {held.proposedFingerprint}</p>
-              <label>LH 공고 ID<input required value={panId} placeholder="공고목록의 공고 ID(PAN_ID)" onChange={(event) => setPanId(event.target.value)} /></label>
+              <p className="ingest-meta">승인할 응답 확인값(같은 응답인지 대조용): {held.proposedFingerprint}</p>
+              <label>LH 공고 번호<input required value={panId} placeholder="LH 공고 목록의 공고 번호" onChange={(event) => setPanId(event.target.value)} /></label>
               <label>LH 공식 공고문 URL<input required type="url" value={evidenceUrl}
                 onChange={(event) => setEvidenceUrl(event.target.value)} /></label>
               <label>철회·정정 확인 사유<textarea required value={reason}

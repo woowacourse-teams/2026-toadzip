@@ -36,7 +36,15 @@ it('실패한 한 곳을 선택해 재처리하고 완료 대상은 선택할 �
   fireEvent.click(checkbox)
   expect(screen.getByLabelText('남은 단지 상세 정보').closest('details')).not.toHaveAttribute('open')
   fireEvent.click(screen.getByRole('button', { name: '선택한 1곳 다시 처리' }))
-  expect(onRetry).toHaveBeenCalledExactlyOnceWith(['123:HAPPY_HOUSING'])
+  // 취소하면 재처리 요청이 나가지 않고 선택도 그대로 남는다.
+  expect(screen.getByRole('dialog', { name: '선택한 1곳을 다시 처리할까요?' })).toHaveTextContent('선택한 단지 1곳만')
+  fireEvent.click(screen.getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(onRetry).not.toHaveBeenCalled()
+  expect(checkbox).toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: '선택한 1곳 다시 처리' }))
+  fireEvent.click(screen.getByRole('button', { name: '1곳 다시 처리' }))
+  await waitFor(() => expect(onRetry).toHaveBeenCalledExactlyOnceWith(['123:HAPPY_HOUSING']))
   expect(screen.queryByRole('checkbox', { name: '완료 단지 재처리 선택', hidden: true })).not.toBeInTheDocument()
 })
 
@@ -81,10 +89,12 @@ it('여러 페이지의 대상을 전체 선택하고 완료 대상을 제외한
   fireEvent.click(screen.getByRole('button', { name: '등록 대상 전체 선택' }))
   await screen.findByRole('button', { name: '선택한 201곳 다시 처리' })
   expect(screen.getByRole('checkbox', { name: '단지 1 재처리 선택' })).toBeChecked()
-  fireEvent.click(screen.getByRole('button', { name: '다음 대상' }))
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
   expect(await screen.findByRole('checkbox', { name: '단지 21 재처리 선택' })).toBeChecked()
   fireEvent.click(screen.getByRole('button', { name: '선택한 201곳 다시 처리' }))
-  expect(onRetry).toHaveBeenCalledExactlyOnceWith(targets.map(target => target.sourceComplexIdentifier))
+  expect(screen.getByRole('dialog', { name: '선택한 201곳을 다시 처리할까요?' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '201곳 다시 처리' }))
+  await waitFor(() => expect(onRetry).toHaveBeenCalledExactlyOnceWith(targets.map(target => target.sourceComplexIdentifier)))
 })
 
 it('전체 선택 중 페이지 조회가 실패하면 일부만 선택했다고 표시하지 않는다', async () => {
@@ -118,7 +128,7 @@ it('재처리 후 보완이 남으면 등록 성공이 아니라 확인이 필�
   fireEvent.click(screen.getByRole('button', { name: '이 단지 다시 처리' }))
   expect(screen.getByText(/재처리를 요청했습니다/)).toBeVisible()
   view.rerender(<InitialRegistrationProgress {...props} registration={{ execution: { ...idle, executionId: 'retry-1',
-    status: 'COMPLETED_WARNINGS' }, requestError: null, errorResponse: null }} />)
+    status: 'COMPLETED_WARNINGS' }, requestError: null }} />)
   const dialog = await screen.findByRole('dialog', { name: '재처리 결과' })
   expect(dialog).toHaveTextContent('1곳의 재처리가 끝났지만 확인이 필요한 대상이 있습니다. 확인 사항과 이력을 확인하세요.')
   expect(screen.queryByText('처리가 끝났지만 확인이 필요한 대상이 있습니다.')).not.toBeInTheDocument()
@@ -149,8 +159,11 @@ it('현황 숫자를 누르면 해당 상태의 첫 페이지로 이동한다', 
   await screen.findByText('남은 단지')
   fireEvent.click(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('LOCATION_REQUIRED', 0, 20))
-  expect(screen.getByLabelText('진행 상태')).toHaveValue('LOCATION_REQUIRED')
   expect(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' })).toHaveAttribute('aria-pressed', 'true')
+  // 상태 필터는 건수가 보이는 현황 버튼 하나뿐이다. 다시 누르면 전체로 돌아간다.
+  expect(screen.queryByLabelText('진행 상태')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' }))
+  await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('', 0, 20))
 })
 
 it('보류 사유를 바로 보여주고 원천과 확인 시각은 단지 상세를 펼쳤을 때 보여준다', async () => {
@@ -168,23 +181,39 @@ it('등록 가능한 신규 단지가 있을 때 등록 실행을 제공한다',
   expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeEnabled()
 })
 
+it('전체 등록은 대상 수를 알리고 물은 뒤 실행하며 취소하면 요청하지 않는다', async () => {
+  const onRegister = vi.fn()
+  vi.mocked(getInitialRegistration).mockResolvedValue({ ...response, counts: { ...response.counts, READY: 1234 } })
+  render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} onRegister={onRegister} />)
+  await screen.findByText('남은 단지')
+  fireEvent.click(screen.getByRole('button', { name: '준비된 신규 단지 등록' }))
+  const dialog = screen.getByRole('dialog', { name: '준비된 신규 단지 1,234곳을 등록할까요?' })
+  expect(dialog).toHaveTextContent('목록 필터와 선택은 대상을 줄이지 않습니다.')
+  fireEvent.click(screen.getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(onRegister).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '준비된 신규 단지 등록' }))
+  fireEvent.click(screen.getByRole('button', { name: '1,234곳 등록' }))
+  await waitFor(() => expect(onRegister).toHaveBeenCalledTimes(1))
+})
+
 it('새로고침으로 실행 중인 등록을 복원하고 자동으로 완료 수를 갱신한다', async () => {
   const running = { ...idle, executionId: 'run-1', status: 'RUNNING' as const }
   const view = render(<InitialRegistrationProgress disabled={true} revision="" onBusyChange={vi.fn()}
-    registration={{ execution: running, requestError: null, errorResponse: null }} />)
+    registration={{ execution: running, requestError: null }} />)
   await screen.findByText('남은 단지')
   expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
   expect(screen.getByText('등록 준비 중…')).toBeVisible()
   vi.mocked(getInitialRegistration).mockResolvedValue({ ...response, counts: { ...response.counts, COMPLETED: 95 } })
   await waitFor(() => expect(screen.getByLabelText('등록 현황')).toHaveTextContent('95곳'), { timeout: 3500 })
   view.rerender(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()}
-    registration={{ execution: { ...running, status: 'COMPLETED', finishedAt: '2026-11-09T01:00:00Z' }, requestError: null, errorResponse: null }} />)
+    registration={{ execution: { ...running, status: 'COMPLETED', finishedAt: '2026-11-09T01:00:00Z' }, requestError: null }} />)
   expect(screen.queryByLabelText('등록 실행 상태')).not.toBeInTheDocument()
 })
 
 it('실행 상태 조회에 실패해도 진행 중 상태를 유지하고 등록을 다시 보내지 않는다', async () => {
   render(<InitialRegistrationProgress disabled={true} revision="" onBusyChange={vi.fn()}
-    registration={{ execution: { ...idle, status: 'RUNNING' }, requestError: '조회 실패', errorResponse: null }} />)
+    registration={{ execution: { ...idle, status: 'RUNNING' }, requestError: '조회 실패' }} />)
   expect(await screen.findByRole('alert')).toHaveTextContent('마지막 실행 상태를 유지')
   expect(screen.getByRole('button', { name: '준비된 신규 단지 등록' })).toBeDisabled()
   expect(registerReadyComplexes).not.toHaveBeenCalled()
@@ -197,7 +226,7 @@ it('실행 중에는 처리 건수와 중지 버튼을 함께 표시한다', asy
     registration={{ execution: { ...idle, status: 'RUNNING', workProgress: {
       label: '등록', unit: '곳', completedCount: 106, totalCount: 2239,
       startedAt: '2026-11-09T00:00:00Z', updatedAt: '2026-11-09T00:01:00Z',
-    } }, requestError: null, errorResponse: null }} />)
+    } }, requestError: null }} />)
   expect(await screen.findByText('등록 중 106 / 2,239곳')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '등록 중지' }))
   expect(onStop).toHaveBeenCalledOnce()
@@ -210,7 +239,7 @@ it('완료 후 중복 실행 안내를 표시하지 않고 전체 현황을 유�
     onShowHistory={onShowHistory}
     registration={{ execution: { ...idle, status: 'COMPLETED', completedStepResults: [{ step: 'REGISTER_MYHOME_COMPLEXES',
       stepName: '준비된 신규 단지 등록', report: { targetCount: 2, uniqueAddressCount: 1,
-        counts: { ...response.counts, COMPLETED: 2 } } }] }, requestError: null, errorResponse: null }} />)
+        counts: { ...response.counts, COMPLETED: 2 } } }] }, requestError: null }} />)
   await screen.findByLabelText('등록 현황')
   expect(screen.queryByRole('status', { name: '등록 실행 상태' })).not.toBeInTheDocument()
   expect(screen.queryByText(/고유 원천 주소/)).not.toBeInTheDocument()
@@ -237,14 +266,14 @@ it('90곳 완료와 남은 10곳의 필요한 작업을 구분해 표시한다',
   expect(within(summary).getByText('90')).toHaveTextContent('90곳')
   expect(within(summary).getByText('10')).toHaveTextContent('10곳')
   expect(screen.getByText('주소·좌표 확인 필요')).toBeVisible()
-  fireEvent.change(screen.getByLabelText('진행 상태'), { target: { value: 'LOCATION_REQUIRED' } })
+  fireEvent.click(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('LOCATION_REQUIRED', 0, 20))
 })
 
 it('다음 페이지를 조회하고 화면을 다시 열면 서버에 저장된 상태를 읽는다', async () => {
   const view = render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
   await screen.findByText('남은 단지')
-  fireEvent.click(screen.getByRole('button', { name: '다음 대상' }))
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('', 1, 20))
   view.unmount()
   render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
@@ -298,17 +327,17 @@ it('100건 선택을 다시 방문해도 기억하고 상태 필터를 바꿔도
   await screen.findByText('남은 단지')
   expect(screen.getByRole('combobox', { name: '표시 건수' })).toHaveValue('100')
   expect(getInitialRegistration).toHaveBeenLastCalledWith('', 0, 100)
-  fireEvent.change(screen.getByLabelText('진행 상태'), { target: { value: 'LOCATION_REQUIRED' } })
+  fireEvent.click(screen.getByRole('button', { name: '좌표 준비 필요 10곳 보기' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('LOCATION_REQUIRED', 0, 100))
 })
 
 it('표시 건수를 바꾸면 상태 필터를 유지하고 첫 페이지부터 조회한다', async () => {
   render(<InitialRegistrationProgress disabled={false} revision="" onBusyChange={vi.fn()} />)
   await screen.findByText('남은 단지')
-  fireEvent.change(screen.getByLabelText('진행 상태'), { target: { value: 'FAILED' } })
+  fireEvent.click(screen.getByRole('button', { name: /^등록 실패 \d+곳 보기$/ }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('FAILED', 0, 20))
   await screen.findByText('남은 단지')
-  fireEvent.click(screen.getByRole('button', { name: '다음 대상' }))
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('FAILED', 1, 20))
   fireEvent.change(screen.getByRole('combobox', { name: '표시 건수' }), { target: { value: '50' } })
   await waitFor(() => expect(getInitialRegistration).toHaveBeenLastCalledWith('FAILED', 0, 50))
@@ -336,5 +365,5 @@ it('브라우저 저장소가 차단되어도 기본 조회와 건수 변경을 
 const idle = { executionId: null, type: 'COMPLEX_REGISTRATION' as const, status: 'IDLE' as const,
   currentStepName: null, currentStepIndex: 0, totalStepCount: 1, completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null }
 function InitialRegistrationProgress(props: Partial<ComponentProps<typeof Progress>> & Pick<ComponentProps<typeof Progress>, 'disabled' | 'revision' | 'onBusyChange'>) {
-  return <Progress registration={{ execution: idle, requestError: null, errorResponse: null }} starting={false} onRegister={vi.fn()} onRefreshRegistration={vi.fn()} {...props} />
+  return <Progress registration={{ execution: idle, requestError: null }} starting={false} onRegister={vi.fn()} onRefreshRegistration={vi.fn()} {...props} />
 }

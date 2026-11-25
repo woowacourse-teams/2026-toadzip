@@ -13,10 +13,12 @@ import { NewWindowMark } from '../shared/AdminIcon'
 type Props = {
   domain?: FailureDomain; initialCategory?: FailureCategory; executionId: string | null; refreshToken?: number
   retryDisabled?: boolean; runError?: string
+  /** 조건을 걸지 않은 미해결 목록의 전체 건수를 알린다. 조건을 걸었거나 아직 모르면 null이다. */
+  onPendingCount?: (count: number | null) => void
 }
 
 export function IngestFailurePanel({ domain: selectedDomain, initialCategory, executionId, refreshToken = 0,
-  retryDisabled = false, runError = '' }: Props) {
+  retryDisabled = false, runError = '', onPendingCount }: Props) {
   const domain = selectedDomain ?? (initialCategory === 'announcement' || initialCategory === 'enrichment'
     || initialCategory === 'refinement' ? 'announcement' : 'complex')
   const [params, setParams] = useSearchParams()
@@ -65,6 +67,9 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
     next.set('failure', `${row.category}:${row.id}`)
     return failureReturnUrl(path, `/admin/failures?${next}`)
   }
+  const pendingCount = matching && category === 'all' && status === 'PENDING' && !keyword && !executionId
+    ? matching.totalElements : null
+  useEffect(() => { onPendingCount?.(pendingCount) }, [onPendingCount, pendingCount])
   const pdfGroups = new Map<number, FailureReview[]>()
   for (const row of matching?.items ?? []) {
     if (!canCorrectPdf(row)) continue
@@ -169,21 +174,25 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {matching.totalElements > 0 ? <button type="button" onClick={() => move(0)}>첫 페이지로</button> : null}</div> : null}
         {matching && matching.items.length > 0 ? <table className={styles.table}>
           <caption className="sr-only">{label} 오류 목록 · {matching.page + 1}페이지</caption>
-          <colgroup><col className={styles.targetColumn}/><col/><col style={{width:120}}/><col className={styles.actionColumn}/></colgroup>
-          <thead><tr><th scope="col">대상</th><th scope="col">원인</th><th scope="col">상태</th><th scope="col">확인·처리</th></tr></thead>
-          <tbody>{matching.items.map(row => {
-            const target = reviewTarget(row)
-            // 목록은 무엇이 왜 실패했는지만 보여 준다. 근거·서비스 데이터·처리 기록은 확인·처리 창에서 본다.
-            return <tr key={`${row.category}-${row.id}`}>
-              <th scope="row" title={target.title}>{row.product ? <Link to={follow(`/admin/${row.product.resourceType}/${row.product.id}`, row)}>{target.title}</Link> : <span>{target.title}</span>}
-                <small>{failureCategories[row.category].label}{target.context ? ` · ${target.context}` : ''}</small></th>
-              <td title={row.detail}>{reasonLabel(row)}</td>
+          <colgroup><col className={styles.targetColumn}/><col style={{width:184}}/><col/><col style={{width:152}}/><col style={{width:120}}/><col className={styles.actionColumn}/></colgroup>
+          <thead><tr><th scope="col">대상</th><th scope="col">원인</th><th scope="col">세부 원인</th><th scope="col">발생 시각</th><th scope="col">상태</th><th scope="col">확인·처리</th></tr></thead>
+          <tbody>{listRows(matching.items).map(({row, same, target, continued, continues, showContext}) => {
+            const title = reviewTarget(row).title
+            // 목록은 무엇이 왜 실패했는지와 행을 가르는 값만 보여 준다. 근거·서비스 데이터·처리 기록은 확인·처리 창에서 본다.
+            return <tr key={`${row.category}-${row.id}`} data-continues={continues || undefined}>
+              <th scope="row" title={title}>{continued ? <span className="sr-only">{target.name}</span>
+                : row.product ? <Link to={follow(`/admin/${row.product.resourceType}/${row.product.id}`, row)}>{target.name}</Link> : <span>{target.name}</span>}
+                {showContext ? <small>{target.context}</small> : null}</th>
+              <td>{reasonLabel(row)}</td>
+              <td><span className={styles.detail} title={row.detail}>{row.detail}</span>
+                {same > 0 ? <small>같은 내용 외 {same}건</small> : null}</td>
+              <td>{formatListTime(row.occurredAt)}</td>
               <td><span className={`admin-status ${styles.status}`} data-status={row.status}>{statusLabel(row.status)}</span>{resolvedByLabel(row) && <small className={styles.resolvedBy}>{resolvedByLabel(row)}</small>}</td>
               <td>{canCorrectPdf(row) && pdfGroups.get(row.product!.id)?.[0] === row && (pdfGroups.get(row.product!.id)?.length ?? 0) > 1 &&
                 <Link className={styles.pdfLink} to={follow(`/admin/announcements/${row.product!.id}/pdf-correction?${pdfFailureParams(pdfGroups.get(row.product!.id)!)}`, row)}>
                   PDF로 보정 · {pdfGroups.get(row.product!.id)!.length}건
                 </Link>}
-                <button type="button" className="admin-text-button" aria-label={`확인·처리: ${target.title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
+                <button type="button" className="admin-text-button" aria-label={`확인·처리: ${title}`} onClick={() => openSelection(row)}>확인·처리</button></td>
             </tr>
           })}</tbody>
         </table> : null}
@@ -204,7 +213,7 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {canCorrectPdf(selected) && !actionDisabled && <Link className="admin-tonal" to={follow(`/admin/announcements/${selected.product!.id}/pdf-correction`)}>PDF로 보정</Link>}
           {selected.product ? <Link className="admin-tonal" to={follow(`/admin/${selected.product.resourceType}/${selected.product.id}`)}>{label} 확인·수정</Link> : null}
           <RecoveryLinks row={selected} follow={follow}/>
-          {selected.category === 'collection' && <Link className="admin-tonal" to={follow(`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>}
+          {selected.category === 'collection' && <Link className="admin-tonal" to={follow(`/admin/ingest/${domain === 'complex' ? 'complexes#complex' : 'announcements#announcement'}-pipelines`)}>API 키 입력·원천 수집</Link>}
           <Link to={follow(sourceLocation(selected))}>{selected.category === 'enrichment' ? 'LH 상세 원천' : '원천 데이터'}</Link>
           {selected.category === 'enrichment' && <Link to={follow(sourceLocation(selected, true))}>LH 공급 원천</Link>}
         </div>
@@ -280,6 +289,11 @@ function formatTime(value:string) {
   const date=new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})
 }
+function formatListTime(value:string) {
+  const date=new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hourCycle:'h23',
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+}
 // PDF 보정 화면이 고칠 공급행을 보여 줄 수 있게 오류마다 사유와 원천 공급행 키를 넘긴다.
 function pdfFailureParams(rows: FailureReview[]) {
   const params = new URLSearchParams({ failureCount: String(rows.length) })
@@ -340,4 +354,35 @@ function sourceLocation(row:FailureReview, supply = false) {
 function reviewTarget(row:FailureReview) {
   if (row.category === 'collection') return failureTarget(row)
   return {title:row.target,context:null,source:null}
+}
+// 목록의 대상 칸에 쓸 값. 이름이 없는 대상은 원천 식별자를 이름처럼 내세우지 않고 보조 글자로 내린다.
+function listTarget(row:FailureReview) {
+  const stage = failureCategories[row.category].label
+  if (row.category === 'collection') {
+    const target = failureTarget(row)
+    return {group:`collection:${target.title}`, name:target.title, context:[stage, target.context].filter(Boolean).join(' · ')}
+  }
+  return {
+    group: row.product ? `${row.product.resourceType}:${row.product.id}` : `source:${row.identifier}:${row.name ?? ""}`,
+    name: row.name ?? '이름 없음',
+    context: [stage, row.supplyRow === null ? null : `공급행 ${row.supplyRow}`, row.name ? null : row.identifier].filter(Boolean).join(' · '),
+  }
+}
+// 한 페이지 안에서 대상·원인·세부 원인이 모두 같은 기록은 한 줄로 합치고, 같은 대상이 이어지면 이름을 첫 줄에만 쓴다.
+// 서버 페이지는 그대로 두고 받은 20건의 표시만 바꾸므로 건수·페이지 이동·필터에는 영향이 없다.
+function listRows(items:FailureReview[]) {
+  const merged = new Map<string, {row:FailureReview; same:number}>()
+  for (const row of items) {
+    const key = JSON.stringify([row.category, row.status, row.product?.id ?? null, row.identifier, row.target, row.reason, row.detail, row.lastResolvedBy])
+    const found = merged.get(key)
+    if (found) found.same += 1
+    else merged.set(key, {row, same:0})
+  }
+  const rows = [...merged.values()].map(item => ({...item, target:listTarget(item.row)}))
+  return rows.map((item, index) => {
+    const previous = rows[index - 1]?.target
+    const continued = previous?.group === item.target.group
+    return {...item, continued, continues: rows[index + 1]?.target.group === item.target.group,
+      showContext: !continued || previous?.context !== item.target.context}
+  })
 }

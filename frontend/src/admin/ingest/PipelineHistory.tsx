@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { getPipelineHistory, type DataPipelineExecution } from './api'
-import { PipelineResult } from './PipelineResult'
 import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels'
 import { ComplexExecutionResult } from './ComplexExecutionResult'
@@ -9,7 +8,7 @@ import styles from './ComplexIngest.module.css'
 import listStyles from './PipelineHistory.module.css'
 import { ComplexStatusBadge } from './ComplexStatusBadge'
 import { AdminIcon } from '../shared/AdminIcon'
-export function PipelineHistory({ domain, compact = false, readOnlyComplex = false, onShowRegistration }: { domain?: 'complex' | 'announcement'; compact?: boolean; readOnlyComplex?: boolean; onShowRegistration?: () => void } = {}) {
+export function PipelineHistory({ domain, readOnlyComplex = false, onShowRegistration }: { domain: 'complex' | 'announcement'; readOnlyComplex?: boolean; onShowRegistration?: () => void }) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
   const [selected, setSelected] = useState<DataPipelineExecution | null>(null)
@@ -20,23 +19,22 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
   const detailHeading = useRef<HTMLHeadingElement>(null)
   const detailTrigger = useRef<HTMLButtonElement | null>(null)
   // 공고 수집 화면은 이력과 실행 상세를 다른 관리자 목록처럼 각각 흰 카드로 둔다. 단지 수집은 이력 창 안에 그대로 둔다.
-  const listCard = compact && !readOnlyComplex
+  const listCard = !readOnlyComplex
 
   // 두 화면 모두 상세가 누른 행에서 떨어져 열리므로 상세 제목으로 옮긴다.
   useEffect(() => {
-    if ((compact || readOnlyComplex) && selected) {
+    if (selected) {
       detailHeading.current?.focus({ preventScroll: true })
       detailHeading.current?.scrollIntoView?.({ block: 'start' })
     }
-  }, [compact, readOnlyComplex, selected])
+  }, [selected])
 
   useEffect(() => {
     let active = true
     setBusy(true)
     setError('')
     setSelected(null)
-    const history = domain ? getPipelineHistory(page, domain) : getPipelineHistory(page)
-    void history
+    void getPipelineHistory(page, domain)
       .then((value) => { if (active) setItems(value) })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : '이력을 불러오지 못했습니다.')
@@ -61,15 +59,11 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
     </section>
   ) : (
     <section id={detailId} className="pipeline-history-detail" aria-label="선택한 실행 상세">
-      <header><h3 ref={detailHeading} tabIndex={readOnlyComplex ? -1 : undefined}>선택한 실행 상세</h3>{readOnlyComplex ? <ComplexIconButton icon="close" label="닫기" onClick={closeDetail} />
-        : <button type="button" onClick={() => setSelected(null)}>닫기</button>}</header>
-      <p>{readOnlyComplex ? selected.type === 'COMPLEX_REGISTRATION'
+      <header><h3 ref={detailHeading} tabIndex={-1}>선택한 실행 상세</h3><ComplexIconButton icon="close" label="닫기" onClick={closeDetail} /></header>
+      <p>{selected.type === 'COMPLEX_REGISTRATION'
         ? '선택한 등록 실행에 저장된 단계별 결과입니다.'
-        : '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'
-        : '선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.'}</p>
-      {readOnlyComplex ? <ComplexExecutionResult key={selected.executionId} execution={selected} onShowRegistration={onShowRegistration} />
-        : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
-          stopping={true} onStop={() => {}} />}
+        : '선택한 실행에 저장된 단계별 결과입니다. 오류 조회는 이 실행에 연결된 대상의 현재 검토 상태를 보여줍니다.'}</p>
+      <ComplexExecutionResult key={selected.executionId} execution={selected} onShowRegistration={onShowRegistration} />
     </section>
   ) : null
 
@@ -92,7 +86,7 @@ export function PipelineHistory({ domain, compact = false, readOnlyComplex = fal
           <table className="admin-table">
             <thead><tr><th scope="col">작업</th><th scope="col">실행 시각</th><th scope="col">상태</th><th scope="col">결과</th></tr></thead>
             <tbody>{items.map((item) => (
-              <tr key={item.executionId} className={(compact || readOnlyComplex) && selected?.executionId === item.executionId ? styles.selectedHistoryRow : undefined}>
+              <tr key={item.executionId} className={selected?.executionId === item.executionId ? styles.selectedHistoryRow : undefined}>
                 <td>{labels[item.type]}{item.trigger === 'SCHEDULED' ? <span className={listStyles.trigger}>{scheduledLabel(item)}</span> : null}</td>
                 <td><time dateTime={item.startedAt ?? undefined}>
                   {item.startedAt ? new Date(item.startedAt).toLocaleString('ko-KR') : '기록 없음'}

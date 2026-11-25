@@ -41,13 +41,13 @@ it('접수처가 없는 공고는 없음으로 보여준다', async () => {
 })
 
 it('수정에서 접수처를 추가·삭제하면 저장 확인 대상이 되고, 칸이 모두 빈 접수처는 버리고 목록으로 저장한다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   mocks.requestManagementApi.mockResolvedValue(fixture([visit]))
   renderDetail()
   fireEvent.click(await screen.findByRole('button', { name: '기본정보 수정' }))
   fireEvent.click(screen.getByRole('button', { name: '접수처 1 삭제' }))
   fireEvent.click(screen.getByRole('button', { name: '취소' }))
-  expect(confirm).toHaveBeenCalledOnce()
+  fireEvent.click(within(screen.getByRole('dialog', { name: '변경사항을 버릴까요?' })).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
   const kept = screen.getByRole('group', { name: '접수처 1' })
   expect(within(kept).getByLabelText('접수처명')).toHaveValue('두꺼비 주거복지지사')
@@ -59,7 +59,6 @@ it('수정에서 접수처를 추가·삭제하면 저장 확인 대상이 되�
   await waitFor(() => expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/announcements/7', 'PUT', expect.objectContaining({ version: 2, name: '두꺼비 공고' })))
   expect(sentPlaces()).toEqual([{ ...visit, guidance: '인터넷 취약계층·고령자만 현장 접수' }])
   expect(mocks.requestManagementApi.mock.lastCall?.[2]).not.toHaveProperty('receptionPlace')
-  confirm.mockRestore()
 })
 
 it('접수처를 모두 삭제하면 빈 목록으로 저장한다', async () => {

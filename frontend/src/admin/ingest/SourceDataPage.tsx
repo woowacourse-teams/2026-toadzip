@@ -11,6 +11,10 @@ import styles from './SourceDataPage.module.css'
 import { failureReturnUrl } from './failureNavigation'
 import { NewWindowMark } from '../shared/AdminIcon'
 
+// 수집을 멈춘 마이홈 공고는 저장된 과거 원천을 볼 때만 쓰므로 탭 맨 뒤에 둔다.
+const sourceTabs = Object.entries(sourceCategories).sort(([left], [right]) =>
+  Number(left === 'MYHOME_ANNOUNCEMENT') - Number(right === 'MYHOME_ANNOUNCEMENT'))
+
 export function SourceDataPage() {
   const [params, setParams] = useSearchParams()
   const search = params.toString()
@@ -65,11 +69,16 @@ export function SourceDataPage() {
   const metadata = category ? sourcePresentation[category] : null
   // SH·GH 공고는 공식 게시판을 API 키 없이 수집한다.
   const board = category === 'SH_ANNOUNCEMENT' || category === 'GH_ANNOUNCEMENT' ? category : null
+  // 수집 키는 서버 설정에 있어 화면에서는 그 분류를 수집하는 화면으로만 보낸다. 수집을 멈춘 마이홈 공고에는 보낼 곳이 없다.
+  const ingest = category === 'MYHOME_ANNOUNCEMENT' || !category ? null
+    : category === 'MYHOME_COMPLEX' || category === 'LH_LEASE_CATALOG'
+      ? { path: '/admin/ingest/complexes', label: '단지 수집으로 이동' }
+      : { path: '/admin/ingest/announcements', label: '공고 수집으로 이동' }
 
   return <section className={`management-page ${styles.page}`}>
     <header className="management-heading"><div><h1>원천 데이터</h1></div><button type="button" disabled={pending} onClick={() => setAttempt(value => value + 1)}>목록 새로고침</button></header>
     <div className={`${styles.tabs} admin-folder-tabs`} role="tablist" aria-label="원천 분류">
-      {Object.entries(sourceCategories).map(([value, label], index, entries) => <button key={value} type="button"
+      {sourceTabs.map(([value, label], index, entries) => <button key={value} type="button"
         role="tab" id={`source-tab-${value}`} aria-selected={category === value} aria-controls="source-panel"
         tabIndex={category === value || (!category && index === 0) ? 0 : -1}
         onClick={() => selectCategory(value as SourceCategory)} onKeyDown={event => {
@@ -87,7 +96,7 @@ export function SourceDataPage() {
     <div id="source-panel" role="tabpanel" aria-labelledby={category ? `source-tab-${category}` : undefined}>
     {metadata ? <div className={styles.sourceInfo}>
       <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{board ? '공식 게시판' : 'API 설명·키 발급'}<NewWindowMark /></a>
-        <Link to={params.get('failureReturnTo') ? failureReturnUrl('/admin/ingest', params.get('failureReturnTo')!) : '/admin/ingest'}>{board ? `키 없이 ${sourceCategories[board]} 수집` : 'API 키 입력하고 수집'}</Link></p>
+        {ingest ? <Link to={params.get('failureReturnTo') ? failureReturnUrl(ingest.path, params.get('failureReturnTo')!) : ingest.path}>{ingest.label}</Link> : null}</p>
     </div> : null}
     <form key={search} className="management-filters" onSubmit={event => {
       event.preventDefault()
@@ -113,7 +122,7 @@ export function SourceDataPage() {
       <div className={styles.summary}><p>수집 시각 최신순 · 총 <strong>{result.totalElements.toLocaleString('ko-KR')}건</strong></p>
         <p>주요 항목부터 표시 · 좌우로 스크롤해 전체 항목 확인</p></div>
       {result.items.length === 0 ? <div className="admin-empty"><h2>표시할 원천 데이터가 없습니다.</h2>
-        <p>{keyword ? '검색어를 바꿔 다시 조회해 주세요.' : '다른 분류를 선택하거나 수집·정제에서 데이터를 수집해 주세요.'}</p>
+        <p>{keyword ? '검색어를 바꿔 다시 조회해 주세요.' : '다른 분류를 선택하거나 수집 화면에서 데이터를 수집해 주세요.'}</p>
         {result.totalElements > 0 ? <button type="button" onClick={() => move(0)}>첫 페이지로 이동</button> : null}</div>
         : <div className={`admin-table-scroll ${styles.scroll}`} tabIndex={0} role="region" aria-label="원천 데이터 목록 가로 스크롤">
           <table className={styles.table}>

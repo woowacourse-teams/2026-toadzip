@@ -63,13 +63,14 @@ it('검토 링크로 단지를 열면 비교 화면을 표시하고 수정 작�
   expect(screen.getByRole('link', { name: newWindowName('저장 좌표 보기') })).toBeVisible()
   expect(await screen.findByRole('checkbox', { name: '단지명 확인' })).toBeDisabled()
   expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
   fireEvent.click(screen.getByRole('button', { name: '수정 취소' }))
-  expect(screen.getByRole('checkbox', { name: '단지명 확인' })).toBeEnabled()
+  fireEvent.click(within(screen.getByRole('dialog', { name: '작성한 수정값과 근거를 버릴까요?' })).getByRole('button', { name: '버리기' }))
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: '단지명 확인' })).toBeEnabled())
   fireEvent.click(screen.getByRole('checkbox', { name: '단지명 확인' }))
   expect(screen.getByRole('button', { name: '이름 수정' })).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: '검토 작성 취소' }))
-  expect(screen.getByRole('button', { name: '이름 수정' })).toBeEnabled()
+  fireEvent.click(within(screen.getByRole('dialog', { name: '작성한 검토 기록을 버릴까요?' })).getByRole('button', { name: '버리기' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '이름 수정' })).toBeEnabled())
 })
 
 it('별도 상세 화면의 수정과 삭제도 작성 중인 검토의 이동 취소를 보존한다', async () => {

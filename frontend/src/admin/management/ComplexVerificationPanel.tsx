@@ -17,6 +17,7 @@ import type { ManagementSummary } from './managementContract'
 import { useUnsavedChanges } from './useUnsavedChanges'
 import styles from './ComplexVerification.module.css'
 import { NewWindowMark } from '../shared/AdminIcon'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 type Props = {
   reviewOnly?: boolean
@@ -44,6 +45,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
   const [notice, setNotice] = useState('')
   const session = useRef<AbortController | null>(null)
   useUnsavedChanges(dirty)
+  const [confirm, confirmDialog] = useConfirm()
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
 
   useEffect(() => {
@@ -63,8 +65,8 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
     return () => onBusyChange(false)
   }, [busy, onBusyChange])
 
-  function reload() {
-    if (dirty && !window.confirm('작성한 검토 내용을 버리고 새로 조회할까요?')) return
+  async function reload() {
+    if (dirty && !(await confirm({ title: '작성한 검토 내용을 버리고 새로 조회할까요?', body: '선택한 항목과 근거·메모가 지워집니다.', confirmLabel: '버리고 조회' }))) return
     setNotice(''); setAttempt(current => current + 1)
   }
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -96,7 +98,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
   const latest = value?.latestReview
   return <section className={styles.panel} aria-label="단지 데이터 검증" aria-busy={busy}>
     {error ? <div className={styles.error} role="alert"><p>{error}</p>
-      <button type="button" disabled={busy} onClick={reload}>새로 조회</button></div> : null}
+      <button type="button" disabled={busy} onClick={() => void reload()}>새로 조회</button></div> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
     {!value && !error ? <p role="status">검증 정보를 불러오는 중…</p> : null}
     {value ? <>
@@ -205,8 +207,8 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
             </details>
           </fieldset>
           <div className={styles.saveBar}><p>{fields.length}개 항목 선택</p>
-            {reviewOnly && dirty ? <button type="button" disabled={busy} onClick={() => {
-              if (window.confirm('작성한 검토 기록을 취소할까요?')) { setFields([]); setNote(''); setEvidenceUrl(''); setDirty(false) }
+            {reviewOnly && dirty ? <button type="button" disabled={busy} onClick={async () => {
+              if (await confirm({ title: '작성한 검토 기록을 버릴까요?', body: '선택한 항목과 근거·메모가 지워집니다.', confirmLabel: '버리기' })) { setFields([]); setNote(''); setEvidenceUrl(''); setDirty(false) }
             }}>검토 작성 취소</button> : null}
             <Button data-design-system type="submit" disabled={busy || deleted || !fields.length || !note.trim() || conflict}>{busy ? '저장 중…' : '검토 저장'}</Button>
           </div>
@@ -225,5 +227,6 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
         </li>)}</ol>
       </details> : null}
     </> : null}
+    {confirmDialog}
   </section>
 }

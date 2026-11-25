@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementList } from './ManagementList'
@@ -191,4 +191,15 @@ it('현재 페이지 주변 5개 번호와 바로가기 입력을 표시하며 �
   expect(screen.getByLabelText('페이지 바로가기')).toHaveValue(143)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(mocks.getManagementPage).toHaveBeenCalledOnce()
+})
+
+it('수정 중 취소를 누르면 확인을 받고, 확인 창에서 취소하면 입력을 유지하며 저장 요청도 없다',async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'수정'}))
+  fireEvent.change(screen.getByLabelText('이름'),{target:{value:'저장 전 이름'}})
+  fireEvent.click(screen.getByRole('button',{name:'취소'}))
+  fireEvent.click(within(screen.getByRole('dialog',{name:'변경사항을 버릴까요?'})).getByRole('button',{name:'취소'}))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByLabelText('이름')).toHaveValue('저장 전 이름')
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
 })

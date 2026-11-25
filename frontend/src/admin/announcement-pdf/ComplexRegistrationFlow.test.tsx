@@ -83,7 +83,7 @@ it('공고 단지와 주소가 같은 기존 단지가 하나면 고르지 않�
   render(<Test />)
   const group = await screen.findByRole('group', { name: `PDF 단지 ${name}` })
   expect(await within(group).findByText('연결 단지: 세종 옛 이름 · 공고 단지와 주소가 같아 자동으로 연결했습니다.')).toBeVisible()
-  expect(within(group).getByText("적용하면 '세종 옛 이름'의 이름이 공고 단지명 '한스빌 공고 단지명'(으)로 바뀔 수 있습니다. 적용 미리보기에서 확인하세요.")).toBeVisible()
+  expect(within(group).getByText("적용하면 '세종 옛 이름'의 이름이 공고 단지명 '한스빌 공고 단지명'(으)로 바뀔 수 있습니다. 실제로 바뀌는지는 적용 전 확인 창에서 알려 드립니다.")).toBeVisible()
   expect(latest.complexes[name]).toMatchObject({ housingComplexId: 41, announcementComplexId: 3, chosen: true, category: 'RESUPPLY' })
   // 공고문 개요 주소와 원천 도로명주소를 함께 보낸다.
   const [path] = api.requestManagementApi.mock.calls.find(([value]) => String(value).includes('/same-address-complexes'))!

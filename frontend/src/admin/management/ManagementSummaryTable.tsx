@@ -6,7 +6,7 @@ import { ManagementStatus, PublicationType } from './ManagementStatus'
 import styles from './ManagementList.module.css'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 
-type Column = { key: string; label: string; /** 비우면 남는 폭을 쓴다. */ width?: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' | 'verification' | 'publication' }
+type Column = { key: string; label: string; /** 비우면 남는 폭을 쓴다. */ width?: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' | 'verification' | 'publication' | 'stage' }
 export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false, selection, trash = false }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean
   selection?: { ids: ReadonlySet<number>; disabled?: boolean; onChange: (ids: Set<number>) => void }; trash?: boolean }) {
   const selected = useMatch(`/admin/${resource}/:id`)?.params.id
@@ -37,7 +37,9 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
           {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental ?? ''] ?? item.rental}</span><ManagementStatus summary={item} />{resource === 'complexes' && <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} />}</div></> : null}
         </th>
         {columns.map(column => <td key={column.key} data-field={column.key} className={column.kind === 'number' ? styles.number : undefined}>
-          {column.kind === 'status' ? <ManagementStatus summary={item} placeholder="—" /> : column.kind === 'publication' ? <PublicationType summary={item} /> : column.kind === 'verification' ? <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} /> : <TextValue value={column.read(item)} />}
+          {column.kind === 'status' ? <ManagementStatus summary={item} placeholder="—" /> : column.kind === 'publication' ? <PublicationType summary={item} />
+            // 사람이 처리할 '검토 대기'만 배지로 띄우고 나머지 단계는 평문으로 둔다.
+            : column.kind === 'stage' && item.announcement?.processingStage === 'REVIEW_PENDING' ? <span className="admin-status" data-tone="review">{processingStages.REVIEW_PENDING}</span> : column.kind === 'verification' ? <ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} /> : <TextValue value={column.read(item)} />}
         </td>)}
       </tr>)}</tbody>
     </table>
@@ -49,7 +51,7 @@ const complexColumns: Column[] = [
 /** 처리 단계는 공고 관리 목록만 채운다. 단지 상세의 연결 공고 표처럼 단계가 없는 표에는 열을 두지 않는다. */
 const announcementColumns = (withStage: boolean): Column[] => [
   { key: 'applicationStatus', label: '접수 상태', width: 96, read: item => item.announcement?.applicationStatus ? applicationStatuses[item.announcement.applicationStatus] : null },
-  ...(withStage ? [{ key: 'processingStage', label: '처리 단계', width: 104, read: (item: ManagementSummary) => processingStages[item.announcement?.processingStage ?? ''] }] : []),
+  ...(withStage ? [{ key: 'processingStage', label: '처리 단계', width: 104, read: (item: ManagementSummary) => processingStages[item.announcement?.processingStage ?? ''], kind: 'stage' as const }] : []),
   { key: 'publicationType', label: '공고 구분', width: 80, read: () => null, kind: 'publication' },
   { key: 'postedDate', label: '게시일', width: 96, read: item => item.announcement ? item.announcement.postedDate : item.subtitle },
   { key: 'applicationPeriod', label: '접수 기간', width: 120, read: item => applicationPeriod(item) },

@@ -79,3 +79,15 @@ it('여러 주택형이 함께 쓰는 수가 있어도 공급정보 편집표만
   expect(await screen.findByRole('region', { name: '공급정보 편집표' })).toBeVisible()
   expect(screen.queryByText('원천별 공급행 보정')).not.toBeInTheDocument()
 })
+
+it('확정한 접수 일정이 있으면 기본정보의 접수일은 읽기 전용이고 접수 일정 탭으로 안내한다', async () => {
+  api.getManagementDetail.mockResolvedValue({ ...detail, scheduleReviewed: true,
+    data: { version: 1, name: '검토 공고', postedDate: '2026-10-01', applicationStartDate: '2026-10-10', applicationEndDate: '2026-10-20' } })
+  show('/admin/announcements/7?section=info')
+  fireEvent.click(await screen.findByRole('button', { name: '기본정보 수정' }))
+  expect(screen.getByLabelText(/접수 시작일/)).toHaveAttribute('readonly')
+  expect(screen.getByLabelText(/접수 종료일/)).toHaveAttribute('readonly')
+  expect(screen.getByLabelText(/게시일/)).not.toHaveAttribute('readonly')
+  fireEvent.click(screen.getByRole('button', { name: '접수 일정 탭으로 이동' }))
+  expect(screen.getByRole('button', { name: '접수 일정' })).toHaveAttribute('aria-pressed', 'true')
+})

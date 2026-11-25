@@ -50,7 +50,7 @@ export function ComplexExecutionResult({ execution, phase, pending = false, stop
     {execution.failure && <p className="form-error" role="alert">{execution.failure.message}</p>}
     {showErrors && execution.type === 'COMPLEX_REGISTRATION' && <InitialRegistrationResultNotice onShowRegistration={onShowRegistration} />}
     {showErrors && execution.type !== 'COMPLEX_REGISTRATION' && <>
-      <Button data-design-system className={styles.errorToggle} aria-label="결과 오류 조회"
+      <Button data-design-system variant="secondary" className={styles.errorToggle} aria-label="결과 오류 조회"
         aria-expanded={errorsOpen} aria-controls={errorsId} onClick={() => setErrorsOpen(value => !value)}>
         결과 오류 조회
         <AdminIcon name="chevronDown" size={18} className={styles.disclosureChevron} />

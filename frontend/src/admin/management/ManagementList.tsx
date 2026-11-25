@@ -11,6 +11,7 @@ import styles from './ManagementList.module.css'
 import { managementListParams } from './managementNavigation'
 import { verificationStatuses } from './complexVerificationContract'
 import { verificationStatusLabels } from './complexVerificationPresentation'
+import { useConfirm } from '../shared/ConfirmDialog'
 
 export function ManagementList({ resource, embedded = false, compact = false, refresh = 0 }: { resource: ManagementResource; embedded?: boolean; compact?: boolean; refresh?: number }) {
   const [params, setParams] = useSearchParams()
@@ -20,6 +21,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkNotice, setBulkNotice] = useState('')
+  const [confirm, confirmDialog] = useConfirm()
   const search = (embedded ? managementListParams(params, resource) : params).toString()
   const activeParams = new URLSearchParams(search)
   const filterParams = new URLSearchParams(search)
@@ -38,7 +40,9 @@ export function ManagementList({ resource, embedded = false, compact = false, re
   async function bulk() {
     if (!checked.size || bulkBusy) return
     const action = trashView ? '복구' : '휴지통으로 이동'
-    if (!window.confirm(`${title} ${checked.size}개를 ${action}할까요?${trashView ? '' : ' 휴지통에서 다시 복구할 수 있습니다.'}`)) return
+    if (!(await confirm({ title: `${title} ${checked.size}개를 ${action}할까요?`,
+      body: trashView ? '복구하면 다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 휴지통에서 다시 복구할 수 있습니다.',
+      confirmLabel: trashView ? '복구' : '휴지통으로 이동' }))) return
     setBulkBusy(true); setBulkNotice('')
     const failed: string[] = []
     // 삭제·복구는 항목마다 최신 버전이 필요해 하나씩 조회한 뒤 처리한다.
@@ -118,7 +122,7 @@ export function ManagementList({ resource, embedded = false, compact = false, re
         if (value === 'true') next.set('deleted', 'true'); else next.delete('deleted')
         updateFilters(next)
       }}>{label}</button>)}</div>}
-    <ListFilters key={`${resource}:${keyword}`} keyword={keyword} searchLabel={resource === 'complexes' ? '단지명·주소' : '공고명'}
+    <ListFilters key={`${resource}:${keyword}`} keyword={keyword} searchLabel={resource === 'complexes' ? '단지명·주소' : '공고 제목'}
       initiallyExpanded={['rental', 'verification', 'review', 'unconfirmed', 'attention', 'recruiting', 'missingCoordinates'].some(key => activeParams.has(key))}
       onSearch={value => filter('keyword', value)} applied={applied} onRemove={key => filter(key, '')} onReset={reset}
       primary={<>{providerFilter}{resource === 'complexes' ? regionFilter : <label>접수 상태<select
@@ -156,5 +160,6 @@ export function ManagementList({ resource, embedded = false, compact = false, re
           selection={compact ? undefined : { ids: checked, disabled: bulkBusy, onChange: setChecked }} trash={trashView} />
         <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} disabled={pending} guardNavigation={embedded} /></> : null}
     </div>
+    {confirmDialog}
   </section>
 }

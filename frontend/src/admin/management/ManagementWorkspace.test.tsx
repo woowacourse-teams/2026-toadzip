@@ -58,12 +58,12 @@ it('공고 편집을 닫은 뒤 도착한 단지 등록 응답은 편집창을 �
   expect(api.getManagementDetail).not.toHaveBeenCalled()
 })
 
-it('새 공고 입력으로 이동하면 입력 방식 잠금을 풀고 늦은 단지 등록 응답에도 입력을 유지한다', async () => {
+it('새 공고 입력으로 이동하면 입력 잠금을 풀고 늦은 단지 등록 응답에도 입력을 유지한다', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   const finish = startInlineComplexRegistration()
   fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
   fireEvent.change(within(screen.getByRole('region', { name: '공고 추가' })).getByLabelText('공고명'), { target: { value: '새 작업' } })
-  expect(screen.getByRole('button', { name: '직접 입력' })).toBeEnabled()
+  expect(within(screen.getByRole('region', { name: '공고 추가' })).getByLabelText('공고명')).toBeEnabled()
   await finish()
   expect(within(screen.getByRole('region', { name: '공고 추가' })).getByLabelText('공고명')).toHaveValue('새 작업')
   expect(api.getManagementDetail).not.toHaveBeenCalled()
@@ -74,7 +74,6 @@ it('이전 단지 등록의 완료는 다시 연 편집창에서 진행 중인 �
   const finishPrevious = startInlineComplexRegistration()
   fireEvent.click(screen.getByRole('link', { name: '목록으로 돌아가기' }))
   fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
-  fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
   let finishCurrent!: (value: HousingComplexCreateResponse) => void
   registrationApi.createHousingComplex.mockReturnValue(new Promise<HousingComplexCreateResponse>(resolve => { finishCurrent = resolve }))
   fireEvent.click(screen.getByRole('button', { name: '새 단지 등록' }))
@@ -83,12 +82,11 @@ it('이전 단지 등록의 완료는 다시 연 편집창에서 진행 중인 �
   fireEvent.submit(within(form).getByRole('button', { name: '단지 저장' }).closest('form')!)
   await finishPrevious()
   expect(screen.getByRole('region', { name: '단지 등록' })).toBeVisible()
-  expect(screen.getByRole('button', { name: '마이홈에서 가져오기' })).toBeDisabled()
   expect(within(screen.getByRole('region', { name: '공고 추가' })).getByLabelText('공고명')).toBeDisabled()
   await act(async () => { finishCurrent({ housingComplexId: 9, name: '현재 작업 단지', roadAddress: summary.subtitle }) })
   expect(await screen.findByText(/선택 단지:/)).toBeVisible()
   expect(api.getManagementDetail).toHaveBeenCalledExactlyOnceWith('complexes', '9', expect.any(AbortSignal))
-  expect(screen.getByRole('button', { name: '마이홈에서 가져오기' })).toBeEnabled()
+  expect(within(screen.getByRole('region', { name: '공고 추가' })).getByLabelText('공고명')).toBeEnabled()
 })
 
 it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는다', async () => {
@@ -174,7 +172,6 @@ it('추가 화면도 조회 표를 유지하고 직접 입력을 제공한다', 
   expect(screen.getByRole('heading', { name: '공고 관리', level: 1 })).toBeVisible()
   const editor = screen.getByRole('region', { name: '공고 추가' })
   expect(within(editor).getByRole('heading', { name: '직접 입력' })).toBeVisible()
-  fireEvent.click(within(editor).getByRole('button', { name: '직접 입력' }))
   expect(within(editor).getByRole('button', { name: '공고 저장' })).toBeDisabled()
   expect(within(editor).getByLabelText('공고명')).toHaveValue('')
   expect(api.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('행복')

@@ -93,3 +93,9 @@ function stepState(execution: DataPipelineExecution, step: Step): keyof typeof s
 
 export { definitions as pipelineStepDefinitions, sequences as pipelineStepSequences, sequenceOf as pipelineStepSequenceOf, stepState as pipelineStepState, states as pipelineStepStates }
 export type { Step }
+
+/** 실행 하나의 화면 상태. 마지막으로 확인한 실행과, 그 뒤 요청이 실패했을 때의 안내를 함께 둔다. */
+export type PipelineViewState = {
+  execution: DataPipelineExecution
+  requestError: string | null
+}

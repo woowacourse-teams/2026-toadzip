@@ -25,9 +25,9 @@
 .focused .steps { display: flex; flex-direction: column; overflow: visible; padding: 0; gap: var(--ds-space-2); }
 .focused .steps li { min-width: 0; flex: none; text-align: left; }
 .focused .steps li::after { display: none; }
-.focused .steps button { border: 0; background: transparent; color: inherit; flex-direction: row; text-align: left; padding: var(--ds-space-3); border-radius: var(--ds-radius-control); }
+.focused .steps button { border: 0; background: transparent; color: inherit; flex-direction: row; text-align: left; padding: var(--ds-space-3); border-radius: var(--admin-radius-control); }
 .focused .steps small { margin-left: auto; white-space: nowrap; }
-.focused .marker { width: 24px; height: 24px; flex-shrink: 0; font-size: var(--ds-text-caption); }
+.focused .marker { width: 24px; height: 24px; flex-shrink: 0; font-size: var(--admin-text-meta); }
 .focused .running { background: var(--ds-color-action-soft); }
 .focused .content { border-left: 1px solid var(--ds-color-divider); padding-left: var(--ds-space-6); }
 .focused .content > h4 { margin: 0 0 var(--ds-space-4); font-size: var(--admin-text-body); }

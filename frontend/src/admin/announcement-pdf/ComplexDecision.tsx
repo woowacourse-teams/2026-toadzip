@@ -121,7 +121,7 @@ function ComplexDecision({ groupKey, name, indexes, review, workspace, chosenRen
         ? <Button ref={keepButton} data-design-system className={styles.quietButton} disabled={busy} onClick={() => { setChanging(false); setRegistering(false); focusNext.current = 'decided' }}>지금 단지 유지</Button>
         : <Button data-design-system className={styles.quietButton} disabled={busy} onClick={() => { setChanging(true); focusNext.current = 'keep' }}>다른 단지로 바꾸기</Button>}
     </div>}
-    {renames && !changing && <p className={styles.hint}>{`적용하면 '${decided!.housingComplexName}'의 이름이 공고 단지명 '${announcedName}'(으)로 바뀔 수 있습니다. 적용 미리보기에서 확인하세요.`}</p>}
+    {renames && !changing && <p className={styles.hint}>{`적용하면 '${decided!.housingComplexName}'의 이름이 공고 단지명 '${announcedName}'(으)로 바뀔 수 있습니다. 실제로 바뀌는지는 적용 전 확인 창에서 알려 드립니다.`}</p>}
     {picking && (nearby === null || autoLinking
       ? <p role="status" className={styles.hint}>{autoLinking ? `같은 주소의 단지 '${nearby![0].name}'에 연결하는 중…` : '같은 주소의 등록된 단지를 찾는 중…'}</p>
       : <>

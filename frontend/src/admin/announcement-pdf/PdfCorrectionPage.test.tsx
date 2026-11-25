@@ -48,9 +48,10 @@ beforeEach(() => {
 function previewResult(more: Partial<JsonPreview> = {}): JsonPreview {
   return { confirmationToken: 'confirmed', fields: [], supply: null, schedules: [], attachments: [], housingTypes: [], housingTypeWarnings: [], warnings: [], ...more }
 }
-/** 보정 내용 적용 한 번으로 서버 검증과 저장을 한다. */
+/** 보정 내용 적용을 눌러 서버 검증을 받고, 확인 창에서 실행을 눌러 저장한다. */
 async function applyCorrection() {
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /^적용(하고 공개)?$/ }))
 }
 /** 빈 Blob(첨부 PDF 목)의 SHA-256 */
 const EMPTY_PDF_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
@@ -99,7 +100,7 @@ function manual(scope: string, label: string) {
   if (!screen.queryByRole('group', { name })) for (const button of screen.getAllByRole('button', { name: /^같음·해당 없음 \d+개 보기$/ })) fireEvent.click(button)
   fireEvent.click(within(screen.getByRole('group', { name: `${scope} ${label} 반영 방법` })).getByRole('button', { name: '직접 입력' }))
 }
-it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안을 한 번 저장한다', async () => {
+it('보정 내용 적용을 누르면 서버 검증 뒤 확인 창에서 실행을 눌러야 같은 보정안을 한 번 저장한다', async () => {
   let finish!: (value: JsonPreview) => void
   api.previewJsonUpdate.mockImplementation(() => new Promise(resolve => { finish = resolve }))
   await open()
@@ -114,8 +115,17 @@ it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안�
   expect(input.correction.sheet.housingTypes.map(type => [type.key, type.id, type.housingComplexId, type.name])).toEqual([['row:1', 1, 3055, '26A'], ['row:2', 2, 3055, '26B']])
   expect(input.correction.sheet.quotas).toEqual([{ kind: 'WINNER', count: 170, members: ['cell:1', 'cell:2'] }])
   for (const field of ['rows', 'supplyRows', 'saveMode', 'lhSourceRowIdentifier', 'newGroups']) expect(JSON.stringify(input)).not.toContain(`"${field}"`)
-  await act(async () => finish(previewResult({ housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'], fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }],
+  await act(async () => finish(previewResult({ warnings: ['공급표를 보내면 그 공급표에 없는 주택형·공급대상은 지웁니다.', "단지 이름 '익산한스빌'을(를) 공고의 단지명 '익산 한스빌'(으)로 바꿉니다."], housingTypeWarnings: ['26: 관리자가 고친 세대수를 유지합니다.'], fields: [{ field: 'applicationStartDate', before: '2026-10-20', after: '2026-10-27' }],
     housingTypes: [{ rowKey: 'row:1', housingTypeId: 10353, typeName: '26', before: { name: '26', supplyArea: null, householdCount: null }, after: { name: '26A', supplyArea: 52.5, householdCount: 120 } }] })))
+  const dialog = await screen.findByRole('dialog', { name: '보정 내용을 적용할까요?' })
+  expect(dialog).toHaveTextContent('기본정보 1개 값을 바꿉니다.')
+  expect(dialog).toHaveTextContent('단지의 주택타입 1개를 이 공고 값으로 맞춥니다.')
+  expect(dialog).toHaveTextContent("단지 이름 '익산한스빌'을(를) 공고의 단지명 '익산 한스빌'(으)로 바꿉니다.")
+  expect(dialog).not.toHaveTextContent('공급표를 보내면')
+  expect(dialog).toHaveTextContent('적용한 뒤에는 되돌리기 기능이 없습니다.')
+  expect(dialog).not.toHaveTextContent('공개')
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  fireEvent.click(within(dialog).getByRole('button', { name: '적용' }))
   await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
   expect(screen.queryByRole('region', { name: '적용 전 확인' })).not.toBeInTheDocument()
   // 적용이 끝나면 누르지 않아도 열린 PDF의 추출로 신청자격을 만들어 반영한다.
@@ -125,14 +135,30 @@ it('보정 내용 적용 한 번으로 서버 검증을 거쳐 같은 보정안�
   expect(screen.getByRole('link', { name: '실패 검토로 돌아가기' })).toHaveAttribute('href', '/admin/failures?domain=announcement')
   const result = screen.getByRole('heading', { name: '공고 보정을 적용했습니다.' }).closest('section')!
   expect(result).toHaveTextContent('이 공고의 미해결 오류를 해결로 바꿨습니다.')
+  expect(screen.getByRole('link', { name: /공개 공고 확인/ })).toHaveAttribute('href', '/announcements/29')
   expect(screen.getByRole('link', { name: '저장된 공급정보 확인' }).getAttribute('href')).toContain('section=relations')
   expect(screen.getByRole('link', { name: '출처·수정 이력 보기' }).getAttribute('href')).toContain('section=history')
   expect(within(screen.getByRole('region', { name: '공고로 갱신한 주택타입' })).getAllByRole('listitem').map(item => item.textContent)).toEqual(['#10353 「26」 → 이름 26A · 공급면적 52.5㎡ · 세대수 120', '26: 관리자가 고친 세대수를 유지합니다.'])
+})
+it('확인 창에서 취소하면 저장 요청을 보내지 않고 검토 화면에 남아 다시 적용할 수 있다', async () => {
+  await open()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  fireEvent.click(within(await screen.findByRole('dialog', { name: '보정 내용을 적용할까요?' })).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '보정 내용 적용' })).toBeEnabled())
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  expect(screen.queryByRole('heading', { name: '공고 보정을 적용했습니다.' })).not.toBeInTheDocument()
+  await applyCorrection()
+  await screen.findByRole('heading', { name: '공고 보정을 적용했습니다.' })
+  expect(api.applyJsonUpdate).toHaveBeenCalledOnce()
 })
 it('서버가 저장할 변경이 없다고 해도 오류 없이 적용해 공고문 확인을 남기고 변경 없음 결과를 보인다', async () => {
   api.previewJsonUpdate.mockResolvedValue(previewResult({ unchanged: true }))
   await open()
   fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(dialog).toHaveTextContent('PDF와 지금 값이 같아 값은 바뀌지 않습니다.')
+  fireEvent.click(within(dialog).getByRole('button', { name: '적용' }))
   await screen.findByRole('heading', { name: '저장할 변경이 없습니다.' })
   const result = screen.getByRole('heading', { name: '저장할 변경이 없습니다.' }).closest('section')!
   expect(result).toHaveTextContent('공고문으로 확인한 것으로 남겼습니다.')
@@ -155,7 +181,11 @@ it('미확정 공고는 임대·모집 유형을 고르고 보정을 적용하�
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
   expect(within(release).queryByRole('checkbox')).not.toBeInTheDocument()
 
-  await applyCorrection()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
+  const dialog = await screen.findByRole('dialog', { name: '보정 내용을 적용하고 공고를 공개할까요?' })
+  expect(dialog).toHaveTextContent('적용하면 곧바로 사용자 화면에 공개되고 신규 공고 알림이 나갑니다.')
+  expect(api.applyJsonUpdate).not.toHaveBeenCalled()
+  fireEvent.click(within(dialog).getByRole('button', { name: '적용하고 공개' }))
 
   const input = api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput
   expect(input.publish).toBe(true)
@@ -171,7 +201,7 @@ it('미확정 공고의 주택형이 단지에 연결되지 않아 공개가 거
   fireEvent.change(within(release).getByLabelText('공급 유형'), { target: { value: 'NATIONAL_RENTAL' } })
   fireEvent.change(within(release).getByLabelText('모집 유형'), { target: { value: 'WAITLIST' } })
 
-  await applyCorrection()
+  fireEvent.click(screen.getByRole('button', { name: '보정 내용 적용' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('공개하려면 모든 주택형을 삭제되지 않은 단지에 연결해야 합니다.')
   expect((api.previewJsonUpdate.mock.calls[0][1] as JsonUpdateInput).publish).toBe(true)

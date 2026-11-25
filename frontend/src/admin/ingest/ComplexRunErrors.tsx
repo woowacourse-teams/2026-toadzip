@@ -89,7 +89,7 @@ function ErrorItem({ row }: { row: FailureReview }) {
   const target = row.category === 'collection' ? failureTarget(row) : { title: row.target, context: row.sourceKey, source: null }
   const cause = row.category === 'collection' ? collectionCause(row) : {
     title: reasonLabels[row.reason] ?? '원천 데이터 확인 필요',
-    action: /GEOCODING/.test(row.reason) ? '원천의 도로명주소와 업로드한 좌표 파일을 확인한 뒤, 필요한 경우 2단계 적재와 3단계 정제를 다시 실행하세요.'
+    action: /GEOCODING/.test(row.reason) ? '원천의 도로명주소와 업로드한 좌표 파일을 확인한 뒤, 필요하면 2단계 주소·좌표 준비에서 좌표를 보완하고 3단계 신규 단지 등록을 다시 실행하세요.'
       : '오류에 기록된 원천 값과 공식 자료를 확인한 뒤, 필요한 수집 또는 정제 단계를 다시 실행하세요.',
   }
   return <li><div className={styles.resultHeading}><strong>{target.title}</strong>

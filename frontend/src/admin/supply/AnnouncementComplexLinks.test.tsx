@@ -45,32 +45,34 @@ it('공고 단지마다 연결 단지와 연결 방법을 보여 주고, 확인 
 })
 
 it('연결 맞음은 지금 단지로 관리자 연결을 저장하고 확인창 없이 공급정보를 새로 받는다', async () => {
-  const confirm = vi.spyOn(window, 'confirm')
   const onChanged = await setup()
   fireEvent.click(screen.getByRole('button', { name: '효자5국민임대 B2블록 연결 맞음' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await waitFor(() => expect(linkAnnouncementComplex).toHaveBeenCalledWith('131', 239, { snapshotToken: 'before', housingComplexId: 7 }))
-  expect(confirm).not.toHaveBeenCalled()
   expect(await screen.findByText("'효자5국민임대 B2블록'의 연결을 확인했습니다.")).toBeInTheDocument()
   expect(onChanged).toHaveBeenCalled()
 })
 
 it('단지를 바꾸면 주택형도 옮긴다고 확인받고 저장한 뒤 공급정보 표를 새 단지로 갱신한다', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   await setup()
   fireEvent.click(screen.getByRole('button', { name: '효자5국민임대 B2블록 단지 바꾸기' }))
   const picker = screen.getByRole('group', { name: '효자5국민임대 B2블록 연결 단지 찾기' })
   fireEvent.click(await within(picker).findByRole('button', { name: '선택: 전주효자 휴먼시아5단지' }))
+  const dialog = screen.getByRole('dialog', { name: "'효자5국민임대 B2블록'을(를) '전주효자 휴먼시아5단지'에 연결할까요?" })
+  expect(dialog).toHaveTextContent('주택형 1개도 새 단지의 같은 전용면적 주택형으로 옮깁니다')
+  expect(linkAnnouncementComplex).not.toHaveBeenCalled()
+  fireEvent.click(within(dialog).getByRole('button', { name: '연결' }))
   await waitFor(() => expect(linkAnnouncementComplex).toHaveBeenCalledWith('131', 239, { snapshotToken: 'before', housingComplexId: 9 }))
-  expect(confirm.mock.calls[0][0]).toContain('주택형 1개도 새 단지의 같은 전용면적 주택형으로 옮깁니다')
   await waitFor(() => expect(screen.getByRole('table', { name: '공급정보 표' })).toHaveTextContent('전주효자 휴먼시아5단지'))
   expect(screen.queryByRole('group', { name: '효자5국민임대 B2블록 연결 단지 찾기' })).not.toBeInTheDocument()
 })
 
 it('확인창에서 취소하면 저장하지 않는다', async () => {
-  vi.spyOn(window, 'confirm').mockReturnValue(false)
   await setup()
   fireEvent.click(screen.getByRole('button', { name: '효자5국민임대 B2블록 단지 바꾸기' }))
   fireEvent.click(await within(screen.getByRole('group', { name: '효자5국민임대 B2블록 연결 단지 찾기' })).findByRole('button', { name: '선택: 전주효자 휴먼시아5단지' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(linkAnnouncementComplex).not.toHaveBeenCalled()
 })
 

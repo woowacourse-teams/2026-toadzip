@@ -2,7 +2,7 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import type { DataPipelineExecution, DataPipelineType } from './api'
-import type { PipelineViewState } from './PipelineResult'
+import type { PipelineViewState } from './pipelineSteps'
 import { ComplexExecutionResult, ComplexExecutionSummary, ComplexExecutionStop } from './ComplexExecutionResult'
 import { LocationSummaryUpload } from './LocationSummaryUpload'
 import { pipelineStepDefinitions, pipelineStepSequences } from './pipelineSteps'
@@ -93,7 +93,7 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
         <ComplexStageHelp stage="단지 원천 수집">마이홈 단지와 LH 임대 카탈로그를 수집해 원본을 저장합니다.</ComplexStageHelp></div></div>
         <ComplexExecutionSummary execution={latest('COMPLEX_COLLECTION')} pending={startingType === 'COMPLEX_COLLECTION'} stopping={stopping[latest('COMPLEX_COLLECTION').type]} /></header>
       <div className={styles.executionActions} role="group" aria-label="단지 원천 수집 실행 제어">
-        <Button data-design-system className={styles.collectionButton} disabled={disabled || collectionBlocked} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
+        <Button data-design-system disabled={disabled || collectionBlocked} onClick={() => onStart('COMPLEX_COLLECTION')}>단지 원천 수집 실행</Button>
         {isRunning(0) && <ComplexExecutionStop execution={latest('COMPLEX_COLLECTION')} label="수집 중지" stopping={stopping[latest('COMPLEX_COLLECTION').type]} onStop={() => onStop(latest('COMPLEX_COLLECTION').type)} />}
       </div>
       {result('COMPLEX_COLLECTION')}
@@ -101,8 +101,11 @@ export function ComplexIngestStages({ states, disabled, collectionBlocked = fals
     <section className={`${styles.stage} ${styles.locationStage}`} id="complex-location" role="tabpanel" hidden={selected !== 1} aria-labelledby={`${tabId}-1`}>
       <header><div className={styles.stageTitle}><span className={styles.number}>2</span><div className={styles.helpLabel}><h2 id="complex-location-title">주소·좌표 준비</h2>
         <ComplexStageHelp stage="주소·좌표 준비">위치정보요약DB ZIP으로 주소와 지도용 좌표를 확인하고, 보완할 단지는 주소 검색 또는 직접 입력으로 준비합니다.</ComplexStageHelp></div></div></header>
-      <LocationSummaryUpload embedded disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }}
+      <LocationSummaryUpload disabled={disabled} onBusyChange={busy => { setUploading(busy); onUploadBusy(busy) }}
         revision={latest('COMPLEX_COLLECTION').finishedAt ?? ''} onChanged={() => setLocationRevision(value => value + 1)} />
+      <div className={styles.executionActions}>
+        <Button data-design-system variant="secondary" onClick={() => select(2)}>다음 단계: 신규 단지 등록</Button>
+      </div>
     </section>
     <section id="complex-registration" role="tabpanel" hidden={selected !== 2} aria-labelledby={`${tabId}-2`}>
       <InitialRegistrationProgress disabled={disabled} onBusyChange={onUploadBusy} onShowHistory={onShowHistory}

@@ -10,11 +10,11 @@ import { AdminIcon, type AdminIconName } from '../shared/AdminIcon'
 const workLinks = [['/admin/operations', '운영 홈', 'home'], ['/admin/complexes', '단지 관리', 'building'],
   ['/admin/announcements', '공고 관리', 'document'], ['/admin/failures', '실패·검토 항목', 'alert']] as const
 const sourceLinks = [['/admin/ingest/announcements', '공고 수집'], ['/admin/ingest/complexes', '단지 수집'],
-  ['/admin/sources', '원천 데이터'], ['/admin/locations', '주소 데이터']] as const
+  ['/admin/sources', '원천 데이터']] as const
 const memberLinks = [['/admin/users', '회원 관리'], ['/admin/notification-subscriptions', '알림 신청 관리'], ['/admin/notification-deliveries', '알림 발송 기록'], ['/admin/feedback', '사용자 의견']] as const
 const extraIcons: Record<string, AdminIconName> = {
   '공고 수집': 'download', '단지 수집': 'layers', '원천 데이터': 'database',
-  '주소 데이터': 'pin', '회원 관리': 'user', '알림 신청 관리': 'bell', '알림 발송 기록': 'send', '사용자 의견': 'message',
+  '회원 관리': 'user', '알림 신청 관리': 'bell', '알림 발송 기록': 'send', '사용자 의견': 'message',
 }
 function MenuIcon({ kind }: { kind: AdminIconName }) {
   return <AdminIcon name={kind} size={20} />

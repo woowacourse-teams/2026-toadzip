@@ -1,6 +1,6 @@
-.pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--ds-space-4); margin-top: var(--ds-space-4); font-size: var(--ds-text-caption); color: var(--ds-color-label); font-variant-numeric: tabular-nums; }
+.pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--ds-space-4); margin-top: var(--ds-space-4); font-size: var(--admin-text-meta); color: var(--ds-color-label); font-variant-numeric: tabular-nums; }
 .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1); }
-.pagination .buttons button { padding: 0 var(--ds-space-2); min-width: 36px; min-height: var(--admin-control-height-sm); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.pagination .buttons button { padding: 0 var(--ds-space-2); min-width: 36px; min-height: var(--admin-control-height-sm); background: var(--ds-color-surface); font-size: var(--admin-text-meta); }
 /* 현재 쪽은 초록 바탕·흰 글씨로 보인다. */
 .pagination .buttons button[aria-current="page"] { background: var(--ds-color-action); color: var(--ds-color-surface); border-color: var(--ds-color-action); opacity: 1; }
 .count { white-space: nowrap; }

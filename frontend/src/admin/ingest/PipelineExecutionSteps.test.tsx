@@ -245,7 +245,9 @@ it.each(['SH', 'GH'] as const)('%s 정제 실패는 대상·원인과 해당 기
   expect(screen.getByRole('link', { name: `${agency}:100` })).toHaveAttribute('href',
     `/admin/sources?category=${agency}_ANNOUNCEMENT&keyword=${agency}%3A100`)
   expect(screen.queryByRole('link', { name: '실패 대상 확인' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('link', { name: '실패 내역 확인' })).not.toBeInTheDocument()
+  // SH·GH 정제 실패도 실패·검토 화면에 실행별로 남으므로 LH와 같은 링크로 보낸다.
+  expect(screen.getByRole('link', { name: '실패 내역 확인' })).toHaveAttribute('href',
+    '/admin/failures?domain=announcement&category=all&executionId=run-1')
   expect(screen.getByText(new RegExp(`위의 ${agency} 공고 수집`))).toBeVisible()
 })
 

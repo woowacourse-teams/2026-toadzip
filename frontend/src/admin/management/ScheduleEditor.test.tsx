@@ -135,6 +135,13 @@ it('수집·PDF 접수 일정을 공고문 URL을 근거로 한 번에 확정하
   expect(await screen.findByRole('heading', { name: '수집·PDF 일정 3개' })).toBeVisible()
   expect(screen.getByText('아직 확정한 접수 일정이 없습니다.')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '접수 일정 2개 확정' }))
+  const dialog = screen.getByRole('dialog', { name: '접수 일정 2개를 확정할까요?' })
+  expect(dialog).toHaveTextContent('공개 화면의 접수 상태와 접수 알림에 쓰는 확정 일정으로 저장합니다')
+  fireEvent.click(within(dialog).getByRole('button', { name: '취소' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(requestManagementApi).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '접수 일정 2개 확정' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '확정' }))
   await waitFor(() => expect(onSaved).toHaveBeenCalled())
   expect(requestManagementApi).toHaveBeenCalledWith('/api/admin/announcements/7/application-schedules?version=0', 'PUT', { schedules: [
     expect.objectContaining({ housingComplexId: 11, startDate: '2026-10-20', startTime: '10:00', endDate: '2026-10-22', endTime: '17:00', state: 'CONFIRMED', sourceUrl: 'https://example.com/notice', sourcePage: null }),
