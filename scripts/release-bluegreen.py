@@ -18,6 +18,9 @@ import bluegreen
 IMAGES = ('backend', 'frontend', 'ai-worker')
 WORKER = 'ai-worker'
 WORKER_SECRETS = ('PGPASSWORD', 'OPENAI_API_KEY')
+REVISION_LABEL = 'org.opencontainers.image.revision'
+# Cache unused this long is dropped; layers reused by every build (dependencies, base packages) stay warm.
+BUILD_CACHE_KEEP = '24h'
 
 
 class Release:
@@ -88,13 +91,23 @@ class Release:
             raise bluegreen.DeploymentError('AI worker is missing server settings: ' + ', '.join(missing)
                                             + ' (set AI_WORKER_DB_PASSWORD and OPENAI_API_KEY)')
 
+    def free_disk(self):
+        # Every release tags three new images (the worker alone is about 1.1GB) and a fresh build cache, and nothing
+        # removed them, so the server disk filled and builds died with "No space left on device". Only images no
+        # container uses go: the running and retained Blue/Green containers keep theirs, so rollback is unaffected.
+        for arguments in (('image', 'prune', '--all', '--force', '--filter', 'label=' + REVISION_LABEL),
+                          ('builder', 'prune', '--force', '--filter', 'until=' + BUILD_CACHE_KEEP)):
+            output = bluegreen.docker(*arguments, timeout=600)
+            print('Release cleanup: ' + ' '.join(arguments[:2]) + ': '
+                  + (output.splitlines() or ['nothing to remove'])[-1], flush=True)
+
     def build(self):
         runner = self.runners['frontend']
         services = {}
         for service in IMAGES:
             services[service] = {
                 'image': 'toadzip-' + service + ':' + self.options.revision,
-                'build': {'labels': {'org.opencontainers.image.revision': self.options.revision}},
+                'build': {'labels': {REVISION_LABEL: self.options.revision}},
             }
         # Only public image names and revision labels are written; resolved Compose secrets stay in memory.
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', prefix='release-build-',
@@ -108,7 +121,7 @@ class Release:
                                   '-f', override.name, '--profile', 'bluegreen', 'build', service], runner.environment)
                 metadata = json.loads(bluegreen.docker('image', 'inspect', '--format', '{{json .}}', services[service]['image']))
                 if (not re.fullmatch(r'sha256:[0-9a-f]{64}', metadata['Id'])
-                        or metadata.get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision') != self.options.revision):
+                        or metadata.get('Config', {}).get('Labels', {}).get(REVISION_LABEL) != self.options.revision):
                     raise bluegreen.DeploymentError('Built image is missing the expected revision label')
                 self.images[service] = metadata['Id']
 
@@ -165,6 +178,9 @@ class Release:
         with self.lock():
             try:
                 self.preflight()
+                self.stage = 'cleanup'
+                print('Release stage: ' + self.stage, flush=True)
+                self.free_disk()
                 self.build()
                 self.check_revision()
                 for service in ('backend', 'frontend', WORKER):

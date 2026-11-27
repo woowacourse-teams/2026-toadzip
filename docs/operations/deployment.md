@@ -75,6 +75,8 @@ API와 메트릭 upstream이 같은 색상이어야 하며 서버 overlay가 요
    해당 커밋으로 detached checkout한다. 최신 브랜치 커밋으로 대체하지 않는다. 기존 서버 환경 파일·개인 자료는 삭제하지 않는다.
 3. [`release-bluegreen.py`](../../scripts/release-bluegreen.py)가 체크아웃 SHA·깨끗한 작업 트리·환경 프로필·필수 런타임 설정을 확인한다.
    두 서비스의 현재 경로·응답과 Edge 정적 파일 제공까지 확인한 뒤 빌드한다.
+   빌드 전에 `org.opencontainers.image.revision` 라벨이 붙었지만 어느 컨테이너(정지 포함)도 쓰지 않는 이미지와 24시간 쓰이지 않은 빌드 캐시를 지운다.
+   실행 중인 색과 롤백용으로 보관된 반대 색 컨테이너의 이미지는 남는다. 배포마다 이미지 세 개(워커만 약 1.1GB)가 쌓여 디스크가 차는 것을 막는다.
 4. `toadzip-backend:<SHA>`, `toadzip-frontend:<SHA>`, `toadzip-ai-worker:<SHA>`를 순차 빌드한다. 기존 Compose 빌드 인자와 Dockerfile을 사용하고
    이미지에 `org.opencontainers.image.revision`을 기록한다. 세 이미지의 빌드·라벨 검증이 모두 끝나야 배포한다.
 5. 고정된 이미지 ID로 백엔드 → 프론트 → AI 워커 순서로 배포한다. 백엔드·프론트는 후보 기동·전환·요청 종료 대기·이전 컨테이너 정지를 실행하고,
