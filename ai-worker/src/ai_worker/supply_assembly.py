@@ -557,7 +557,8 @@ class _Assembly:
             rows = block[:1]
         else:
             return
-        recruited = [recruitment_count(selected.supply_row_values[row_id]) for row_id in rows]
+        # 예비자만 모집하는 표(금회 예비입주자 모집 호수)는 그 예비자 수가 모집수다(_recruited).
+        recruited = [_recruited(row_id, selected) for row_id in rows]
         reserves = [count_cell(selected.supply_row_values[row_id].get("reserveCount")) for row_id in rows]
         if any(count is None for count in recruited):
             return
@@ -589,9 +590,12 @@ class _Assembly:
     def _leave_merged_cells_unconfirmed(self, unit: Unit) -> None:
         """대상의 수량 칸이 그 대상 밖의 행까지 병합된 칸이면(대학생·청년이 함께 쓰는 일반 공급 28) 여러 대상의 공통 수량이다.
         병합이 시작된 행에는 그 칸 값이 그대로 있어, 코드가 대상 수를 정하지 못했을 때 모델이 낸 5 + 28이 대학생 몫으로
-        확인되지 않게 그 대상의 수량은 어떤 값도 확인된 값으로 보지 않는다."""
+        확인되지 않게 그 대상의 수량은 어떤 값도 확인된 값으로 보지 않는다.
+        주택타입 행 전체에 병합된 칸에서 주택형의 수를 정했으면(_fill_block_counts) 그 칸은 그 주택형의 것이라 그대로 둔다.
+        모델이 주택형 칸이 시작하는 행만 가리켜도 같다."""
         for entry in unit.entries:
-            confirmed = dict(self.confirmed.get(entry, {}))
+            block_counts = {name: count for name, count in self._block_confirmed(unit, entry).items() if count is not None}
+            confirmed = {**block_counts, **self.confirmed.get(entry, {})}
             for row_id in sorted(self._count_rows(self.rows[entry], unit)):
                 table = _table_of(row_id, self.selected)
                 if table is None:
@@ -957,15 +961,16 @@ _SOURCE_COUNT_FIELDS = (*_COUNT_FIELDS, "priorityCount", "generalCount")
 
 def _counts_merged_over(block: list[str], selected: pages.PromptPages) -> bool:
     """표의 수량 열마다 칸 하나가 block 행 전체에 걸쳐 세로로 병합됐는가. 병합이 block 밖으로 이어지거나
-    일부 열만 행마다 따로 적혔으면 아니다."""
+    일부 열만 행마다 따로 적혔으면 아니다. block 행 사이에 낀 줄은 주택형·주택타입 칸이 빈 이어지는 줄(같은 주택형의
+    두 번째 면적 줄)일 때만 같은 칸 안이다."""
     for table in selected.supply_tables:
         ids = [row.id for row in table.rows]
         if block[0] not in ids:
             continue
-        first = ids.index(block[0])
-        last = first + len(block) - 1
+        first, last = ids.index(block[0]), ids.index(block[-1])
+        between = [selected.supply_row_values.get(row_id, {}) for row_id in ids[first:last + 1] if row_id not in block]
         columns = [table.columns[field] for field in _SOURCE_COUNT_FIELDS if field in table.columns]
-        return ids[first:last + 1] == block and bool(columns) \
+        return not any(values.get("housingType") or values.get("houseType") for values in between) and bool(columns) \
             and all(_column_span(table, first, column) == (first, last) for column in columns)
     return False
 
