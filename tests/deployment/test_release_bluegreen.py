@@ -23,6 +23,9 @@ spec.loader.exec_module(module)
 SHA = 'a' * 40
 CONFIG = 'upstream frontend_active { server frontend-blue:8080; }\nupstream backend_active { server backend-blue:8080; }\n'
 CONFIG += 'upstream backend_metrics_active { server backend-blue:8081; }\n'
+# Only images no container uses, and only release-labelled ones; base images and retained colors stay.
+CLEANUP = ['image prune --all --force --filter label=org.opencontainers.image.revision',
+           'builder prune --force --filter until=24h']
 
 
 class Runner:
@@ -150,6 +153,13 @@ class ReleaseTests(unittest.TestCase):
         return subprocess.CompletedProcess(arguments, 0, '', '')
 
     def inspect_image(self, *arguments, **kwargs):
+        if arguments[1] == 'prune':
+            self.events.append(' '.join(arguments))
+            if self.failure == 'cleanup-' + arguments[0]:
+                raise bluegreen.DeploymentError('Docker command failed: ' + ' '.join(arguments[:3]))
+            if arguments[0] == 'builder':
+                return ''
+            return 'Deleted Images:\nuntagged: toadzip-ai-worker:old\n\nTotal reclaimed space: 1.1GB'
         # A distinct ID per image so a wrong image passed to a deployment is caught.
         digit = {'backend': '1', 'frontend': '2', 'ai-worker': '3'}[arguments[-1].split(':')[0].removeprefix('toadzip-')]
         return json.dumps({'Id': 'sha256:' + digit * 64,
@@ -157,7 +167,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_preflight_and_all_builds_finish_before_backend_then_frontend_then_worker(self):
         result = self.release.run()
-        self.assertEqual(self.events, ['preflight-backend', 'schema-backend-blue-a', 'preflight-frontend',
+        self.assertEqual(self.events, ['preflight-backend', 'schema-backend-blue-a', 'preflight-frontend', *CLEANUP,
                                        'build-backend', 'build-frontend',
                                        'build-ai-worker', 'deploy-backend', 'deploy-frontend',
                                        'check---rm -T --no-deps --pull never ai-worker --check',
@@ -170,6 +180,19 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result['routes'], {'backend': 'backend-green', 'frontend': 'frontend-green'})
         self.assertEqual(bluegreen.metrics_service(self.release.runners['backend'].config.read_text()), 'backend-green')
         self.assertNotIn('never-log-this-fixture', self.output.getvalue())
+        self.assertIn('Release cleanup: image prune: Total reclaimed space: 1.1GB', self.output.getvalue())
+        self.assertIn('Release cleanup: builder prune: nothing to remove', self.output.getvalue())
+
+    def test_cleanup_failure_stops_before_any_build(self):
+        for failure in ('image', 'builder'):
+            with self.subTest(failure=failure):
+                self.failure = 'cleanup-' + failure
+                self.events.clear()
+                with self.assertRaises(bluegreen.DeploymentError):
+                    self.release.run()
+                self.assertFalse(any(event.startswith(('build-', 'deploy-')) for event in self.events))
+                report = json.loads(self.output.getvalue().split('Release result: ')[-1])
+                self.assertEqual(report['stage'], 'cleanup')
 
     def test_invalid_revision_or_local_changes_stop_before_any_build(self):
         for failure in ('revision', 'dirty'):
