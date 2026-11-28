@@ -102,6 +102,34 @@ def test_table_header_mapping_distinguishes_base_rent_from_conversion_options():
     assert columns["convertedDeposit"] == 8
 
 
+# 일반형과 전세형(월임대료 없이 보증금만 내는 조건)의 임대조건을 나란히 둔 표를 PyMuPDF가 읽은 모양(행 일부만).
+STANDARD_AND_LUMP_SUM_CELLS = [
+    ["단지명", "주택형", "①일반형", None, None, None, None, None, None, "②전세형(월임대료X)", None, None],
+    [None, None, "임대보증금(천원)", None, None, "월임대료 (원)", "전환가능 보증금 한도액 (천원)", "최대전환 시 임대조건", None,
+     "임대보증금(천원)", None, None],
+    [None, None, "계", "계약금", "잔금", None, None, "보증금 (천원)", "월임대료 (원)", "계", "계약금", "잔금"],
+    ["경암부향", "39", "9,330", "300", "9,030", "82,630", "(+) 4,000", "13,330", "62,630", "25,856", "300", "25,556"],
+]
+
+
+def test_base_rent_beside_a_lump_sum_deposit_option_is_the_standard_option():
+    # 전세형 열 머리글에도 임대보증금·월임대료가 있어 기본 임대조건 열을 정하지 못했고, 원문 대조가 맞는 금액을 모두 비웠다.
+    table = tables.SupplyTable.of(4, 2, STANDARD_AND_LUMP_SUM_CELLS, None, False)
+
+    assert (table.columns["rentalDeposit"], table.columns["monthlyRent"]) == (2, 5)
+    values = table.rows[3].values
+    assert (values["rentalDeposit"], values["rentalDepositUnit"]) == ("9,330", "천원")
+    assert (values["monthlyRent"], values["monthlyRentUnit"]) == ("82,630", "원")
+
+
+def test_lump_sum_deposit_columns_are_the_rent_columns_of_a_table_without_a_standard_option():
+    # 전세형 조건만 적은 표에서는 그 열이 임대조건이다. 보증금 후보 열이 하나면 전세형이어도 거르지 않는다.
+    rows = [["단지명", "주택형", "전세형", None], [None, None, "임대보증금(천원)", "월임대료 (원)"],
+            ["경암부향", "39", "25,856", "0"]]
+
+    assert tables.SupplyTable.of(4, 2, rows, None, False).rows[2].values["rentalDeposit"] == "25,856"
+
+
 # 임대조건표의 전환가능 보증금 한도액 칸을 PyMuPDF가 읽은 모양(행 일부만). 옆에 전환 뒤 총액인 최대전환 시 보증금 열이 있다.
 SAMCHEOK_CONVERSION_CELLS = [
     ["단지명", "주 택 형", "임대조건", None, None, None, "전환가능 보증금 한도액(원)", "최대전환시 임대조건", None],

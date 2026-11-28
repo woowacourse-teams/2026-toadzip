@@ -208,6 +208,9 @@ def _table_field_columns(rows: list[list[str | None]], row_index: int | None = N
             indexes = _matching_columns(normalized_headers, lambda header: bool(_HOUSING_TYPE_FALLBACK.match(header)))
         if name == "convertedDeposit" and len(indexes) > 1:
             indexes = _conversion_limit_columns(rows, normalized_headers, indexes)
+        # 후보가 하나면 전세형 조건만 적은 표라도 그 열이 임대조건이라 거르지 않는다.
+        if name in ("rentalDeposit", "monthlyRent") and len(indexes) > 1:
+            indexes = _standard_rent_columns(normalized_headers, indexes)
         if len(indexes) == 1:
             columns[name] = indexes[0]
     # 모집수를 읽을 다른 수량 열이 없을 때만 '공급 호수' 열이 이번 공고 모집수다. 건설호수·대기 중인 예비자수는 모집수가 아니다.
@@ -249,6 +252,12 @@ def _conversion_limit_columns(rows: list[list[str | None]], headers: list[str], 
         limits = [column for column in limits
                   if any(column < len(row) and _AMOUNT.search(row[column] or "") for row in rows)]
     return limits
+
+
+def _standard_rent_columns(headers: list[str], indexes: list[int]) -> list[int]:
+    """보증금·월임대료 후보 열이 여럿일 때 전세형 조건 열을 뺀 열. 일반형과 전세형(월임대료 없이 보증금만 내는 조건)을 나란히 둔
+    임대조건표의 기본 임대조건은 일반형이다. 전세형 머리글 '②전세형(월임대료X)'은 월임대료 열 후보로도 읽힌다."""
+    return [column for column in indexes if "전세형" not in headers[column]]
 
 
 _SUPPLY_TYPE_QUALIFIER = re.compile(r"[(\[]\s*([^)\]]*[가-힣][^)\]]*?)\s*[)\]]")

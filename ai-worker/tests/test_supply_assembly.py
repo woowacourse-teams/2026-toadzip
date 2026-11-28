@@ -409,6 +409,38 @@ def test_amounts_outside_the_named_groups_columns_are_not_confirmed(target, depo
     assert [item["label"] for item in result.sheet["targets"]] == ["" if target == "다군" else target]
 
 
+def standard_and_lump_sum_supply(deposit: int, rent: int):
+    """30번 공고 모양의 모델 답. 공급대상 열이 없는 임대조건표의 한 행에서 기본 임대조건을 읽었다."""
+    from test_tables import STANDARD_AND_LUMP_SUM_CELLS
+    answer = {"data": {
+        "housingTypes": [{"key": "h1", "complexName": "경암부향", "name": "39", "rowIds": ["P4:T1:R4"], "targets": ["t1"]}],
+        "targets": [{"key": "t1", "label": "일반"}], "quotas": [],
+        "leaseTerms": [{"members": [["h1", "t1"]], "rentalDeposit": deposit, "monthlyRent": rent, "rowIds": ["P4:T1:R4"]}]}}
+    return model_supply(table_pages(STANDARD_AND_LUMP_SUM_CELLS, page=4), answer)
+
+
+def test_base_rent_beside_a_lump_sum_deposit_option_stays_after_the_source_check():
+    # 일반형과 전세형 임대조건이 나란한 표에서 모델이 맞게 읽은 일반형 금액이 원문 대조에서 모두 비워졌다.
+    result = standard_and_lump_sum_supply(9330000, 82630)
+
+    assert readable(result.sheet)["leaseTerms"] == [(9330000, 82630, ["39/전체"])]
+    assert not {path for path in result.unresolved() if path.endswith((".rentalDeposit", ".monthlyRent"))}
+
+
+@pytest.mark.parametrize(("deposit", "rent", "wrong"), [
+    (25856000, 82630, "rentalDeposit"),  # 전세형 보증금
+    (300000, 82630, "rentalDeposit"),  # 계가 아닌 계약금 열
+    (9330000, 62630, "monthlyRent"),  # 최대전환 시 월임대료
+])
+def test_amounts_of_the_lump_sum_or_conversion_columns_are_not_the_base_rent(deposit, rent, wrong):
+    result = standard_and_lump_sum_supply(deposit, rent)
+
+    kept = {"rentalDeposit": 9330000, "monthlyRent": 82630} | {wrong: None}
+    assert [(lease["rentalDeposit"], lease["monthlyRent"]) for lease in result.sheet["leaseTerms"]] == [
+        (kept["rentalDeposit"], kept["monthlyRent"])]
+    assert f"leaseTerms[0].{wrong}" in result.unresolved()
+
+
 @pytest.mark.parametrize(("source", "expected"), [
     ("청년(소득無)", "청년(소득 없음)"),
     ("청년(소득有)", "청년(소득 있음)"),
@@ -816,6 +848,84 @@ def test_count_merged_in_only_some_columns_is_not_the_housing_type_count():
 
     assert result.sheet["quotas"] == []
     assert {"cells[0].winner", "cells[0].reserve"} <= result.unresolved()
+
+
+# 예비입주자만 모집하는 공고(51번 모양)를 줄인 표. 주택형(신청형) 칸이 주택타입 행에 걸치고 '금회 예비입주자 모집 호수' 칸 하나가
+# 그 행 전체에 병합된다. 059.9000A는 주택타입 행 사이에 면적만 적은 이어지는 줄이 낀다.
+RESERVE_ONLY_HOUSE_TYPE_TABLE = [
+    ["주택형 (신청형)", "주택 타입", "주거 전용", "주거 공용", "관리호수", "현재 예비자", "금회 예비입주자 모집 호수"],
+    ["049.7600A", "49A", "49.76", "17.8623", "172", "0", "35"],
+    ["059.9000A", "59A", "59.98", "21.5309", "492", "0", "125"],
+    [None, "59A1", None, None, None, None, None],
+    [None, None, "59.99", "21.5345", None, None, None],
+    [None, "59C", None, None, None, None, None],
+    ["059.9000B", "59B", "59.93", "21.5130", None, None, "25"],
+    [None, "59B1", "59.92", "21.5094", None, None, None],
+]
+
+
+def reserve_only_supply(table, *counts: int, first_row_only: bool = False):
+    """51번 공고 모양의 모델 답. 주택형마다 그 주택형 칸이 걸친 행(또는 칸이 시작하는 행만)을 가리키고 예비자 수만 답한다."""
+    blocks = (("049.7600A", [2]), ("059.9000A", [3, 4, 5, 6]), ("059.9000B", [7, 8]))
+    types = [{"key": f"h{at}", "complexName": "", "name": name,
+              "rowIds": [f"P3:T1:R{number}" for number in (rows[:1] if first_row_only else rows)], "targets": ["t1"]}
+             for at, (name, rows) in enumerate(blocks, 1)]
+    quotas = [{"kind": "RESERVE", "count": count, "members": [[housing_type["key"], "t1"]],
+               "rowIds": housing_type["rowIds"][:1]} for housing_type, count in zip(types, counts)]
+    answer = {"data": {"housingTypes": types, "targets": [{"key": "t1", "label": "일반"}], "quotas": quotas,
+                       "leaseTerms": []}}
+    return model_supply(table_pages(table, page=3), answer)
+
+
+# 모델은 주택형 칸이 걸친 행을 모두 가리키기도 하고 칸이 시작하는 행만 가리키기도 한다.
+@pytest.mark.parametrize("first_row_only", [False, True])
+def test_reserve_count_merged_over_the_house_type_rows_of_a_reserve_only_table_is_the_housing_type_count(first_row_only):
+    # 모델이 맞게 읽은 예비자 수(125·25)가 원문 대조에서 비워졌다. 예비자만 모집하는 표는 입주자 열이 없어 주택타입 행을 묶은
+    # 주택형의 모집수를 정하지 못했고, 주택타입 행 사이에 면적 줄이 끼면 병합된 수량 칸도 주택형의 칸으로 보지 않았다.
+    result = reserve_only_supply(RESERVE_ONLY_HOUSE_TYPE_TABLE, 35, 125, 25, first_row_only=first_row_only)
+
+    assert readable(result.sheet)["quotas"] == [*own("049.7600A", "전체", 35, 35), *own("059.9000A", "전체", 125, 125),
+                                                *own("059.9000B", "전체", 25, 25)]
+    assert not {path for path in result.unresolved() if path.endswith((".winner", ".reserve"))}
+
+
+@pytest.mark.parametrize("first_row_only", [False, True])
+def test_reserve_count_of_a_reserve_only_table_is_still_checked_against_the_merged_cell(first_row_only):
+    # 병합 칸의 수(125)가 아닌 값(관리호수 492)은 확인된 값이 아니다.
+    result = reserve_only_supply(RESERVE_ONLY_HOUSE_TYPE_TABLE, 35, 492, 25, first_row_only=first_row_only)
+
+    assert ("RESERVE", 492, ["059.9000A/전체"]) not in readable(result.sheet)["quotas"]
+    assert "cells[1].reserve" in result.unresolved()
+
+
+@pytest.mark.parametrize("first_row_only", [False, True])
+def test_reserve_count_merged_into_the_next_housing_type_is_not_one_housing_types_count(first_row_only):
+    # 예비자 칸이 다음 주택형 행까지 병합되면 두 주택형이 함께 쓰는 수다. 한 주택형의 수로 확인하지 않는다.
+    table = [*RESERVE_ONLY_HOUSE_TYPE_TABLE[:6], ["059.9000B", "59B", "59.93", "21.5130", None, None, None],
+             RESERVE_ONLY_HOUSE_TYPE_TABLE[7]]
+    result = reserve_only_supply(table, 35, 125, 25, first_row_only=first_row_only)
+
+    quotas = readable(result.sheet)["quotas"]
+    assert not [quota for quota in quotas if quota[2] in (["059.9000A/전체"], ["059.9000B/전체"])]
+    assert {"cells[1].reserve", "cells[2].reserve"} <= result.unresolved()
+
+
+@pytest.mark.parametrize(("count", "confirmed"), [(125, True), (100, False)])
+def test_reserve_counts_written_on_each_house_type_row_of_a_reserve_only_table_sum_to_the_housing_type_count(count, confirmed):
+    # 예비자 수를 주택타입 행마다 적은 표는 그 합(100 + 25)이 주택형의 모집수·예비자 수다. 한 행의 수(100)는 주택형의 수가 아니다.
+    table = [RESERVE_ONLY_HOUSE_TYPE_TABLE[0], ["059.9000B", "59B", "59.93", "21.5130", "40", "0", "100"],
+             [None, "59B1", "59.92", "21.5094", "13", "0", "25"]]
+    answer = {"data": {
+        "housingTypes": [{"key": "h1", "complexName": "", "name": "059.9000B", "rowIds": ["P3:T1:R2", "P3:T1:R3"],
+                          "targets": ["t1"]}],
+        "targets": [{"key": "t1", "label": "일반"}], "leaseTerms": [],
+        "quotas": [{"kind": "RESERVE", "count": count, "members": [["h1", "t1"]], "rowIds": ["P3:T1:R2"]}]}}
+
+    result = model_supply(table_pages(table, page=3), answer)
+
+    assert (("RESERVE", count, ["059.9000B/전체"]) in readable(result.sheet)["quotas"]) == confirmed
+    assert ("cells[0].reserve" in result.unresolved()) != confirmed
+    assert ("WINNER", 125, ["059.9000B/전체"]) in readable(result.sheet)["quotas"]
 
 
 def test_housing_type_row_sum_does_not_let_other_house_type_cells_confirm_other_values():
