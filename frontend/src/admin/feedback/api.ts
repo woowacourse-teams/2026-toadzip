@@ -4,14 +4,14 @@ import { isRecord, parseManagementHistory, type ManagementChange } from '../mana
 export const feedbackStates = { OPEN: '접수', IN_PROGRESS: '처리 중', ON_HOLD: '보류', DONE: '처리 완료' } as const
 export type FeedbackState = keyof typeof feedbackStates
 export const relatedResources = { COMPLEX: '단지', ANNOUNCEMENT: '공고' } as const
-export function relatedLabel(resource: keyof typeof relatedResources, id: number | string) {
-  return `${relatedResources[resource]} #${id}`
+/** 사용자가 의견을 보낸 공고·단지의 이름. 행을 찾지 못하면 번호로 보인다. */
+export function relatedName(entry: Pick<FeedbackEntry, 'relatedId' | 'relatedName'>) {
+  return entry.relatedName ?? `#${entry.relatedId}`
 }
 export type FeedbackEntry = { id: number; content: string; createdAt: string; version: number; status: FeedbackState;
-  note: string; relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null;
+  note: string; relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null; relatedName: string | null;
   actor: string | null; processedAt: string | null }
-export type FeedbackInput = { version: number; status: FeedbackState; note: string;
-  relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null }
+export type FeedbackInput = { version: number; status: FeedbackState; note: string }
 
 export type FeedbackPage = { items: FeedbackEntry[]; page: number; hasNext: boolean; totalElements: number; totalPages: number }
 
@@ -38,12 +38,15 @@ function parseEntry(value: unknown): FeedbackEntry {
     || typeof value.note !== 'string'
     || !['', 'COMPLEX', 'ANNOUNCEMENT'].includes(String(value.relatedResource))
     || !(value.relatedId === null || isCount(value.relatedId) && value.relatedId > 0)
+    || !(value.relatedName == null || typeof value.relatedName === 'string')
     || !(value.actor === null || typeof value.actor === 'string')
     || !(value.processedAt === null || typeof value.processedAt === 'string' && Number.isFinite(Date.parse(value.processedAt)))) {
     throw new Error('의견 처리 응답이 올바르지 않습니다.')
   }
-  const { id, content, createdAt, version, status, note, relatedResource, relatedId, actor, processedAt } = value
-  return { id, content, createdAt, version, status, note, relatedResource, relatedId, actor, processedAt } as FeedbackEntry
+  const { id, content, createdAt, version, status, note, relatedResource, relatedId, relatedName, actor, processedAt } = value
+  // 이름을 아직 내려주지 않는 이전 서버 응답도 번호로 보이게 null로 맞춘다.
+  return { id, content, createdAt, version, status, note, relatedResource, relatedId, relatedName: relatedName ?? null, actor,
+    processedAt } as FeedbackEntry
 }
 
 export async function saveFeedback(id: number, input: FeedbackInput): Promise<FeedbackEntry> {

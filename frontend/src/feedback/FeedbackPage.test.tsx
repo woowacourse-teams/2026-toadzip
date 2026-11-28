@@ -31,7 +31,8 @@ it('의견을 보내고 접수 완료를 안내한다', async () => {
   fireEvent.click(screen.getByRole('button', { name: '의견 보내기' }))
   const confirmation = await screen.findByRole('heading', { name: '의견이 접수되었어요.' })
   await waitFor(() => expect(confirmation).toHaveFocus())
-  expect(submitFeedback).toHaveBeenCalledWith('지도가 불편해요.\n개선해 주세요.')
+  expect(submitFeedback).toHaveBeenCalledWith('지도가 불편해요.\n개선해 주세요.', null)
+  expect(screen.queryByText(/^(공고|단지):/)).not.toBeInTheDocument()
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 })
 

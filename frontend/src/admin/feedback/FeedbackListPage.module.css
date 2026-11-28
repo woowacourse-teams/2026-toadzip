@@ -37,6 +37,7 @@
 .list .row:hover { background: var(--ds-color-surface-subtle); }
 .list .row[aria-current="true"] { background: var(--ds-color-action-soft); box-shadow: inset 3px 0 0 var(--ds-color-action); }
 .rowTop { display: flex; align-items: center; justify-content: flex-start; gap: var(--ds-space-2); color: var(--ds-color-muted); font-size: var(--admin-text-meta); font-variant-numeric: tabular-nums; }
+.rowTarget { overflow: hidden; color: var(--ds-color-muted); font-size: var(--admin-text-meta); text-overflow: ellipsis; white-space: nowrap; }
 .preview { display: -webkit-box; overflow: hidden; color: var(--ds-color-text); font-size: var(--admin-text-body); font-weight: var(--admin-weight-regular); line-height: 1.6; white-space: pre-line; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
 .rowMeta { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; gap: var(--ds-space-1) var(--ds-space-3); color: var(--ds-color-muted); font-size: var(--admin-text-meta); font-weight: var(--admin-weight-regular); }
 .empty, .loading { margin: 0; padding: 56px var(--ds-space-5); text-align: center; color: var(--ds-color-label); font-size: var(--admin-text-body); line-height: 1.7; }

@@ -1,4 +1,5 @@
 import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
+import { DetailFeedbackLink } from '../../feedback/DetailFeedbackLink'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -273,6 +274,7 @@ export function HousingAnnouncementDetailPanel({
           />
           <AttachmentList key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments} />
         </div>
+        <DetailFeedbackLink target={{ resource: 'ANNOUNCEMENT', id: Number(detail.announcementId), name: title }} />
       </div>
 
       <DocumentActions detail={detail} hasAnnouncementFile={primaryAttachment !== undefined}

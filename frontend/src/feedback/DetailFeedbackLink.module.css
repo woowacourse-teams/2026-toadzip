@@ -1,0 +1,25 @@
+.report {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: var(--ds-space-4) var(--ds-space-4) var(--ds-space-6);
+  border-top: 1px solid var(--ds-color-divider);
+}
+
+.link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  padding-inline: var(--ds-space-2);
+  color: var(--ds-color-action);
+  font-size: var(--ds-text-body);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+  border-radius: var(--ds-radius-control);
+}

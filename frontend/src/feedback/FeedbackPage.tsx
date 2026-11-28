@@ -2,7 +2,7 @@ import { captureProductEvent, createAnalyticsId } from '../analytics/productAnal
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router'
-import { feedbackBackground } from './feedbackNavigation'
+import { feedbackBackground, feedbackTarget, feedbackTargetLabels } from './feedbackNavigation'
 import { dismissFeedbackPrompt } from './feedbackPromptSession'
 import { isMobileViewport } from '../public-housing/components/useMobileViewport'
 import { IconButton } from '../design-system/components/IconButton'
@@ -28,6 +28,7 @@ export function FeedbackPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const background = feedbackBackground(location.state)
+  const [target] = useState(() => feedbackTarget(location.state))
   function close() {
     if (inFlight.current) return
     if (background) navigate(-1)
@@ -66,7 +67,7 @@ export function FeedbackPage() {
     setPending(true)
     setError('')
     try {
-      await submitFeedback(trimmed)
+      await submitFeedback(trimmed, target)
       captureProductEvent('feedback_succeeded', { feedback_id: feedbackId, submission_id: submissionId })
       setContent('')
       setSubmitted(true)
@@ -103,6 +104,7 @@ export function FeedbackPage() {
         </svg></span>
         <h1 id="feedback-title" ref={headingRef} tabIndex={-1}>의견 보내기</h1>
         <p className={styles.introduction}>이용 중 불편했던 점이나 더 나아졌으면 하는 점을 자유롭게 남겨 주세요.</p>
+        {target && <p className={styles.target}>{feedbackTargetLabels[target.resource]}: <strong>{target.name}</strong></p>}
       </div>
       {submitted ? <section className={styles.confirmation} role="status">
         <span className={styles.successIcon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 12 4 4 8-8" /></svg></span>

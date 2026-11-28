@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ManagementChange } from '../management/managementContract'
-import { feedbackStates, formatShortTime, getFeedbackChanges, relatedLabel, relatedResources } from './api'
+import { feedbackStates, formatShortTime, getFeedbackChanges, relatedResources } from './api'
 import styles from './FeedbackListPage.module.css'
 
 function snapshot(value: string): Record<string, unknown> | null {
@@ -10,10 +10,11 @@ function snapshot(value: string): Record<string, unknown> | null {
   } catch { return null }
 }
 
+// 지금은 처리 저장이 관련 대상을 바꾸지 않지만, 운영자가 직접 연결하던 때의 기록은 그대로 풀어 보인다.
 function relation(value: Record<string, unknown>) {
   const resource = String(value.relatedResource ?? '')
   return Object.hasOwn(relatedResources, resource) && value.relatedId
-    ? relatedLabel(resource as keyof typeof relatedResources, String(value.relatedId)) : '없음'
+    ? `${relatedResources[resource as keyof typeof relatedResources]} #${String(value.relatedId)}` : '없음'
 }
 
 /** 저장 전후 값을 견줘 바뀐 항목만 말로 풀어 쓴다. 읽을 수 없는 기록은 저장 사실만 남긴다. */

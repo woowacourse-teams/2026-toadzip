@@ -7,9 +7,12 @@ import com.toadzip.backend.feedback.dto.FeedbackStatusCounts;
 import com.toadzip.backend.feedback.dto.FeedbackSummary;
 import com.toadzip.backend.feedback.repository.FeedbackRepository;
 import com.toadzip.backend.feedback.repository.FeedbackRepository.StatusCount;
+import com.toadzip.backend.feedback.repository.FeedbackTargetRepository;
+import com.toadzip.backend.feedback.repository.FeedbackTargetRepository.Target;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -23,9 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminFeedbackQueryService {
 
     private final FeedbackRepository repository;
+    private final FeedbackTargetRepository targets;
 
-    public AdminFeedbackQueryService(FeedbackRepository repository) {
+    public AdminFeedbackQueryService(FeedbackRepository repository, FeedbackTargetRepository targets) {
         this.repository = repository;
+        this.targets = targets;
     }
 
     public AdminPage<FeedbackSummary> search(String keyword, FeedbackStatus status, int page, int size) {
@@ -48,7 +53,8 @@ public class AdminFeedbackQueryService {
         }
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt", "id");
         List<Feedback> result = repository.search(searchPattern, status, PageRequest.of(page, size, sort));
-        return result.stream().map(FeedbackSummary::from).toList();
+        Function<Feedback, Target> found = targets.targets(result);
+        return result.stream().map(feedback -> FeedbackSummary.from(feedback, found.apply(feedback))).toList();
     }
 
     private String pattern(String keyword) {
