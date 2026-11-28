@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
 import com.toadzip.backend.admin.dto.AdminPage;
+import com.toadzip.backend.feedback.dto.FeedbackStatusCounts;
 import com.toadzip.backend.feedback.dto.FeedbackSummary;
 import com.toadzip.backend.feedback.service.AdminFeedbackQueryService;
 import com.toadzip.backend.global.response.ApiResponse;
@@ -46,6 +47,14 @@ public class AdminFeedbackController {
     ) {
         return new ApiResponse<>(service.search(keyword.strip(), status, page, size));
     }
+
+    @GetMapping("/counts")
+    public ApiResponse<FeedbackStatusCounts> counts(
+            @RequestParam(defaultValue = "") @Size(max = 200) String keyword
+    ) {
+        return new ApiResponse<>(service.counts(keyword.strip()));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<FeedbackSummary> find(@PathVariable long id) {
         return new ApiResponse<>(processing.find(id));

@@ -33,3 +33,4 @@
 - 응답은 `data` 안에 `items`, `page`, `hasNext`, `totalElements`, `totalPages`를 포함한다.
 - 각 항목은 `id`, 전체 `content`, `createdAt`과 기존 처리 기록을 포함한다. 설문 답변은 응답에 포함하지 않는다. 범위 밖 페이지도 전체 검색 건수를 보존한다.
 - 검색 건수를 먼저 확인하므로 매우 큰 범위 밖 페이지도 JPA offset 제한에 걸리지 않고 빈 목록을 반환한다.
+- `GET /api/admin/feedback/counts?keyword=검색`은 같은 검색 조건(ADMIN 전용, 최대 200자, 같은 매칭 규칙)에 맞는 의견의 상태별 건수를 한 번에 반환한다. `data`에 `OPEN`, `IN_PROGRESS`, `ON_HOLD`, `DONE`을 항상 포함하고 없는 상태는 0이며 `total`은 네 건수의 합이다.

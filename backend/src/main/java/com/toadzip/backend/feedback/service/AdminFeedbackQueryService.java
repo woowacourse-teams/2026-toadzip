@@ -3,10 +3,14 @@ package com.toadzip.backend.feedback.service;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.feedback.domain.Feedback;
 import com.toadzip.backend.feedback.domain.FeedbackStatus;
+import com.toadzip.backend.feedback.dto.FeedbackStatusCounts;
 import com.toadzip.backend.feedback.dto.FeedbackSummary;
 import com.toadzip.backend.feedback.repository.FeedbackRepository;
+import com.toadzip.backend.feedback.repository.FeedbackRepository.StatusCount;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,6 +34,12 @@ public class AdminFeedbackQueryService {
         int totalPages = Math.toIntExact((total + size - 1) / size);
         List<FeedbackSummary> items = items(searchPattern, status, page, size, total);
         return new AdminPage<>(items, page, (long) page + 1 < totalPages, total, totalPages);
+    }
+
+    public FeedbackStatusCounts counts(String keyword) {
+        Map<FeedbackStatus, Long> counts = repository.countByStatus(pattern(keyword)).stream()
+                .collect(Collectors.toMap(StatusCount::getStatus, StatusCount::getCount));
+        return FeedbackStatusCounts.from(counts);
     }
 
     private List<FeedbackSummary> items(String searchPattern, FeedbackStatus status, int page, int size, long total) {
