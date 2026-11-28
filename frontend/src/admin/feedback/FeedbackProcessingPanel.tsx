@@ -3,56 +3,125 @@ import { Link, useLocation } from 'react-router'
 import { workDetailUrl } from '../shared/workNavigation'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { ManagementError } from '../management/api'
-import { feedbackStates, getFeedback, saveFeedback, type FeedbackEntry, type FeedbackInput, type FeedbackState } from './api'
+import { feedbackStates, formatLongTime, relatedResources, formatShortTime, getFeedback, saveFeedback,
+  type FeedbackEntry, type FeedbackInput, type FeedbackState } from './api'
+import { FeedbackHistory } from './FeedbackHistory'
 import { FeedbackRelatedData } from './FeedbackRelatedData'
+import { FeedbackStatusBadge } from './FeedbackStatusBadge'
 import styles from './FeedbackListPage.module.css'
 
+type Resource = keyof typeof relatedResources
+const conflictMessage = '다른 운영자가 먼저 저장했습니다. 작성 중인 내용은 그대로 두었습니다. 최신 상태와 비교한 뒤 다시 저장하세요.'
+
 function input(entry: FeedbackEntry): FeedbackInput {
-  return { version: entry.version ?? 0, status: entry.status ?? 'OPEN',
-    note: entry.note ?? '', relatedResource: entry.relatedResource ?? '', relatedId: entry.relatedId ?? null }
+  return { version: entry.version, status: entry.status, note: entry.note,
+    relatedResource: entry.relatedResource, relatedId: entry.relatedId }
 }
-export function FeedbackProcessingPanel({ entry, onSaved }: { entry: FeedbackEntry; onSaved: (entry: FeedbackEntry) => void }) {
+function relationText(resource: FeedbackInput['relatedResource'], id: number | null, names: Record<string, string>) {
+  if (!resource || !id) return '없음'
+  return `${relatedResources[resource]} · ${names[`${resource}:${id}`] ?? `#${id}`}`
+}
+
+export function FeedbackProcessingPanel({ entry, onSaved, onRefreshed }: {
+  entry: FeedbackEntry; onSaved: (entry: FeedbackEntry) => void; onRefreshed?: (entry: FeedbackEntry) => void
+}) {
   const [current, setCurrent] = useState(entry)
   const [draft, setDraft] = useState(() => input(entry))
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false); const [conflict, setConflict] = useState(false); const [notice, setNotice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [latest, setLatest] = useState<FeedbackEntry | null>(null)
+  const [conflict, setConflict] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [picking, setPicking] = useState<Resource | null>(null)
+  const [names, setNames] = useState<Record<string, string>>({})
   const location = useLocation()
-  const dirty = JSON.stringify(draft) !== JSON.stringify(input(current))
+  const base = input(current)
+  // 저장 기준 version은 충돌 뒤 갱신될 수 있으므로 변경 여부는 내용만 견준다.
+  const dirty = draft.status !== base.status || draft.note !== base.note
+    || draft.relatedResource !== base.relatedResource || draft.relatedId !== base.relatedId
+  const noteRequired = draft.status === 'DONE' || draft.status === 'ON_HOLD'
+  const noteMissing = noteRequired && !draft.note.trim()
   useUnsavedChanges(dirty)
-  async function save() {
-    setBusy(true); setError(''); setNotice('')
-    try {
-      const value = await saveFeedback(entry.id, draft)
-      setCurrent(value); setDraft(input(value)); setConflict(false); setNotice('처리 기록을 저장했습니다.'); onSaved(value)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '처리 내용을 저장하지 못했습니다.')
-      setConflict(cause instanceof ManagementError && cause.status === 409)
-    } finally { setBusy(false) }
-  }
-  async function refresh() {
+
+  function edit(change: Partial<FeedbackInput>) { setDraft(previous => ({ ...previous, ...change })); setSaved(false) }
+
+  async function save(version = draft.version) {
     setBusy(true); setError('')
     try {
-      const value = await getFeedback(entry.id)
-      setCurrent(value); setDraft(previous => ({ ...previous, version: value.version })); setConflict(false)
-      setNotice(`최신 상태: ${feedbackStates[value.status]} · 관련 대상 ${value.relatedResource || '없음'} ${value.relatedId ?? ''} · ${value.note || '처리 메모 없음'}. 작성 중인 내용을 유지했습니다. 비교 후 저장하세요.`)
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '최신 의견을 확인하지 못했습니다.') }
-    finally { setBusy(false) }
+      const value = await saveFeedback(entry.id, { ...draft, version })
+      setCurrent(value); setDraft(input(value)); setConflict(false); setLatest(null); setSaved(true); onSaved(value)
+    } catch (cause) {
+      if (cause instanceof ManagementError && cause.status === 409) {
+        setConflict(true); setError(conflictMessage); setLatest(null)
+        try {
+          // 머리 배지·처리 이력도 최신 저장을 따르게 기준값을 바꾸고, 작성 중인 내용은 그대로 둔다.
+          const fresh = await getFeedback(entry.id); setLatest(fresh); setCurrent(fresh); onRefreshed?.(fresh)
+        } catch { setError(`${conflictMessage} 최신 상태를 불러오지 못했습니다.`) }
+      } else {
+        setConflict(false)
+        setError(cause instanceof Error ? cause.message : '처리 내용을 저장하지 못했습니다.')
+      }
+    } finally { setBusy(false) }
   }
-  return <form className={styles.processing} aria-label={`의견 ${entry.id} 처리`} onSubmit={event => { event.preventDefault(); void save() }}>
-    <fieldset disabled={busy}><legend>처리 기록</legend>
-      <div className={styles.processingFields}>
-        <label>처리 상태<select value={draft.status} onChange={event => setDraft({ ...draft, status: event.target.value as FeedbackState })}>{Object.entries(feedbackStates).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>관련 대상<select value={draft.relatedResource} onChange={event => setDraft({ ...draft, relatedResource: event.target.value as FeedbackInput['relatedResource'], relatedId: null })}><option value="">없음</option><option value="COMPLEX">단지</option><option value="ANNOUNCEMENT">공고</option></select></label>
+  const link = draft.relatedResource && draft.relatedId
+    ? workDetailUrl(draft.relatedResource, draft.relatedId, `${location.pathname}${location.search}`, 'info') : null
+  const status = dirty ? '저장하지 않은 변경이 있습니다.' : saved ? '처리 기록을 저장했습니다.'
+    : current.processedAt ? `최근 처리: ${formatShortTime(current.processedAt)} · ${current.actor}` : '접수'
 
-      </div>
-      {draft.relatedResource && <FeedbackRelatedData key={draft.relatedResource} resource={draft.relatedResource} id={draft.relatedId} onSelect={id => setDraft({ ...draft, relatedId: id })} />}
-      <label>처리 결과·보류 이유<textarea maxLength={5000} rows={4} required={draft.status === 'DONE' || draft.status === 'ON_HOLD'} value={draft.note} onChange={event => setDraft({ ...draft, note: event.target.value })} /></label>
-      {current.relatedResource && current.relatedId ? <p><Link to={workDetailUrl(current.relatedResource, current.relatedId, `${location.pathname}${location.search}`, 'info')}>관련 {current.relatedResource === 'COMPLEX' ? '단지' : '공고'} 확인</Link></p> : null}
-      {current.processedAt ? <p>최근 처리: {current.actor} · {new Date(current.processedAt).toLocaleString('ko-KR')}</p> : null}
-      <p>처리 완료는 내부 기록입니다. 사용자에게 답변을 발송하지 않습니다.</p>
-      {error ? <p role="alert">{error}</p> : null}{notice ? <p role="status">{notice}</p> : null}
-      <button type="submit" disabled={!dirty || conflict || !!draft.relatedResource && !draft.relatedId}>{busy ? '저장 중…' : '처리 기록 저장'}</button>
-      {conflict ? <button type="button" onClick={() => void refresh()}>입력을 유지하고 최신 상태 확인</button> : null}
-    </fieldset>
-  </form>
+  return <div className={styles.panel}>
+    <header className={styles.panelHeading}>
+      <h2>의견 #{entry.id}</h2><FeedbackStatusBadge status={current.status} />
+      <time dateTime={entry.createdAt}>접수 {formatLongTime(entry.createdAt)}</time>
+    </header>
+    <form aria-label={`의견 ${entry.id} 처리`} onSubmit={event => { event.preventDefault(); if (!conflict && !noteMissing) void save() }}>
+      <fieldset disabled={busy}>
+        <section aria-label="의견 내용"><p className={styles.content}>{entry.content || '추가 의견 없음'}</p></section>
+        <div className={styles.field} role="group" aria-label="처리 상태">
+          <span className={styles.fieldLabel}>처리 상태</span>
+          <div className={styles.segments}>{(Object.keys(feedbackStates) as FeedbackState[]).map(value =>
+            <button key={value} type="button" aria-pressed={draft.status === value}
+              onClick={() => edit({ status: value })}>{feedbackStates[value]}</button>)}</div>
+        </div>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>관련 단지·공고</span>
+          {link && draft.relatedResource && draft.relatedId ? <div className={styles.related}>
+            <div><small>{relatedResources[draft.relatedResource]}</small>
+              <strong>{names[`${draft.relatedResource}:${draft.relatedId}`] ?? `#${draft.relatedId}`}</strong></div>
+            <Link to={link}>정보 열기</Link>
+            <button type="button" onClick={() => edit({ relatedResource: '', relatedId: null })}>연결 해제</button>
+          </div> : picking ? <FeedbackRelatedData key={picking} resource={picking} onCancel={() => setPicking(null)}
+            onSelect={item => {
+              setNames(previous => ({ ...previous, [`${picking}:${item.id}`]: item.name }))
+              edit({ relatedResource: picking, relatedId: item.id }); setPicking(null)
+            }} /> : <div className={styles.connect}>
+            <button type="button" onClick={() => setPicking('COMPLEX')}>단지 연결</button>
+            <button type="button" onClick={() => setPicking('ANNOUNCEMENT')}>공고 연결</button>
+          </div>}
+        </div>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>처리 결과·보류 이유{noteRequired ? ' (필수)' : ''}</span>
+          <textarea maxLength={5000} rows={4} required={noteRequired} aria-invalid={noteMissing}
+            value={draft.note} onChange={event => edit({ note: event.target.value })} />
+        </label>
+        {noteMissing ? <p className={styles.fieldError}>처리 완료·보류는 결과나 이유를 적어야 저장할 수 있습니다.</p> : null}
+        {error ? <div className="admin-alert" role="alert"><p>{error}</p></div> : null}
+        {conflict && latest ? <table className={styles.compare}>
+          <caption>최신 저장과 내 작성 비교</caption>
+          <thead><tr><th scope="col">항목</th><th scope="col">최신 저장</th><th scope="col">내 작성</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">상태</th><td>{feedbackStates[latest.status]}</td><td>{feedbackStates[draft.status]}</td></tr>
+            <tr><th scope="row">관련</th><td>{relationText(latest.relatedResource, latest.relatedId, names)}</td>
+              <td>{relationText(draft.relatedResource, draft.relatedId, names)}</td></tr>
+            <tr><th scope="row">메모</th><td>{latest.note || '없음'}</td><td>{draft.note || '없음'}</td></tr>
+          </tbody></table> : null}
+        {conflict ? <button type="button" disabled={!latest} onClick={() => latest && void save(latest.version)}>최신 상태 기준으로 다시 저장</button> : null}
+        <div className={styles.actions}>
+          <p role="status">{status}</p>
+          <button type="button" disabled={!dirty} onClick={() => { setDraft(input(current)); setConflict(false); setError(''); setLatest(null); setPicking(null) }}>되돌리기</button>
+          <button type="submit" className="admin-primary" disabled={!dirty || conflict || noteMissing}>{busy ? '저장 중…' : '처리 기록 저장'}</button>
+        </div>
+      </fieldset>
+    </form>
+    <FeedbackHistory id={entry.id} version={current.version} />
+  </div>
 }

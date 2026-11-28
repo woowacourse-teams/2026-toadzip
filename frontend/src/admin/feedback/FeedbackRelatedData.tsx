@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { getManagementPage } from '../management/api'
+import { relatedResources } from './api'
 import type { ManagementSummary } from '../management/managementContract'
 
-export function FeedbackRelatedData({ resource, id, onSelect }: {
-  resource: 'COMPLEX' | 'ANNOUNCEMENT'; id: number | null; onSelect: (id: number) => void
+export function FeedbackRelatedData({ resource, onSelect, onCancel }: {
+  resource: 'COMPLEX' | 'ANNOUNCEMENT'; onSelect: (item: ManagementSummary) => void; onCancel: () => void
 }) {
   const [keyword, setKeyword] = useState('')
   const [items, setItems] = useState<ManagementSummary[] | null>(null)
-  const [selected, setSelected] = useState<ManagementSummary | null>(null)
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   const request = useRef<AbortController | null>(null)
-  const label = resource === 'COMPLEX' ? '단지' : '공고'
+  const label = relatedResources[resource]
   useEffect(() => () => request.current?.abort(), [])
   async function search() {
     request.current?.abort(); const controller = new AbortController(); request.current = controller
@@ -23,13 +23,13 @@ export function FeedbackRelatedData({ resource, id, onSelect }: {
     finally { if (!controller.signal.aborted) setBusy(false) }
   }
   return <div>
-    <p>{id ? `선택한 ${label}: ${selected?.name ?? `#${id}`}` : `관련 ${label}를 검색해 선택하세요.`}</p>
     <div className="admin-inline"><label>{label} 이름으로 검색<input maxLength={200} value={keyword} onChange={event => setKeyword(event.target.value)}
       onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (!busy) void search() } }} /></label>
-      <button type="button" disabled={busy} onClick={() => void search()}>{busy ? '검색 중…' : `${label} 검색`}</button></div>
+      <button type="button" disabled={busy} onClick={() => void search()}>{busy ? '검색 중…' : `${label} 검색`}</button>
+      <button type="button" onClick={onCancel}>취소</button></div>
     {error && <p role="alert">{error}</p>}
     {items?.length === 0 && <p role="status">일치하는 {label}가 없습니다.</p>}
     {items && <ul className="complex-picker-results">{items.map(item => <li key={item.id}><div><strong>{item.name}</strong><small>{item.subtitle}</small></div>
-      <button type="button" onClick={() => { onSelect(item.id); setSelected(item); setItems(null) }}>선택: {item.name}</button></li>)}</ul>}
+      <button type="button" onClick={() => onSelect(item)}>선택: {item.name}</button></li>)}</ul>}
   </div>
 }

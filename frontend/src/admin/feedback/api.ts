@@ -1,8 +1,12 @@
 import { requestManagementApi } from '../management/api'
-import { isRecord } from '../management/managementContract'
+import { isRecord, parseManagementHistory, type ManagementChange } from '../management/managementContract'
 
 export const feedbackStates = { OPEN: '접수', IN_PROGRESS: '처리 중', ON_HOLD: '보류', DONE: '처리 완료' } as const
 export type FeedbackState = keyof typeof feedbackStates
+export const relatedResources = { COMPLEX: '단지', ANNOUNCEMENT: '공고' } as const
+export function relatedLabel(resource: keyof typeof relatedResources, id: number | string) {
+  return `${relatedResources[resource]} #${id}`
+}
 export type FeedbackEntry = { id: number; content: string; createdAt: string; version: number; status: FeedbackState;
   note: string; relatedResource: '' | 'COMPLEX' | 'ANNOUNCEMENT'; relatedId: number | null;
   actor: string | null; processedAt: string | null }
@@ -47,4 +51,38 @@ export async function saveFeedback(id: number, input: FeedbackInput): Promise<Fe
 }
 export async function getFeedback(id: number): Promise<FeedbackEntry> {
   return parseEntry(await requestManagementApi(`/api/admin/feedback/${id}`, 'GET'))
+}
+
+export type FeedbackCounts = Record<FeedbackState | 'total', number>
+
+export async function getFeedbackCounts(keyword: string, signal?: AbortSignal): Promise<FeedbackCounts> {
+  const params = new URLSearchParams()
+  if (keyword) params.set('keyword', keyword)
+  const value = await requestManagementApi(`/api/admin/feedback/counts?${params}`, 'GET', undefined, signal)
+  if (!isRecord(value) || !isCount(value.OPEN) || !isCount(value.IN_PROGRESS) || !isCount(value.ON_HOLD)
+    || !isCount(value.DONE) || !isCount(value.total)) {
+    throw new Error('사용자 의견 건수 응답이 올바르지 않습니다.')
+  }
+  return { OPEN: value.OPEN, IN_PROGRESS: value.IN_PROGRESS, ON_HOLD: value.ON_HOLD, DONE: value.DONE, total: value.total }
+}
+
+export async function getFeedbackChanges(id: number, signal?: AbortSignal): Promise<ManagementChange[]> {
+  return parseManagementHistory(await requestManagementApi(`/api/admin/feedback/${id}/changes`, 'GET', undefined, signal))
+}
+
+const seoulTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+function seoulParts(iso: string) {
+  return Object.fromEntries(seoulTime.formatToParts(new Date(iso)).map(part => [part.type, part.value]))
+}
+/** 한국 시각 MM.DD HH:mm */
+export function formatShortTime(iso: string) {
+  const p = seoulParts(iso)
+  return `${p.month}.${p.day} ${p.hour}:${p.minute}`
+}
+/** 한국 시각 YYYY.MM.DD HH:mm */
+export function formatLongTime(iso: string) {
+  const p = seoulParts(iso)
+  return `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}`
 }
