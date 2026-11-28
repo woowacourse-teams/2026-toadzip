@@ -70,8 +70,6 @@
 .related > div { display: grid; flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
 .related small { color: var(--ds-color-muted); font-size: var(--admin-text-meta); }
 .related a { display: inline-flex; min-height: 44px; align-items: center; color: var(--ds-color-action); font-weight: var(--admin-weight-medium); }
-.related button, .connect button { min-height: 44px; }
-.connect { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
 .fieldError { margin: calc(var(--ds-space-2) * -1) 0 0; color: var(--admin-danger); font-size: var(--admin-text-meta); }
 .compare { width: 100%; border-collapse: collapse; font-size: var(--admin-text-meta); }
 .compare caption { padding-bottom: var(--ds-space-2); text-align: left; font-weight: var(--admin-weight-strong); }

@@ -3,12 +3,11 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { FeedbackProcessingPanel } from './FeedbackProcessingPanel'
 import { getFeedback, getFeedbackChanges, saveFeedback, type FeedbackEntry } from './api'
-import { getManagementPage, ManagementError } from '../management/api'
+import { ManagementError } from '../management/api'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(),
   getFeedback: vi.fn(), saveFeedback: vi.fn(), getFeedbackChanges: vi.fn() }))
 const entry: FeedbackEntry = { id: 1, content: '공고 조건 확인 요청\n두 번째 줄', createdAt: '2026-10-19T00:00:00Z', version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null }
-vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), getManagementPage: vi.fn() }))
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(getFeedbackChanges).mockResolvedValue([]) })
 const renderPanel = (value = entry, onSaved = vi.fn()) => {
   render(<MemoryRouter><FeedbackProcessingPanel entry={value} onSaved={onSaved} /></MemoryRouter>); return onSaved
@@ -120,18 +119,27 @@ it('처리 이력을 읽지 못하면 오류를 알리고 빈 이력처럼 보�
   expect(screen.queryByText('아직 처리 기록이 없습니다.')).not.toBeInTheDocument()
 })
 
-it('관련 단지는 검색해 연결하고 연결을 해제할 수 있다', async () => {
-  vi.mocked(getManagementPage).mockResolvedValue({
-    items: [{ id: 30, name: '가나단지', subtitle: '서울' }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 } as never)
-  renderPanel()
-  fireEvent.click(screen.getByRole('button', { name: '단지 연결' }))
-  fireEvent.change(screen.getByLabelText('단지 이름으로 검색'), { target: { value: '가나' } })
-  fireEvent.click(screen.getByRole('button', { name: '단지 검색' }))
-  fireEvent.click(await screen.findByRole('button', { name: '선택: 가나단지' }))
-  expect(screen.getByText('가나단지')).toBeVisible()
+it('관련 단지·공고는 운영자가 고치지 않고, 저장된 연결만 읽기 전용으로 보여 준다', () => {
+  renderPanel({ ...entry, relatedResource: 'COMPLEX', relatedId: 30 })
+  expect(screen.getByText('#30')).toBeVisible()
   expect(screen.getByRole('link', { name: '정보 열기' })).toHaveAttribute('href', expect.stringContaining('/admin/complexes/30'))
-  expect(saveButton()).toBeEnabled()
-  fireEvent.click(screen.getByRole('button', { name: '연결 해제' }))
-  expect(screen.getByRole('button', { name: '단지 연결' })).toBeVisible()
-  expect(saveButton()).toBeDisabled()
+  expect(screen.queryByRole('button', { name: /연결/ })).not.toBeInTheDocument()
+})
+
+it('연결이 없는 의견은 관련 단지·공고 칸을 두지 않는다', () => {
+  renderPanel()
+  expect(screen.queryByText('관련 단지·공고')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /연결/ })).not.toBeInTheDocument()
+})
+
+it('충돌 뒤 다시 저장할 때 관련 단지·공고는 내 화면의 옛 값이 아니라 최신 저장 값을 보낸다', async () => {
+  vi.mocked(saveFeedback).mockRejectedValueOnce(new ManagementError('충돌', 409))
+  vi.mocked(getFeedback).mockResolvedValue({ ...entry, version: 2, relatedResource: 'ANNOUNCEMENT', relatedId: 7 })
+  renderPanel()
+  fireEvent.click(screen.getByRole('button', { name: '처리 중' }))
+  fireEvent.click(saveButton())
+  vi.mocked(saveFeedback).mockResolvedValue({ ...entry, version: 3, status: 'IN_PROGRESS', relatedResource: 'ANNOUNCEMENT', relatedId: 7 })
+  fireEvent.click(await screen.findByRole('button', { name: '최신 상태 기준으로 다시 저장' }))
+  await waitFor(() => expect(saveFeedback).toHaveBeenLastCalledWith(1,
+    { version: 2, status: 'IN_PROGRESS', note: '', relatedResource: 'ANNOUNCEMENT', relatedId: 7 }))
 })
