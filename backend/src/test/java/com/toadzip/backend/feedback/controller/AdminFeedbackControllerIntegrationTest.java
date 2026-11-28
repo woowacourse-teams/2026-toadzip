@@ -198,6 +198,68 @@ class AdminFeedbackControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.content").value(""));
     }
 
+    @Test
+    void 상태별_건수와_전체_건수를_한_번에_반환하고_없는_상태는_0이다() throws Exception {
+        feedback("접수 1", "2026-10-07T10:00:00Z");
+        feedback("접수 2", "2026-10-07T10:00:00Z");
+        feedback("진행", "2026-10-07T10:00:00Z", "IN_PROGRESS");
+        feedback("완료", "2026-10-07T10:00:00Z", "DONE");
+
+        mockMvc.perform(get(ENDPOINT + "/counts").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.OPEN").value(2))
+                .andExpect(jsonPath("$.data.IN_PROGRESS").value(1))
+                .andExpect(jsonPath("$.data.ON_HOLD").value(0))
+                .andExpect(jsonPath("$.data.DONE").value(1))
+                .andExpect(jsonPath("$.data.total").value(4));
+    }
+
+    @Test
+    void 의견이_없어도_모든_상태_건수가_0으로_내려간다() throws Exception {
+        mockMvc.perform(get(ENDPOINT + "/counts").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.OPEN").value(0))
+                .andExpect(jsonPath("$.data.IN_PROGRESS").value(0))
+                .andExpect(jsonPath("$.data.ON_HOLD").value(0))
+                .andExpect(jsonPath("$.data.DONE").value(0))
+                .andExpect(jsonPath("$.data.total").value(0));
+    }
+
+    @Test
+    void 상태별_건수는_검색어_조건만_반영하고_대소문자와_와일드카드를_목록과_같게_처리한다() throws Exception {
+        feedback("CS 개선 100%_! 표시", "2026-10-07T10:00:00Z", "ON_HOLD");
+        feedback("cs 개선 요청", "2026-10-07T10:00:00Z");
+        feedback("100회 검색", "2026-10-07T10:00:00Z", "ON_HOLD");
+
+        mockMvc.perform(get(ENDPOINT + "/counts").with(user("admin").roles("ADMIN")).param("keyword", " Cs "))
+                .andExpect(jsonPath("$.data.OPEN").value(1))
+                .andExpect(jsonPath("$.data.ON_HOLD").value(1))
+                .andExpect(jsonPath("$.data.total").value(2));
+        mockMvc.perform(get(ENDPOINT + "/counts").with(user("admin").roles("ADMIN")).param("keyword", "%_!"))
+                .andExpect(jsonPath("$.data.OPEN").value(0))
+                .andExpect(jsonPath("$.data.ON_HOLD").value(1))
+                .andExpect(jsonPath("$.data.total").value(1));
+    }
+
+    @Test
+    void 상태별_건수는_관리자만_조회하고_검색어_길이를_제한한다() throws Exception {
+        mockMvc.perform(get(ENDPOINT + "/counts")).andExpect(status().isUnauthorized());
+        long memberId = users.saveAndFlush(User.create(
+                "authorization-test:" + java.util.UUID.randomUUID(), LocalDateTime.now())).getId();
+        mockMvc.perform(get(ENDPOINT + "/counts").with(user(Long.toString(memberId)).roles("USER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(ENDPOINT + "/counts").with(user("admin").roles("ADMIN")).param("keyword", "가".repeat(201)))
+                .andExpect(status().isBadRequest());
+    }
+
+    private long feedback(String content, String createdAt, String status) {
+        return jdbc.sql("""
+                INSERT INTO feedback (content, created_at, status) VALUES (:content, :createdAt::timestamptz, :status)
+                RETURNING id
+                """).param("content", content).param("createdAt", createdAt).param("status", status)
+                .query(Long.class).single();
+    }
+
     private long feedback(String content, String createdAt) {
         return jdbc.sql("""
                 INSERT INTO feedback (content, created_at) VALUES (:content, :createdAt::timestamptz) RETURNING id

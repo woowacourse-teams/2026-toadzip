@@ -23,4 +23,17 @@ public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
                 AND (:status IS NULL OR feedback.status = :status)
             """)
     long countMatching(@Param("pattern") String pattern, @Param("status") FeedbackStatus status);
+
+    @Query("""
+            SELECT feedback.status AS status, COUNT(feedback) AS count FROM Feedback feedback
+            WHERE LOWER(feedback.content.value) LIKE :pattern ESCAPE '!'
+            GROUP BY feedback.status
+            """)
+    List<StatusCount> countByStatus(@Param("pattern") String pattern);
+
+    interface StatusCount {
+        FeedbackStatus getStatus();
+
+        long getCount();
+    }
 }
