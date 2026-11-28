@@ -10,7 +10,7 @@ from conftest import WORKER_ROLE, insert_job, job_row
 @pytest.fixture
 def environment(monkeypatch):
     for name, value in {"PGHOST": "localhost", "PGDATABASE": "toadzip", "PGUSER": "toadzip_ai_worker",
-                        "PGPASSWORD": "worker-test-password", "OPENAI_API_KEY": "test-key"}.items():
+                        "PGPASSWORD": "worker-test-password", "ANTHROPIC_API_KEY": "test-key"}.items():
         monkeypatch.setenv(name, value)
     handlers = {name: signal.getsignal(name) for name in (signal.SIGTERM, signal.SIGINT)}
     yield
@@ -57,15 +57,15 @@ def test_missing_environment_exits(environment, monkeypatch):
     assert "PGPASSWORD" in str(exit_.value.code)
 
 
-def test_openai_key_is_required_even_if_a_legacy_provider_key_exists(environment, monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY")
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "legacy-test-key")
+def test_anthropic_key_is_required_even_if_a_legacy_provider_key_exists(environment, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-test-key")
     monkeypatch.setattr(entry, "run", lambda connect, extractor, stop: stop.set())
 
     with pytest.raises(SystemExit) as exit_:
         entry.main([])
 
-    assert str(exit_.value.code) == "환경변수가 없습니다: OPENAI_API_KEY"
+    assert str(exit_.value.code) == "환경변수가 없습니다: ANTHROPIC_API_KEY"
 
 
 @pytest.fixture

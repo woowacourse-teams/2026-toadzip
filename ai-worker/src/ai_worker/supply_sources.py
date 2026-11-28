@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 
 from ai_worker import checks, jev, pages, stage_prompts, supply_answer, supply_grouping
-from ai_worker.openai import Reply
+from ai_worker.claude import Reply
 from ai_worker.source_frame import SourceSupplyRow
 from ai_worker.supply_assembly import assemble
 from ai_worker.supply_sheet import SupplySheet

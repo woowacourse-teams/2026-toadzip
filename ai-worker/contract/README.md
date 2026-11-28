@@ -71,6 +71,6 @@ DB 제약(`V20261103_01__ai_jobs.sql`)이 아래 상태별 열 규칙을 강제�
 - 완료·실패·재시도 쓰기는 `WHERE id = ? AND lease_token = ?`로 한다. lease를 빼앗긴 이전 워커의 쓰기는 0행이 된다.
 - `SUCCEEDED`: `result`(JSON 객체), 결과를 만든 `worker_version`(다시 쓰지 않을 결과는 NULL), `completed_at`을 쓰고 `pdf = NULL`, 재시도 사유(`error_code`·`error_message`)는 비운다.
 - `FAILED`: `error_code`, 관리자에게 보일 공개 문구 `error_message`, `completed_at`을 쓰고 `pdf = NULL`.
-- 모델 처리 등급: `BATCH` 작업은 느리지만 싼 OpenAI Flex 처리(`service_tier: flex`)로 부르고, Flex가 요청을 받지 않으면(429) 같은 시도 안에서 기본 처리로 한 번 다시 부른다. 시간 초과·5xx처럼 이미 처리됐을 수 있는 오류는 다시 부르지 않고 아래 재시도에 맡긴다. `ADMIN` 작업은 늘 기본 처리로 부른다.
+- 모델 호출: `BATCH`와 `ADMIN` 작업 모두 같은 처리로 부른다. 응답이 JSON으로 읽히지 않으면 같은 시도 안에서 한 번만 다시 부르고, 그래도 읽히지 않으면 `MODEL_RESPONSE_INVALID`로 끝낸다. 시간 초과·5xx처럼 이미 처리됐을 수 있는 오류는 다시 부르지 않고 아래 재시도에 맡긴다.
 - `RETRY`: 일시 오류(네트워크, 429, 5xx, 시간 초과)이고 시도가 남았을 때만. `next_attempt_at`을 1분(첫 시도 뒤)·5분(그 뒤) 미루고 `lease_token`·`lease_until`을 비운다. 직전 오류를 `error_code`·`error_message`에 남겨 화면이 기다리는 동안 보여 준다. PDF는 남긴다. 미룬 시각이 꺼내기 기한을 넘으면 `RETRY`로 두지 않고 그 오류로 바로 `FAILED`로 끝낸다.
 - 워커 역할(`toadzip_ai_worker`)은 `ai_jobs`를 읽고 상태·결과 열만 고칠 수 있다. 작업을 넣거나 지우지 않는다.

@@ -1,4 +1,4 @@
-"""공고문 PDF 추출기. 고른 쪽의 텍스트와 표를 OpenAI Luna에 보내고, 결과를 PDF 보정 화면이 읽는 형식(result.example.json)으로 만든다.
+"""공고문 PDF 추출기. 고른 쪽의 텍스트와 표를 Claude Sonnet에 보내고, 결과를 PDF 보정 화면이 읽는 형식(result.example.json)으로 만든다.
 
 이 모듈은 실행 흐름만 맡는다. 쪽 선택은 pages, 신청자격 절의 쪽과 글은 eligibility_pages, 공급표를 코드와 모델 중 어디서 읽을지는
 supply_sources, 본문·신청자격 단계 프롬프트는 stage_prompts, 신청자격 응답 정리는 eligibility, 단계 결과 합치기는 merge가 한다.
@@ -10,7 +10,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ai_worker import (applicant_types, checks, eligibility, eligibility_pages, merge, openai, pages, publication, source_frame,
+from ai_worker import (applicant_types, checks, claude, eligibility, eligibility_pages, merge, pages, publication, source_frame,
                        stage_prompts, supply_grouping, supply_sources, tables, version)
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
 from ai_worker.jobs import Job
@@ -40,8 +40,6 @@ class AnnouncementPdfExtractor:
     def extract(self, job: Job) -> dict:
         if job.kind != KIND:
             raise PermanentError("UNSUPPORTED_JOB", "이 워커가 처리하지 않는 작업입니다.")
-        # 서버가 스스로 넣은 작업은 관리자가 기다리지 않으므로 느리지만 싼 Flex로 부른다.
-        model = openai.FlexFirst(self.model) if job.request_source == BATCH else self.model
         # 시도 예산은 PDF 처리부터 잰다. 모델 호출만 재면 큰 PDF의 쪽 처리 시간만큼 마감을 넘는다.
         deadline = time.monotonic() + ATTEMPT_BUDGET.total_seconds()
         frame = source_frame.SourceFrame.read(job.input)
@@ -71,14 +69,14 @@ class AnnouncementPdfExtractor:
             except PermanentError as unread:
                 eligibility_source, eligibility_error = eligibility_pages.EligibilityPages([], [], [], False), unread.message
         notice_prompt = stage_prompts.notice_prompt(selected)
-        plan = supply_sources.SupplyPlan(model, self.column_judge, rows, selected, texts[:2])
+        plan = supply_sources.SupplyPlan(self.model, self.column_judge, rows, selected, texts[:2])
         # 세 역할은 서로 의존하지 않는다. 같은 남은 마감 안에서 병렬 호출해 분리 비용이 순차 지연으로 누적되지 않게 한다.
-        model_deadline = deadline - openai.READ_TIMEOUT
+        model_deadline = deadline - claude.READ_TIMEOUT
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="announcement-extraction") as pool:
             # 본문·신청자격 단계는 공급표와 상관없이 늘 부르므로 먼저 보내고, 그동안 공급표를 읽을 곳을 정한다.
-            notice_future = pool.submit(model.chat, notice_prompt, model_deadline)
+            notice_future = pool.submit(self.model.chat, notice_prompt, model_deadline)
             eligibility_future = None if eligibility_error else pool.submit(
-                _eligibility_reply, model, stage_prompts.eligibility_prompt(eligibility_source), model_deadline)
+                _eligibility_reply, self.model, stage_prompts.eligibility_prompt(eligibility_source), model_deadline)
             source = plan.start(model_cutoff, model_deadline, pool)
             source.wait()
             notice_reply = notice_future.result()
@@ -144,7 +142,7 @@ def page_tables(pdf: bytes):
     return read
 
 
-def _eligibility_reply(model: supply_sources.Model, prompt: str, deadline: float) -> openai.Reply:
+def _eligibility_reply(model: supply_sources.Model, prompt: str, deadline: float) -> claude.Reply:
     """신청자격 단계는 일시 오류(연결 실패, 429, 5xx)로 실패하면 한 번 다시 부른다. 이 단계만 실패해도 작업은 성공으로 끝나
     워커의 작업 재시도가 일어나지 않기 때문이다. 마감까지 한 번 부를 시간이 남지 않았으면(시간 초과 포함) 다시 부르지 않는다."""
     try:
@@ -155,7 +153,7 @@ def _eligibility_reply(model: supply_sources.Model, prompt: str, deadline: float
         return model.chat(prompt, deadline)
 
 
-def _optional_reply(future) -> tuple[openai.Reply | None, str | None]:
+def _optional_reply(future) -> tuple[claude.Reply | None, str | None]:
     """신청자격은 공급 보정에 없어도 되는 결과라, 그 단계만 실패하면 작업을 실패시키지 않고 이유를 경고로 남긴다."""
     try:
         return future.result(), None
@@ -163,7 +161,7 @@ def _optional_reply(future) -> tuple[openai.Reply | None, str | None]:
         return None, error.message
 
 
-def _eligibility(reply: openai.Reply | None, error: str | None, notice_tree: dict,
+def _eligibility(reply: claude.Reply | None, error: str | None, notice_tree: dict,
                  source_pages: list[int], page_texts: dict[int, str]) -> eligibility.Extracted:
     if reply is None:
         return eligibility.failed(error or "응답 없음")

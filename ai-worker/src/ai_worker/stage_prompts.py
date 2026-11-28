@@ -25,6 +25,12 @@ _SCHEMA_SUFFIX = _prompt_text("schema-suffix.txt")
 _LH_FRAME = _prompt_text("lh-frame.txt")
 _ELIGIBILITY_INSTRUCTIONS = _prompt_text("announcement-pdf-eligibility.txt")
 
+# 단계마다 공고와 상관없이 글자 하나 다르지 않은 앞부분. 모델 호출은 이 부분을 캐시해 다음 공고가 싸게 읽는다.
+_SUPPLY_HEAD = _TEXT_PREFACE + "[추출 단계: 공급 표]\n" + _SUPPLY_INSTRUCTIONS
+_NOTICE_HEAD = _TEXT_PREFACE + "[추출 단계: 공고 본문]\n" + _INSTRUCTIONS + "\n\n"
+_ELIGIBILITY_HEAD = "[추출 단계: 신청자격]\n" + _ELIGIBILITY_INSTRUCTIONS + "\n"
+FIXED_HEADS = (_SUPPLY_HEAD, _NOTICE_HEAD, _ELIGIBILITY_HEAD)
+
 
 def _notice_schema() -> str:
     """관리자 스키마에서 본문 단계가 맡은 필드만 남겨 모델이 동시에 채울 필드를 줄인다."""
@@ -62,7 +68,7 @@ def supply_prompt(rows: list[SourceSupplyRow], selected: pages.PromptPages) -> s
             for row in rows
         )
         lh_frame = _LH_FRAME + "\n[LH 공급 API 행]\n" + frame + "\n\n"
-    return _TEXT_PREFACE + "[추출 단계: 공급 표]\n" + _SUPPLY_INSTRUCTIONS + lh_frame + "\n\n" + selected.supply_text
+    return _SUPPLY_HEAD + lh_frame + "\n\n" + selected.supply_text
 
 
 def notice_prompt(selected: pages.PromptPages) -> str:
@@ -71,7 +77,7 @@ def notice_prompt(selected: pages.PromptPages) -> str:
     candidates = "\n".join(f"- {name}" for name in selected.complex_candidates) or (
         "(후보 없음: 공급 표에 단지명 열이 없음)" if no_column else "(후보를 읽지 못함)")
     context = "[공급 표에서 읽은 단지명 후보]\n" + candidates + "\n\n"
-    return (_TEXT_PREFACE + "[추출 단계: 공고 본문]\n" + _INSTRUCTIONS + "\n\n" + context + _SCHEMA_SUFFIX
+    return (_NOTICE_HEAD + context + _SCHEMA_SUFFIX
             + _notice_schema() + "\n\n" + selected.notice_text)
 
 
@@ -81,4 +87,4 @@ def eligibility_prompt(source: EligibilityPages) -> str:
     groups = ""
     if source.applicant_groups:
         groups = "[공급표의 신청자 묶음]\n" + "\n".join(f"- {name}" for name in source.applicant_groups) + "\n\n"
-    return "[추출 단계: 신청자격]\n" + _ELIGIBILITY_INSTRUCTIONS + "\n" + groups + source.text
+    return _ELIGIBILITY_HEAD + groups + source.text

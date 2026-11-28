@@ -9,12 +9,11 @@ import pymupdf
 
 import pytest
 
-from ai_worker import announcement, jev, publication, tables
+from ai_worker import announcement, claude, jev, publication, stage_prompts, tables
 from ai_worker.announcement import AnnouncementPdfExtractor
-from ai_worker import openai
 from ai_worker.extraction import ATTEMPT_BUDGET, INCOMPLETE, PermanentError, TransientError
+from ai_worker.claude import Reply
 from ai_worker.jobs import Job
-from ai_worker.openai import Reply
 from conftest import (COVER, sheet_answer, ELIGIBILITY_STAGE, EMPTY_ELIGIBILITY, EMPTY_ELIGIBILITY_DATA, EXTRACTION, NOTICE, RENT, RENT_CELLS, SUPPLY, USAGE,
                       FakeJudge, FakeModel, contract_example, readable,
                       grid_page, text_pdf, two_quantity_tables_pdf)
@@ -56,26 +55,17 @@ def job(content: bytes, job_input=None, kind=announcement.KIND, request_source="
                pdf_sha256="a" * 64, input=job_input, attempts=1, lease_token=uuid4())
 
 
-class TierModel(FakeModel):
-    """OpenAI처럼 service_tier를 받고, 단계마다 받은 처리 등급을 남긴다."""
+def test_every_stage_prompt_starts_with_its_cached_fixed_head():
+    # 모델 호출은 단계의 고정 앞부분에만 캐시 지점을 단다. 프롬프트 조립이 바뀌어 앞부분이 어긋나면 캐시가 조용히 사라진다.
+    model = FakeModel()
 
-    def __init__(self):
-        super().__init__()
-        self.tiers = []
+    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, NOTICE, SUPPLY, RENT)))
 
-    def chat(self, prompt, deadline, service_tier=None):
-        self.tiers.append(service_tier)
-        return super().chat(prompt, deadline)
-
-
-@pytest.mark.parametrize(("request_source", "tier"), [("BATCH", "flex"), ("ADMIN", None)])
-def test_server_jobs_call_every_stage_with_flex_and_admin_jobs_with_default_tier(request_source, tier):
-    model = TierModel()
-
-    AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT), request_source=request_source))
-
-    assert len(model.tiers) >= 3
-    assert set(model.tiers) == {tier}
+    supply, notice, eligibility = stage_prompts.FIXED_HEADS
+    prompts = model.prompts + model.eligibility_prompts
+    assert len(prompts) == 3
+    assert sorted(next(i for i, head in enumerate((supply, notice, eligibility)) if prompt.startswith(head))
+                  for prompt in prompts) == [0, 1, 2]
 
 
 def test_version_is_stable_and_changes_with_column_judge():
@@ -280,7 +270,7 @@ def test_model_deadline_counts_from_attempt_start():
     AnnouncementPdfExtractor(model).extract(job(pdf(COVER, SUPPLY, RENT)))
 
     assert len(model.deadlines) == 2
-    budget = ATTEMPT_BUDGET.total_seconds() - openai.READ_TIMEOUT
+    budget = ATTEMPT_BUDGET.total_seconds() - claude.READ_TIMEOUT
     assert all(started + budget - 5 < deadline <= time.monotonic() + budget for deadline in model.deadlines)
 
 
@@ -1224,7 +1214,7 @@ PUBLICATION = {"publication": {"title": "행복주택 입주자 모집공고"}}
 
 
 def publication_review(request_source, job_input):
-    result = AnnouncementPdfExtractor(TierModel()).extract(
+    result = AnnouncementPdfExtractor(FakeModel()).extract(
         job(pdf(COVER, SUPPLY, RENT), job_input, request_source=request_source))
     return json.loads(result["json"]).get("publicationReview")
 
