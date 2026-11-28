@@ -28,7 +28,7 @@ public class PdfExtractionJob {
     public static final String KIND = "ANNOUNCEMENT_PDF_EXTRACTION";
     /** 관리자가 요청한 작업. 워커가 먼저 꺼내고 일반 처리로 부른다. */
     public static final String ADMIN = "ADMIN";
-    /** 서버가 스스로 넣은 작업. 관리자 작업 뒤에 꺼내고 느리지만 싼 처리(Flex)로 부른다. 결과는 관리자가 검토해야 반영된다. */
+    /** 서버가 스스로 넣은 작업. 관리자 작업 뒤에 꺼낸다. 결과는 관리자가 검토해야 반영된다. */
     public static final String BATCH = "BATCH";
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;

@@ -17,7 +17,7 @@ import bluegreen
 # Built and labelled with the same revision. The worker takes no traffic, so it is recreated instead of Blue/Green.
 IMAGES = ('backend', 'frontend', 'ai-worker')
 WORKER = 'ai-worker'
-WORKER_SECRETS = ('PGPASSWORD', 'OPENAI_API_KEY')
+WORKER_SECRETS = ('PGPASSWORD', 'ANTHROPIC_API_KEY')
 REVISION_LABEL = 'org.opencontainers.image.revision'
 # Cache unused this long is dropped; layers reused by every build (dependencies, base packages) stay warm.
 BUILD_CACHE_KEEP = '24h'
@@ -89,7 +89,7 @@ class Release:
         missing = [name for name in WORKER_SECRETS if not worker.get('environment', {}).get(name)]
         if missing:
             raise bluegreen.DeploymentError('AI worker is missing server settings: ' + ', '.join(missing)
-                                            + ' (set AI_WORKER_DB_PASSWORD and OPENAI_API_KEY)')
+                                            + ' (set AI_WORKER_DB_PASSWORD and ANTHROPIC_API_KEY)')
 
     def free_disk(self):
         # Every release tags three new images (the worker alone is about 1.1GB) and a fresh build cache, and nothing

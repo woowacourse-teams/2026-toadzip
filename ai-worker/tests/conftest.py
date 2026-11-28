@@ -14,7 +14,7 @@ import pytest
 from testcontainers.community.postgres import PostgresContainer
 
 from ai_worker import checks, jev, supply_grouping, supply_sources
-from ai_worker.openai import Reply
+from ai_worker.claude import Reply
 from ai_worker.source_frame import SourceSupplyRow
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
