@@ -147,14 +147,27 @@ function createMarkerContent(
   return content
 }
 
+const DRAG_CLICK_TOLERANCE_PX = 5
+
 function bindMarkerActivation(
   button: HTMLButtonElement,
   onSelect: (event: MouseEvent) => void,
   signal: AbortSignal,
 ) {
+  // 마커는 지도와 같이 움직여서, 마커 위에서 시작한 지도 끌기도 손을 떼면 같은 마커의 click이 된다.
+  // 누른 곳에서 멀리 움직인 click은 끌기로 보고 선택하지 않는다.
+  let pressPoint: { x: number; y: number } | null = null
+  button.addEventListener('pointerdown', (event) => {
+    pressPoint = { x: event.clientX, y: event.clientY }
+  }, { signal })
   // Native keyboard clicks have no pointer coordinates for the SDK to process.
   button.addEventListener('click', (event) => {
     event.stopImmediatePropagation()
+    const press = pressPoint
+    pressPoint = null
+    if (press && event.detail > 0 && Math.hypot(event.clientX - press.x, event.clientY - press.y) > DRAG_CLICK_TOLERANCE_PX) {
+      return
+    }
     onSelect(event)
   }, { capture: true, signal })
   const keepKeyboardOnMarker = (event: KeyboardEvent) => {
