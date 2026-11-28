@@ -1,21 +1,26 @@
 .report {
   display: flex;
-  justify-content: center;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-1);
   margin: 0;
-  padding: var(--ds-space-4) var(--ds-space-4) var(--ds-space-6);
-  border-top: 1px solid var(--ds-color-divider);
+  padding: 0 var(--ds-space-4) var(--ds-space-4);
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-label-md);
+  line-height: 1.5;
 }
 
 .link {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
-  padding-inline: var(--ds-space-2);
-  color: var(--ds-color-action);
-  font-size: var(--ds-text-body);
-  font-weight: 500;
+  color: inherit;
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: 2px;
+}
+
+.link:hover {
+  color: var(--ds-color-label);
 }
 
 .link:focus-visible {
