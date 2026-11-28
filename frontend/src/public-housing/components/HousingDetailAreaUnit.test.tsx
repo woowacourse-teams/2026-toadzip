@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSnapshotPublicHousingRepositories } from '../api/snapshotPublicHousingRepository'
@@ -27,7 +28,7 @@ afterEach(() => {
 })
 
 function openComplex(complexId = '17') {
-  return render(<HousingComplexDetailPanel detail={{ ...complexDetail, complexId }} onClose={() => {}} />)
+  return render(<HousingComplexDetailPanel detail={{ ...complexDetail, complexId }} onClose={() => {}} />, { wrapper: MemoryRouter })
 }
 
 function announcementArea(area: string) {
@@ -37,7 +38,7 @@ function announcementArea(area: string) {
 }
 
 function openAnnouncement(announcementId = '201') {
-  return render(<HousingAnnouncementDetailPanel detail={{ ...announcementDetail, announcementId }} onClose={() => {}} />)
+  return render(<HousingAnnouncementDetailPanel detail={{ ...announcementDetail, announcementId }} onClose={() => {}} />, { wrapper: MemoryRouter })
 }
 
 describe('상세 면적 단위 설정', () => {

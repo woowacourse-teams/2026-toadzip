@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router'
 import { workDetailUrl } from '../shared/workNavigation'
 import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { ManagementError } from '../management/api'
-import { feedbackStates, formatLongTime, relatedResources, formatShortTime, getFeedback, saveFeedback,
+import { feedbackStates, formatLongTime, relatedName, relatedResources, formatShortTime, getFeedback, saveFeedback,
   type FeedbackEntry, type FeedbackInput, type FeedbackState } from './api'
 import { FeedbackHistory } from './FeedbackHistory'
 import { FeedbackStatusBadge } from './FeedbackStatusBadge'
@@ -12,8 +12,7 @@ import styles from './FeedbackListPage.module.css'
 const conflictMessage = '다른 운영자가 먼저 저장했습니다. 작성 중인 내용은 그대로 두었습니다. 최신 상태와 비교한 뒤 다시 저장하세요.'
 
 function input(entry: FeedbackEntry): FeedbackInput {
-  return { version: entry.version, status: entry.status, note: entry.note,
-    relatedResource: entry.relatedResource, relatedId: entry.relatedId }
+  return { version: entry.version, status: entry.status, note: entry.note }
 }
 
 export function FeedbackProcessingPanel({ entry, onSaved, onRefreshed }: {
@@ -30,7 +29,6 @@ export function FeedbackProcessingPanel({ entry, onSaved, onRefreshed }: {
   const base = input(current)
   // 저장 기준 version은 충돌 뒤 갱신될 수 있으므로 변경 여부는 내용만 견준다.
   const dirty = draft.status !== base.status || draft.note !== base.note
-    || draft.relatedResource !== base.relatedResource || draft.relatedId !== base.relatedId
   const noteRequired = draft.status === 'DONE' || draft.status === 'ON_HOLD'
   const noteMissing = noteRequired && !draft.note.trim()
   useUnsavedChanges(dirty)
@@ -40,8 +38,7 @@ export function FeedbackProcessingPanel({ entry, onSaved, onRefreshed }: {
   async function save(version = draft.version) {
     setBusy(true); setError('')
     try {
-      const value = await saveFeedback(entry.id,
-        { ...draft, version, relatedResource: current.relatedResource, relatedId: current.relatedId })
+      const value = await saveFeedback(entry.id, { ...draft, version })
       setCurrent(value); setDraft(input(value)); setConflict(false); setLatest(null); setSaved(true); onSaved(value)
     } catch (cause) {
       if (cause instanceof ManagementError && cause.status === 409) {
@@ -56,7 +53,7 @@ export function FeedbackProcessingPanel({ entry, onSaved, onRefreshed }: {
       }
     } finally { setBusy(false) }
   }
-  // 관련 단지·공고는 운영자가 고치지 않는다. 저장된 값을 그대로 보여 주고 저장할 때도 최신 값을 그대로 보낸다.
+  // 관련 단지·공고는 사용자가 의견을 보낼 때만 붙으며 운영자는 읽기만 한다.
   const link = current.relatedResource && current.relatedId
     ? workDetailUrl(current.relatedResource, current.relatedId, `${location.pathname}${location.search}`, 'info') : null
   const status = dirty ? '저장하지 않은 변경이 있습니다.' : saved ? '처리 기록을 저장했습니다.'
@@ -79,7 +76,7 @@ export function FeedbackProcessingPanel({ entry, onSaved, onRefreshed }: {
         {link && current.relatedResource && current.relatedId ? <div className={styles.field}>
           <span className={styles.fieldLabel}>관련 단지·공고</span>
           <div className={styles.related}>
-            <div><small>{relatedResources[current.relatedResource]}</small><strong>#{current.relatedId}</strong></div>
+            <div><small>{relatedResources[current.relatedResource]}</small><strong>{relatedName(current)}</strong></div>
             <Link to={link}>정보 열기</Link>
           </div>
         </div> : null}

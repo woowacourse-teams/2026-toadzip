@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import App from '../../App'
 
 afterEach(() => vi.unstubAllGlobals())
-const entry = { version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null, id: 7, content: '지도 개선 의견\n두 번째 줄', createdAt: '2026-10-07T01:00:00Z' }
+const entry = { version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, relatedName: null, actor: null, processedAt: null, id: 7, content: '지도 개선 의견\n두 번째 줄', createdAt: '2026-10-07T01:00:00Z' }
 
 it('관리자 메뉴에서 의견 목록을 열고 의견을 골라 전문과 건수를 확인한다', async () => {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {

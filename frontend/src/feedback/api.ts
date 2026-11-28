@@ -1,19 +1,20 @@
 import { getApiBaseUrl } from '../api/apiBaseUrl'
+import type { FeedbackTarget } from './feedbackNavigation'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export async function submitFeedback(content: string): Promise<void> {
+export async function submitFeedback(content: string, target?: FeedbackTarget | null): Promise<void> {
   try {
-    await sendFeedback(content)
+    await sendFeedback(content, target ?? null)
   } catch (cause) {
     if (cause instanceof TypeError) throw new Error('서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.')
     throw cause
   }
 }
 
-async function sendFeedback(content: string): Promise<void> {
+async function sendFeedback(content: string, target: FeedbackTarget | null): Promise<void> {
   const base = getApiBaseUrl()
   const csrfResponse = await fetch(`${base}/api/auth/csrf`, { credentials: 'include' })
   if (!csrfResponse.ok) throw new Error('의견 전송을 준비하지 못했어요. 다시 시도해 주세요.')
@@ -24,7 +25,7 @@ async function sendFeedback(content: string): Promise<void> {
   const response = await fetch(`${base}/api/v1/feedback`, {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(target ? { content, relatedResource: target.resource, relatedId: target.id } : { content }),
   })
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {

@@ -1,4 +1,5 @@
 import { BookmarkButton } from '../../user/bookmarks/BookmarkButton'
+import { DetailFeedbackLink } from '../../feedback/DetailFeedbackLink'
 import { captureProductEvent } from '../../analytics/productAnalytics'
 import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
@@ -389,6 +390,7 @@ export function HousingComplexDetailPanel({
             />
           </DetailSection>
         )}
+        {!preview && <DetailFeedbackLink target={{ resource: 'COMPLEX', id: Number(detail.complexId), name: detail.name }} />}
       </div>
     </aside>
   )

@@ -13,7 +13,7 @@ beforeEach(() => {
   vi.mocked(getFeedbackChanges).mockReset().mockResolvedValue([]); vi.mocked(saveFeedback).mockReset(); vi.mocked(getFeedback).mockReset()
 })
 afterEach(() => vi.restoreAllMocks())
-const entry: FeedbackEntry = { version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null, id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
+const entry: FeedbackEntry = { version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, relatedName: null, actor: null, processedAt: null, id: 7, content: '지도에서 단지를 찾기 어려워요.\n검색을 개선해 주세요.', createdAt: '2026-10-07T01:00:00Z' }
 const other: FeedbackEntry = { ...entry, id: 8, content: '두 번째 의견', createdAt: '2026-10-06T01:00:00Z' }
 const third: FeedbackEntry = { ...entry, id: 9, content: '세 번째 의견', createdAt: '2026-10-05T01:00:00Z' }
 const page = (...items: FeedbackEntry[]): FeedbackPage => ({ items, page: 0, hasNext: false, totalElements: items.length, totalPages: items.length ? 1 : 0 })
@@ -75,13 +75,13 @@ it('검색어는 목록과 건수 요청에 모두 들어가고 검색어 지우
 })
 
 it('행에는 상태·접수 시각·내용·번호·관련 대상·메모 유무를 보여 주고 누르면 처리 패널이 열린다', async () => {
-  vi.mocked(listFeedback).mockResolvedValue(page({ ...entry, relatedResource: 'COMPLEX', relatedId: 3, note: '확인 중' }, other))
+  vi.mocked(listFeedback).mockResolvedValue(page({ ...entry, relatedResource: 'COMPLEX', relatedId: 3, relatedName: '가나 행복주택', note: '확인 중' }, other))
   setup()
   const first = await screen.findByRole('button', { name: /지도에서 단지를/ })
   expect(first).toHaveTextContent('접수')
   expect(first).toHaveTextContent('10.07 10:00')
   expect(first).toHaveTextContent('#7')
-  expect(first).toHaveTextContent('단지 #3')
+  expect(first).toHaveTextContent('단지 · 가나 행복주택')
   expect(first).toHaveTextContent('메모 있음')
   expect(row(/두 번째 의견/)).not.toHaveTextContent('메모 있음')
   fireEvent.click(first)

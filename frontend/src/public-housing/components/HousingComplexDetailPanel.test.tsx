@@ -1,8 +1,9 @@
 import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 /// <reference types="node" />
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render as renderUi, screen, waitFor, within, type RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +12,11 @@ import {
   type HousingComplexDetailData,
 } from './HousingComplexDetailPanel'
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
+
+// 상세 맨 아래 의견 링크가 라우터 안에서만 그려지므로 모든 렌더를 라우터로 감싼다.
+const render = ((ui: ReactElement, options?: RenderOptions) =>
+  renderUi(ui, { wrapper: MemoryRouter, ...options })) as typeof renderUi
+
 
 const BASE_DETAIL: HousingComplexDetailData = {
   complexId: '17',
@@ -137,7 +143,22 @@ function factValue(container: HTMLElement, term: string) {
   return within(element)
 }
 
+// 의견 창 대신 넘겨받은 대상을 그대로 보여 주는 자리. 상세가 어떤 대상을 붙였는지 확인한다.
+function FeedbackTargetProbe() {
+  return <output data-testid="feedback-target">{JSON.stringify((useLocation().state as { feedbackTarget?: unknown } | null)?.feedbackTarget ?? null)}</output>
+}
+
 describe('HousingComplexDetailPanel', () => {
+  it('글자 버튼은 이 단지의 종류·ID·이름을 붙여 의견 창으로 넘긴다', () => {
+    render(<Routes>
+      <Route path="/" element={<HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />} />
+      <Route path="/feedback" element={<FeedbackTargetProbe />} />
+    </Routes>)
+    fireEvent.click(screen.getByRole('link', { name: '정보가 다르면 알려 주세요' }))
+    expect(JSON.parse(screen.getByTestId('feedback-target').textContent ?? 'null'))
+      .toEqual({ resource: 'COMPLEX', id: 17, name: '서울가람 행복주택' })
+  })
+
   beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
 
   it('데스크톱도 단지명만 헤더에 두고 공급기관·주택 유형은 주소와 함께 본문에 표시한다', () => {
@@ -294,9 +315,9 @@ describe('HousingComplexDetailPanel', () => {
     localStorage.clear()
     const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
-      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
-      </NotificationInterestProvider></MemoryRouter>,
+      </NotificationInterestProvider>,
     )
     const identity = screen.getByRole('region', { name: BASE_DETAIL.name })
     await waitFor(() => expect(within(identity).getByRole('button', { name: '서울가람 행복주택 알림 받기' })).toBeEnabled())
@@ -378,9 +399,10 @@ describe('HousingComplexDetailPanel', () => {
       .toBeInTheDocument()
     expect(within(contentSections[2] as HTMLElement).getByRole('heading', { name: '단지 기본 정보' }))
       .toBeInTheDocument()
-    for (const section of contentSections.slice(1)) {
+    for (const section of contentSections.slice(1, -1)) {
       expect(section).toHaveAttribute('data-appearance', 'block')
     }
+    expect(contentSections.at(-1)).toContainElement(screen.getByRole('link', { name: '정보가 다르면 알려 주세요' }))
     expect(within(content).queryByText(BASE_DETAIL.name)).not.toBeInTheDocument()
     expect(within(panel).queryByText('단지 상세')).not.toBeInTheDocument()
     expect(within(panel).getAllByText('서울특별시 중구 세종대로 110')).toHaveLength(1)
@@ -421,6 +443,17 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(panel).getByRole('region', {
       name: `${BASE_DETAIL.name} 단지 상세 내용`,
     }).firstElementChild).toHaveAccessibleName(BASE_DETAIL.name)
+  })
+
+  it('본문 맨 아래에 이 단지를 붙여 의견 창을 여는 글자 버튼을 두고, 요약 미리보기에는 두지 않는다', () => {
+    const { panel, unmount } = renderPanel()
+    const content = within(panel).getByRole('region', { name: `${BASE_DETAIL.name} 단지 상세 내용` })
+    const link = within(content).getByRole('link', { name: '정보가 다르면 알려 주세요' })
+    expect(link).toHaveAttribute('href', '/feedback')
+    expect(content.lastElementChild).toContainElement(link)
+    unmount()
+    render(<HousingComplexDetailPanel detail={BASE_DETAIL} preview onClose={vi.fn()} />)
+    expect(screen.queryByRole('link', { name: '정보가 다르면 알려 주세요', hidden: true })).not.toBeInTheDocument()
   })
 
   it('닫기 버튼을 실제 버튼으로 제공한다', () => {

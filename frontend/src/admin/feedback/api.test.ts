@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { formatLongTime, formatShortTime, getFeedbackChanges, getFeedbackCounts, listFeedback } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
-const valid = { items: [{ version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null, id: 1, content: '개선 의견', createdAt: '2026-10-07T01:00:00Z' }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 }
+const valid = { items: [{ version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, relatedName: null, actor: null, processedAt: null, id: 1, content: '개선 의견', createdAt: '2026-10-07T01:00:00Z' }], page: 0, hasNext: false, totalElements: 1, totalPages: 1 }
 const respond = (data: unknown) => vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data }))))
 
 it('인증된 관리자 목록을 요청하며 검색과 취소 신호를 전달한다', async () => {
@@ -27,6 +27,17 @@ it('이전 서버가 보낸 설문 답변은 읽지 않고 의견 항목만 남�
   const result = await listFeedback(new URLSearchParams())
   expect(result.items[0]).toEqual(valid.items[0])
   expect(result.items[0]).not.toHaveProperty('surveyAnswer')
+})
+
+it('대상 이름을 내려주지 않는 이전 서버 응답도 이름 없음으로 읽는다', async () => {
+  const { relatedName: _omitted, ...legacy } = { ...valid.items[0], relatedResource: 'COMPLEX', relatedId: 3 }
+  respond({ ...valid, items: [legacy] })
+  expect((await listFeedback(new URLSearchParams())).items[0]).toMatchObject({ relatedId: 3, relatedName: null })
+})
+
+it.each([1, {}])('대상 이름이 문자열이 아니면 거절한다: %j', async relatedName => {
+  respond({ ...valid, items: [{ ...valid.items[0], relatedName }] })
+  await expect(listFeedback(new URLSearchParams())).rejects.toThrow('올바르지 않습니다')
 })
 
 it('상태별 건수를 검색어와 함께 요청해 읽는다', async () => {

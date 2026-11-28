@@ -252,6 +252,27 @@ class AdminFeedbackControllerIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void 처리_저장은_사용자가_붙인_관련_대상을_바꾸지_않는다() throws Exception {
+        long id = jdbc.sql("""
+                INSERT INTO feedback (content, created_at, related_resource, related_id)
+                VALUES ('공고 정보가 달라요', '2026-10-07T10:00:00Z'::timestamptz, 'ANNOUNCEMENT', 77) RETURNING id
+                """).query(Long.class).single();
+        mockMvc.perform(put(ENDPOINT + "/" + id).with(user("operator").roles("ADMIN")).with(csrf())
+                        .contentType("application/json").content("""
+                                {"version":0,"status":"IN_PROGRESS","note":"확인 중",
+                                 "relatedResource":"","relatedId":null}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.data.relatedResource").value("ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.data.relatedId").value(77))
+                .andExpect(jsonPath("$.data.relatedName").value((Object) null));
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql(
+                "SELECT related_resource || ':' || related_id FROM feedback WHERE id = :id")
+                .param("id", id).query(String.class).single()).isEqualTo("ANNOUNCEMENT:77");
+    }
+
     private long feedback(String content, String createdAt, String status) {
         return jdbc.sql("""
                 INSERT INTO feedback (content, created_at, status) VALUES (:content, :createdAt::timestamptz, :status)

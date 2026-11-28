@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router'
 import { Button } from '../../design-system/components/Button'
 import { ListPagination } from '../management/ListPagination'
 import { AdminIcon } from '../shared/AdminIcon'
-import { feedbackStates, formatShortTime, getFeedbackCounts, listFeedback, relatedLabel,
+import { feedbackStates, formatShortTime, getFeedbackCounts, listFeedback, relatedName, relatedResources,
   type FeedbackCounts, type FeedbackEntry, type FeedbackPage, type FeedbackState } from './api'
 import { FeedbackProcessingPanel } from './FeedbackProcessingPanel'
 import { FeedbackStatusBadge } from './FeedbackStatusBadge'
@@ -18,7 +18,7 @@ function emptyMessage(tab: FeedbackState | 'ALL') {
   return tab === 'OPEN' ? '새로 접수된 의견이 없습니다.' : tab === 'ALL' ? '접수된 의견이 없습니다.' : '이 상태의 의견이 없습니다.'
 }
 function relatedText(entry: FeedbackEntry) {
-  return entry.relatedResource && entry.relatedId ? relatedLabel(entry.relatedResource, entry.relatedId) : null
+  return entry.relatedResource && entry.relatedId ? `${relatedResources[entry.relatedResource]} · ${relatedName(entry)}` : null
 }
 
 function withSelection(previous: URLSearchParams, id: number | null) {
@@ -169,9 +169,10 @@ export function FeedbackListPage() {
               return <li key={entry.id}><button type="button" data-admin-navigation className={styles.row}
                 aria-current={selected === entry.id ? 'true' : undefined} onClick={() => select(entry.id)}>
                 <span className={styles.rowTop}><FeedbackStatusBadge status={entry.status} />
-                  <span className={styles.rowMeta}><span>#{entry.id}</span>{related ? <span>{related}</span> : null}
+                  <span className={styles.rowMeta}><span>#{entry.id}</span>
                     {entry.note ? <span>메모 있음</span> : null}</span>
                   <time dateTime={entry.createdAt}>{formatShortTime(entry.createdAt)}</time></span>
+                {related ? <span className={styles.rowTarget} title={related}>{related}</span> : null}
                 <span className={styles.preview}>{entry.content || '추가 의견 없음'}</span>
               </button></li>
             })}

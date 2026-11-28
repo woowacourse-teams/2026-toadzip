@@ -4,11 +4,11 @@ import com.toadzip.backend.admin.domain.AdminDataChange;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.exception.AdminDataConflictException;
 import com.toadzip.backend.admin.repository.AdminDataChangeRepository;
-import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.feedback.dto.FeedbackProcessingRequest;
 import com.toadzip.backend.feedback.dto.FeedbackSummary;
+import com.toadzip.backend.feedback.domain.Feedback;
 import com.toadzip.backend.feedback.repository.FeedbackRepository;
-import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.feedback.repository.FeedbackTargetRepository;
 import java.time.Clock;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -26,14 +26,13 @@ import tools.jackson.databind.ObjectMapper;
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminFeedbackProcessingService {
     private final FeedbackRepository feedbacks;
-    private final HousingComplexRepository complexes;
-    private final AnnouncementRepository announcements;
+    private final FeedbackTargetRepository targets;
     private final AdminDataChangeRepository changes;
     private final ObjectMapper json;
     private final Clock clock;
 
     public FeedbackSummary find(long id) {
-        return FeedbackSummary.from(feedbacks.findById(id)
+        return summary(feedbacks.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "의견을 찾을 수 없습니다.")));
     }
 
@@ -50,24 +49,16 @@ public class AdminFeedbackProcessingService {
         if (feedback.getVersion() != request.version()) {
             throw new AdminDataConflictException("다른 관리자가 처리 내용을 변경했습니다. 입력을 보관하고 최신 의견을 확인하세요.");
         }
-        verifyRelated(request);
-        var before = FeedbackSummary.from(feedback);
-        feedback.process(request.status(), request.note().strip(),
-                request.relatedResource(), request.relatedId(), actor, clock.instant());
+        var before = summary(feedback);
+        feedback.process(request.status(), request.note().strip(), actor, clock.instant());
         feedbacks.flush();
-        var after = FeedbackSummary.from(feedback);
+        var after = summary(feedback);
         changes.save(new AdminDataChange("FEEDBACK", id, "PROCESS_FEEDBACK", actor,
                 json.writeValueAsString(before), json.writeValueAsString(after)));
         return after;
     }
 
-    private void verifyRelated(FeedbackProcessingRequest request) {
-        if (request.relatedId() == null) { return; }
-        boolean valid = switch (request.relatedResource()) {
-            case "COMPLEX" -> complexes.existsById(request.relatedId());
-            case "ANNOUNCEMENT" -> announcements.existsById(request.relatedId());
-            default -> false;
-        };
-        if (!valid) { throw new IllegalArgumentException("관련 단지 또는 공고를 찾을 수 없습니다."); }
+    private FeedbackSummary summary(Feedback feedback) {
+        return FeedbackSummary.from(feedback, targets.targets(List.of(feedback)).apply(feedback));
     }
 }

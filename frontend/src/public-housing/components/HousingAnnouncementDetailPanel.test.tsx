@@ -1,15 +1,17 @@
 import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 /// <reference types="node" />
 
 import '@testing-library/jest-dom/vitest'
 import {
   fireEvent,
-  render,
+  render as renderUi,
   screen,
   waitFor,
   within,
+  type RenderOptions,
 } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,6 +22,11 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 import { ConditionsContext, type ConditionsContextValue } from '../../user/conditions/ConditionsContext'
 import { EMPTY_PROFILE, type ComparisonView, type ConditionsRepository } from '../../user/conditions/conditionsModel'
+
+// 상세 맨 아래 의견 링크가 라우터 안에서만 그려지므로 모든 렌더를 라우터로 감싼다.
+const render = ((ui: ReactElement, options?: RenderOptions) =>
+  renderUi(ui, { wrapper: MemoryRouter, ...options })) as typeof renderUi
+
 
 function evidenceConditions(): ConditionsContextValue {
   const view: ComparisonView = { announcementId: '101', availability: 'AVAILABLE', referenceDate: '2026-11-06', freshness: 'CURRENT', status: 'ELIGIBLE', profileVersion: 1, evaluatedProfileVersion: 1, eligibleOptionIdsInRegion: ['youth'], scopeNote: null, types: [{
@@ -34,7 +41,30 @@ function evidenceConditions(): ConditionsContextValue {
   }
 }
 
+// 의견 창 대신 넘겨받은 대상을 그대로 보여 주는 자리. 상세가 어떤 대상을 붙였는지 확인한다.
+function FeedbackTargetProbe() {
+  return <output data-testid="feedback-target">{JSON.stringify((useLocation().state as { feedbackTarget?: unknown } | null)?.feedbackTarget ?? null)}</output>
+}
+
 describe('HousingAnnouncementDetailPanel', () => {
+  it('글자 버튼은 이 공고의 종류·ID·제목을 붙여 의견 창으로 넘긴다', () => {
+    render(<Routes>
+      <Route path="/" element={<HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />} />
+      <Route path="/feedback" element={<FeedbackTargetProbe />} />
+    </Routes>)
+    fireEvent.click(screen.getByRole('link', { name: '정보가 다르면 알려 주세요' }))
+    expect(JSON.parse(screen.getByTestId('feedback-target').textContent ?? 'null'))
+      .toEqual({ resource: 'ANNOUNCEMENT', id: 201, name: '성남 행복주택 예비입주자 모집' })
+  })
+
+  it('본문 맨 아래에 이 공고를 붙여 의견 창을 여는 글자 버튼을 둔다', () => {
+    renderPanel()
+    const content = screen.getByRole('region', { name: /상세 내용$/ })
+    const link = within(content).getByRole('link', { name: '정보가 다르면 알려 주세요' })
+    expect(link).toHaveAttribute('href', '/feedback')
+    expect(content.lastElementChild).toContainElement(link)
+  })
+
   it.each([
     { label: 'PDF 우선', fileTypeLabel: '공고문', pdfUrl: 'https://example.com/notice.pdf', expected: '대표.PDF' },
     { label: '정정공고문', fileTypeLabel: '정정공고문', pdfUrl: 'https://example.com/notice.pdf', expected: '대표.PDF' },
@@ -159,9 +189,9 @@ describe('HousingAnnouncementDetailPanel', () => {
   it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
-      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />
-      </NotificationInterestProvider></MemoryRouter>,
+      </NotificationInterestProvider>,
     )
     await waitFor(() => expect(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' }))

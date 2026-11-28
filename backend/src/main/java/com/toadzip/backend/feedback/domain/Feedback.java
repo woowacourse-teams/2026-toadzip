@@ -46,13 +46,19 @@ public class Feedback {
     protected Feedback() {
     }
 
-    private Feedback(FeedbackContent content, Instant createdAt) {
+    private Feedback(FeedbackContent content, String relatedResource, Long relatedId, Instant createdAt) {
         this.content = content;
+        this.relatedResource = relatedResource;
+        this.relatedId = relatedId;
         this.createdAt = createdAt;
     }
 
-    public static Feedback submit(String content, Instant createdAt) {
-        return new Feedback(FeedbackContent.of(content), createdAt);
+    /** 사용자가 공고·단지 상세에서 보낸 의견은 그 대상을 함께 남긴다. 대상은 접수 뒤 바뀌지 않는다. */
+    public static Feedback submit(String content, String relatedResource, Long relatedId, Instant createdAt) {
+        if (relatedResource.isEmpty() != (relatedId == null)) {
+            throw new IllegalArgumentException("관련 대상의 종류와 ID를 함께 입력해 주세요.");
+        }
+        return new Feedback(FeedbackContent.of(content), relatedResource, relatedId, createdAt);
     }
 
     public Long getId() {
@@ -66,18 +72,12 @@ public class Feedback {
     public Instant getCreatedAt() {
         return createdAt;
     }
-    public void process(FeedbackStatus nextStatus, String result,
-            String resource, Long resourceId, String operator, Instant now) {
+    public void process(FeedbackStatus nextStatus, String result, String operator, Instant now) {
         if ((nextStatus == FeedbackStatus.DONE || nextStatus == FeedbackStatus.ON_HOLD) && result.isBlank()) {
             throw new IllegalArgumentException("완료 결과 또는 보류 이유를 입력해 주세요.");
         }
-        if (resource.isEmpty() != (resourceId == null)) {
-            throw new IllegalArgumentException("관련 대상의 종류와 ID를 함께 입력해 주세요.");
-        }
         status = nextStatus;
         note = result;
-        relatedResource = resource;
-        relatedId = resourceId;
         actor = operator;
         processedAt = now;
     }

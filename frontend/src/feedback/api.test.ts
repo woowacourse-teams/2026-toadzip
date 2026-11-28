@@ -18,6 +18,15 @@ it('공개 CSRF 토큰을 얻고 세션 쿠키와 의견 내용만 제출한다'
   })
 })
 
+it('상세에서 보낸 의견은 대상의 종류와 ID를 함께 보내고 이름은 보내지 않는다', async () => {
+  const fetchMock = vi.fn().mockResolvedValueOnce(json({ token: 'test-csrf', headerName: 'X-XSRF-TOKEN' }))
+    .mockResolvedValueOnce(json({ data: { id: 1 } }, 201))
+  vi.stubGlobal('fetch', fetchMock)
+  await submitFeedback('모집 호수가 달라요', { resource: 'ANNOUNCEMENT', id: 12, name: '가나 공고' })
+  expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)))
+    .toEqual({ content: '모집 호수가 달라요', relatedResource: 'ANNOUNCEMENT', relatedId: 12 })
+})
+
 it('CSRF 토큰을 확인하지 못하면 제출하지 않는다', async () => {
   const fetchMock = vi.fn().mockResolvedValue(json({ token: 1 }))
   vi.stubGlobal('fetch', fetchMock)

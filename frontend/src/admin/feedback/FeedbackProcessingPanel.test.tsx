@@ -7,7 +7,7 @@ import { ManagementError } from '../management/api'
 
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(),
   getFeedback: vi.fn(), saveFeedback: vi.fn(), getFeedbackChanges: vi.fn() }))
-const entry: FeedbackEntry = { id: 1, content: '공고 조건 확인 요청\n두 번째 줄', createdAt: '2026-10-19T00:00:00Z', version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, actor: null, processedAt: null }
+const entry: FeedbackEntry = { id: 1, content: '공고 조건 확인 요청\n두 번째 줄', createdAt: '2026-10-19T00:00:00Z', version: 0, status: 'OPEN', note: '', relatedResource: '', relatedId: null, relatedName: null, actor: null, processedAt: null }
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(getFeedbackChanges).mockResolvedValue([]) })
 const renderPanel = (value = entry, onSaved = vi.fn()) => {
   render(<MemoryRouter><FeedbackProcessingPanel entry={value} onSaved={onSaved} /></MemoryRouter>); return onSaved
@@ -62,7 +62,7 @@ it('저장하면 현재 version으로 요청하고 저장 안내와 처리 이�
     beforeValue: JSON.stringify({ ...entry }), afterValue: JSON.stringify(saved) }])
   fireEvent.click(saveButton())
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved))
-  expect(saveFeedback).toHaveBeenCalledWith(1, { version: 0, status: 'DONE', note: '보정함', relatedResource: '', relatedId: null })
+  expect(saveFeedback).toHaveBeenCalledWith(1, { version: 0, status: 'DONE', note: '보정함' })
   expect(screen.getByRole('status')).toHaveTextContent('처리 기록을 저장했습니다.')
   expect(await screen.findByText('상태 접수 → 처리 완료, 메모 수정 · operator')).toBeVisible()
   expect(screen.getByText('10.19 10:00')).toBeVisible()
@@ -97,7 +97,7 @@ it('다른 운영자가 먼저 저장하면 작성 내용을 두고 최신 저�
   vi.mocked(saveFeedback).mockResolvedValue(saved)
   fireEvent.click(screen.getByRole('button', { name: '최신 상태 기준으로 다시 저장' }))
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved))
-  expect(saveFeedback).toHaveBeenLastCalledWith(1, { version: 2, status: 'DONE', note: '내가 쓴 결과', relatedResource: '', relatedId: null })
+  expect(saveFeedback).toHaveBeenLastCalledWith(1, { version: 2, status: 'DONE', note: '내가 쓴 결과' })
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
 })
 
@@ -119,11 +119,18 @@ it('처리 이력을 읽지 못하면 오류를 알리고 빈 이력처럼 보�
   expect(screen.queryByText('아직 처리 기록이 없습니다.')).not.toBeInTheDocument()
 })
 
-it('관련 단지·공고는 운영자가 고치지 않고, 저장된 연결만 읽기 전용으로 보여 준다', () => {
-  renderPanel({ ...entry, relatedResource: 'COMPLEX', relatedId: 30 })
-  expect(screen.getByText('#30')).toBeVisible()
+it('사용자가 보낸 관련 단지·공고를 이름과 정보 열기로 읽기 전용으로 보여 준다', () => {
+  renderPanel({ ...entry, relatedResource: 'COMPLEX', relatedId: 30, relatedName: '가나 행복주택' })
+  expect(screen.getByText('단지')).toBeVisible()
+  expect(screen.getByText('가나 행복주택')).toBeVisible()
   expect(screen.getByRole('link', { name: '정보 열기' })).toHaveAttribute('href', expect.stringContaining('/admin/complexes/30'))
   expect(screen.queryByRole('button', { name: /연결/ })).not.toBeInTheDocument()
+})
+
+it('관련 대상의 행을 찾지 못해 이름이 없으면 번호로 보여 준다', () => {
+  renderPanel({ ...entry, relatedResource: 'ANNOUNCEMENT', relatedId: 7 })
+  expect(screen.getByText('#7')).toBeVisible()
+  expect(screen.getByRole('link', { name: '정보 열기' })).toHaveAttribute('href', expect.stringContaining('/admin/announcements/7'))
 })
 
 it('연결이 없는 의견은 관련 단지·공고 칸을 두지 않는다', () => {
@@ -132,14 +139,10 @@ it('연결이 없는 의견은 관련 단지·공고 칸을 두지 않는다', (
   expect(screen.queryByRole('button', { name: /연결/ })).not.toBeInTheDocument()
 })
 
-it('충돌 뒤 다시 저장할 때 관련 단지·공고는 내 화면의 옛 값이 아니라 최신 저장 값을 보낸다', async () => {
-  vi.mocked(saveFeedback).mockRejectedValueOnce(new ManagementError('충돌', 409))
-  vi.mocked(getFeedback).mockResolvedValue({ ...entry, version: 2, relatedResource: 'ANNOUNCEMENT', relatedId: 7 })
-  renderPanel()
+it('처리 기록을 저장할 때 관련 단지·공고는 보내지 않는다', async () => {
+  vi.mocked(saveFeedback).mockResolvedValue({ ...entry, version: 1, status: 'IN_PROGRESS', relatedResource: 'ANNOUNCEMENT', relatedId: 7 })
+  renderPanel({ ...entry, relatedResource: 'ANNOUNCEMENT', relatedId: 7, relatedName: '가나 공고' })
   fireEvent.click(screen.getByRole('button', { name: '처리 중' }))
   fireEvent.click(saveButton())
-  vi.mocked(saveFeedback).mockResolvedValue({ ...entry, version: 3, status: 'IN_PROGRESS', relatedResource: 'ANNOUNCEMENT', relatedId: 7 })
-  fireEvent.click(await screen.findByRole('button', { name: '최신 상태 기준으로 다시 저장' }))
-  await waitFor(() => expect(saveFeedback).toHaveBeenLastCalledWith(1,
-    { version: 2, status: 'IN_PROGRESS', note: '', relatedResource: 'ANNOUNCEMENT', relatedId: 7 }))
+  await waitFor(() => expect(saveFeedback).toHaveBeenLastCalledWith(1, { version: 0, status: 'IN_PROGRESS', note: '' }))
 })
