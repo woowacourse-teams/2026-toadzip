@@ -1750,6 +1750,36 @@ describe('NaverMap', () => {
     },
   )
 
+  it.each(['individual', 'aggregate'] as const)(
+    '%s marker 위에서 시작한 지도 끌기는 손을 떼도 선택하지 않고, 제자리 누름은 선택한다',
+    async (kind) => {
+      const fakeSdk = createFakeSdk()
+      const onMarkerSelect = vi.fn()
+      loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+      render(kind === 'aggregate'
+        ? <NaverMap representation="AGGREGATE"
+            aggregateMarkers={[aggregateMarker]} onAggregateMarkerSelect={onMarkerSelect} />
+        : <NaverMap representation="INDIVIDUAL" onMarkerSelect={onMarkerSelect}
+            markers={[{ ...markerPresentation, id: '101', name: '끌기 단지', latitude: 37.6, longitude: 127 }]} />)
+      await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
+      const markerButton = createdMarkerButton(fakeSdk, 0)
+
+      fireEvent.pointerDown(markerButton, { clientX: 100, clientY: 100 })
+      fireEvent.click(markerButton, { detail: 1, clientX: 180, clientY: 140 })
+      expect(onMarkerSelect).not.toHaveBeenCalled()
+
+      fireEvent.pointerDown(markerButton, { clientX: 100, clientY: 100 })
+      fireEvent.click(markerButton, { detail: 1, clientX: 102, clientY: 101 })
+      expect(onMarkerSelect).toHaveBeenCalledOnce()
+
+      // 끌기 뒤의 키보드 선택은 남은 누름 위치에 막히지 않는다.
+      fireEvent.pointerDown(markerButton, { clientX: 100, clientY: 100 })
+      fireEvent.click(markerButton, { detail: 1, clientX: 180, clientY: 140 })
+      fireEvent.click(markerButton, { detail: 0 })
+      expect(onMarkerSelect).toHaveBeenCalledTimes(2)
+    },
+  )
+
   it(
     '선택만 변경하면 마커와 포커스를 유지하고 필요한 표시만 갱신한다',
     async () => {
